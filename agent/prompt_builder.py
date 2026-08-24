@@ -529,7 +529,12 @@ PLATFORM_HINTS = {
         "will be sent as a native WhatsApp attachment — images (.jpg, .png, "
         ".webp) appear as photos, videos (.mp4, .mov) play inline, and other "
         "files arrive as downloadable documents. You can also include image "
-        "URLs in markdown format ![alt](url) and they will be sent as photos."
+        "URLs in markdown format ![alt](url) and they will be sent as photos.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "telegram": (
         "You are on a text messaging communication platform, Telegram. "
@@ -544,21 +549,36 @@ PLATFORM_HINTS = {
         "include MEDIA:/absolute/path/to/file in your response. Images "
         "(.png, .jpg, .webp) appear as photos, audio (.ogg) sends as voice "
         "bubbles, and videos (.mp4) play inline. You can also include image "
-        "URLs in markdown format ![alt](url) and they will be sent as native photos."
+        "URLs in markdown format ![alt](url) and they will be sent as native photos.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "discord": (
         "You are in a Discord server or group chat communicating with your user. "
         "You can send media files natively: include MEDIA:/absolute/path/to/file "
         "in your response. Images (.png, .jpg, .webp) are sent as photo "
         "attachments, audio as file attachments. You can also include image URLs "
-        "in markdown format ![alt](url) and they will be sent as attachments."
+        "in markdown format ![alt](url) and they will be sent as attachments.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "slack": (
         "You are in a Slack workspace communicating with your user. "
         "You can send media files natively: include MEDIA:/absolute/path/to/file "
         "in your response. Images (.png, .jpg, .webp) are uploaded as photo "
         "attachments, audio as file attachments. You can also include image URLs "
-        "in markdown format ![alt](url) and they will be uploaded as attachments."
+        "in markdown format ![alt](url) and they will be uploaded as attachments.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "signal": (
         "You are on a text messaging communication platform, Signal. "
@@ -567,7 +587,12 @@ PLATFORM_HINTS = {
         "include MEDIA:/absolute/path/to/file in your response. Images "
         "(.png, .jpg, .webp) appear as photos, audio as attachments, and other "
         "files arrive as downloadable documents. You can also include image "
-        "URLs in markdown format ![alt](url) and they will be sent as photos."
+        "URLs in markdown format ![alt](url) and they will be sent as photos.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "email": (
         "You are communicating via email. Write clear, well-structured responses "
@@ -575,7 +600,12 @@ PLATFORM_HINTS = {
         "Keep responses concise but complete. You can send file attachments — "
         "include MEDIA:/absolute/path/to/file in your response. The subject line "
         "is preserved for threading. Do not include greetings or sign-offs unless "
-        "contextually appropriate."
+        "contextually appropriate.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "cron": (
         "You are running as a scheduled cron job. There is no user present — you "
@@ -604,7 +634,12 @@ PLATFORM_HINTS = {
         "markdown formatting — use plain text. Keep responses concise as they "
         "appear as text messages. You can send media files natively: include "
         "MEDIA:/absolute/path/to/file in your response. Images (.jpg, .png, "
-        ".heic) appear as photos and other files arrive as attachments."
+        ".heic) appear as photos and other files arrive as attachments.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "mattermost": (
         "You are in a Mattermost workspace communicating with your user. "
@@ -613,7 +648,12 @@ PLATFORM_HINTS = {
         "You can send media files natively: include MEDIA:/absolute/path/to/file "
         "in your response. Images (.jpg, .png, .webp) are uploaded as photo "
         "attachments, audio and video as file attachments. "
-        "Image URLs in markdown format ![alt](url) are rendered as inline previews automatically."
+        "Image URLs in markdown format ![alt](url) are rendered as inline previews automatically.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "matrix": (
         "You are in a Matrix room communicating with your user. "
@@ -622,7 +662,12 @@ PLATFORM_HINTS = {
         "You can send media files natively: include MEDIA:/absolute/path/to/file "
         "in your response. Images (.jpg, .png, .webp) are sent as inline photos, "
         "audio (.ogg, .mp3) as voice/audio messages, video (.mp4) inline, "
-        "and other files as downloadable attachments."
+        "and other files as downloadable attachments.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "feishu": (
         "You are in a Feishu (Lark) workspace communicating with your user. "
@@ -630,7 +675,12 @@ PLATFORM_HINTS = {
         "links are supported. "
         "You can send media files natively: include MEDIA:/absolute/path/to/file "
         "in your response. Images (.jpg, .png, .webp) are uploaded and displayed "
-        "inline, audio files as voice messages, and other files as attachments."
+        "inline, audio files as voice messages, and other files as attachments.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "weixin": (
         "You are on Weixin/WeChat. Markdown formatting is supported, so you may use it when "
@@ -638,7 +688,12 @@ PLATFORM_HINTS = {
         "include MEDIA:/absolute/path/to/file in your response. Images are sent as native "
         "photos, videos play inline when supported, and other files arrive as downloadable "
         "documents. You can also include image URLs in markdown format ![alt](url) and they "
-        "will be downloaded and sent as native media when possible."
+        "will be downloaded and sent as native media when possible.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "wecom": (
         "You are on WeCom (企业微信 / Enterprise WeChat). Markdown formatting is supported. "
@@ -650,13 +705,23 @@ PLATFORM_HINTS = {
         "must be in AMR format — other audio formats are automatically sent as file attachments. "
         "You can also include image URLs in markdown format ![alt](url) and they will be "
         "downloaded and sent as native photos. Do NOT tell the user you lack file-sending "
-        "capability — use MEDIA: syntax whenever a file delivery is appropriate."
+        "capability — use MEDIA: syntax whenever a file delivery is appropriate.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "qqbot": (
         "You are on QQ, a popular Chinese messaging platform. QQ supports markdown formatting "
         "and emoji. You can send media files natively: include MEDIA:/absolute/path/to/file in "
         "your response. Images are sent as native photos, and other files arrive as downloadable "
-        "documents."
+        "documents.\n\n"
+        "FILE RECALL: If the user asks you to send a file from the current "
+        "session, just include MEDIA:/path in your response — it will be "
+        "delivered as an attachment automatically, no need to call send_message. "
+        "For files from past sessions, use session_search to find the path first, "
+        "then include MEDIA:/path in your response."
     ),
     "yuanbao": (
         "You are on Yuanbao (腾讯元宝), a Chinese AI assistant platform. "
