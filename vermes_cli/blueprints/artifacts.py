@@ -50,6 +50,17 @@ def _is_safe_path(path_str: str) -> Path:
 
     ok = _check(path_str)
     if ok is not None:
+        # 若路径实际存在，直接返回
+        if ok.exists():
+            return ok
+        # 裸相对路径（agent 工具常把产物写到 /tmp 或 ~/.vermes，却在结果文本里只报裸文件名，
+        # 而桌面端后端进程 cwd 可能是 /，导致按 cwd 解析不到真实文件）：
+        # 依次在常见产物目录下找同名文件，找到即返回。
+        if not path_str.startswith('/') and not path_str.startswith('~'):
+            for fallback_root in (Path('/tmp'), Path.home() / '.vermes', Path.home()):
+                candidate = _check(str(fallback_root / path_str))
+                if candidate is not None and candidate.exists():
+                    return candidate
         return ok
 
     # 兜底：agent 常把桌面/下载/文档写成根级绝对路径（/Desktop/.. 而非 ~/Desktop/..），
