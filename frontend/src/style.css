@@ -75,3 +75,31 @@ html, body {
   border: 4px solid transparent;
   border-top-color: rgba(17, 24, 39, 0.95);
 }
+
+/* 顶部栏按钮悬浮提示：位置在按钮下方（避免被窗口顶部边缘裁掉），箭头朝上 */
+.header-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(17, 24, 39, 0.95);
+  color: #fff;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 50;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.header-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-bottom-color: rgba(17, 24, 39, 0.95);
+}

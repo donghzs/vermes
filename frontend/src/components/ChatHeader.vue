@@ -253,10 +253,10 @@ function closeDropdowns() {
 
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
-      <button @click="chat.toggleSidebar()" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="切换侧边栏">☰<span class="sidebar-tooltip group-hover:opacity-100">切换侧边栏</span></button>
+      <button @click="chat.toggleSidebar()" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="切换侧边栏">☰<span class="header-tooltip group-hover:opacity-100">切换侧边栏</span></button>
       <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新 Agent' }}</h2>
       <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages?.length ?? 0 }} 条消息</span>
-      <button @click="emit('toggleHistory')" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋<span class="sidebar-tooltip group-hover:opacity-100">历史记录</span></button>
+      <button @click="emit('toggleHistory')" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋<span class="header-tooltip group-hover:opacity-100">历史记录</span></button>
 
       <!-- 顶部长任务步骤条（常驻，避免只在抽屉里；点击展开详情） -->
       <div v-if="chat.todoItems.length"
@@ -280,7 +280,7 @@ function closeDropdowns() {
               class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm"
               title="任务清单">
         🗂️
-        <span class="sidebar-tooltip group-hover:opacity-100">任务清单</span>
+        <span class="header-tooltip group-hover:opacity-100">任务清单</span>
         <span v-if="chat.todoItems.length"
               class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] leading-4 text-center"
               :class="{ 'bg-green-500': chat.todoAllDone }">
@@ -295,14 +295,14 @@ function closeDropdowns() {
                @keydown.escape="chat.searchMode = false; chat.searchQuery = ''" />
         <button @click="chat.searchMode = false; chat.searchQuery = ''" class="text-gray-400 hover:text-gray-600 text-xs">✕</button>
       </div>
-      <button v-else @click="chat.searchMode = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="搜索消息 (⌘⇧S)">🔍<span class="sidebar-tooltip group-hover:opacity-100">搜索消息 ⌘⇧S</span></button>
+      <button v-else @click="chat.searchMode = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="搜索消息 (⌘⇧S)">🔍<span class="header-tooltip group-hover:opacity-100">搜索消息 ⌘⇧S</span></button>
       <!-- 进化指示器 -->
       <div v-if="evoStatus?.active" @click="chat.toggleSidebar()" 
            class="group relative flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
            :title="`进化系统: ${evoStatus.total_outcomes} 次调用, 成功率 ${evoStatus.success_rate}%`">
         <span class="text-xs">🧠</span>
         <span class="text-[10px] font-mono" :class="evoStatus.success_rate >= 80 ? 'text-green-500' : 'text-yellow-500'">{{ evoStatus.success_rate }}%</span>
-        <span class="sidebar-tooltip group-hover:opacity-100">进化系统 · {{ evoStatus.total_outcomes }} 次调用 · 成功率 {{ evoStatus.success_rate }}%</span>
+        <span class="header-tooltip group-hover:opacity-100">进化系统 · {{ evoStatus.total_outcomes }} 次调用 · 成功率 {{ evoStatus.success_rate }}%</span>
       </div>
       <!-- Memory 指示器 -->
       <div v-if="memStatus?.active && memoryBlocksList.length > 0" 
@@ -311,9 +311,9 @@ function closeDropdowns() {
            :title="`已加载 ${memoryBlocksList.length} 个记忆块 (~${memStatus.total_tokens_est} tokens)`">
         <span class="text-xs">📚</span>
         <span class="text-[10px] font-mono text-green-500">{{ memoryBlocksList.length }}</span>
-        <span class="sidebar-tooltip group-hover:opacity-100">已加载 {{ memoryBlocksList.length }} 个记忆块</span>
+        <span class="header-tooltip group-hover:opacity-100">已加载 {{ memoryBlocksList.length }} 个记忆块</span>
       </div>
-      <button @click="showHelp = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="使用帮助">❓<span class="sidebar-tooltip group-hover:opacity-100">使用帮助</span></button>
+      <button @click="showHelp = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="使用帮助">❓<span class="header-tooltip group-hover:opacity-100">使用帮助</span></button>
       <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
         :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">
         {{ quotaDisplay.text }}
@@ -326,7 +326,7 @@ function closeDropdowns() {
         :title="artifactOpen ? '关闭右栏' : '展开右栏'"
       >
         <span>📄</span>
-        <span class="sidebar-tooltip group-hover:opacity-100">{{ artifactOpen ? '关闭右栏' : '展开右栏' }}</span>
+        <span class="header-tooltip group-hover:opacity-100">{{ artifactOpen ? '关闭右栏' : '展开右栏' }}</span>
       </button>
     </div>
 
