@@ -124,7 +124,14 @@ SEND_MESSAGE_SCHEMA = {
         "(not just a bare platform name), call send_message(action='list') FIRST to see "
         "available targets, then send to the correct one.\n"
         "If the user just says a platform name like 'send to telegram', send directly "
-        "to the home channel without listing first."
+        "to the home channel without listing first.\n\n"
+        "FILE DELIVERY: To send files (reports, PDFs, PPTs, spreadsheets, documents, "
+        "images) to the user's phone, include MEDIA:/absolute/path/to/file in the "
+        "message body. The file will be uploaded as a native attachment — images "
+        "appear as photos, documents (.pdf/.docx/.xlsx/.pptx/.txt/.csv/.zip) arrive "
+        "as downloadable files. Example: send_message(target='telegram', message='Report ready MEDIA:/tmp/quarterly_report.pdf')\n"
+        "This is the primary way to deliver work products (reports, presentations, "
+        "exports) to mobile devices when the user is on desktop/webui."
     ),
     "parameters": {
         "type": "object",

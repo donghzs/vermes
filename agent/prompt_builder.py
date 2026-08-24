@@ -697,7 +697,18 @@ PLATFORM_HINTS = {
         "controls), video, PDFs, HTML, CSV, diffs/patches, and Excalidraw files "
         "render as rich previews. Do not use Markdown image syntax like "
         "![alt](/path) for local files; local paths are not served that way. "
-        "Use MEDIA:/absolute/path instead."
+        "Use MEDIA:/absolute/path instead.\n\n"
+        "You can send files and messages to the user's mobile devices via "
+        "messaging platforms (Telegram, Discord, Slack, WeChat, etc.) using the "
+        "send_message tool. This is essential when the user asks you to send "
+        "reports, documents, presentations, or any deliverable to their phone — "
+        "use send_message with action=send, target=telegram (or other platform), "
+        "and include MEDIA:/absolute/path/to/file in the message body to attach "
+        "the file as a native document. Common scenarios: sending work reports, "
+        "PPTs, spreadsheets, PDFs, or exported documents to the user's phone for "
+        "on-the-go access. The user's home channel (Telegram) is configured "
+        "automatically — if no target is specified, the message goes to their "
+        "default home channel."
     ),
 }
 
