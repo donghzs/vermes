@@ -10,30 +10,7 @@ let _timer = null
 onMounted(() => { _timer = setInterval(() => { now.value = Date.now() }, 1000) })
 onUnmounted(() => { if (_timer) clearInterval(_timer) })
 
-// ── 小白友好：工具名 → 中文标签 + 图标 ──
-const TOOL_LABELS = {
-  file: '📄 读写文件',
-  read_file: '📄 读取文件',
-  write_file: '📝 写入文件',
-  patch: '✏️ 修改文件',
-  search_files: '🔍 搜索文件',
-  browser: '🌐 打开网页',
-  browser_navigate: '🌐 打开网页',
-  code_execution: '💻 运行代码',
-  execute_code: '💻 运行代码',
-  todo: '📋 更新计划',
-  image_gen: '🎨 生成图片',
-  video_gen: '🎬 生成视频',
-  rag: '📚 检索知识库',
-  memory: '🧠 读取记忆',
-  vision: '👀 识别图片',
-  web_search: '🔎 联网搜索',
-  delegate_task: '🤖 委派子任务',
-  shell: '⌨️ 执行命令',
-}
-function toolLabel(name) {
-  return TOOL_LABELS[name] || `🔧 ${name}`
-}
+// 工具中文标签 + 内部名过滤统一走 chat.toolLabel（避免两处重复定义）
 
 // ── 步骤状态 → 中文 + 样式 ──
 const STATUS_TEXT = {
@@ -102,6 +79,26 @@ const EXAMPLES = [
   '读取这个 PDF，总结前 3 章的要点',
   '把这段代码重构一下，并加上单元测试',
 ]
+
+// ── 未分组工具流：聚合展示（避免逐条裸工具名刷屏）──
+const ungroupedActs = computed(() => chat.todoStepActivities['__ungrouped__'] || [])
+// 按中文标签聚合计数（过滤内部名 _thinking 等）
+const ungroupedSummary = computed(() => {
+  const counts = {}
+  let running = null
+  for (const a of ungroupedActs.value) {
+    const label = chat.toolLabel(a.name)
+    if (!label) continue
+    counts[label] = (counts[label] || 0) + 1
+    if (a.status === 'running') running = label
+  }
+  return { counts, running, total: ungroupedActs.value.length }
+})
+// 仅失败/可恢复项（折叠，点击展开）
+const ungroupedErrors = computed(() =>
+  ungroupedActs.value.filter(a => a.is_error && a.status === 'done')
+)
+const showUngroupedErrors = ref(false)
 </script>
 
 <template>
@@ -147,18 +144,36 @@ const EXAMPLES = [
       ⏸ 已暂停，已完成的步骤保留如下。
     </div>
 
-    <!-- 未分组工具调用（无 todo 步骤的多步任务实时流，基于 tool 事件实现） -->
-    <div v-if="(chat.todoStepActivities['__ungrouped__'] || []).length"
+    <!-- 未分组工具调用：聚合摘要（不逐条裸工具名刷屏；内部步骤 _thinking 已过滤） -->
+    <div v-if="ungroupedActs.length"
          class="flex-1 overflow-y-auto px-3 py-2">
-      <div class="text-[11px] text-gray-400 mb-1 px-1">🔧 工具调用（未分组）</div>
-      <div class="space-y-1">
-        <div v-for="act in chat.todoStepActivities['__ungrouped__']" :key="act.id"
-             class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 pl-1">
-          <span v-if="act.status === 'running'" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
-          <span v-else-if="act.is_error" class="flex-shrink-0">⚠️</span>
-          <span v-else class="flex-shrink-0 text-green-500">✓</span>
-          <span class="truncate">{{ act.name }}</span>
-          <span v-if="act.status === 'done' && act.duration" class="flex-shrink-0 text-gray-400">· {{ act.duration < 1 ? '<1秒' : Math.round(act.duration) + '秒' }}</span>
+      <div class="text-[11px] text-gray-400 mb-1.5 px-1">⚙️ 正在工作…</div>
+      <!-- 聚合摘要：按工具类型计数 -->
+      <div class="flex flex-wrap gap-1.5 px-1">
+        <span v-for="(cnt, label) in ungroupedSummary.counts" :key="label"
+              class="text-[11px] px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+          {{ label }} ×{{ cnt }}
+        </span>
+      </div>
+      <!-- 进行中提示 -->
+      <div v-if="ungroupedSummary.running" class="mt-2 flex items-center gap-1.5 px-1 text-[11px] text-blue-500">
+        <span class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
+        <span>正在{{ ungroupedSummary.running.replace(/^.*? /, '') }}…</span>
+      </div>
+      <!-- 失败/重试折叠 -->
+      <div v-if="ungroupedErrors.length" class="mt-2 px-1">
+        <button @click="showUngroupedErrors = !showUngroupedErrors"
+                class="text-[11px] text-amber-500 hover:text-amber-600 flex items-center gap-1">
+          <span>⚠️ {{ ungroupedErrors.length }} 次重试/失败</span>
+          <span>{{ showUngroupedErrors ? '▲' : '▼' }}</span>
+        </button>
+        <div v-if="showUngroupedErrors" class="mt-1 space-y-1 pl-2 border-l border-amber-200 dark:border-amber-800">
+          <div v-for="act in ungroupedErrors" :key="act.id"
+               class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+            <span class="flex-shrink-0">⚠️</span>
+            <span class="truncate">{{ chat.toolLabel(act.name) || act.name }}</span>
+            <span v-if="act.duration" class="flex-shrink-0 text-gray-400">· {{ act.duration < 1 ? '<1秒' : Math.round(act.duration) + '秒' }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -208,7 +223,7 @@ const EXAMPLES = [
                 <span v-if="act.status === 'running'" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
                 <span v-else-if="act.is_error" class="flex-shrink-0">⚠️</span>
                 <span v-else class="flex-shrink-0 text-green-500">✓</span>
-                <span class="truncate">{{ toolLabel(act.name) }}</span>
+                <span class="truncate">{{ chat.toolLabel(act.name) || act.name }}</span>
                 <span v-if="act.status === 'done' && act.duration" class="flex-shrink-0 text-gray-400">· {{ act.duration < 1 ? '<1秒' : Math.round(act.duration) + '秒' }}</span>
               </div>
             </div>

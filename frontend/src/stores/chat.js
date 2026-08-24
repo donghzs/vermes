@@ -40,6 +40,33 @@ const MESSAGES_KEY_PREFIX = 'vermes-messages-'
 const DEFAULT_MODEL_ID = localStorage.getItem('vermes-default-model') || ''
 const DEFAULT_PROVIDER_ID = localStorage.getItem('vermes-default-provider') || ''
 
+// ── 工具名 → 用户友好中文标签（任务清单聚合展示用）──
+// 内部名（以 _ 开头，如 _thinking）一律视为非工具，不展示。
+const TOOL_LABELS = {
+  file: '📄 读写文件',
+  read_file: '📄 读取文件',
+  write_file: '📝 写入文件',
+  patch: '✏️ 修改文件',
+  search_files: '🔍 搜索文件',
+  browser: '🌐 打开网页',
+  browser_navigate: '🌐 打开网页',
+  code_execution: '💻 运行代码',
+  execute_code: '💻 运行代码',
+  todo: '📋 更新计划',
+  image_gen: '🎨 生成图片',
+  video_gen: '🎬 生成视频',
+  rag: '📚 检索知识库',
+  memory: '🧠 读取记忆',
+  vision: '👀 识别图片',
+  web_search: '🔎 联网搜索',
+  delegate_task: '🤖 委派子任务',
+  shell: '⌨️ 执行命令',
+}
+function toolLabel(name) {
+  if (!name || name.startsWith('_')) return null  // 内部步骤（如 _thinking）不展示
+  return TOOL_LABELS[name] || `🔧 ${name}`
+}
+
 // ── 全局状态 ──
 const streamConnected = ref(false)
 
@@ -1410,6 +1437,7 @@ export const useChatStore = defineStore('chat', () => {
     searchAllMessages, getSessionStats, sendCompareMessage,
     refreshCacheMetrics,
     setCurrentModel,
+    toolLabel,
   }
 })
 
