@@ -476,7 +476,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
        类似 WorkBuddy：左侧聊天，右侧产物/文件实时渲染。 -->
   <transition name="drawer-slide">
     <aside
-      v-if="open && artifactTab === 'artifacts'"
+      v-show="open"
       class="h-full bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-200"
       :class="isFullscreen ? 'w-full' : ''"
       :style="!isFullscreen ? { width: panelWidth + 'px' } : {}"
