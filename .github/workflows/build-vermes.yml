@@ -27,6 +27,8 @@ jobs:
   build-electron-windows:
     name: Build Electron Windows x64
     runs-on: windows-2022
+    # 全平台发布统一走手动构建，禁用自动发布（命名/链路问题与下载页不匹配）。
+    if: false
     steps:
       - uses: actions/checkout@v4
 
@@ -263,7 +265,9 @@ jobs:
   build-windows-x64:
     name: Build Windows x64
     runs-on: windows-2022
-    if: github.event_name == 'push'
+    # 全平台发布统一走手动构建（CI 命名/卷名与下载页 version.json 不匹配，
+    # 且无法复现本地验证过的完整打包链路）。禁用自动发布避免覆盖手动产物。
+    if: false
     steps:
       - uses: actions/checkout@v4
 
@@ -374,7 +378,8 @@ jobs:
   build-linux-x64:
     name: Build Linux x64
     runs-on: ubuntu-22.04
-    if: github.event_name == 'push'
+    # 全平台发布统一走手动构建，禁用自动发布。
+    if: false
     steps:
       - uses: actions/checkout@v4
 
