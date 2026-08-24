@@ -125,6 +125,19 @@ const showUngroupedErrors = ref(false)
         <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">任务清单</span>
         <span v-if="stats.total" class="text-xs text-gray-400">已完成 {{ stats.completed }} / 共 {{ stats.total }}</span>
       </div>
+      <!-- verbosity 切换：摘要 / 详细（对标 Claude Code Verbose/Summary） -->
+      <div class="flex items-center gap-0.5 mr-1 rounded-lg bg-gray-100 dark:bg-gray-700 p-0.5">
+        <button @click="chat.setTaskVerbosity('summary')"
+                class="text-[10px] px-1.5 py-0.5 rounded-md transition-colors"
+                :class="chat.taskVerbosity === 'summary'
+                  ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-100 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">摘要</button>
+        <button @click="chat.setTaskVerbosity('verbose')"
+                class="text-[10px] px-1.5 py-0.5 rounded-md transition-colors"
+                :class="chat.taskVerbosity === 'verbose'
+                  ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-100 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">详细</button>
+      </div>
       <button @click="chat.toggleTaskDrawer()"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none">✕</button>
     </div>
@@ -155,18 +168,36 @@ const showUngroupedErrors = ref(false)
     <div v-if="ungroupedActs.length"
          class="flex-1 overflow-y-auto px-3 py-2">
       <div class="text-[11px] text-gray-400 mb-1.5 px-1">⚙️ 正在工作…</div>
-      <!-- 聚合摘要：按工具类型计数 -->
-      <div class="flex flex-wrap gap-1.5 px-1">
-        <span v-for="(cnt, label) in ungroupedSummary.counts" :key="label"
-              class="text-[11px] px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-          {{ label }} ×{{ cnt }}
-        </span>
-      </div>
-      <!-- 进行中提示 -->
-      <div v-if="ungroupedSummary.running" class="mt-2 flex items-center gap-1.5 px-1 text-[11px] text-blue-500">
-        <span class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
-        <span>正在{{ ungroupedSummary.running.replace(/^.*? /, '') }}…</span>
-      </div>
+
+      <!-- 摘要档：聚合计数胶囊 + 进行中提示 -->
+      <template v-if="chat.taskVerbosity === 'summary'">
+        <div class="flex flex-wrap gap-1.5 px-1">
+          <span v-for="(cnt, label) in ungroupedSummary.counts" :key="label"
+                class="text-[11px] px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+            {{ label }} ×{{ cnt }}
+          </span>
+        </div>
+        <div v-if="ungroupedSummary.running" class="mt-2 flex items-center gap-1.5 px-1 text-[11px] text-blue-500">
+          <span class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
+          <span>正在{{ ungroupedSummary.running.replace(/^.*? /, '') }}…</span>
+        </div>
+      </template>
+
+      <!-- 详细档：逐条裸工具调用时间线（对标 Claude Code Verbose） -->
+      <template v-else>
+        <div class="space-y-1 px-1">
+          <div v-for="act in ungroupedActs" :key="act.id"
+               class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+            <span v-if="act.status === 'running' && !_isStaleRunning(act)" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
+            <span v-else-if="act.is_error && act.status === 'done'" class="flex-shrink-0">⚠️</span>
+            <span v-else-if="act.status === 'done'" class="flex-shrink-0 text-green-500">✓</span>
+            <span v-else class="flex-shrink-0 text-gray-400">•</span>
+            <span class="truncate">{{ chat.toolLabel(act.name) || act.name }}</span>
+            <span v-if="act.status === 'done' && act.duration" class="flex-shrink-0 text-gray-400">· {{ act.duration < 1 ? '<1秒' : Math.round(act.duration) + '秒' }}</span>
+          </div>
+        </div>
+      </template>
+
       <!-- 失败/重试折叠 -->
       <div v-if="ungroupedErrors.length" class="mt-2 px-1">
         <button @click="showUngroupedErrors = !showUngroupedErrors"
@@ -223,8 +254,8 @@ const showUngroupedErrors = ref(false)
               </span>
             </div>
 
-            <!-- 进行中步骤：实时子工具树 -->
-            <div v-if="item.status === 'in_progress' && stepActivities(item.id).length" class="mt-2 space-y-1">
+            <!-- 进行中步骤：实时子工具树（verbose 档展开，summary 档克制只显示步骤本身） -->
+            <div v-if="chat.taskVerbosity === 'verbose' && item.status === 'in_progress' && stepActivities(item.id).length" class="mt-2 space-y-1">
               <div v-for="act in stepActivities(item.id)" :key="act.id"
                    class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 pl-1">
                 <span v-if="act.status === 'running'" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>

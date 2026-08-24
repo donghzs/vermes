@@ -151,6 +151,15 @@ export const useChatStore = defineStore('chat', () => {
   const reasoningEffort = ref(localStorage.getItem('vermes-reasoning-effort') || '') // '' = auto/default, 'low'/'medium'/'high'
   const searchEnabled = ref(localStorage.getItem('vermes-search-enabled') === 'true')
 
+  // ── 任务清单「进行中」展示粒度：summary（聚合摘要，默认）/ verbose（逐条裸列表）──
+  // 对标 Claude Code 的 Verbose/Summary 双档 verbosity：让用户自己控制看多细。
+  const taskVerbosity = ref(localStorage.getItem('vermes-task-verbosity') || 'summary')
+  function setTaskVerbosity(v) {
+    if (v !== 'summary' && v !== 'verbose') return
+    taskVerbosity.value = v
+    try { localStorage.setItem('vermes-task-verbosity', v) } catch (e) {}
+  }
+
   // ── nextTurnSnapshot: 轮内模型一致性 ──
   // 当会话正在 streaming 时，用户改模型不会打断当前轮，而是存到 pendingModel
   // 当前轮 onDone 后，如果有 pendingModel 则自动切换
@@ -1447,6 +1456,7 @@ export const useChatStore = defineStore('chat', () => {
     todoItems, showTodoPanel,
     showTaskDrawer, todoStepActivities, todoAllDone, todoInterrupted,
     currentTodoStepId, todoInProgressCount, toggleTaskDrawer,
+    taskVerbosity, setTaskVerbosity,
     pendingApproval, resolveApproval,
     pendingModel, appendModelChange,
     init, initOnce,
