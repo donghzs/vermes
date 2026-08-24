@@ -112,6 +112,7 @@ watch(activeTab, (tab) => {
   if (tab === 'knowledge' && ragDocs.value.length === 0 && !ragLoading.value) fetchRagDocs()
   if (tab === 'security') { loadTierMode(); loadCredHealth() }
   if (tab === 'mcp') { loadMcpCatalog(); loadMcpServers(); loadMcpSecurityRules() }
+  if (tab === 'migration') { loadMigrationSources() }
 })
 
 // ── 安全设置 ──
@@ -139,6 +140,45 @@ const TIER_MODES = [
 ]
 const tierMode = ref('balanced')
 const tierSaving = ref(false)
+
+// ── 迁移 ──
+const migrationSources = ref([])
+const migrationLoading = ref(false)
+const migrationRunning = ref(false)
+const migrationResult = ref(null)
+
+async function loadMigrationSources() {
+  migrationLoading.value = true
+  try {
+    const data = await api.get('/migration/sources')
+    migrationSources.value = data.sources || []
+  } catch { migrationSources.value = [] }
+  finally { migrationLoading.value = false }
+}
+
+async function runMigration(source) {
+  const label = source === 'hermes' ? 'Hermes' : source === 'openclaw' ? 'OpenClaw' : source
+  if (!window.confirm(`确定从 ${label} 迁移？将先预演确认再执行。`)) return
+  migrationRunning.value = true
+  migrationResult.value = null
+  try {
+    // 预演
+    const preview = await api.post(`/migration/preview?source=${source}`)
+    const summary = preview.summary || {}
+    const msg = `预演结果：迁移 ${summary.migrated || 0} · 冲突 ${summary.conflicts || 0} · 跳过 ${summary.skipped || 0} · 错误 ${summary.errors || 0}`
+    if (!window.confirm(msg + '\n\n确认执行迁移？')) {
+      migrationRunning.value = false
+      return
+    }
+    // 执行
+    const result = await api.post(`/migration/execute?source=${source}`)
+    migrationResult.value = result
+    migrationRunning.value = false
+  } catch (e) {
+    migrationResult.value = { error: e.message || '迁移失败' }
+    migrationRunning.value = false
+  }
+}
 
 // ── P1-1: MCP 目录 + 安全 ──
 const mcpServers = ref({})
@@ -1540,6 +1580,7 @@ async function toggleChannel(platformKey) {
       <button @click="activeTab = 'security'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'security' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔒 安全</button>
       <button @click="activeTab = 'mcp'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'mcp' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔌 MCP</button>
       <button @click="activeTab = 'knowledge'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'knowledge' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📚 知识库</button>
+      <button @click="activeTab = 'migration'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'migration' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📦 迁移</button>
       <button @click="activeTab = 'about'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'about' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">关于</button>
     </div>
 
@@ -2359,6 +2400,57 @@ async function toggleChannel(platformKey) {
               <span class="text-green-500 flex-shrink-0">✅</span>
               <div><span class="font-medium text-gray-700 dark:text-gray-300">{{ rule.name }}</span><span class="text-gray-400 ml-2">{{ rule.description }}</span></div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 迁移 -->
+      <div v-if="activeTab === 'migration'" class="max-w-2xl space-y-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200 mb-2">📦 从其他 Agent 迁移</h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">将其他 Agent 的配置、记忆、技能一键迁移到 Vermes。先预演确认再执行。</p>
+
+          <div v-if="migrationLoading" class="text-sm text-gray-400 py-4 text-center animate-pulse">检测本机已安装的 Agent…</div>
+
+          <div v-else-if="migrationSources.length === 0" class="text-sm text-gray-400 py-4 text-center">
+            <div class="text-3xl mb-2">🔍</div>
+            未检测到可迁移的 Agent
+            <div class="text-xs mt-1 text-gray-400">支持迁移的 Agent：Hermes、OpenClaw</div>
+          </div>
+
+          <div v-else class="space-y-3">
+            <div v-for="source in migrationSources" :key="source" class="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+              <div class="flex items-center gap-3">
+                <span class="text-2xl">{{ source === 'hermes' ? '🧬' : '🦀' }}</span>
+                <div>
+                  <div class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ source === 'hermes' ? 'Hermes' : 'OpenClaw' }}</div>
+                  <div class="text-xs text-gray-400">配置 · 记忆 · 技能</div>
+                </div>
+              </div>
+              <button @click="runMigration(source)" :disabled="migrationRunning"
+                class="text-sm px-4 py-2 rounded-lg bg-amber-500 text-white font-medium hover:bg-amber-600 disabled:opacity-50 transition">
+                {{ migrationRunning ? '迁移中…' : '一键迁移 →' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 迁移结果 -->
+          <div v-if="migrationResult" class="mt-4 p-4 rounded-lg" :class="migrationResult.error ? 'bg-red-50 dark:bg-red-900/20 text-red-600' : 'bg-green-50 dark:bg-green-900/20 text-green-600'">
+            <div v-if="migrationResult.error" class="text-sm">❌ {{ migrationResult.error }}</div>
+            <div v-else class="text-sm space-y-1">
+              <div class="font-medium">✅ 迁移完成</div>
+              <div v-if="migrationResult.summary">
+                迁移 {{ migrationResult.summary.migrated || 0 }} · 
+                冲突 {{ migrationResult.summary.conflicts || 0 }} · 
+                跳过 {{ migrationResult.summary.skipped || 0 }}
+              </div>
+            </div>
+          </div>
+
+          <!-- 提示 -->
+          <div class="mt-4 text-xs text-gray-400 space-y-1">
+            <div>💡 也可以在聊天窗口直接说「从 Hermes 迁移」让 Agent 自动执行</div>
+            <div>⚠️ 迁移前会自动创建备份，可随时恢复</div>
           </div>
         </div>
       </div>

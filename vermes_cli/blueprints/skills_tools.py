@@ -182,6 +182,55 @@ async def detect_migration_sources():
     return {"sources": sources}
 
 
+async def migration_preview(source: str = "hermes"):
+    """Preview migration from Hermes/OpenClaw without executing."""
+    if source == "hermes":
+        from vermes_cli.hermes_migrate import migrate_from_hermes
+        result = migrate_from_hermes(dry_run=True)
+        return {
+            "summary": result.summary(),
+            "items": [{"kind": it.kind, "source": it.source, "destination": it.destination, "status": it.status, "reason": it.reason} for it in result.items[:30]],
+            "total": len(result.items),
+            "dry_run": True,
+        }
+    elif source == "openclaw":
+        from importlib.util import spec_from_file_location, module_from_spec
+        import sys
+        script_paths = [
+            Path.home() / ".vermes" / "skills" / "migration" / "openclaw-migration" / "scripts" / "openclaw_to_vermes.py",
+            Path(__file__).parent.parent.parent / "optional-skills" / "migration" / "openclaw-migration" / "scripts" / "openclaw_to_vermes.py",
+        ]
+        script = next((p for p in script_paths if p.exists()), None)
+        if not script:
+            return {"error": "OpenClaw migration script not found"}
+        spec = spec_from_file_location("openclaw_to_vermes", str(script))
+        mod = module_from_spec(spec)
+        sys.modules["openclaw_to_vermes"] = mod
+        spec.loader.exec_module(mod)
+        migrator = mod.Migrator()
+        report = migrator.build_report()
+        return {"summary": report.get("summary", {}), "items": report.get("items", [])[:20]}
+    else:
+        return {"error": f"Unknown source: {source}"}
+
+
+async def migration_execute(source: str = "hermes"):
+    """Execute migration from Hermes/OpenClaw."""
+    if source == "hermes":
+        from vermes_cli.hermes_migrate import migrate_from_hermes
+        result = migrate_from_hermes(dry_run=False)
+        return {
+            "summary": result.summary(),
+            "items": [{"kind": it.kind, "source": it.source, "destination": it.destination, "status": it.status, "reason": it.reason} for it in result.items[:30]],
+            "total": len(result.items),
+            "dry_run": False,
+        }
+    elif source == "openclaw":
+        return {"error": "OpenClaw migration via API not yet supported. Use CLI: vermes claw migrate"}
+    else:
+        return {"error": f"Unknown source: {source}"}
+
+
 async def get_experts():
     """Curated expert catalog (qclaw-style) merged with live skill status."""
     from tools.skills_tool import _find_all_skills
@@ -393,6 +442,12 @@ def register_to(app):
     )
     app.add_api_route(
         "/api/migration/sources", detect_migration_sources, methods=["GET"], name="detect_migration_sources"
+    )
+    app.add_api_route(
+        "/api/migration/preview", migration_preview, methods=["POST"], name="migration_preview"
+    )
+    app.add_api_route(
+        "/api/migration/execute", migration_execute, methods=["POST"], name="migration_execute"
     )
 
     app.add_api_route(
