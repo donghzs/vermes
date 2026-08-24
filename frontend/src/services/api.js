@@ -266,6 +266,11 @@ let _sseRetryCount = 0
 const SSE_MAX_RETRIES = 3
 
 const api = {
+  // 具名导出的快捷别名
+  getRecommendedIds: () => _recommendedProviders.value.map(p => p.id),
+  getRecommendedProviders: () => _recommendedProviders.value,
+  isCloudModel,
+
   async get(path) {
     const resp = await request(path)
     return resp.json()
@@ -286,11 +291,6 @@ const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    return resp.json()
-  },
-
-  async del(path) {
-    const resp = await request(path, { method: 'DELETE' })
     return resp.json()
   },
 

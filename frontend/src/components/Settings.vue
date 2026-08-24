@@ -3,7 +3,7 @@ import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
-import * as api from '../services/api'
+import api from '../services/api'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 const { confirm } = useConfirm()
