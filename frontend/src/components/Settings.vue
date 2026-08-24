@@ -8,6 +8,7 @@ import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 const { confirm } = useConfirm()
 import ProviderCard from './ProviderCard.vue'
+import MCPManager from './MCPManager.vue'
 
 // P0-c 加固后 /api/env 需携带 session token（裸 fetch 不走 api.js 封装，否则 401）
 function envHeaders() {
@@ -2313,22 +2314,9 @@ async function toggleChannel(platformKey) {
 
       <!-- MCP 目录 -->
       <div v-if="activeTab === 'mcp'" class="max-w-3xl space-y-4">
-        <!-- 已安装服务器 -->
+        <!-- 已安装服务器（复用 MCPManager 完整 CRUD） -->
         <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200">已安装 MCP 服务器</h3>
-            <button @click="loadMcpServers" class="text-xs px-2 py-1 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition">↻ 刷新</button>
-          </div>
-          <div v-if="!mcpServers || Object.keys(mcpServers).length === 0" class="text-sm text-gray-400 py-4 text-center">尚未安装任何 MCP 服务器</div>
-          <div v-else class="space-y-2">
-            <div v-for="(cfg, name) in mcpServers" :key="name" class="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-              <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ name }}</div>
-                <div class="text-[11px] text-gray-400 font-mono truncate">{{ cfg.command }} {{ (cfg.args || []).join(' ') }}</div>
-              </div>
-              <button @click="uninstallMcp(name)" class="text-xs px-2 py-1 rounded text-red-400 hover:bg-red-50 transition flex-shrink-0 ml-2">卸载</button>
-            </div>
-          </div>
+          <MCPManager />
         </div>
 
         <!-- 目录浏览 -->
