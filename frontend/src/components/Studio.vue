@@ -36,7 +36,7 @@
 
         <div class="form-group">
           <label>模型名</label>
-          <input v-model="model" placeholder="agnes-2.0-flash" />
+          <input v-model="model" placeholder="agnes-2.5-flash" />
         </div>
 
         <div class="form-group">
@@ -356,7 +356,7 @@ const durationPresets = [
 
 // ── 厂商预设 ──
 const providerPresets = [
-  { name: 'agnes', label: 'Agnes AI', icon: '🧠', baseUrl: 'https://apihub.agnes-ai.com/v1', text: 'agnes-2.0-flash', image: 'agnes-image-2.1-flash', video: 'agnes-video-v2.0', keyEnv: 'AGNES_API_KEY' },
+  { name: 'agnes', label: 'Agnes AI', icon: '🧠', baseUrl: 'https://apihub.agnes-ai.com/v1', text: 'agnes-2.5-flash', image: 'agnes-image-2.1-flash', video: 'agnes-video-v2.0', keyEnv: 'AGNES_API_KEY' },
   { name: 'deepseek', label: 'DeepSeek', icon: '🔍', baseUrl: 'https://api.deepseek.com', text: 'deepseek-chat', image: '', video: '', keyEnv: 'DEEPSEEK_API_KEY' },
   { name: 'xiaomi', label: '小米 MiMo', icon: '📱', baseUrl: 'https://api.xiaomimimo.com/v1', text: 'mimo-v2.5-pro', image: 'mimo-v2.5-pro', video: 'mimo-v2.5-pro', keyEnv: 'XIAOMI_API_KEY' },
   { name: 'openai', label: 'OpenAI', icon: '⚡', baseUrl: 'https://api.openai.com/v1', text: 'gpt-4o', image: 'dall-e-3', video: '', keyEnv: 'OPENAI_API_KEY' },
@@ -408,7 +408,7 @@ const videoLoadError = ref(false)
 const presets = {
   agnes: {
     baseUrl: 'https://apihub.agnes-ai.com/v1',
-    text: 'agnes-2.0-flash',
+    text: 'agnes-2.5-flash',
     image: 'agnes-image-2.1-flash',
     video: 'agnes-video-v2.0',
     keyEnv: 'AGNES_API_KEY',

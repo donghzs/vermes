@@ -472,6 +472,9 @@ export const useChatStore = defineStore('chat', () => {
 
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
+    // 通知 ArtifactPanel 等组件做 per-session 隔离
+    window.__vermes_current_session_id = id
+    window.dispatchEvent(new CustomEvent('vermes-session-change', { detail: { id } }))
 
     // 恢复新会话的模型选择
     const newSession = sessions.value.find(s => s.id === id) || channelSessions.value.find(s => s.id === id)

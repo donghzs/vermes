@@ -226,152 +226,152 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-4">
     <!-- Header + tabs -->
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span class="text-lg">🧩</span>
-        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">技能</h3>
-        <div class="flex items-center gap-1 ml-1">
+        <span class="text-xl">🧩</span>
+        <h3 class="text-base font-medium text-gray-700 dark:text-gray-300">技能</h3>
+        <div class="flex items-center gap-2 ml-2">
           <button @click="tab = 'installed'"
                   :class="tab === 'installed' ? 'text-gray-800 dark:text-gray-100 border-b-2 border-blue-500' : 'text-gray-400'"
-                  class="text-xs px-1 pb-0.5">已安装 ({{ enabledCount }}/{{ skills.length }})</button>
+                  class="text-sm px-2 pb-0.5">已安装 ({{ enabledCount }}/{{ skills.length }})</button>
           <button @click="tab = 'market'"
                   :class="tab === 'market' ? 'text-gray-800 dark:text-gray-100 border-b-2 border-blue-500' : 'text-gray-400'"
-                  class="text-xs px-1 pb-0.5">发现</button>
+                  class="text-sm px-2 pb-0.5">发现</button>
         </div>
       </div>
-      <button v-if="tab === 'installed'" @click="loadToolsets" class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+      <button v-if="tab === 'installed'" @click="loadToolsets" class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
         📦 工具集
       </button>
     </div>
 
     <!-- Installed tab -->
     <template v-if="tab === 'installed'">
-      <div v-if="showToolsets" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1.5">
+      <div v-if="showToolsets" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-medium text-gray-600 dark:text-gray-400">📦 工具集</span>
-          <button @click="showToolsets = false" class="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+          <span class="text-sm font-medium text-gray-600 dark:text-gray-400">📦 工具集</span>
+          <button @click="showToolsets = false" class="text-gray-400 hover:text-gray-600 text-sm">✕</button>
         </div>
         <div v-for="ts in toolsets" :key="ts.name"
-             class="flex items-center gap-2 text-xs py-1">
+             class="flex items-center gap-3 text-sm py-1.5">
           <span class="text-gray-400">{{ ts.enabled ? '✅' : '⬜' }}</span>
           <div class="flex-1 min-w-0">
             <span class="text-gray-700 dark:text-gray-300">{{ ts.label || ts.name }}</span>
-            <span v-if="ts.configured === false" class="text-[10px] text-orange-400 ml-1">未配置</span>
+            <span v-if="ts.configured === false" class="text-xs text-orange-400 ml-2">未配置</span>
           </div>
-          <div class="flex flex-wrap gap-0.5 max-w-[40%]">
-            <span v-for="tool in (ts.tools || []).slice(0, 4)" :key="tool"
-                  class="text-[9px] px-1 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-400 rounded truncate max-w-[80px]">
+          <div class="flex flex-wrap gap-1 max-w-[45%]">
+            <span v-for="tool in (ts.tools || []).slice(0, 5)" :key="tool"
+                  class="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-400 rounded truncate max-w-[100px]">
               {{ tool }}
             </span>
-            <span v-if="(ts.tools || []).length > 4" class="text-[9px] text-gray-400">+{{ ts.tools.length - 4 }}</span>
+            <span v-if="(ts.tools || []).length > 5" class="text-xs text-gray-400">+{{ ts.tools.length - 5 }}</span>
           </div>
           <button @click="toggleToolset(ts.name, !ts.enabled)"
-                  class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors flex-shrink-0"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
                   :class="ts.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
                   :title="ts.enabled ? '已开启，点击关闭' : '已关闭，点击开启'">
-            <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform"
-                  :class="ts.enabled ? 'translate-x-3.5' : 'translate-x-0.5'"></span>
+            <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                  :class="ts.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
           </button>
         </div>
       </div>
 
       <div class="flex gap-2">
         <input v-model="installedFilter" @input="installedPage = 1" type="text" placeholder="筛选已装技能..."
-               class="flex-1 px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500" />
+               class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500" />
       </div>
-      <div class="space-y-1 max-h-64 overflow-y-auto">
+      <div class="space-y-2 max-h-[480px] overflow-y-auto">
         <div v-for="skill in pagedSkills" :key="skill.name"
-             class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750">
-          <span class="text-sm flex-shrink-0">{{ skillIcon(skill.source) }}</span>
+             class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750">
+          <span class="text-base flex-shrink-0">{{ skillIcon(skill.source) }}</span>
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1.5">
-              <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{{ skill.name }}</span>
-              <span v-if="skill.recommended" class="text-[9px] px-1.5 py-0.5 rounded-full bg-green-900 text-green-300 flex-shrink-0">推荐</span>
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{{ skill.name }}</span>
+              <span v-if="skill.recommended" class="text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-300 flex-shrink-0">推荐</span>
             </div>
-            <div class="text-[10px] text-gray-400 truncate">{{ skill.description || skill.source || '' }}</div>
+            <div class="text-xs text-gray-400 truncate mt-0.5">{{ skill.description || skill.source || '' }}</div>
           </div>
           <button @click="toggleSkill(skill.name, !skill.enabled)"
-                  class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors flex-shrink-0"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
                   :class="skill.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'">
-            <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform"
-                  :class="skill.enabled ? 'translate-x-3.5' : 'translate-x-0.5'"></span>
+            <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                  :class="skill.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
           </button>
         </div>
-        <div v-if="!loading && skills.length === 0" class="text-center py-6 text-xs text-gray-400">
-          <div class="text-2xl mb-1">🧩</div>
+        <div v-if="!loading && skills.length === 0" class="text-center py-8 text-sm text-gray-400">
+          <div class="text-3xl mb-2">🧩</div>
           <div>暂无已安装技能</div>
         </div>
-        <div v-if="loading" class="text-center py-3 text-xs text-gray-400 animate-pulse">加载中...</div>
+        <div v-if="loading" class="text-center py-4 text-sm text-gray-400 animate-pulse">加载中...</div>
       </div>
       <!-- 2.4 分页 -->
-      <div v-if="installedTotalPages > 1" class="flex items-center justify-center gap-3 pt-1">
-        <button @click="installedPrev" :disabled="installedPage === 1" class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">‹ 上一页</button>
-        <span class="text-xs text-gray-400">{{ installedPage }} / {{ installedTotalPages }}</span>
-        <button @click="installedNext" :disabled="installedPage === installedTotalPages" class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">下一页 ›</button>
+      <div v-if="installedTotalPages > 1" class="flex items-center justify-center gap-4 pt-2">
+        <button @click="installedPrev" :disabled="installedPage === 1" class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">‹ 上一页</button>
+        <span class="text-sm text-gray-400">{{ installedPage }} / {{ installedTotalPages }}</span>
+        <button @click="installedNext" :disabled="installedPage === installedTotalPages" class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">下一页 ›</button>
       </div>
     </template>
 
     <!-- Market tab -->
     <template v-else>
-      <div class="flex gap-1.5">
+      <div class="flex gap-2">
         <input v-model="marketQuery" @keyup.enter="searchMarket" type="text" placeholder="搜索技能，如 论文 / 网页 / 翻译"
-               class="flex-1 text-xs px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+               class="flex-1 text-sm px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500" />
         <button @click="searchMarket"
-                class="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600">搜索</button>
+                class="text-sm px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600">搜索</button>
       </div>
-      <div class="flex flex-wrap gap-1">
+      <div class="flex flex-wrap gap-1.5">
         <button @click="searchTrending()" :disabled="trendingLoading"
                 :class="trendingLoading ? 'opacity-50' : ''"
-                class="text-[10px] px-2 py-0.5 rounded-full bg-orange-500 text-white hover:bg-orange-600"
+                class="text-xs px-2.5 py-1 rounded-full bg-orange-500 text-white hover:bg-orange-600"
                 title="按 GitHub star 数排行浏览热门技能仓库">🔥 GitHub 热门</button>
         <button v-for="opt in sourceOptions" :key="opt.id" @click="marketSource = opt.id; searchMarket()"
                 :title="opt.desc"
                 :class="marketSource === opt.id ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'"
-                class="text-[10px] px-2 py-0.5 rounded-full">{{ opt.label }}</button>
+                class="text-xs px-2.5 py-1 rounded-full">{{ opt.label }}</button>
       </div>
 
-      <div v-if="marketMsg" :class="marketMsgOk ? 'text-green-600' : 'text-red-500'" class="text-[11px] px-1">{{ marketMsg }}</div>
+      <div v-if="marketMsg" :class="marketMsgOk ? 'text-green-600' : 'text-red-500'" class="text-sm px-1">{{ marketMsg }}</div>
 
-      <div class="space-y-1.5 max-h-72 overflow-y-auto">
+      <div class="space-y-2 max-h-[500px] overflow-y-auto">
         <div v-for="item in pagedMarket" :key="item.identifier || item.name"
-             class="flex items-start gap-2 px-2 py-2 rounded-lg bg-gray-50 dark:bg-gray-800">
-          <span class="text-base flex-shrink-0 mt-0.5">{{ skillIcon(item.source) }}</span>
+             class="flex items-start gap-3 px-3 py-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+          <span class="text-lg flex-shrink-0 mt-0.5">{{ skillIcon(item.source) }}</span>
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1.5">
-              <span class="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">{{ item.name }}</span>
-              <span class="text-[9px] px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{{ trustLabel(item) }}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{{ item.name }}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{{ trustLabel(item) }}</span>
             </div>
-            <div class="text-[10px] text-gray-400 truncate">{{ item.description || '' }}</div>
-            <div v-if="item.tags && item.tags.length" class="flex flex-wrap gap-1 mt-1">
-              <span v-for="t in item.tags.slice(0,4)" :key="t" class="text-[9px] px-1 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-500">{{ t }}</span>
+            <div class="text-xs text-gray-400 truncate mt-0.5">{{ item.description || '' }}</div>
+            <div v-if="item.tags && item.tags.length" class="flex flex-wrap gap-1 mt-1.5">
+              <span v-for="t in item.tags.slice(0,5)" :key="t" class="text-xs px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-500">{{ t }}</span>
             </div>
           </div>
           <button v-if="!isInstalled(item.name)" @click="installMarket(item)"
                   :disabled="installingName === item.name"
-                  class="text-[11px] px-2 py-1 rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 flex-shrink-0">
+                  class="text-sm px-3 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 flex-shrink-0">
             {{ installingName === item.name ? '安装中…' : '安装' }}
           </button>
           <button v-else @click="uninstallMarket(item)"
                   :disabled="installingName === item.name"
-                  class="text-[11px] px-2 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-500 hover:text-red-500 disabled:opacity-50 flex-shrink-0">
+                  class="text-sm px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-500 hover:text-red-500 disabled:opacity-50 flex-shrink-0">
             {{ installingName === item.name ? '…' : '卸载' }}
           </button>
         </div>
 
-        <div v-if="marketLoading" class="text-center py-4 text-xs text-gray-400 animate-pulse">搜索中…</div>
-        <div v-else-if="marketError" class="text-center py-4 text-xs text-red-400 px-2">⚠️ {{ marketError }}</div>
-        <div v-else-if="marketItems.length === 0" class="text-center py-6 text-xs text-gray-400">
-          <div class="text-2xl mb-1">🔍</div>
+        <div v-if="marketLoading" class="text-center py-6 text-sm text-gray-400 animate-pulse">搜索中…</div>
+        <div v-else-if="marketError" class="text-center py-6 text-sm text-red-400 px-2">⚠️ {{ marketError }}</div>
+        <div v-else-if="marketItems.length === 0" class="text-center py-8 text-sm text-gray-400">
+          <div class="text-3xl mb-2">🔍</div>
           <div>输入关键词搜索技能，或从 QClaw / GitHub 等来源发现</div>
         </div>
       </div>
       <!-- 2.4 分页 -->
-      <div v-if="marketTotalPages > 1" class="flex items-center justify-center gap-3 pt-1">
-        <button @click="marketPrev" :disabled="marketPage === 1" class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">‹ 上一页</button>
-        <span class="text-xs text-gray-400">{{ marketPage }} / {{ marketTotalPages }}</span>
-        <button @click="marketNext" :disabled="marketPage === marketTotalPages" class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">下一页 ›</button>
+      <div v-if="marketTotalPages > 1" class="flex items-center justify-center gap-4 pt-2">
+        <button @click="marketPrev" :disabled="marketPage === 1" class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">‹ 上一页</button>
+        <span class="text-sm text-gray-400">{{ marketPage }} / {{ marketTotalPages }}</span>
+        <button @click="marketNext" :disabled="marketPage === marketTotalPages" class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">下一页 ›</button>
       </div>
     </template>
   </div>

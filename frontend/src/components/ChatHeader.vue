@@ -62,6 +62,7 @@ onMounted(() => {
 
 // 默认模型（未同步 provider 时的回退列表）
 const defaultModels = [
+  { id: 'agnes-2.5-flash', name: '⚡ Agnes 2.5 Flash（免费）', provider: 'agnes' },
   { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
 ]
 

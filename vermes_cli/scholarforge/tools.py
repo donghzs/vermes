@@ -179,7 +179,7 @@ SCHOLARFORGE_REVIEW_SCHEMA = {
 # ──────────────────────────────────────────────────────────────
 
 _PROVIDER_FALLBACK_MODELS = {
-    "agnes": "agnes-2.0-flash",
+    "agnes": "agnes-2.5-flash",
     "deepseek": "deepseek-v4-flash",
     "openai": "gpt-4o-mini",
     "anthropic": "claude-sonnet-4-20250514",

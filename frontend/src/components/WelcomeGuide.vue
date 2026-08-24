@@ -48,30 +48,16 @@ function finishGuide() {
   currentStep.value = 3
 }
 
-// 免费体验：自动领取 Token
+// 免费体验：微信登录后直接开始，Agnes 免费模型已内置
 async function claimFreeTrial() {
   isClaiming.value = true
   try {
-    const wechatOpenid = localStorage.getItem('vermes_wechat_openid') || ''
-    const body = wechatOpenid ? { wechat_openid: wechatOpenid } : {}
-    const resp = await fetch('/api/claim', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await resp.json()
-    if (data.success) {
-      toast.success('✅ 已领取免费体验额度！')
-      // 触发配置刷新
-      window.dispatchEvent(new CustomEvent('config-updated'))
-      finishGuide()
-    } else if (data.require_login) {
-      toast.warning('请先微信扫码登录后再领取免费体验')
-    } else {
-      toast.warning(data.error || data.message || '领取失败，请尝试其他方式')
-    }
+    // 直接完成引导，Agnes 免费模型无需领取 Token
+    toast.success('✅ Agnes AI 免费模型已就绪！')
+    window.dispatchEvent(new CustomEvent('config-updated'))
+    finishGuide()
   } catch (e) {
-    toast.error('网络错误，请检查连接后重试')
+    toast.error('请重试')
   } finally {
     isClaiming.value = false
   }
@@ -280,10 +266,10 @@ onMounted(() => {
         <div v-if="wechatLoggedIn || isClaiming" class="text-center">
           <div class="text-6xl mb-6">✅</div>
           <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">微信登录成功</h2>
-          <p class="text-gray-500 dark:text-gray-400 mb-6">正在领取免费额度…</p>
+          <p class="text-gray-500 dark:text-gray-400 mb-6">Agnes AI 免费模型已就绪</p>
           <div class="flex items-center justify-center gap-2">
             <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-green-500"></div>
-            <span class="text-sm text-gray-500">领取中…</span>
+            <span class="text-sm text-gray-500">正在准备…</span>
           </div>
         </div>
         <!-- 未登录 → 等待扫码 -->

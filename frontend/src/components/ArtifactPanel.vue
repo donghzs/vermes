@@ -125,14 +125,23 @@ function parseCsv(text) {
   return rows
 }
 
-// ── 产物列表（localStorage 持久化，per-session）──
-const ARTIFACTS_STORAGE_KEY = 'vermes-artifacts'
+// ── 产物列表（localStorage 持久化，per-session 隔离）──
+// 每个会话独立维护产物列表，切换会话时清空重载，不跨会话积累。
+const ARTIFACTS_STORAGE_PREFIX = 'vermes-artifacts-'
 const artifacts = ref([])  // [{ id, path, title, mime, source, ts }]
 const activeId = ref(null)
 // 变更列表
 const changes = ref([])  // [{ id, path, action, diff, ts }]
 const activeChangeId = ref(null)
 const activeChange = computed(() => changes.value.find(c => c.id === activeChangeId.value))
+
+function _storageKey() {
+  // 从 chat store 拿当前会话 ID，找不到则用 'default'
+  try {
+    const sid = window.__vermes_current_session_id
+    return ARTIFACTS_STORAGE_PREFIX + (sid || 'default')
+  } catch { return ARTIFACTS_STORAGE_PREFIX + 'default' }
+}
 
 function addChange(item) {
   const id = `chg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
@@ -148,10 +157,10 @@ window.__vermesChanges = { addChange, clearChanges, changes }
 
 const isFullscreen = ref(false)
 
-// 从 localStorage 恢复
+// 从 localStorage 恢复（per-session）
 function _loadArtifacts() {
   try {
-    const raw = localStorage.getItem(ARTIFACTS_STORAGE_KEY)
+    const raw = localStorage.getItem(_storageKey())
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
@@ -162,14 +171,25 @@ function _loadArtifacts() {
   } catch {}
 }
 
-// 持久化到 localStorage
+// 持久化到 localStorage（per-session）
 function _persistArtifacts() {
   try {
-    // 最多保留 20 条，避免无限增长
     const toSave = artifacts.value.slice(0, 20)
-    localStorage.setItem(ARTIFACTS_STORAGE_KEY, JSON.stringify(toSave))
+    localStorage.setItem(_storageKey(), JSON.stringify(toSave))
   } catch {}
 }
+
+// 会话切换时清空并重新加载产物列表
+function _onSessionChange() {
+  artifacts.value = []
+  activeId.value = null
+  changes.value = []
+  activeChangeId.value = null
+  _loadArtifacts()
+}
+
+// 监听会话切换事件（chat store dispatch 'vermes-session-change'）
+window.addEventListener('vermes-session-change', _onSessionChange)
 
 _loadArtifacts()
 

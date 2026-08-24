@@ -2141,6 +2141,28 @@ def delegate_task(
                 "message": "看板建图失败（不影响任务执行），详见日志。",
             }
 
+    # Build worker_id map for kanban status sync (index -> kanban task_id)
+    _kanban_worker_ids = (
+        kanban_graph.get("worker_ids", []) if kanban_graph and kanban_graph.get("tracked") else []
+    )
+
+    def _sync_kanban_worker(idx, status, summary=None, error=None):
+        """Sync worker execution status back to kanban DB."""
+        if idx >= len(_kanban_worker_ids):
+            return
+        try:
+            from vermes_cli import kanban_db
+            conn = kanban_db.connect()
+            tid = _kanban_worker_ids[idx]
+            if status == "running":
+                kanban_db.claim_task(conn, tid, claimer=f"delegate-worker-{idx}")
+            elif status == "done":
+                kanban_db.complete_task(conn, tid, summary=summary or "")
+            elif status == "blocked":
+                kanban_db.block_task(conn, tid, reason=error or "execution failed")
+        except Exception as exc:
+            logger.debug("[delegate_task] kanban sync failed for worker %s: %s", idx, exc)
+
     # Validate each task has a goal
     for i, task in enumerate(task_list):
         if not isinstance(task, dict):
@@ -2257,7 +2279,15 @@ def delegate_task(
     if n_tasks == 1:
         # Single task -- run directly (no thread pool overhead)
         _i, _t, child = children[0]
+        _sync_kanban_worker(0, "running")
         result = _run_single_child(0, _t["goal"], child, parent_agent)
+        _wk_status = result.get("status", "completed")
+        _sync_kanban_worker(
+            0,
+            "done" if _wk_status == "completed" else "blocked",
+            summary=result.get("summary"),
+            error=result.get("error"),
+        )
         results.append(result)
     else:
         # Batch -- run in parallel with per-task progress lines
@@ -2267,6 +2297,7 @@ def delegate_task(
         with ThreadPoolExecutor(max_workers=max_children) as executor:
             futures = {}
             for i, t, child in children:
+                _sync_kanban_worker(i, "running")
                 future = executor.submit(
                     _run_single_child,
                     task_index=i,
@@ -2322,6 +2353,7 @@ def delegate_task(
                             }
                         results.append(entry)
                         completed_count += 1
+                        _sync_kanban_worker(idx, "blocked", error=entry.get("error", "interrupted"))
                     break
 
                 from concurrent.futures import wait as _cf_wait, FIRST_COMPLETED
@@ -2347,6 +2379,16 @@ def delegate_task(
                         }
                     results.append(entry)
                     completed_count += 1
+
+                    # Sync kanban worker status
+                    _wk_idx = entry["task_index"]
+                    _wk_st = entry.get("status", "")
+                    _sync_kanban_worker(
+                        _wk_idx,
+                        "done" if _wk_st == "completed" else "blocked",
+                        summary=entry.get("summary"),
+                        error=entry.get("error"),
+                    )
 
                     # Print per-task completion line above the spinner
                     idx = entry["task_index"]

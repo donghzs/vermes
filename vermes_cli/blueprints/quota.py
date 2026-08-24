@@ -50,7 +50,7 @@ async def _claim_trial_token(wechat_openid: str) -> dict:
 
 
 async def claim_trial_token(request: Request):
-    """v2: Claim trial token — requires wechat_openid."""
+    """微信登录后自动配置 Agnes 免费模型 provider，不调 vbit.top 领 token。"""
     try:
         body = (
             await request.json()
@@ -64,24 +64,19 @@ async def claim_trial_token(request: Request):
         if not wechat_openid:
             return {
                 "success": False,
-                "error": "请先微信登录后再领取体验Token",
+                "error": "请先微信登录后再领取免费体验",
                 "require_login": True,
             }
 
-        fp = _generate_device_fingerprint()
-        try:
-            async with httpx.AsyncClient(timeout=15.0, verify=True) as client:
-                resp = await client.post(
-                    "https://api.vbit.top/api/claim",
-                    json={"wechat_openid": wechat_openid, "device_id": fp},
-                )
-                result = resp.json()
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-        if result.get("success"):
-            return result
-        return {"success": False, "error": result.get("error", "Unknown error")}
+        # 微信登录成功，返回 Agnes 免费模型 provider 配置
+        # 用户登录后仍可自行配置其他 provider，这里只是自动加上免费选项
+        return {
+            "success": True,
+            "message": "Agnes AI 免费模型已就绪",
+            "provider": "agnes",
+            "base_url": "https://apihub.agnes-ai.com/v1",
+            "models": ["agnes-2.0-flash", "agnes-2.5-flash"],
+        }
     except Exception as e:
         return {"success": False, "error": str(e)}
 

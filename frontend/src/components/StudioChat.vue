@@ -348,7 +348,7 @@ function reopenGalleryItem(item) {
 }
 
 const providerPresets = ref([
-  { name: 'agnes', label: 'Agnes AI', icon: '🧠', baseUrl: 'https://apihub.agnes-ai.com/v1', text: 'agnes-2.0-flash', image: 'agnes-image-2.1-flash', video: 'agnes-video-v2.0', keyEnv: 'AGNES_API_KEY' },
+  { name: 'agnes', label: 'Agnes AI', icon: '🧠', baseUrl: 'https://apihub.agnes-ai.com/v1', text: 'agnes-2.5-flash', image: 'agnes-image-2.1-flash', video: 'agnes-video-v2.0', keyEnv: 'AGNES_API_KEY' },
   { name: 'custom', label: '自定义', icon: '🔧', baseUrl: '', text: '', image: '', video: '' },
 ])
 const loadingProviders = ref(false)

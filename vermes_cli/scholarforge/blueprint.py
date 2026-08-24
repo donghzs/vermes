@@ -225,7 +225,7 @@ _SCHOLAR_SYSTEM = (
 
 # 各 provider 的默认模型（仅 ScholarForge 内部用，不污染 Vermes 核心）
 _PROVIDER_FALLBACK_MODELS = {
-    "agnes": "agnes-2.0-flash",
+    "agnes": "agnes-2.5-flash",
     "deepseek": "deepseek-v4-flash",
     "openai": "gpt-4o-mini",
     "anthropic": "claude-sonnet-4-20250514",
