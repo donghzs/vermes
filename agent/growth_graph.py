@@ -223,11 +223,11 @@ def build_growth_graph(
 
     # 4. 边：技能 ↔ 记忆（词法重叠）
     for s, n_s in skill_nodes:
-        desc_words = _tokenize(s.description or "")
+        desc_words = set(_tokenize(s.description or ""))
         if not desc_words:
             continue
         for r, n_m in memory_nodes:
-            content_words = _tokenize(r["fts_content"] or "")
+            content_words = set(_tokenize(r["fts_content"] or ""))
             overlap = desc_words & content_words
             # 过滤过短 token（len≤2 多为停用词/单字）
             overlap = {w for w in overlap if len(w) > 2}
