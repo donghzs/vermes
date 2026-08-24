@@ -571,7 +571,7 @@ async function handleImportFile(e) {
 
       <!-- MCP / 技能 / 工具 / 软件 / 专家 管理已统一迁至右侧大面板 ToolSkillDrawer -->
       <!-- 进化系统面板 -->
-      <div class="shrink-0 max-h-80 overflow-y-auto evolution-panel-wrapper">
+      <div class="shrink-0 max-h-[60vh] overflow-y-auto evolution-panel-wrapper">
         <EvolutionPanel />
       </div>
     </template>

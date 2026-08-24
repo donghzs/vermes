@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
 import HelpGuide from './HelpGuide.vue'
@@ -17,6 +17,21 @@ async function fetchEvoStatus() {
   } catch { /* 静默 */ }
 }
 onMounted(() => { fetchEvoStatus(); setInterval(fetchEvoStatus, 60000) })
+
+function openEvolutionPanel() {
+  // 打开侧边栏 + 滚动到进化面板
+  if (!chat.sidebarOpen) chat.toggleSidebar()
+  nextTick(() => {
+    setTimeout(() => {
+      const el = document.querySelector('.evolution-panel-wrapper')
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'end' })
+        el.classList.add('ring-2', 'ring-green-400', 'rounded-lg')
+        setTimeout(() => el.classList.remove('ring-2', 'ring-green-400', 'rounded-lg'), 2000)
+      }
+    }, 100)
+  })
+}
 
 // ── P0: Memory 指示器 ──
 const memStatus = ref(null)
@@ -298,7 +313,7 @@ function closeDropdowns() {
       </div>
       <button v-else @click="chat.searchMode = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="搜索消息 (⌘⇧S)">🔍<span class="header-tooltip group-hover:opacity-100">搜索消息 ⌘⇧S</span></button>
       <!-- 进化指示器 -->
-      <div v-if="evoStatus?.active" @click="chat.toggleSidebar()" 
+      <div v-if="evoStatus?.active" @click="openEvolutionPanel()" 
            class="group relative flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
            :title="`进化系统: ${evoStatus.total_outcomes} 次调用, 成功率 ${evoStatus.success_rate}%`">
         <span class="text-xs">🧠</span>
