@@ -122,6 +122,7 @@ const marketError = ref('')
 const marketTotal = ref(0)
 const installingName = ref('')
 const marketPage = ref(1)
+const isTrending = ref(false)  // 🔥 热门模式
 const pageSize = 12  // 网格 3~4 列 × 3 行 = 12 卡片
 
 const sourceOptions = [
@@ -131,6 +132,10 @@ const sourceOptions = [
   { id: 'github', label: '🐙 GitHub' },
   { id: 'skillhub', label: '🔶 Skillhub' },
   { id: 'lobehub', label: '🟠 LobeHub' },
+  { id: 'claude-marketplace', label: '🟢 Claude' },
+  { id: 'browse-sh', label: '🔵 Browse.sh' },
+  { id: 'skills-sh', label: '🟣 Skills.sh' },
+  { id: 'well-known', label: '⚪ WellKnown' },
 ]
 
 const pagedMarket = computed(() => {
@@ -157,7 +162,12 @@ async function searchMarket() {
   marketError.value = ''
   marketPage.value = 1
   try {
-    const data = await api.searchSkills(marketQuery.value.trim(), marketSource.value, 48)
+    let data
+    if (isTrending.value) {
+      data = await api.getTrendingSkills()
+    } else {
+      data = await api.searchSkills(marketQuery.value.trim(), marketSource.value, 48)
+    }
     marketItems.value = data?.items || data?.results || data?.skills || []
     marketTotal.value = data?.total ?? marketItems.value.length
   } catch (e) {
@@ -196,7 +206,14 @@ async function uninstallMarket(item) {
 }
 
 function setSource(id) {
+  isTrending.value = false
   marketSource.value = id
+  searchMarket()
+}
+
+function setTrending() {
+  isTrending.value = true
+  marketSource.value = 'all'
   searchMarket()
 }
 
@@ -247,11 +264,18 @@ onMounted(async () => {
         <div class="mt-3 flex flex-wrap gap-2">
           <button v-for="opt in sourceOptions" :key="opt.id"
                   @click="setSource(opt.id)"
-                  :class="marketSource === opt.id
+                  :class="marketSource === opt.id && !isTrending
                     ? 'bg-blue-500 text-white shadow-sm'
                     : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'"
                   class="text-sm px-4 py-1.5 rounded-full font-medium transition">
             {{ opt.label }}
+          </button>
+          <button @click="setTrending"
+                  :class="isTrending
+                    ? 'bg-orange-500 text-white shadow-sm'
+                    : 'bg-white dark:bg-gray-800 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 hover:border-orange-400'"
+                  class="text-sm px-4 py-1.5 rounded-full font-medium transition">
+            🔥 热门
           </button>
         </div>
 
