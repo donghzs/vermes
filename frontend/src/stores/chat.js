@@ -1158,6 +1158,10 @@ export const useChatStore = defineStore('chat', () => {
           }
           sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: items }
           sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [sendSessionId]: true }
+          // 自动弹出右栏任务进程
+          const { openPanel: _openPanel, setView: _setView } = useArtifactPanel()
+          _openPanel('tasks')
+          _setView('tasks')
           scheduleScroll()
         },
         onPlanUpdate: (data) => {

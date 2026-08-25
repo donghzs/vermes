@@ -7,7 +7,6 @@ import { useQuota } from '../composables/useQuota'
 import ChatHeader from './ChatHeader.vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
-import TaskDrawer from './TaskDrawer.vue'
 import MemoryFlags from './MemoryFlags.vue'
 import QuotaModal from './QuotaModal.vue'
 import HistoryPanel from './HistoryPanel.vue'
@@ -201,7 +200,6 @@ onUnmounted(() => {
     <div class="flex-1 min-h-0 flex flex-col">
       <MessageList v-if="(chat.filteredMessages?.length ?? 0) > 0" @quickStart="onQuickStart" @editMessage="onEditMessage" />
       <WelcomeGuide v-if="(chat.filteredMessages?.length ?? 0) === 0" @openWeChatQR="openWeChatQR" />
-      <TaskDrawer />
       <MemoryFlags />
     </div>
 

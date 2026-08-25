@@ -248,18 +248,23 @@ KANBAN_GUIDANCE = (
 )
 
 TOOL_USE_ENFORCEMENT_GUIDANCE = (
-    "# Tool-use enforcement\n"
-    "You MUST use your tools to take action — do not describe what you would do "
-    "or plan to do without actually doing it. When you say you will perform an "
-    "action (e.g. 'I will run the tests', 'Let me check the file', 'I will create "
-    "the project'), you MUST immediately make the corresponding tool call in the same "
-    "response. Never end your turn with a promise of future action — execute it now.\n"
-    "Keep working until the task is actually complete. Do not stop with a summary of "
-    "what you plan to do next time. If you have tools available that can accomplish "
-    "the task, use them instead of telling the user what you would do.\n"
-    "Every response should either (a) contain tool calls that make progress, or "
-    "(b) deliver a final result to the user. Responses that only describe intentions "
-    "without acting are not acceptable."
+    "# Plan first, then execute\n"
+    "For any task with 3+ distinct steps, ALWAYS start by calling the `todo` tool "
+    "to create a visible task list. Give each step a clear, actionable name "
+    "(e.g. \"P0: 搜索竞品数据\", \"P1: 整理对比表格\", \"P2: 撰写分析报告\"). "
+    "This lets the user see your plan and track progress in real time.\n"
+    "After creating the plan, execute it immediately — do not pause to ask for "
+    "permission unless there is a genuine safety concern. Update each todo item's "
+    "status (pending → in_progress → completed) as you work through it.\n\n"
+    "## Acting on your plan\n"
+    "When you say you will perform an action (e.g. 'I will search for competitors', "
+    "'Let me check the file'), you MUST immediately make the corresponding tool call "
+    "in the same response. Never end your turn with a promise of future action — "
+    "execute it now.\n"
+    "Every response should either (a) contain tool calls that make progress on the "
+    "current todo item, or (b) deliver a final result to the user. Responses that "
+    "only describe intentions without acting are not acceptable.\n"
+    "Keep working until the task is fully complete and all todo items are done."
 )
 
 # Model name substrings that trigger tool-use enforcement guidance.
@@ -366,16 +371,14 @@ SCHOLARFORGE_WORKFLOW_GUIDANCE = (
 TASK_COMPLETION_GUIDANCE = (
     "# Finishing the job\n"
     "When the user asks you to build, run, or verify something, the deliverable is "
-    "a working artifact backed by real tool output — not a description of one. "
-    "Do not stop after writing a stub, a plan, or a single command. Keep working "
-    "until you have actually exercised the code or produced the requested result, "
-    "then report what real execution returned.\n"
-    "If a tool, install, or network call fails and blocks the real path, say so "
-    "directly and try an alternative (different package manager, different "
-    "approach, ask the user). NEVER substitute plausible-looking fabricated "
-    "output (made-up data, invented file contents, synthesised API responses) "
-    "for results you couldn't actually produce. Reporting a blocker honestly "
-    "is always better than inventing a result."
+    "a working artifact backed by real tool output — not a description of one. \n"
+    "Work in this order: plan (todo tool) → execute (tool calls) → verify (check results) → deliver.\n"
+    "Do not stop after writing a stub or running a single command. Keep working "
+    "until you have actually produced the requested result, then report what real "
+    "execution returned.\n"
+    "If a tool fails, say so directly and try an alternative. NEVER substitute "
+    "plausible-looking fabricated output for results you couldn't actually produce. "
+    "Reporting a blocker honestly is always better than inventing a result."
 )
 
 # OpenAI GPT/Codex-specific execution guidance.  Addresses known failure modes
@@ -388,6 +391,12 @@ TASK_COMPLETION_GUIDANCE = (
 # family-agnostic; the OPENAI_ prefix reflects origin, not exclusivity.
 OPENAI_MODEL_EXECUTION_GUIDANCE = (
     "# Execution discipline\n"
+    "<plan_then_act>\n"
+    "For complex tasks (3+ steps), call `todo` first to lay out your plan, then "
+    "start executing step 1 immediately in the same response. Don't create the plan "
+    "and wait — plan + start acting in one turn.\n"
+    "</plan_then_act>\n"
+    "\n"
     "<tool_persistence>\n"
     "- Use tools whenever they improve correctness, completeness, or grounding.\n"
     "- Do not stop early when another tool call would materially improve the result.\n"

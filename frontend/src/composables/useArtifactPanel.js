@@ -1,27 +1,61 @@
 import { ref } from 'vue'
 
-// 产物右侧面板独立状态（不与 Agent 管理抽屉 useRightPanel 共享）
-// WorkBuddy 风格：hover 提示「展开右栏」，极简无常驻文字。
+// 产物右侧面板 — 浏览器标签模型
+// activeTabId: 'tasks' | 'artifacts' | 'workspace' | 'changes' | 'file:<id>'
 const open = ref(false)
-const tab = ref('artifacts') // 'artifacts' | 'changes'
 const width = ref(420)
-const autoOpen = ref(false)   // 收到新产物时是否自动展开（默认关，避免小文件/中间产物频繁打扰）
+const autoOpen = ref(true)  // 产物交付自动弹出右栏
+const activeTabId = ref('tasks')
+const fileTabs = ref([]) // { id: 'file:<id>', kind, title, path, icon }
 
 export function useArtifactPanel() {
-  function openPanel(t = 'artifacts') {
-    tab.value = t
+  function openPanel(view) {
     open.value = true
+    if (view && !view.startsWith('file:')) activeTabId.value = view
   }
   function closePanel() { open.value = false }
-  function togglePanel(t = 'artifacts') {
-    if (open.value && tab.value === t) {
-      open.value = false
-    } else {
-      tab.value = t
+  function togglePanel(view) {
+    open.value = !open.value
+    if (open.value && view && !view.startsWith('file:')) activeTabId.value = view
+  }
+
+  function setView(v) {
+    activeTabId.value = v
+    open.value = true
+  }
+
+  // 兼容旧调用：setTab('artifacts') / setTab('preview') → 切功能视图
+  function setTab(v) {
+    if (v === 'preview') v = 'artifacts'
+    if (v === 'changes' || v === 'artifacts' || v === 'tasks' || v === 'workspace') {
+      activeTabId.value = v
       open.value = true
     }
   }
-  function setTab(t) { tab.value = t }
+
+  function openFileTab(kind, id, title, path, icon) {
+    const tabId = 'file:' + id
+    if (!fileTabs.value.find(t => t.id === tabId)) {
+      fileTabs.value.push({ id: tabId, kind, title, path, icon })
+    }
+    activeTabId.value = tabId
+    open.value = true
+  }
+
+  function closeFileTab(tabId) {
+    const idx = fileTabs.value.findIndex(t => t.id === tabId)
+    if (idx < 0) return
+    fileTabs.value.splice(idx, 1)
+    if (activeTabId.value === tabId) {
+      activeTabId.value = fileTabs.value.length ? fileTabs.value[0].id : 'tasks'
+    }
+  }
+
   function setWidth(w) { width.value = w }
-  return { open, tab, width, autoOpen, openPanel, closePanel, togglePanel, setTab, setWidth }
+
+  return {
+    open, width, autoOpen, activeTabId, fileTabs,
+    openPanel, closePanel, togglePanel,
+    setView, setTab, openFileTab, closeFileTab, setWidth,
+  }
 }

@@ -213,27 +213,7 @@ function currentModelName() {
   return m ? m.name : chat.currentModel
 }
 
-// ── 顶部长任务步骤条（常驻，避免只在抽屉里）──
-const taskStats = computed(() => {
-  const items = chat.todoItems || []
-  return {
-    total: items.length,
-    completed: items.filter(i => i.status === 'completed').length,
-    inProgress: items.filter(i => i.status === 'in_progress').length,
-  }
-})
-const taskProgress = computed(() => {
-  if (!taskStats.value.total) return 0
-  return Math.round((taskStats.value.completed / taskStats.value.total) * 100)
-})
-const currentStepLabel = computed(() => {
-  const items = chat.todoItems || []
-  const cur = items.find(i => i.id === chat.currentTodoStepId)
-    || items.find(i => i.status === 'in_progress')
-  if (cur) return cur.content || '进行中…'
-  if (taskStats.value.total && taskStats.value.completed === taskStats.value.total) return '全部完成 🎉'
-  return '任务进行中…'
-})
+// ── 顶部长任务步骤条已移至 ArtifactPanel 概览 tab ──
 
 function closeDropdowns() {
   showModelSelect.value = false
@@ -274,35 +254,6 @@ function closeDropdowns() {
       <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages?.length ?? 0 }} 条消息</span>
       <button @click="emit('toggleHistory')" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋<span class="header-tooltip group-hover:opacity-100">历史记录</span></button>
 
-      <!-- 顶部长任务步骤条（常驻，避免只在抽屉里；点击展开详情） -->
-      <div v-if="chat.todoItems.length"
-           @click="chat.toggleTaskDrawer()"
-           class="hidden md:flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition cursor-pointer max-w-[300px]"
-           :title="`任务进度：${taskStats.completed}/${taskStats.total} 步已完成`">
-        <span class="text-xs flex-shrink-0" :class="{ 'animate-spin': taskStats.inProgress }">🔄</span>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between gap-2 text-[10px] text-gray-400">
-            <span class="truncate max-w-[150px]">{{ currentStepLabel }}</span>
-            <span class="flex-shrink-0 tabular-nums">{{ taskStats.completed }}/{{ taskStats.total }}</span>
-          </div>
-          <div class="mt-0.5 w-full h-1 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-            <div class="h-full bg-blue-500 transition-all duration-500"
-                 :style="{ width: taskProgress + '%' }"></div>
-          </div>
-        </div>
-      </div>
-      <!-- 任务清单（长任务分步骤 + 实时进度） -->
-      <button @click="chat.toggleTaskDrawer()"
-              class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm"
-              title="任务清单">
-        🗂️
-        <span class="header-tooltip group-hover:opacity-100">任务清单</span>
-        <span v-if="chat.todoItems.length"
-              class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] leading-4 text-center"
-              :class="{ 'bg-green-500': chat.todoAllDone }">
-          {{ chat.todoAllDone ? '✓' : (chat.todoInProgressCount || chat.todoItems.length) }}
-        </span>
-      </button>
       <!-- 消息搜索 -->
       <div v-if="chat.searchMode" class="flex items-center gap-1">
         <input v-model="chat.searchQuery" 
@@ -328,7 +279,7 @@ function closeDropdowns() {
       </span>
       <!-- 产物详情面板开关：极简 hover 提示，无常驻文字 -->
       <button
-        @click="toggleArtifactPanel('artifacts')"
+        @click="toggleArtifactPanel('overview')"
         :class="artifactOpen ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
         class="group relative ml-1 px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1"
         :title="artifactOpen ? '关闭右栏' : '展开右栏'"
