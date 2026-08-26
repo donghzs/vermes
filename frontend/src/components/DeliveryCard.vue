@@ -58,14 +58,17 @@
     <div v-if="nextActions.length > 0" class="px-4 py-2.5">
       <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">💡 建议下一步</div>
       <div class="space-y-1">
-        <div
+        <button
           v-for="(action, i) in nextActions"
           :key="i"
-          class="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-300"
+          type="button"
+          class="w-full flex items-start gap-1.5 text-xs text-left text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded px-1.5 py-1 -mx-1.5 transition-colors"
+          :title="`发送：${action}`"
+          @click="emit('sendNextAction', action)"
         >
-          <span class="text-gray-400 mt-0.5">{{ i + 1 }}.</span>
+          <span class="text-gray-400 mt-0.5 select-none">{{ i + 1 }}.</span>
           <span class="flex-1">{{ action }}</span>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -88,7 +91,7 @@ const props = defineProps({
   endTime: { type: Number, default: 0 },
 })
 
-const emit = defineEmits(['openArtifact', 'showAllArtifacts', 'showAllChanges'])
+const emit = defineEmits(['openArtifact', 'showAllArtifacts', 'showAllChanges', 'sendNextAction'])
 
 const duration = computed(() => {
   if (!props.startTime || !props.endTime) return ''

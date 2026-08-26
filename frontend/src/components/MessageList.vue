@@ -125,6 +125,12 @@ function openArtifactInPanel(a) {
   setArtifactTab('preview')
 }
 
+// Track B: 点击 DeliveryCard 的「建议下一步」条目 → 作为新指令发给当前会话
+function sendNextAction(text) {
+  if (!text) return
+  chat.sendMessage(text, [], null, null, false)
+}
+
 // 工具结果预览模板化
 const _toolPreviewCache = new WeakMap()
 const _showAllTools = reactive({})
@@ -837,6 +843,7 @@ function streamElapsed(startTime) {
           @open-artifact="openDeliveryArtifact"
           @show-all-artifacts="openRightPanel('artifacts')"
           @show-all-changes="openRightPanel('artifacts'); setArtifactTab('changes')"
+          @send-next-action="sendNextAction"
           class="w-full"
         />
         <template v-else>
