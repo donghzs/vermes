@@ -5,14 +5,14 @@
   "downloads": {
     "mac": {
       "arm64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.2-arm64.dmg",
-        "sha256": "a696fb8f7262c73a9885bc6db4711d86b4f53bf2f9d7715edee7c885d7fe8b42",
-        "size": 172831806
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.4-arm64.dmg",
+        "sha256": "2d397a62a758324708fbf2583f4b139e68dea98194101fd900dd9e083608f6a5",
+        "size": 319483099
       },
       "x64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.2.dmg",
-        "sha256": "5c5c09671f848af62b08590c2d26d9100185171d82b872e8f34bd77303904c8c",
-        "size": 278989099
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.4.dmg",
+        "sha256": "42631464f96061151590124bd77c6a17d54de96fe97f7a313421b26fe7e66b7f",
+        "size": 321249875
       }
     },
     "windows": {
