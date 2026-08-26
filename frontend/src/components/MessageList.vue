@@ -156,6 +156,12 @@ function toggleAllReasoning() {
   reasoningMsgs.value.forEach(m => { reasoningExpanded[m.id] = target })
 }
 
+// ── 推理内容高度切换：默认限高 12rem，点击「展开全部」到 32rem ──
+const reasoningFullExpand = reactive({})
+function toggleReasoningFull(msgId) {
+  reasoningFullExpand[msgId] = !reasoningFullExpand[msgId]
+}
+
 // ── 2.2 流式超长内容按边界切片：避免切断未闭合代码块 / 段落 ──
 function tailByBoundary(content, max = 8000) {
   if (!content || content.length <= max) return content
@@ -870,7 +876,11 @@ function streamElapsed(startTime) {
                 <span class="opacity-50">({{ msg.reasoning.length.toLocaleString() }} 字)</span>
                 <span v-if="msg.streaming" class="text-purple-400 animate-pulse">●</span>
               </summary>
-              <div :ref="el => reasoningContentRefs[msg.id] = el" class="mt-1.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800 text-sm text-gray-500 dark:text-gray-400 italic whitespace-pre-wrap max-h-96 overflow-y-auto reasoning-content" style="white-space:pre-wrap;word-break:break-word;">{{ msg.reasoning }}</div>
+              <div :ref="el => reasoningContentRefs[msg.id] = el" class="mt-1.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800 text-sm text-gray-500 dark:text-gray-400 italic whitespace-pre-wrap overflow-y-auto reasoning-content" :class="reasoningFullExpand[msg.id] ? 'reasoning-content-full' : 'reasoning-content-collapsed'" style="white-space:pre-wrap;word-break:break-word;">{{ msg.reasoning }}</div>
+              <!-- 展开/收起更多按钮 -->
+              <button v-if="msg.reasoning && msg.reasoning.length > 400" @click="toggleReasoningFull(msg.id)" class="mt-1 text-[11px] text-purple-400 hover:text-purple-600 dark:hover:text-purple-300 transition ml-3">
+                {{ reasoningFullExpand[msg.id] ? '▴ 收起' : '▾ 展开全部' }}
+              </button>
             </details>
           </div>
           <!-- 工具调用展示：流式中=单条状态，完成后=紧凑时间线 -->
@@ -1383,8 +1393,23 @@ function streamElapsed(startTime) {
 }
 .reasoning-content {
   animation: reasoning-expand 0.25s ease-out;
-  max-height: 24rem;
+  position: relative;
+}
+/* 默认折叠态：限高 12rem，底部渐变遮罩提示还有更多 */
+.reasoning-content-collapsed {
+  max-height: 12rem;
   overflow-y: auto;
+  mask-image: linear-gradient(to bottom, black calc(100% - 2.5rem), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 2.5rem), transparent 100%);
+}
+/* 展开全部态：限高 32rem，无遮罩 */
+.reasoning-content-full {
+  max-height: 32rem;
+  overflow-y: auto;
+}
+/* 流式中固定更小高度，避免刷屏 */
+.reasoning-details[open] .reasoning-content:has(.reasoning-content-collapsed) {
+  max-height: 12rem;
 }
 @keyframes reasoning-expand {
   from {
@@ -1395,7 +1420,7 @@ function streamElapsed(startTime) {
   to {
     opacity: 1;
     transform: translateY(0);
-    max-height: 24rem;
+    max-height: 12rem;
   }
 }
 .reasoning-details:not([open]) .reasoning-content {
