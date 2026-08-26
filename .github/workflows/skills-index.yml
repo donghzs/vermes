@@ -89,7 +89,7 @@ jobs:
           mkdir -p _site/docs
           cp -r landingpage/* _site/
           cp -r website/build/* _site/docs/
-          echo "vermes-agent.donghzs.com" > _site/CNAME
+          # GitHub Pages project site — no CNAME needed for donghzs.github.io/vermes
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3

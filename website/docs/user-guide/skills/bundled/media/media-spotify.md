@@ -31,7 +31,7 @@ The following is the complete skill definition that Vermes loads when this skill
 
 # Spotify
 
-Control the user's Spotify account via the Vermes Spotify toolset (7 tools). Setup guide: https://vermes-agent.donghzs.com/docs/user-guide/features/spotify
+Control the user's Spotify account via the Vermes Spotify toolset (7 tools). Setup guide: https://donghzs.github.io/vermes/docs/user-guide/features/spotify
 
 ## When to use this skill
 

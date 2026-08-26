@@ -5,14 +5,14 @@
 # Vermes Agent ☤
 
 <p align="center">
-  <a href="https://vermes-agent.donghzs.com/docs/"><img src="https://img.shields.io/badge/Docs-vermes--agent.donghzs.com-FFD700?style=for-the-badge" alt="Documentation"></a>
+  <a href="https://donghzs.github.io/vermes/docs/"><img src="https://img.shields.io/badge/Docs-github.io/vermes-FFD700?style=for-the-badge" alt="Documentation"></a>
   <a href="https://discord.gg/donghzs"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://github.com/donghzs/vermes/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://donghzs.com"><img src="https://img.shields.io/badge/Built%20by-Nous%20Research-blueviolet?style=for-the-badge" alt="Built by Nous Research"></a>
+  <a href="https://vbit.top"><img src="https://img.shields.io/badge/Website-vbit.top-22c55e?style=for-the-badge" alt="Vermes Website"></a>
   <a href="README.md"><img src="https://img.shields.io/badge/Lang-English-lightgrey?style=for-the-badge" alt="English"></a>
 </p>
 
-**由 [Nous Research](https://donghzs.com) 构建的自进化 AI 代理。** 它是唯一内置学习闭环的智能代理——从经验中创建技能，在使用中改进技能，主动持久化知识，搜索过往对话，并在跨会话中逐步构建对你的深度理解。可以在 $5 的 VPS 上运行，也可以在 GPU 集群上运行，或者使用几乎零成本的 Serverless 基础设施。它不绑定你的笔记本——你可以在 Telegram 上与它对话，而它在云端 VM 上工作。
+**开源 MIT 协议的自进化 AI 代理。** 它是唯一内置学习闭环的智能代理——从经验中创建技能，在使用中改进技能，主动持久化知识，搜索过往对话，并在跨会话中逐步构建对你的深度理解。可以在 $5 的 VPS 上运行，也可以在 GPU 集群上运行，或者使用几乎零成本的 Serverless 基础设施。它不绑定你的笔记本——你可以在 Telegram 上与它对话，而它在云端 VM 上工作。
 
 支持任意模型——[Nous Portal](https://portal.donghzs.com)、[OpenRouter](https://openrouter.ai)（200+ 模型）、[NVIDIA NIM](https://build.nvidia.com)（Nemotron）、[小米 MiMo](https://platform.xiaomimimo.com)、[z.ai/GLM](https://z.ai)、[Kimi/Moonshot](https://platform.moonshot.ai)、[MiniMax](https://www.minimax.io)、[Hugging Face](https://huggingface.co)、OpenAI，或自定义端点。使用 `vermes model` 即可切换——无需改代码，无锁定。
 
@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/donghzs/vermes/main/scripts/install
 
 支持 Linux、macOS、WSL2 和 Android (Termux)。安装程序会自动处理平台特定的配置。
 
-> **Android / Termux：** 已测试的手动安装路径请参考 [Termux 指南](https://vermes-agent.donghzs.com/docs/getting-started/termux)。在 Termux 上，Vermes 会安装精选的 `.[termux]` 扩展，因为完整的 `.[all]` 扩展会拉取 Android 不兼容的语音依赖。
+> **Android / Termux：** 已测试的手动安装路径请参考 [Termux 指南](https://donghzs.github.io/vermes/docs/getting-started/termux)。在 Termux 上，Vermes 会安装精选的 `.[termux]` 扩展，因为完整的 `.[all]` 扩展会拉取 Android 不兼容的语音依赖。
 >
 > **Windows：** 原生 Windows 不受支持。请安装 [WSL2](https://learn.microsoft.com/zh-cn/windows/wsl/install) 并运行上述命令。
 
@@ -63,7 +63,7 @@ vermes update       # 更新到最新版本
 vermes doctor       # 诊断问题
 ```
 
-📖 **[完整文档 →](https://vermes-agent.donghzs.com/docs/)**
+📖 **[完整文档 →](https://donghzs.github.io/vermes/docs/)**
 
 ## CLI 与消息平台 快速对照
 
@@ -81,31 +81,31 @@ Vermes 有两种入口：用 `vermes` 启动终端 UI，或运行网关从 Teleg
 | 中断当前工作 | `Ctrl+C` 或发送新消息 | `/stop` 或发送新消息 |
 | 平台特定状态 | `/platforms` | `/status`、`/sethome` |
 
-完整命令列表请参阅 [CLI 指南](https://vermes-agent.donghzs.com/docs/user-guide/cli) 和 [消息网关指南](https://vermes-agent.donghzs.com/docs/user-guide/messaging)。
+完整命令列表请参阅 [CLI 指南](https://donghzs.github.io/vermes/docs/user-guide/cli) 和 [消息网关指南](https://donghzs.github.io/vermes/docs/user-guide/messaging)。
 
 ---
 
 ## 文档
 
-所有文档位于 **[vermes-agent.donghzs.com/docs](https://vermes-agent.donghzs.com/docs/)**：
+所有文档位于 **[donghzs.github.io/vermes/docs](https://donghzs.github.io/vermes/docs/)**：
 
 | 章节 | 内容 |
 |------|------|
-| [快速开始](https://vermes-agent.donghzs.com/docs/getting-started/quickstart) | 安装 → 设置 → 2 分钟内开始首次对话 |
-| [CLI 使用](https://vermes-agent.donghzs.com/docs/user-guide/cli) | 命令、快捷键、人格、会话 |
-| [配置](https://vermes-agent.donghzs.com/docs/user-guide/configuration) | 配置文件、提供商、模型、所有选项 |
-| [消息网关](https://vermes-agent.donghzs.com/docs/user-guide/messaging) | Telegram、Discord、Slack、WhatsApp、Signal、Home Assistant |
-| [安全](https://vermes-agent.donghzs.com/docs/user-guide/security) | 命令审批、DM 配对、容器隔离 |
-| [工具与工具集](https://vermes-agent.donghzs.com/docs/user-guide/features/tools) | 40+ 工具、工具集系统、终端后端 |
-| [技能系统](https://vermes-agent.donghzs.com/docs/user-guide/features/skills) | 过程记忆、技能中心、创建技能 |
-| [记忆](https://vermes-agent.donghzs.com/docs/user-guide/features/memory) | 持久记忆、用户画像、最佳实践 |
-| [MCP 集成](https://vermes-agent.donghzs.com/docs/user-guide/features/mcp) | 连接任意 MCP 服务器扩展能力 |
-| [定时调度](https://vermes-agent.donghzs.com/docs/user-guide/features/cron) | 定时任务与平台投递 |
-| [上下文文件](https://vermes-agent.donghzs.com/docs/user-guide/features/context-files) | 影响每次对话的项目上下文 |
-| [架构](https://vermes-agent.donghzs.com/docs/developer-guide/architecture) | 项目结构、代理循环、关键类 |
-| [贡献](https://vermes-agent.donghzs.com/docs/developer-guide/contributing) | 开发设置、PR 流程、代码风格 |
-| [CLI 参考](https://vermes-agent.donghzs.com/docs/reference/cli-commands) | 所有命令和标志 |
-| [环境变量](https://vermes-agent.donghzs.com/docs/reference/environment-variables) | 完整环境变量参考 |
+| [快速开始](https://donghzs.github.io/vermes/docs/getting-started/quickstart) | 安装 → 设置 → 2 分钟内开始首次对话 |
+| [CLI 使用](https://donghzs.github.io/vermes/docs/user-guide/cli) | 命令、快捷键、人格、会话 |
+| [配置](https://donghzs.github.io/vermes/docs/user-guide/configuration) | 配置文件、提供商、模型、所有选项 |
+| [消息网关](https://donghzs.github.io/vermes/docs/user-guide/messaging) | Telegram、Discord、Slack、WhatsApp、Signal、Home Assistant |
+| [安全](https://donghzs.github.io/vermes/docs/user-guide/security) | 命令审批、DM 配对、容器隔离 |
+| [工具与工具集](https://donghzs.github.io/vermes/docs/user-guide/features/tools) | 40+ 工具、工具集系统、终端后端 |
+| [技能系统](https://donghzs.github.io/vermes/docs/user-guide/features/skills) | 过程记忆、技能中心、创建技能 |
+| [记忆](https://donghzs.github.io/vermes/docs/user-guide/features/memory) | 持久记忆、用户画像、最佳实践 |
+| [MCP 集成](https://donghzs.github.io/vermes/docs/user-guide/features/mcp) | 连接任意 MCP 服务器扩展能力 |
+| [定时调度](https://donghzs.github.io/vermes/docs/user-guide/features/cron) | 定时任务与平台投递 |
+| [上下文文件](https://donghzs.github.io/vermes/docs/user-guide/features/context-files) | 影响每次对话的项目上下文 |
+| [架构](https://donghzs.github.io/vermes/docs/developer-guide/architecture) | 项目结构、代理循环、关键类 |
+| [贡献](https://donghzs.github.io/vermes/docs/developer-guide/contributing) | 开发设置、PR 流程、代码风格 |
+| [CLI 参考](https://donghzs.github.io/vermes/docs/reference/cli-commands) | 所有命令和标志 |
+| [环境变量](https://donghzs.github.io/vermes/docs/reference/environment-variables) | 完整环境变量参考 |
 
 ---
 
@@ -140,7 +140,7 @@ vermes claw migrate --overwrite  # 覆盖已有冲突
 
 ## 贡献
 
-欢迎贡献！请参阅 [贡献指南](https://vermes-agent.donghzs.com/docs/developer-guide/contributing) 了解开发设置、代码风格和 PR 流程。
+欢迎贡献！请参阅 [贡献指南](https://donghzs.github.io/vermes/docs/developer-guide/contributing) 了解开发设置、代码风格和 PR 流程。
 
 贡献者快速开始——克隆并使用 `setup-vermes.sh`：
 

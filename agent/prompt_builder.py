@@ -118,19 +118,20 @@ def _strip_yaml_frontmatter(content: str) -> str:
 # =========================================================================
 
 DEFAULT_AGENT_IDENTITY = (
-    "You are Vermes, a desktop AI agent for Chinese users, built on the Vermes Agent "
-    "engine by Nous Research. You are helpful, knowledgeable, and direct. You assist "
-    "users with a wide range of tasks including answering questions, writing and "
-    "editing code, analyzing information, creative work, and executing actions via "
-    "your tools. You communicate clearly, admit uncertainty when appropriate, and "
-    "prioritize being genuinely useful over being verbose unless otherwise directed "
+    "You are Vermes, a desktop AI agent for Chinese users. You are helpful, "
+    "knowledgeable, and direct. You assist users with a wide range of tasks "
+    "including answering questions, writing and editing code, analyzing "
+    "information, creative work, and executing actions via your tools. You "
+    "communicate clearly, admit uncertainty when appropriate, and prioritize "
+    "being genuinely useful over being verbose unless otherwise directed "
     "below. Be thorough and methodical in your exploration and investigations."
 )
 
 VERMES_AGENT_HELP_GUIDANCE = (
-    "If the user asks about configuring, setting up, or using Vermes itself, load "
-    "the `vermes-agent` skill with skill_view(name='vermes-agent') before answering. "
-    "Docs: https://vbit.top/vermes/"
+    "If the user asks about configuring, setting up, or using Vermes itself, consult "
+    "the vermes-* skills first (e.g. skill_view(name='vermes-self-audit') for system "
+    "checks, skill_view(name='vermes-runtime-diagnostic') for troubleshooting) rather "
+    "than guessing. Do not fabricate Vermes features. Docs: https://vbit.top/vermes/"
 )
 
 MEMORY_GUIDANCE = (
@@ -303,8 +304,10 @@ IMAGE_GENERATE_GUIDANCE = (
     "and style-reference workflows natively — including API key resolution, provider "
     "routing, and error handling.\n"
     "Do NOT write custom Python scripts with execute_code to call image APIs directly. "
-    "The image_generate tool already knows how to reach each provider (Agnes, OpenAI, "
-    "xAI) and will use the correct credentials automatically. Writing your own API "
+    "The image_generate tool already knows how to reach each provider via FAL "
+    "(fal-ai) and will use the correct credentials automatically. Available models "
+    "include flux-2/klein/9b (default), flux-2-pro, z-image/turbo, nano-banana-pro, "
+    "gpt-image-1.5/2, recraft/v4, and qwen-image. Writing your own API "
     "calls bypasses credential management and will fail because .env files and API "
     "keys are protected by security policies.\n"
     "For image-to-image (edit/transform), pass the source image via the image_url "
@@ -1438,8 +1441,9 @@ def build_skills_system_prompt(
             "already know how to do, because the skill defines how it should be done here.\n"
             "Whenever the user asks you to configure, set up, install, enable, disable, modify, "
             "or troubleshoot Vermes itself — its CLI, config, models, providers, tools, "
-            "skills, voice, gateway, plugins, or any feature — load the `vermes-agent` skill "
-            "first. It has the actual commands (e.g. `vermes config set …`, `vermes tools`, "
+            "skills, voice, gateway, plugins, or any feature — consult the vermes-* skills "
+            "first (e.g. skill_view(name='vermes-self-audit'), skill_view(name='vermes-runtime-diagnostic')). "
+            "They have the actual commands (e.g. `vermes config set …`, `vermes tools`, "
             "`vermes setup`) so you don't have to guess or invent workarounds.\n"
             "If a skill has issues, fix it with skill_manage(action='patch').\n"
             "After difficult/iterative tasks, offer to save as a skill. "

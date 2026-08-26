@@ -37,7 +37,7 @@ v0.15.0 是首发桌面版本的里程碑。此前 Vermes 只有 CLI 和 TUI 两
 
 **安装步骤**：
 
-1. 打开 [vermes-agent.donghzs.com/desktop](https://vermes-agent.donghzs.com/desktop)
+1. 打开 [donghzs.github.io/vermes/desktop](https://donghzs.github.io/vermes/desktop)
 2. 页面自动检测操作系统，点击「DOWNLOAD」按钮
 3. macOS 用户获得 .dmg 文件（已签名公证），Windows 用户获得 .exe 安装程序
 4. 首次启动时，桌面应用会自动在后台执行安装脚本——下载 Python（通过 uv）、Node.js、ripgrep、ffmpeg、PortableGit（Windows）等依赖

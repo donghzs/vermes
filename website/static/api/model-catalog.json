@@ -3,7 +3,7 @@
   "updated_at": "2026-05-11T16:41:16Z",
   "metadata": {
     "source": "vermes-agent repo",
-    "docs": "https://vermes-agent.donghzs.com/docs/reference/model-catalog"
+    "docs": "https://donghzs.github.io/vermes/docs/reference/model-catalog"
   },
   "providers": {
     "openrouter": {

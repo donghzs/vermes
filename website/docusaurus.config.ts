@@ -7,7 +7,7 @@ const config: Config = {
   tagline: 'The self-improving AI agent',
   favicon: 'img/favicon.ico',
 
-  url: 'https://vermes-agent.donghzs.com',
+  url: 'https://donghzs.github.io/vermes',
   baseUrl: '/docs/',
 
   organizationName: 'donghzs',
@@ -122,7 +122,7 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: 'https://vermes-agent.donghzs.com',
+          href: 'https://donghzs.github.io/vermes',
           label: 'Home',
           position: 'right',
         },

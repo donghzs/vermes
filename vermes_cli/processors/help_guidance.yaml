@@ -1,4 +1,4 @@
-content: 'If the user asks about configuring, setting up, or using Vermes itself, load the `vermes-agent` skill with skill_view(name=''vermes-agent'') before answering. Docs: https://vbit.top/vermes/'
+content: 'If the user asks about configuring, setting up, or using Vermes itself, consult the vermes-* skills first (e.g. skill_view(name=''vermes-self-audit'') for system checks, skill_view(name=''vermes-runtime-diagnostic'') for troubleshooting) rather than guessing. Do not fabricate Vermes features. Docs: https://vbit.top/vermes/'
 description: Vermes 自身使用引导
 name: help_guidance
 order: 20

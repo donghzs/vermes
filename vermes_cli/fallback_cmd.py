@@ -3,7 +3,7 @@ Vermes fallback — manage the fallback provider chain.
 
 Fallback providers are tried in order when the primary model fails with
 rate-limit, overload, or connection errors. See:
-https://Vermes-agent.donghzs.com/docs/user-guide/features/fallback-providers
+https://donghzs.github.io/vermes/docs/user-guide/features/fallback-providers
 
 Subcommands:
   Vermes fallback [list]   Show the current fallback chain (default when no subcommand)
@@ -131,7 +131,7 @@ def cmd_fallback_list(args) -> None:  # noqa: ARG001
         logger.info(f"    {i}. {_format_entry(entry)}")
     logger.info()
     logger.info("  Tried in order when the primary fails (rate-limit, 5xx, connection errors).")
-    logger.info("  Docs: https://Vermes-agent.donghzs.com/docs/user-guide/features/fallback-providers")
+    logger.info("  Docs: https://donghzs.github.io/vermes/docs/user-guide/features/fallback-providers")
     logger.info()
 
 def _describe_primary(config: Dict[str, Any]) -> Optional[str]:

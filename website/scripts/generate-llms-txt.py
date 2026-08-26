@@ -9,8 +9,8 @@ Outputs:
                                     comments separating files.
 
 Both publish at:
-  https://Vermes-agent.donghzs.com/docs/llms.txt
-  https://Vermes-agent.donghzs.com/docs/llms-full.txt
+  https://donghzs.github.io/vermes/docs/llms.txt
+  https://donghzs.github.io/vermes/docs/llms-full.txt
 
 The `/docs/` prefix is not a mistake — Docusaurus serves `website/static/`
 at the `docs/` base path. Clients and IDE plugins that probe the classic
@@ -36,7 +36,7 @@ WEBSITE = SCRIPT_DIR.parent
 DOCS = WEBSITE / "docs"
 STATIC = WEBSITE / "static"
 
-SITE_BASE = "https://Vermes-agent.donghzs.com/docs"
+SITE_BASE = "https://donghzs.github.io/vermes/docs"
 
 # Curated sections for llms.txt — mirrors the product story, not the filesystem.
 # Each entry: (docs-relative path without .md, display title, optional short desc).
@@ -253,8 +253,8 @@ def emit_llms_full() -> str:
             "Started, Using Vermes, Features, Messaging, Integrations, Guides, "
             "Developer Guide, Reference, then everything else.\n"
         ),
-        "Canonical site: https://Vermes-agent.donghzs.com/docs\n",
-        "Short index: https://Vermes-agent.donghzs.com/docs/llms.txt\n",
+        "Canonical site: https://donghzs.github.io/vermes/docs\n",
+        "Short index: https://donghzs.github.io/vermes/docs/llms.txt\n",
         "\n---\n\n",
     ]
 

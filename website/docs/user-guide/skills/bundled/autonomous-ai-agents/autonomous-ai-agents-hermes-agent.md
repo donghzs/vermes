@@ -46,7 +46,7 @@ People use Vermes for software development, research, system administration, dat
 
 **This skill helps you work with Vermes Agent effectively** — setting it up, configuring features, spawning additional agent instances, troubleshooting issues, finding the right commands and settings, and understanding how the system works when you need to extend or contribute to it.
 
-**Docs:** https://vermes-agent.donghzs.com/docs/
+**Docs:** https://donghzs.github.io/vermes/docs/
 
 ## Quick Start
 
@@ -168,7 +168,7 @@ vermes gateway setup        Configure platforms
 
 Supported platforms: Telegram, Discord, Slack, WhatsApp, Signal, Email, SMS, Matrix, Mattermost, Home Assistant, DingTalk, Feishu, WeCom, BlueBubbles (iMessage), Weixin (WeChat), API Server, Webhooks. Open WebUI connects via the API Server adapter.
 
-Platform docs: https://vermes-agent.donghzs.com/docs/user-guide/messaging/
+Platform docs: https://donghzs.github.io/vermes/docs/user-guide/messaging/
 
 ### Sessions
 
@@ -247,7 +247,7 @@ vermes uninstall            Uninstall Vermes
 
 Type these during an interactive chat session. New commands land fairly
 often; if something below looks stale, run `/help` in-session for the
-authoritative list or see the [live slash commands reference](https://vermes-agent.donghzs.com/docs/reference/slash-commands).
+authoritative list or see the [live slash commands reference](https://donghzs.github.io/vermes/docs/reference/slash-commands).
 The registry of record is `vermes_cli/commands.py` — every consumer
 (autocomplete, Telegram menu, Slack mapping, `/help`) derives from it.
 
@@ -379,7 +379,7 @@ Edit with `vermes config edit` or `vermes config set section.key value`.
 | `delegation` | `model`, `provider`, `base_url`, `api_key`, `max_iterations` (50), `reasoning_effort` |
 | `checkpoints` | `enabled`, `max_snapshots` (50) |
 
-Full config reference: https://vermes-agent.donghzs.com/docs/user-guide/configuration
+Full config reference: https://donghzs.github.io/vermes/docs/user-guide/configuration
 
 ### Providers
 
@@ -410,7 +410,7 @@ Full config reference: https://vermes-agent.donghzs.com/docs/user-guide/configur
 | Custom endpoint | Config | `model.base_url` + `model.api_key` in config.yaml |
 | GitHub Copilot ACP | External | `COPILOT_CLI_PATH` or Copilot CLI |
 
-Full provider docs: https://vermes-agent.donghzs.com/docs/integrations/providers
+Full provider docs: https://donghzs.github.io/vermes/docs/integrations/providers
 
 ### Toolsets
 
@@ -670,7 +670,7 @@ the `cronjob` tool, the `vermes cron` CLI (`list`, `add`, `edit`,
   header/footer instead of being mirrored into the target gateway
   session (keeps role alternation intact).
 
-User docs: https://vermes-agent.donghzs.com/docs/user-guide/features/cron
+User docs: https://donghzs.github.io/vermes/docs/user-guide/features/cron
 
 ### Curator (skill lifecycle)
 
@@ -691,7 +691,7 @@ so nothing is lost.
 
 Config: `curator.*` (`enabled`, `interval_hours`, `min_idle_hours`,
 `stale_after_days`, `archive_after_days`, `backup.*`).
-User docs: https://vermes-agent.donghzs.com/docs/user-guide/features/curator
+User docs: https://donghzs.github.io/vermes/docs/user-guide/features/curator
 
 ### Kanban (multi-agent work queue)
 
@@ -719,7 +719,7 @@ sessions still have zero `kanban_*` schema footprint unless configured.
   `VERMES_KANBAN_BOARD` pinned in env); tenant is a soft namespace
   within a board for workspace-path + memory-key isolation.
 
-User docs: https://vermes-agent.donghzs.com/docs/user-guide/features/kanban
+User docs: https://donghzs.github.io/vermes/docs/user-guide/features/kanban
 
 ---
 
@@ -870,18 +870,18 @@ vermes config set auxiliary.vision.model <model_name>
 
 | Looking for... | Location |
 |----------------|----------|
-| Config options | `vermes config edit` or [Configuration docs](https://vermes-agent.donghzs.com/docs/user-guide/configuration) |
-| Available tools | `vermes tools list` or [Tools reference](https://vermes-agent.donghzs.com/docs/reference/tools-reference) |
-| Slash commands | `/help` in session or [Slash commands reference](https://vermes-agent.donghzs.com/docs/reference/slash-commands) |
-| Skills catalog | `vermes skills browse` or [Skills catalog](https://vermes-agent.donghzs.com/docs/reference/skills-catalog) |
-| Provider setup | `vermes model` or [Providers guide](https://vermes-agent.donghzs.com/docs/integrations/providers) |
-| Platform setup | `vermes gateway setup` or [Messaging docs](https://vermes-agent.donghzs.com/docs/user-guide/messaging/) |
-| MCP servers | `vermes mcp list` or [MCP guide](https://vermes-agent.donghzs.com/docs/user-guide/features/mcp) |
-| Profiles | `vermes profile list` or [Profiles docs](https://vermes-agent.donghzs.com/docs/user-guide/profiles) |
-| Cron jobs | `vermes cron list` or [Cron docs](https://vermes-agent.donghzs.com/docs/user-guide/features/cron) |
-| Memory | `vermes memory status` or [Memory docs](https://vermes-agent.donghzs.com/docs/user-guide/features/memory) |
-| Env variables | `vermes config env-path` or [Env vars reference](https://vermes-agent.donghzs.com/docs/reference/environment-variables) |
-| CLI commands | `vermes --help` or [CLI reference](https://vermes-agent.donghzs.com/docs/reference/cli-commands) |
+| Config options | `vermes config edit` or [Configuration docs](https://donghzs.github.io/vermes/docs/user-guide/configuration) |
+| Available tools | `vermes tools list` or [Tools reference](https://donghzs.github.io/vermes/docs/reference/tools-reference) |
+| Slash commands | `/help` in session or [Slash commands reference](https://donghzs.github.io/vermes/docs/reference/slash-commands) |
+| Skills catalog | `vermes skills browse` or [Skills catalog](https://donghzs.github.io/vermes/docs/reference/skills-catalog) |
+| Provider setup | `vermes model` or [Providers guide](https://donghzs.github.io/vermes/docs/integrations/providers) |
+| Platform setup | `vermes gateway setup` or [Messaging docs](https://donghzs.github.io/vermes/docs/user-guide/messaging/) |
+| MCP servers | `vermes mcp list` or [MCP guide](https://donghzs.github.io/vermes/docs/user-guide/features/mcp) |
+| Profiles | `vermes profile list` or [Profiles docs](https://donghzs.github.io/vermes/docs/user-guide/profiles) |
+| Cron jobs | `vermes cron list` or [Cron docs](https://donghzs.github.io/vermes/docs/user-guide/features/cron) |
+| Memory | `vermes memory status` or [Memory docs](https://donghzs.github.io/vermes/docs/user-guide/features/memory) |
+| Env variables | `vermes config env-path` or [Env vars reference](https://donghzs.github.io/vermes/docs/reference/environment-variables) |
+| CLI commands | `vermes --help` or [CLI reference](https://donghzs.github.io/vermes/docs/reference/cli-commands) |
 | Gateway logs | `~/.vermes/logs/gateway.log` |
 | Session files | `~/.vermes/sessions/` or `vermes sessions browse` |
 | Source code | `~/.vermes/vermes-agent/` |
@@ -890,7 +890,7 @@ vermes config set auxiliary.vision.model <model_name>
 
 ## Contributor Quick Reference
 
-For occasional contributors and PR authors. Full developer docs: https://vermes-agent.donghzs.com/docs/developer-guide/
+For occasional contributors and PR authors. Full developer docs: https://donghzs.github.io/vermes/docs/developer-guide/
 
 ### Project Layout
 

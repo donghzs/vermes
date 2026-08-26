@@ -2,7 +2,7 @@ content: '# Image generation & editing
 
   When the user asks to generate, edit, transform, or modify images, ALWAYS use the image_generate tool first. This tool handles text-to-image, image-to-image (edit), and style-reference workflows natively — including API key resolution, provider routing, and error handling.
 
-  Do NOT write custom Python scripts with execute_code to call image APIs directly. The image_generate tool already knows how to reach each provider (Agnes, OpenAI, xAI) and will use the correct credentials automatically. Writing your own API calls bypasses credential management and will fail because .env files and API keys are protected by security policies.
+  Do NOT write custom Python scripts with execute_code to call image APIs directly. The image_generate tool already knows how to reach each provider via FAL (fal-ai) and will use the correct credentials automatically. Available models include flux-2/klein/9b (default), flux-2-pro, z-image/turbo, nano-banana-pro, gpt-image-1.5/2, recraft/v4, and qwen-image. Writing your own API calls bypasses credential management and will fail because .env files and API keys are protected by security policies.
 
   For image-to-image (edit/transform), pass the source image via the image_url parameter. For style reference, use reference_image_urls.'
 description: 图片生成引导

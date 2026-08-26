@@ -6308,7 +6308,7 @@ def _print_curator_first_run_notice() -> None:
     logger.info("  Preview now:  vermes curator run --dry-run")
     logger.info("  Pause it:     vermes curator pause")
     logger.info(
-        "  Docs:         https://Vermes-agent.donghzs.com/docs/user-guide/features/curator"
+        "  Docs:         https://donghzs.github.io/vermes/docs/user-guide/features/curator"
     )
 
 
@@ -10433,7 +10433,7 @@ def main():
             "Manage the fallback provider chain.  Fallback providers are tried "
             "in order when the primary model fails with rate-limit, overload, or "
             "connection errors.  See: "
-            "https://Vermes-agent.donghzs.com/docs/user-guide/features/fallback-providers"
+            "https://donghzs.github.io/vermes/docs/user-guide/features/fallback-providers"
         ),
     )
     fallback_subparsers = fallback_parser.add_subparsers(dest="fallback_command")

@@ -3310,7 +3310,7 @@ def check_for_skill_updates(
 # Vermes centralized index source
 # ---------------------------------------------------------------------------
 
-VERMES_INDEX_URL = "https://Vermes-agent.donghzs.com/docs/api/skills-index.json"
+VERMES_INDEX_URL = "https://donghzs.github.io/vermes/docs/api/skills-index.json"
 VERMES_INDEX_CACHE_FILE = INDEX_CACHE_DIR / "Vermes-index.json"
 VERMES_INDEX_TTL = 6 * 3600  # 6 hours
 

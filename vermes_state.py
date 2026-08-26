@@ -1108,7 +1108,7 @@ class SessionDB:
                     "Python whose bundled SQLite lacks FTS5) rather than a "
                     "mainline install. Some features may be missing or behave "
                     "differently. Install the supported way: "
-                    "https://Vermes-agent.donghzs.com (underlying error: %s)",
+                    "https://donghzs.github.io/vermes (underlying error: %s)",
                     self.db_path,
                     fts_exc,
                 )

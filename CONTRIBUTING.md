@@ -194,7 +194,7 @@ vermes-agent/
 ├── skills/                   # Bundled skills (copied to ~/.vermes/skills/ on install)
 ├── optional-skills/          # Official optional skills (discoverable via hub, not activated by default)
 ├── tests/                    # Test suite
-├── website/                  # Documentation site (vermes-agent.donghzs.com)
+├── website/                  # Documentation site (donghzs.github.io/vermes)
 │
 ├── cli-config.yaml.example   # Example configuration (copied to ~/.vermes/config.yaml)
 └── AGENTS.md                 # Development guide for AI coding assistants

@@ -2815,7 +2815,7 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
     logger.info(color("⚕ Vermes Tool Configuration", Colors.CYAN, Colors.BOLD))
     logger.info(color("  Enable or disable tools per platform.", Colors.DIM))
     logger.info(color("  Tools that need API keys will be configured when enabled.", Colors.DIM))
-    logger.info(color("  Guide: https://Vermes-agent.donghzs.com/docs/user-guide/features/tools", Colors.DIM))
+    logger.info(color("  Guide: https://donghzs.github.io/vermes/docs/user-guide/features/tools", Colors.DIM))
     logger.info("")
 
     # ── First-time install: linear flow, no platform menu ──
