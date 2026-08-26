@@ -21,7 +21,7 @@ import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import yaml from 'highlight.js/lib/languages/yaml'
 
-const { openPanel: openRightPanel, setTab: setArtifactTab, openArtifactFile: openChatArtifact } = useArtifactPanel()
+const { openPanel: openRightPanel, setTab: setArtifactTab } = useArtifactPanel()
 
 // ── 产物计数（用于底部「查看所有产物 (N)」链接）──
 const artifactCount = ref(0)
@@ -113,10 +113,13 @@ function messageArtifacts(msg) {
 
 function openArtifactInPanel(a) {
   const va = window.__vermesArtifacts
+  let id = null
   if (va && typeof va.addArtifact === 'function') {
     const mime = a.mime || ''
-    va.addArtifact({ path: a.path, title: a.title, mime, source: a.source || 'tool' })
+    id = va.addArtifact({ path: a.path, title: a.title, mime, source: a.source || 'tool' })
   }
+  // 直接打开文件标签渲染内容（而非只切到产物列表再让用户点一次）
+  if (id && va && typeof va.openArtifactById === 'function' && va.openArtifactById(id)) return
   openRightPanel('artifacts')
   setArtifactTab('preview')
 }
@@ -541,8 +544,8 @@ function handleContentClick(e) {
       if (window.__vermesArtifacts) {
         const id = window.__vermesArtifacts.addArtifact({ path, title, mime, source: 'chat' })
         // 直接打开该产物的文件标签并渲染，而不是只跳到产物列表再让用户点一次
-        if (id) openChatArtifact(id)
-        else openRightPanel('artifacts')
+        const opened = id && typeof window.__vermesArtifacts.openArtifactById === 'function' && window.__vermesArtifacts.openArtifactById(id)
+        if (!opened) openRightPanel('artifacts')
       }
       return
     }

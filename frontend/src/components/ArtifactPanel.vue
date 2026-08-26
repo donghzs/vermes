@@ -344,7 +344,17 @@ function _loadArtifacts() {
 _loadArtifacts()
 window.addEventListener('vermes-session-change', _loadArtifacts)
 
-window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifacts, addChange, removeChange, clearChanges, changes }
+window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifacts, addChange, removeChange, clearChanges, changes, openArtifactById }
+
+// 按 id 直接打开产物文件标签并渲染内容（供 chat.js 主动弹出 / MessageList 点击调用）。
+// 不再依赖 useArtifactPanel 的 openArtifactFile(id, artifactsRef) —— 那个签名需要
+// 外部传入组件内部 artifacts ref，而调用方都拿不到，导致 fileTab.path 被传错。
+function openArtifactById(id) {
+  const a = artifacts.value.find(x => x.id === id)
+  if (!a) return false
+  openFileTab('artifact', a.id, a.title || a.path?.split('/').pop() || '未知文件', a.path, fileIconFor(a))
+  return true
+}
 </script>
 
 <template>

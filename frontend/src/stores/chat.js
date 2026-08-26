@@ -1088,7 +1088,7 @@ export const useChatStore = defineStore('chat', () => {
             // 阶段 3: 自动提取产物到 ArtifactPanel；只有"最终交付物"才自动展开右栏
             if (data.artifacts && data.artifacts.length > 0) {
               const va = window.__vermesArtifacts
-              const { autoOpen, openPanel, setTab, openArtifactFile } = useArtifactPanel()
+              const { autoOpen, openPanel, setTab } = useArtifactPanel()
               const addedIds = []
               if (va && typeof va.addArtifact === 'function') {
                 data.artifacts.forEach(a => {
@@ -1107,8 +1107,10 @@ export const useChatStore = defineStore('chat', () => {
                 // 直接打开首个可渲染交付物的文件标签渲染，而不是只跳到产物列表
                 const firstIdx = data.artifacts.findIndex(a => isRenderableDeliverable(a.path))
                 const firstId = addedIds[firstIdx]
-                if (firstId) openArtifactFile(firstId)
-                else { openPanel('artifacts'); setTab('artifacts') }
+                const opened = firstId && va && typeof va.openArtifactById === 'function'
+                  ? va.openArtifactById(firstId)
+                  : false
+                if (!opened) { openPanel('artifacts'); setTab('artifacts') }
               }
             }
             // P1: 文件变更审计 — write_file/patch 推送到变更 tab
