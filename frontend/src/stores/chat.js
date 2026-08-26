@@ -1129,6 +1129,49 @@ export const useChatStore = defineStore('chat', () => {
           acts[sid] = list
           sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [sendSessionId]: acts }
         },
+        onDelivery: (data) => {
+          // E1: 后端结构化 delivery 事件 — 直接用后端携带的 artifacts/changes/summary
+          const summary = data?.summary || {}
+          const backendArtifacts = data?.artifacts || []
+          const backendChangesCount = data?.changes_count || 0
+          const curItems = sessionTodoItems.value[sendSessionId] || []
+          const startTime = curItems[0]?.started_at ? curItems[0].started_at * 1000 : 0
+          // 取最后一条 assistant 消息作为结论摘要
+          const sessionMsgs = messages.value.filter(m => m.sessionId === sendSessionId && m.role === 'assistant')
+          const lastAssistant = sessionMsgs[sessionMsgs.length - 1]
+          const summaryText = lastAssistant?.content
+            ? lastAssistant.content.replace(/<[^>]*>/g, '').slice(0, 200)
+            : ''
+          // 后端 artifacts 直接用，不需再从前端全局列表猜
+          const deliveryArtifacts = backendArtifacts.map((a, i) => ({
+            id: `delivery-art-${i}-${Date.now()}`,
+            path: a.path,
+            title: a.title || a.path?.split('/').pop(),
+            source: a.source,
+            sessionId: sendSessionId,
+          }))
+          // 去重：同会话已有的 delivery 消息先移除
+          const existIdx = messages.value.findIndex(m => m.sessionId === sendSessionId && m.type === 'delivery')
+          if (existIdx >= 0) messages.value.splice(existIdx, 1)
+          messages.value.push({
+            id: uid(),
+            type: 'delivery',
+            role: 'assistant',
+            sessionId: sendSessionId,
+            timestamp: Date.now(),
+            delivery: {
+              summary,
+              artifacts: deliveryArtifacts,
+              changesCount: backendChangesCount,
+              changes: data?.changes || [],
+              summaryText,
+              startTime,
+              endTime: Date.now(),
+            },
+          })
+          persistMessages(sendSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+          scheduleScroll()
+        },
         onTaskComplete: (data) => {
           // 全部步骤完成 → 庆祝态（per-session）
           sessionTodoAllDone.value = { ...sessionTodoAllDone.value, [sendSessionId]: true }

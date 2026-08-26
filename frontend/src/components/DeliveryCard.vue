@@ -4,6 +4,9 @@
     <div class="flex items-center gap-2 px-4 py-2.5 bg-green-50 dark:bg-green-900/30 border-b border-green-100 dark:border-green-800/50">
       <span class="text-lg">✅</span>
       <span class="font-semibold text-sm text-green-700 dark:text-green-300">任务完成</span>
+      <!-- E3: 风险标签 -->
+      <span v-if="summary.cancelled > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400">{{ summary.cancelled }} 步取消</span>
+      <span v-if="summary.in_progress > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">{{ summary.in_progress }} 步进行中</span>
       <span class="text-xs text-gray-500 dark:text-gray-400 ml-auto">
         完成 {{ summary.completed }}/{{ summary.total }} 步
         <span v-if="duration" class="ml-1">· 耗时 {{ duration }}</span>
@@ -46,9 +49,24 @@
     </div>
 
     <!-- 结论摘要 -->
-    <div v-if="summaryText" class="px-4 py-2.5">
+    <div v-if="summaryText" class="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700/50">
       <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">📝 结论摘要</div>
       <div class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{{ summaryText }}</div>
+    </div>
+
+    <!-- E2: 建议下一步（从摘要提取 bullet 条目） -->
+    <div v-if="nextActions.length > 0" class="px-4 py-2.5">
+      <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">💡 建议下一步</div>
+      <div class="space-y-1">
+        <div
+          v-for="(action, i) in nextActions"
+          :key="i"
+          class="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-300"
+        >
+          <span class="text-gray-400 mt-0.5">{{ i + 1 }}.</span>
+          <span class="flex-1">{{ action }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- 空态 -->
@@ -79,6 +97,22 @@ const duration = computed(() => {
   const mins = Math.floor(secs / 60)
   const rem = secs % 60
   return rem ? `${mins}分${rem}秒` : `${mins}分钟`
+})
+
+// E2: 从摘要文本提取建议下一步（bullet 或编号列表）
+const nextActions = computed(() => {
+  if (!props.summaryText) return []
+  const lines = props.summaryText.split('\n').map(l => l.trim()).filter(Boolean)
+  const actions = []
+  for (const line of lines) {
+    // 匹配 bullet: - xxx / * xxx / • xxx
+    // 匹配编号: 1. xxx / 2. xxx
+    const bullet = line.match(/^(?:[-*•]|\d+[.)])\s*(.+)/)
+    if (bullet && bullet[1].length > 3) {
+      actions.push(bullet[1])
+    }
+  }
+  return actions.slice(0, 4)  // 最多 4 条
 })
 
 function iconFor(a) {

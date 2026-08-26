@@ -1258,6 +1258,9 @@ async def chat_completions(req: ChatRequest, request: Request):
                 _log.info(f"[Stream] Turn boundary (delta=None), agent still running")
                 _safe_put({"type": "turn_boundary"})
 
+        _session_artifacts = []  # 会话级产物累积（供 delivery 事件）
+        _session_changes = []     # 会话级变更累积（供 delivery 事件）
+
         def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
             _log.info(f"[ToolEvent] {event_type}: {tool_name}")
             # 关联当前进行中的 todo 步骤，供前端把工具调用挂到对应步骤下
@@ -1341,6 +1344,7 @@ async def chat_completions(req: ChatRequest, request: Request):
                 _artifacts = [_a for _a in _artifacts if not (_a["path"] in _seen or _seen.add(_a["path"]))]
                 if _artifacts:
                     event["artifacts"] = _artifacts
+                    _session_artifacts.extend(_artifacts)
                 # P1: 文件变更审计 — write_file/patch 成功后推 file_change 事件
                 if tool_name in ("write_file", "patch") and not kwargs.get("is_error", False):
                     _file_path = args.get("path", "") if args else ""
@@ -1350,6 +1354,7 @@ async def chat_completions(req: ChatRequest, request: Request):
                             "action": tool_name,
                             "preview": preview or "",
                         }
+                        _session_changes.append({"path": _file_path, "action": tool_name})
                 if tool_name == "todo" and preview:
                     try:
                         import json as _json
@@ -1383,10 +1388,19 @@ async def chat_completions(req: ChatRequest, request: Request):
                                 _prev_todo_states[_tid] = _new_status
                         # P1-3: Sync todo states to session store
                         _update_session_plan(_session_id, todo_states=_prev_todo_states, plan_emitted=_plan_emitted)
-                        # 任务全部完成 → 发庆祝事件（additive，旧前端忽略）
+                        # 任务全部完成 → 发 delivery + 庆祝事件（additive，旧前端忽略）
                         _s = todo_data.get("summary", {})
                         if _s.get("total", 0) > 0 and _s.get("completed", 0) == _s.get("total") \
                                 and _s.get("in_progress", 0) == 0:
+                            # E1: 结构化 delivery 事件 — 后端携带产物/变更/统计
+                            _delivery = {
+                                "type": "delivery",
+                                "summary": _s,
+                                "artifacts": _session_artifacts[-20:],  # 最近20个产物
+                                "changes_count": len(_session_changes),
+                                "changes": _session_changes[-20:],     # 最近20个变更
+                            }
+                            _safe_put(_delivery)
                             _safe_put({"type": "task_complete", "summary": _s})
                     except Exception:
                         pass
