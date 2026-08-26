@@ -156,8 +156,22 @@ function toggleAllReasoning() {
   reasoningMsgs.value.forEach(m => { reasoningExpanded[m.id] = target })
 }
 
-// ── 推理内容高度切换：默认限高 12rem，点击「展开全部」到 32rem ──
-const reasoningFullExpand = reactive({})
+// ── 推理内容高度切换：默认限高 12rem，点击「查看完整推理」全展开 ──
+const REASONING_FULL_KEY = 'vermes_reasoning_full'
+function loadReasoningFull() {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(REASONING_FULL_KEY) : null
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+const reasoningFullExpand = reactive(loadReasoningFull())
+watch(reasoningFullExpand, () => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(REASONING_FULL_KEY, JSON.stringify(reasoningFullExpand))
+    }
+  } catch { /* 忽略持久化异常 */ }
+}, { deep: true })
 function toggleReasoningFull(msgId) {
   reasoningFullExpand[msgId] = !reasoningFullExpand[msgId]
 }
@@ -876,10 +890,10 @@ function streamElapsed(startTime) {
                 <span class="opacity-50">({{ msg.reasoning.length.toLocaleString() }} 字)</span>
                 <span v-if="msg.streaming" class="text-purple-400 animate-pulse">●</span>
               </summary>
-              <div :ref="el => reasoningContentRefs[msg.id] = el" class="mt-1.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800 text-sm text-gray-500 dark:text-gray-400 italic whitespace-pre-wrap overflow-y-auto reasoning-content" :class="reasoningFullExpand[msg.id] ? 'reasoning-content-full' : 'reasoning-content-collapsed'" style="white-space:pre-wrap;word-break:break-word;">{{ msg.reasoning }}</div>
-              <!-- 展开/收起更多按钮 -->
-              <button v-if="msg.reasoning && msg.reasoning.length > 400" @click="toggleReasoningFull(msg.id)" class="mt-1 text-[11px] text-purple-400 hover:text-purple-600 dark:hover:text-purple-300 transition ml-3">
-                {{ reasoningFullExpand[msg.id] ? '▴ 收起' : '▾ 展开全部' }}
+              <div :ref="el => reasoningContentRefs[msg.id] = el" class="mt-1.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800 text-sm text-gray-500 dark:text-gray-400 italic whitespace-pre-wrap overflow-y-auto reasoning-content" :class="reasoningFullExpand[msg.id] ? 'reasoning-content-full' : ['reasoning-content-collapsed', msg.reasoning.length > 400 ? 'has-more' : '']" style="white-space:pre-wrap;word-break:break-word;">{{ msg.reasoning }}</div>
+              <!-- 查看/收起完整推理按钮 -->
+              <button v-if="msg.reasoning && msg.reasoning.length > 400" @click="toggleReasoningFull(msg.id)" :aria-expanded="!!reasoningFullExpand[msg.id]" class="mt-1 text-[11px] text-purple-400 hover:text-purple-600 dark:hover:text-purple-300 transition ml-3">
+                {{ reasoningFullExpand[msg.id] ? '▴ 收起' : '▾ 查看完整推理' }}
               </button>
             </details>
           </div>
@@ -1393,23 +1407,23 @@ function streamElapsed(startTime) {
 }
 .reasoning-content {
   animation: reasoning-expand 0.25s ease-out;
+  transition: max-height 0.3s ease;
   position: relative;
 }
 /* 默认折叠态：限高 12rem，底部渐变遮罩提示还有更多 */
 .reasoning-content-collapsed {
   max-height: 12rem;
   overflow-y: auto;
+}
+/* 仅内容超限（>400字≈可能超 12rem）时才加渐变遮罩 */
+.reasoning-content-collapsed.has-more {
   mask-image: linear-gradient(to bottom, black calc(100% - 2.5rem), transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 2.5rem), transparent 100%);
 }
-/* 展开全部态：限高 32rem，无遮罩 */
+/* 展开全部态：真正全展开，无高度上限 */
 .reasoning-content-full {
-  max-height: 32rem;
-  overflow-y: auto;
-}
-/* 流式中固定更小高度，避免刷屏 */
-.reasoning-details[open] .reasoning-content:has(.reasoning-content-collapsed) {
-  max-height: 12rem;
+  max-height: none;
+  overflow-y: visible;
 }
 @keyframes reasoning-expand {
   from {
