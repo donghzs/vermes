@@ -106,6 +106,36 @@ const ungroupedErrors = computed(() =>
   ungroupedActs.value.filter(a => a.is_error && a.status === 'done')
 )
 const showUngroupedErrors = ref(false)
+
+// ── 本次结论区数据 ──
+const totalElapsed = computed(() => {
+  const items = chat.todoItems || []
+  let total = 0
+  for (const it of items) {
+    if (it.started_at && it.finished_at) {
+      total += (it.finished_at - it.started_at)
+    }
+  }
+  return total
+})
+const deliveryArtifacts = computed(() => {
+  const va = window.__vermesArtifacts
+  if (!va?.artifacts?.value) return []
+  const sid = chat.currentSessionId
+  return va.artifacts.value.filter(a => a.sessionId === sid)
+})
+const deliveryChangesCount = computed(() => {
+  const vc = window.__vermesChanges
+  if (!vc?.changes?.value) return 0
+  const sid = chat.currentSessionId
+  return vc.changes.value.filter(c => c.sessionId === sid).length
+})
+function openDeliveryArtifact(a) {
+  const va = window.__vermesArtifacts
+  if (va && typeof va.openArtifactById === 'function') {
+    va.openArtifactById(a.id)
+  }
+}
 </script>
 
 <template>
@@ -162,6 +192,31 @@ const showUngroupedErrors = ref(false)
     <div v-else-if="chat.todoInterrupted && stats.inProgress"
          class="mx-4 mt-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-sm flex items-center gap-2">
       ⏸ 已暂停，已完成的步骤保留如下。
+    </div>
+
+    <!-- 本次结论区：任务完成时展示统计 + 产物快捷入口 -->
+    <div v-if="chat.todoAllDone && stats.total"
+         class="mx-4 mt-2 px-3 py-2.5 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10">
+      <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">📊 本次结论</div>
+      <div class="flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300">
+        <span>✅ 完成 {{ stats.completed }}/{{ stats.total }} 步</span>
+        <span v-if="totalElapsed > 0">⏱ {{ fmtDuration(totalElapsed) }}</span>
+      </div>
+      <!-- 产物快捷入口 -->
+      <div v-if="deliveryArtifacts.length > 0" class="mt-2">
+        <div class="text-[11px] text-gray-400 mb-1">📦 交付产物 ({{ deliveryArtifacts.length }})</div>
+        <div class="flex flex-wrap gap-1">
+          <button v-for="a in deliveryArtifacts.slice(0, 5)" :key="a.id"
+            @click="openDeliveryArtifact(a)"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-700 hover:text-green-600 dark:hover:text-green-400 transition">
+            <span>📄</span><span class="truncate max-w-[120px]">{{ a.title || a.path?.split('/').pop() }}</span>
+          </button>
+        </div>
+      </div>
+      <!-- 变更计数 -->
+      <div v-if="deliveryChangesCount > 0" class="mt-1.5 text-[11px] text-gray-400">
+        🔧 {{ deliveryChangesCount }} 项文件变更
+      </div>
     </div>
 
     <!-- 未分组工具调用：聚合摘要（不逐条裸工具名刷屏；内部步骤 _thinking 已过滤） -->

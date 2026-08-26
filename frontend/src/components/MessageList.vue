@@ -4,6 +4,7 @@ import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES, setScrollTarg
 import { useArtifactPanel } from '../composables/useArtifactPanel'
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
+import DeliveryCard from './DeliveryCard.vue'
 import DOMPurify from 'dompurify'
 import { DOMPURIFY_BASE_CONFIG, enforceLinkSecurity } from '../utils/security'
 
@@ -482,6 +483,16 @@ function closeImagePreview() {
   previewImage.value = null
 }
 
+// ── 交付卡片：点击产物 → 右栏渲染 ──
+function openDeliveryArtifact(a) {
+  const va = window.__vermesArtifacts
+  if (va && typeof va.openArtifactById === 'function') {
+    va.openArtifactById(a.id)
+  } else {
+    openRightPanel('artifacts')
+  }
+}
+
 // ── 用户消息图片提取 ──
 function extractImages(content) {
   if (!content) return []
@@ -794,6 +805,21 @@ function streamElapsed(startTime) {
           {{ msg.content }}
         </div>
         <template v-else>
+        <!-- 交付卡片：任务完成时自动弹出 -->
+        <DeliveryCard
+          v-if="msg.type === 'delivery'"
+          :summary="msg.delivery?.summary || {}"
+          :artifacts="msg.delivery?.artifacts || []"
+          :changes="msg.delivery?.changesCount ? Array(msg.delivery.changesCount).fill({}) : []"
+          :summary-text="msg.delivery?.summaryText || ''"
+          :start-time="msg.delivery?.startTime || 0"
+          :end-time="msg.delivery?.endTime || 0"
+          @open-artifact="openDeliveryArtifact"
+          @show-all-artifacts="openRightPanel('artifacts')"
+          @show-all-changes="openRightPanel('artifacts'); setArtifactTab('changes')"
+          class="w-full"
+        />
+        <template v-else>
         <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" :class="msg.role === 'user' ? 'bg-indigo-500' : 'bg-green-500'">
           {{ msg.role === 'user' ? '我' : 'V' }}
         </div>
@@ -1013,6 +1039,7 @@ function streamElapsed(startTime) {
             </div>
           </div>
         </div>
+        </template><!-- end normal msg v-else -->
         </template>
       </div>
     </div><!-- end msg -->

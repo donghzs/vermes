@@ -198,6 +198,17 @@ function getMessageCount(sessionId) {
   return chat.getMessageCount(sessionId)
 }
 
+// ── 任务状态 chip：返回会话的 todo 总数 / 已完成数 ──
+function getTodoCount(sessionId) {
+  const items = chat.sessionTodoItems?.[sessionId]
+  return items ? items.length : 0
+}
+function getTodoCompleted(sessionId) {
+  const items = chat.sessionTodoItems?.[sessionId]
+  if (!items) return 0
+  return items.filter(i => i.status === 'completed' || i.status === 'cancelled').length
+}
+
 function getFirstMessagePreview(sessionId) {
   // 渠道会话：直接用 state.db 返回的 preview
   const ch = chat.channelSessions.find(s => s.id === sessionId)
@@ -460,6 +471,10 @@ async function handleImportFile(e) {
                 <span class="text-[10px] shrink-0">📌</span>
                 <span class="truncate font-medium flex-1">{{ s.name || '新 Agent' }}</span>
                 <span v-if="chat.sessionLoading[s.id]" class="shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" title="运行中"></span>
+                <!-- 任务状态 chip：进行中 📋 N/M / 完成 ✅ -->
+                <span v-if="getTodoCount(s.id) > 0" class="shrink-0 text-[10px] px-1 py-0.5 rounded font-medium" :class="chat.sessionTodoAllDone[s.id] ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30' : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'" :title="chat.sessionTodoAllDone[s.id] ? '任务已完成' : '任务进行中'">
+                  {{ chat.sessionTodoAllDone[s.id] ? '✅' : '📋' }} {{ chat.sessionTodoAllDone[s.id] ? '' : getTodoCompleted(s.id) + '/' + getTodoCount(s.id) }}
+                </span>
                 <span v-if="getMessageCount(s.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(s.id) }}</span>
               </div>
               <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(s.id)">{{ getFirstMessagePreview(s.id) }}</div>

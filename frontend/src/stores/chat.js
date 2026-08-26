@@ -1,11 +1,11 @@
 /**
- * chat.js — 核心聊天 Store（精简版）
+ * chat.js - 核心聊天 Store(精简版)
  *
- * 拆分出的子模块：
- *   chat-scroll.js   — 流式输出滚动调度
- *   chat-session.js  — 会话管理 + localStorage 三级清理
- *   chat-quota.js    — 配额检查 + 错误友好化
- *   chat-storage.js  — IndexedDB 图片 + localStorage 异步写入
+ * 拆分出的子模块:
+ *   chat-scroll.js   - 流式输出滚动调度
+ *   chat-session.js  - 会话管理 + localStorage 三级清理
+ *   chat-quota.js    - 配额检查 + 错误友好化
+ *   chat-storage.js  - IndexedDB 图片 + localStorage 异步写入
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
@@ -40,26 +40,26 @@ const MESSAGES_KEY_PREFIX = 'vermes-messages-'
 const DEFAULT_MODEL_ID = localStorage.getItem('vermes-default-model') || ''
 const DEFAULT_PROVIDER_ID = localStorage.getItem('vermes-default-provider') || ''
 
-// ── 最终交付物判定：只有这些类型的新产物才自动展开右侧详情面板 ──
+// ── 最终交付物判定:只有这些类型的新产物才自动展开右侧详情面板 ──
 // 避免 .txt 日志、临时文件、中间产物一产生就弹面板打扰用户。
 function isRenderableDeliverable(path) {
   if (!path) return false
   const ext = path.split('.').pop()?.toLowerCase()
-  // 可渲染的交付物格式：文档 + 图片 + 代码/文本
+  // 可渲染的交付物格式:文档 + 图片 + 代码/文本
   return [
     // 文档
     'md', 'html', 'htm', 'docx', 'xlsx', 'xls', 'csv', 'pdf',
     // 图片
     'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg',
-    // 代码/文本（常见 agent 产物）
+    // 代码/文本(常见 agent 产物)
     'py', 'js', 'ts', 'sh', 'json', 'yaml', 'yml', 'toml', 'ini', 'cfg',
     'txt', 'log', 'xml', 'sql', 'java', 'go', 'rs', 'c', 'cpp', 'h',
     'rb', 'php', 'vue', 'css', 'scss', 'less',
   ].includes(ext)
 }
 
-// ── 工具名 → 用户友好中文标签（任务清单聚合展示用）──
-// 内部名（以 _ 开头，如 _thinking）一律视为非工具，不展示。
+// ── 工具名 → 用户友好中文标签(任务清单聚合展示用)──
+// 内部名(以 _ 开头,如 _thinking)一律视为非工具,不展示。
 const TOOL_LABELS = {
   file: '📄 读写文件',
   read_file: '📄 读取文件',
@@ -81,7 +81,7 @@ const TOOL_LABELS = {
   shell: '⌨️ 执行命令',
 }
 function toolLabel(name) {
-  if (!name || name.startsWith('_')) return null  // 内部步骤（如 _thinking）不展示
+  if (!name || name.startsWith('_')) return null  // 内部步骤(如 _thinking)不展示
   return TOOL_LABELS[name] || `🔧 ${name}`
 }
 
@@ -89,14 +89,14 @@ function toolLabel(name) {
 const streamConnected = ref(false)
 
 /**
- * 切换会话时，判断某条仍在 streaming 的消息是否应保活其流式状态与刷新定时器。
+ * 切换会话时,判断某条仍在 streaming 的消息是否应保活其流式状态与刷新定时器。
  *
- * 背景：文本 delta 从 _streamBuffer 落到 am.content 的唯一通道是 _streamBufTimer；
- * reasoning（思考）则 direct append 不过定时器。若切换会话时清掉仍在后台流式输出
- * 的会话的定时器，模型进入长推理、暂不发文本的阶段时，文本会表现为「冻住/不流式」，
- * 但后端任务与思考照常推进——即「文本不流式但思考还在进行」的根因。
+ * 背景:文本 delta 从 _streamBuffer 落到 am.content 的唯一通道是 _streamBufTimer;
+ * reasoning(思考)则 direct append 不过定时器。若切换会话时清掉仍在后台流式输出
+ * 的会话的定时器,模型进入长推理、暂不发文本的阶段时,文本会表现为「冻住/不流式」,
+ * 但后端任务与思考照常推进--即「文本不流式但思考还在进行」的根因。
  *
- * 规则：仅当 transport 明确报告该会话已无活动流（真孤儿）时才允许清理定时器防泄漏；
+ * 规则:仅当 transport 明确报告该会话已无活动流(真孤儿)时才允许清理定时器防泄漏;
  * 否则保活。定时器/streaming 标记的真正清理由 onDone/onError 负责。
  */
 export function keepStreamAliveOnSwitch(msg, transport) {
@@ -111,10 +111,10 @@ export function keepStreamAliveOnSwitch(msg, transport) {
 
 /**
  * 把单个 plan 步骤状态变更合并进当前 todo 列表。
- * 纯函数：不触碰响应式状态，便于单测。
+ * 纯函数:不触碰响应式状态,便于单测。
  *
- * 返回更新后的【新数组】；当步骤 id 不在列表中(idx < 0)时返回 null，
- * 调用方据此跳过重赋值，避免「无变化的副本」白触发一次响应式更新（P2#1）。
+ * 返回更新后的【新数组】;当步骤 id 不在列表中(idx < 0)时返回 null,
+ * 调用方据此跳过重赋值,避免「无变化的副本」白触发一次响应式更新(P2#1)。
  */
 export function applyPlanStepUpdate(curItems, step) {
   if (!step || !Array.isArray(curItems)) return null
@@ -134,11 +134,11 @@ export function applyPlanStepUpdate(curItems, step) {
 
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref(loadFromStorage(SESSIONS_KEY))
-  // ── 步骤1：state.db 渠道会话（telegram/discord/cli 等，统一视图只读+续聊桥）──
-  // 与本地 web 会话（sessions）分离存放：channelSessions 永不写入 localStorage，
+  // ── 步骤1:state.db 渠道会话(telegram/discord/cli 等,统一视图只读+续聊桥)──
+  // 与本地 web 会话(sessions)分离存放:channelSessions 永不写入 localStorage,
   // 避免 persistSessions 把渠道会话持久化造成双源污染。
   const channelSessions = ref([])
-  // 渠道会话未读计数（session_id -> 条数），由 WS 实时同步推送维护
+  // 渠道会话未读计数(session_id -> 条数),由 WS 实时同步推送维护
   const channelUnread = ref({})
   const currentSessionId = ref(null)
   const messages = ref([])
@@ -161,8 +161,8 @@ export const useChatStore = defineStore('chat', () => {
   const reasoningEffort = ref(localStorage.getItem('vermes-reasoning-effort') || '') // '' = auto/default, 'low'/'medium'/'high'
   const searchEnabled = ref(localStorage.getItem('vermes-search-enabled') === 'true')
 
-  // ── 任务清单「进行中」展示粒度：summary（聚合摘要，默认）/ verbose（逐条裸列表）──
-  // 对标 Claude Code 的 Verbose/Summary 双档 verbosity：让用户自己控制看多细。
+  // ── 任务清单「进行中」展示粒度:summary(聚合摘要,默认)/ verbose(逐条裸列表)──
+  // 对标 Claude Code 的 Verbose/Summary 双档 verbosity:让用户自己控制看多细。
   const taskVerbosity = ref(localStorage.getItem('vermes-task-verbosity') || 'summary')
   function setTaskVerbosity(v) {
     if (v !== 'summary' && v !== 'verbose') return
@@ -171,18 +171,18 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // ── nextTurnSnapshot: 轮内模型一致性 ──
-  // 当会话正在 streaming 时，用户改模型不会打断当前轮，而是存到 pendingModel
-  // 当前轮 onDone 后，如果有 pendingModel 则自动切换
+  // 当会话正在 streaming 时,用户改模型不会打断当前轮,而是存到 pendingModel
+  // 当前轮 onDone 后,如果有 pendingModel 则自动切换
   const pendingModel = ref(null)    // { model, provider, sessionId } 或 null
 
   // ── appendModelChange: 模型变更记录到消息流 ──
-  // 切换模型时插入一条轻量 system 消息，记录"这段对话在这里换了模型"
+  // 切换模型时插入一条轻量 system 消息,记录"这段对话在这里换了模型"
   function appendModelChange(sessionId, fromModel, toModel) {
     if (!sessionId || fromModel === toModel) return
     messages.value.push({
       id: uid(),
       role: 'system',
-      content: `⚙️ 模型已切换：${fromModel || '(默认)'} → ${toModel}`,
+      content: `⚙️ 模型已切换:${fromModel || '(默认)'} → ${toModel}`,
       sessionId,
       timestamp: Date.now(),
       _isModelChange: true,
@@ -192,7 +192,7 @@ export const useChatStore = defineStore('chat', () => {
     persistMessages(sessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
   }
 
-  // nextTurnSnapshot: 应用 pending 模型切换（onDone/onError/stopGeneration 三处共用）
+  // nextTurnSnapshot: 应用 pending 模型切换(onDone/onError/stopGeneration 三处共用)
   function _applyPendingModel(sid) {
     if (!pendingModel.value || pendingModel.value.sessionId !== sid) return
     const pm = pendingModel.value
@@ -220,11 +220,11 @@ export const useChatStore = defineStore('chat', () => {
   const statusMessages = ref([])     // deprecated, use sessionStatusMessages
   const sessionStatusMessages = ref({})
   const sessionActiveStreamIds = ref({})
-  const evolutionEvents = ref([])    // 进化事件（成就/建议）
+  const evolutionEvents = ref([])    // 进化事件(成就/建议)
   const showAchievement = ref(false) // 成就弹窗
   const achievementData = ref(null)  // 当前展示的成就
-  // ── per-session 任务面板状态（方案 B：分片隔离）──
-  // 每个会话独立维护任务进度，避免并行会话串台
+  // ── per-session 任务面板状态(方案 B:分片隔离)──
+  // 每个会话独立维护任务进度,避免并行会话串台
   const sessionTodoItems = ref({})            // sessionId → todo[]
   const sessionTodoStepActivities = ref({})   // sessionId → { step_id: toolCall[] }
   const sessionTodoAllDone = ref({})          // sessionId → boolean
@@ -232,10 +232,10 @@ export const useChatStore = defineStore('chat', () => {
   const sessionShowTaskDrawer = ref({})       // sessionId → boolean
   const sessionShowTodoPanel = ref({})        // sessionId → boolean
 
-  // ── 全局 UI 状态（跨会话共享，不需要分片）──
+  // ── 全局 UI 状态(跨会话共享,不需要分片)──
   const pendingApproval = ref(null)  // 工具审批请求
 
-  // ── 当前会话的 computed 视图（自动跟随 currentSessionId）──
+  // ── 当前会话的 computed 视图(自动跟随 currentSessionId)──
   const todoItems = computed(() => sessionTodoItems.value[currentSessionId.value] || [])
   const todoStepActivities = computed(() => sessionTodoStepActivities.value[currentSessionId.value] || {})
   const todoAllDone = computed(() => !!sessionTodoAllDone.value[currentSessionId.value])
@@ -248,19 +248,19 @@ export const useChatStore = defineStore('chat', () => {
     get: () => !!sessionShowTodoPanel.value[currentSessionId.value],
     set: (v) => { sessionShowTodoPanel.value = { ...sessionShowTodoPanel.value, [currentSessionId.value]: v } },
   })
-  const currentStatusMessages = computed(() => 
+  const currentStatusMessages = computed(() =>
     sessionStatusMessages.value[currentSessionId.value] || []
   )
   const currentActiveStreamId = computed(() =>
     sessionActiveStreamIds.value[currentSessionId.value] || null
   )
-  // 当前进行中的 todo 步骤 id（工具事件未带 step_id 时回退用）
+  // 当前进行中的 todo 步骤 id(工具事件未带 step_id 时回退用)
   const currentTodoStepId = computed(() => {
     const items = sessionTodoItems.value[currentSessionId.value] || []
     const it = items.find(i => i.status === 'in_progress')
     return it ? it.id : null
   })
-  // 进行中步骤数（头部徽标）
+  // 进行中步骤数(头部徽标)
   const todoInProgressCount = computed(() => {
     const items = sessionTodoItems.value[currentSessionId.value] || []
     return items.filter(i => i.status === 'in_progress').length
@@ -278,14 +278,14 @@ export const useChatStore = defineStore('chat', () => {
       || channelSessions.value.find(s => s.id === currentSessionId.value)
   )
 
-  // ── 步骤1：渠道会话（state.db）加载与判定 ──
-  // 本地会话优先：同 id 同时存在于本地与 state.db（步骤2 之后 web 会话双写）时视为本地会话
+  // ── 步骤1:渠道会话(state.db)加载与判定 ──
+  // 本地会话优先:同 id 同时存在于本地与 state.db(步骤2 之后 web 会话双写)时视为本地会话
   function isChannelSession(id) {
     if (!id) return false
     if (sessions.value.find(s => s.id === id)) return false
     const cs = channelSessions.value.find(s => s.id === id)
     if (!cs) return false
-    // desktop source = 本地桌面会话（虽在 state.db 但非远程渠道）
+    // desktop source = 本地桌面会话(虽在 state.db 但非远程渠道)
     if (cs.source === 'desktop') return false
     return true
   }
@@ -308,12 +308,12 @@ export const useChatStore = defineStore('chat', () => {
           preview: r.preview || '',
         }))
     } catch (e) {
-      // 后端不可达时保留旧列表，不清空——避免后端短暂抖动导致渠道会话"消失"
-      logger.warn('[Vermes] 渠道会话列表刷新失败，保留旧列表:', e)
+      // 后端不可达时保留旧列表,不清空--避免后端短暂抖动导致渠道会话"消失"
+      logger.warn('[Vermes] 渠道会话列表刷新失败,保留旧列表:', e)
     }
   }
 
-  // state.db 消息行 → 前端消息格式（只呈现可读对话，跳过 tool/system 底噪）
+  // state.db 消息行 → 前端消息格式(只呈现可读对话,跳过 tool/system 底噪)
   function _mapChannelMessages(sessionId, rows) {
     const out = []
     for (const r of rows || []) {
@@ -346,7 +346,7 @@ export const useChatStore = defineStore('chat', () => {
     return msgs
   })
 
-  // ── 进化签到简报（每日首次启动时注入） ──
+  // ── 进化签到简报(每日首次启动时注入) ──
   async function injectEvolutionBriefing() {
     const today = new Date().toISOString().slice(0, 10)
     if (localStorage.getItem('vermes-evo-briefing-date') === today) return
@@ -357,14 +357,14 @@ export const useChatStore = defineStore('chat', () => {
       if (!s.active || (s.total_outcomes || 0) < 5) return
 
       const lines = ['📊 **进化简报**\n']
-      lines.push(`完成 **${s.total_outcomes}** 次工具调用，成功率 **${s.success_rate}%**`)
+      lines.push(`完成 **${s.total_outcomes}** 次工具调用,成功率 **${s.success_rate}%**`)
       if (s.current_emotion) lines.push(`😌 当前状态: ${s.current_emotion}`)
       if ((s.anti_patterns_count || 0) > 0) {
         lines.push(`⚠️ 已识别 **${s.anti_patterns_count}** 个反模式`)
       }
       if (s.recent_failures?.length) {
         const f = s.recent_failures[0]
-        lines.push(`最近遇到 ${f[0]} 的 ${f[1]} 问题，下次我会注意`)
+        lines.push(`最近遇到 ${f[0]} 的 ${f[1]} 问题,下次我会注意`)
       }
       if (s.top_domains?.length) {
         lines.push(`活跃领域: ${s.top_domains.slice(0, 3).map(d => d[0]).join('、')}`)
@@ -390,7 +390,7 @@ export const useChatStore = defineStore('chat', () => {
       // 恢复最后使用的会话
       if (sessions.value.length > 0) {
         let lastId = localStorage.getItem('vermes-last-session')
-        // 验证 lastId 是有效会话（排除 "undefined"/"null" 字符串和不存在的 id）
+        // 验证 lastId 是有效会话(排除 "undefined"/"null" 字符串和不存在的 id)
         if (!lastId || lastId === 'undefined' || lastId === 'null' || !sessions.value.find(s => s.id === lastId)) {
           lastId = sessions.value[0].id
         }
@@ -398,9 +398,9 @@ export const useChatStore = defineStore('chat', () => {
       } else {
         await createSession('新 Agent')
       }
-      // 注入进化简报（非阻塞：后台拉取，不挡首屏）
+      // 注入进化简报(非阻塞:后台拉取,不挡首屏)
       injectEvolutionBriefing().catch(() => {})
-      // 步骤1：加载 state.db 渠道会话（非阻塞，失败不影响本地会话）
+      // 步骤1:加载 state.db 渠道会话(非阻塞,失败不影响本地会话)
       loadChannelSessions().catch(() => {})
     } catch (e) {
       console.error('❌ init failed:', e)
@@ -419,7 +419,7 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── 会话管理 ──
   async function createSession(name, template) {
-    // 新会话继承当前选中的模型（用户可能先选好模型再建会话）
+    // 新会话继承当前选中的模型(用户可能先选好模型再建会话)
     const s = _createSession(sessions.value, messages.value, name, template, SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId.value)
     // 记录当前模型到会话对象
     s.model = currentModel.value
@@ -447,24 +447,24 @@ export const useChatStore = defineStore('chat', () => {
         oldSession.model = currentModel.value
         oldSession.provider = currentProvider.value
       }
-      // 关键修复：后台仍在流式输出的会话必须保持流式状态与刷新定时器！
-      // onMessage 仍会把文本 delta 写入 _streamBuffer，而 _streamBufTimer 是把
-      // _streamBuffer 落到 am.content 的唯一通道；reasoning（思考）则是 direct append
-      // 到 am.reasoning，不经过定时器。若这里清掉定时器，在「模型长推理、暂不发文本」
-      // 的阶段切走再切回，文本会表现为「不流式输出」，但后端任务 / 思考仍在跑——
+      // 关键修复:后台仍在流式输出的会话必须保持流式状态与刷新定时器!
+      // onMessage 仍会把文本 delta 写入 _streamBuffer,而 _streamBufTimer 是把
+      // _streamBuffer 落到 am.content 的唯一通道;reasoning(思考)则是 direct append
+      // 到 am.reasoning,不经过定时器。若这里清掉定时器,在「模型长推理、暂不发文本」
+      // 的阶段切走再切回,文本会表现为「不流式输出」,但后端任务 / 思考仍在跑--
       // 这正是切换/并行会话时原会话「文本不流式但思考还在进行」的根因。
-      // 定时器与 streaming 标记的真正清理由 onDone / onError 负责（已防内存泄漏）。
+      // 定时器与 streaming 标记的真正清理由 onDone / onError 负责(已防内存泄漏)。
       const _bgTransport = getChatTransport()
       messages.value.filter(m => m.streaming).forEach(m => {
-        // 仅把当前已缓冲文本落盘，避免切换瞬间的内容抖动；保留定时器与 streaming 标记
+        // 仅把当前已缓冲文本落盘,避免切换瞬间的内容抖动;保留定时器与 streaming 标记
         if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
         if (!keepStreamAliveOnSwitch(m, _bgTransport)) {
-          // 真孤儿流（后端已无该会话活动流）：安全清理定时器，防泄漏
+          // 真孤儿流(后端已无该会话活动流):安全清理定时器,防泄漏
           if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
           m.streaming = false
         }
       })
-      // 渠道会话（state.db）只读呈现，不回写 GUI 存储（避免双源复制）
+      // 渠道会话(state.db)只读呈现,不回写 GUI 存储(避免双源复制)
       if (!isChannelSession(oldSessionId)) {
         await persistMessages(oldSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
       }
@@ -485,14 +485,14 @@ export const useChatStore = defineStore('chat', () => {
       try { localStorage.setItem('vermes-current-provider', newSession.provider || '') } catch(e) {}
     }
 
-    // 渠道会话：启动消息轮询；本地会话：停止轮询
+    // 渠道会话:启动消息轮询;本地会话:停止轮询
     if (isChannelSession(id)) {
       startChannelMessagePolling(id)
     } else {
       stopChannelMessagePolling()
     }
-    // 加载新会话消息 — 合并到全局消息池（不替换）
-    // P0-2: 首屏冷启动(init)传 hydrate:false → 历史消息后台异步补，不阻塞首屏渲染
+    // 加载新会话消息 - 合并到全局消息池(不替换)
+    // P0-2: 首屏冷启动(init)传 hydrate:false → 历史消息后台异步补,不阻塞首屏渲染
     if (options.hydrate === false) {
       _hydrateMessages(id).catch(e => console.error('[Vermes] 后台补历史失败:', e))
     } else {
@@ -505,7 +505,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // 历史消息异步填充：与 switchSession 解耦，首屏可先渲染空壳再由它补历史
+  // 历史消息异步填充:与 switchSession 解耦,首屏可先渲染空壳再由它补历史
   async function _hydrateMessages(id) {
     // 渠道会话和 desktop 会话都从 state.db 加载消息
     const isRemoteChannel = isChannelSession(id)
@@ -513,8 +513,8 @@ export const useChatStore = defineStore('chat', () => {
     let loaded = (isRemoteChannel || isDesktopInStateDB)
       ? _mapChannelMessages(id, await loadChannelMessagesFromAPI(id))
       : await loadMessagesFromIDB(id)
-    // 修复：Electron 桌面端 IndexedDB 不持久化（每次启动都是空库）。
-    // 此前只走 IDB 路径导致历史会话「消息数 > 0 但主区空白」——本地会话必须 fallback 到 API JSON 持久化层。
+    // 修复:Electron 桌面端 IndexedDB 不持久化(每次启动都是空库)。
+    // 此前只走 IDB 路径导致历史会话「消息数 > 0 但主区空白」--本地会话必须 fallback 到 API JSON 持久化层。
     if ((!loaded || loaded.length === 0) && !isRemoteChannel && !isDesktopInStateDB) {
       const apiLoaded = await loadMessagesFromAPI(id)
       if (apiLoaded && apiLoaded.length > 0) loaded = apiLoaded
@@ -531,9 +531,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function deleteSession(id) {
-    // 带 token 删除 state.db 侧记录（修复此前裸 fetch 吃 401）；纯本地会话 404 无害
+    // 带 token 删除 state.db 侧记录(修复此前裸 fetch 吃 401);纯本地会话 404 无害
     await deleteChannelSessionFromAPI(id)
-    // 渠道会话：仅从 state.db + 内存列表移除，不走本地 IDB/localStorage 清理
+    // 渠道会话:仅从 state.db + 内存列表移除,不走本地 IDB/localStorage 清理
     if (isChannelSession(id)) {
       channelSessions.value = channelSessions.value.filter(s => s.id !== id)
       messages.value = messages.value.filter(m => m.sessionId !== id)
@@ -575,23 +575,23 @@ export const useChatStore = defineStore('chat', () => {
   async function exportSession(id, format) { return _exportSession(sessions.value, id, format) }
   async function importSession(jsonText) { return _importSession(sessions.value, messages.value, jsonText, SESSIONS_KEY, MESSAGES_KEY_PREFIX) }
 
-  // ── 步骤3：渠道会话续聊（send-from-desktop 桥） ──
-  // A.4.4: 后端离线时阻塞等待其恢复（A.4.1 看门狗自重启），最多 timeoutMs。
-  // 恢复即 resolve(true)；超时 resolve(false)。避免代发因瞬时离线而失败。
+  // ── 步骤3:渠道会话续聊(send-from-desktop 桥) ──
+  // A.4.4: 后端离线时阻塞等待其恢复(A.4.1 看门狗自重启),最多 timeoutMs。
+  // 恢复即 resolve(true);超时 resolve(false)。避免代发因瞬时离线而失败。
   function waitForBackendOnline(timeoutMs = 12000) {
     return new Promise((resolve) => {
       let conn = null
       try { conn = useBackendConnectionStore() } catch (_) {
-        // 降级意图：store 不可用时 conn 保持 null → 走下方轮询兜底，
-        // 不假设离线（Web 模式无 window.vermes 属预期路径，非异常）。
+        // 降级意图:store 不可用时 conn 保持 null → 走下方轮询兜底,
+        // 不假设离线(Web 模式无 window.vermes 属预期路径,非异常)。
       }
       if (conn && conn.online) return resolve(true)
       const start = Date.now()
       const iv = setInterval(() => {
         let up = false
         try { up = !!(conn && conn.online) } catch (_) {
-          // 降级意图：读取 online 失败则按「仍离线」处理，继续等下一 tick；
-          // 不抛出以免中断整个等待 Promise（conn 为 null 时此分支本就不触发）。
+          // 降级意图:读取 online 失败则按「仍离线」处理,继续等下一 tick;
+          // 不抛出以免中断整个等待 Promise(conn 为 null 时此分支本就不触发)。
         }
         if (up) { clearInterval(iv); resolve(true) }
         else if (Date.now() - start > timeoutMs) { clearInterval(iv); resolve(false) }
@@ -599,16 +599,16 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
-  // 写 relay 信号 → gateway 进程消费（agent 运行 + adapter.send 回原渠道 +
-  // user/assistant 落 state.db + 记忆摄入）→ 桌面轮询 state.db 显示回复。
-  // P1: 会话级代发串行锁 —— 同一会话并发代发（快速双击 / Enter+Click）只放行一次，
-  // 直接 return 既不重复推本地气泡也不重复 relay；后端 P3 幂等作互补兜底。
+  // 写 relay 信号 → gateway 进程消费(agent 运行 + adapter.send 回原渠道 +
+  // user/assistant 落 state.db + 记忆摄入)→ 桌面轮询 state.db 显示回复。
+  // P1: 会话级代发串行锁 -- 同一会话并发代发(快速双击 / Enter+Click)只放行一次,
+  // 直接 return 既不重复推本地气泡也不重复 relay;后端 P3 幂等作互补兜底。
   const _sendingChannelSessions = new Set()
   async function sendToChannelSession(sid, text) {
     if (_sendingChannelSessions.has(sid)) return
     _sendingChannelSessions.add(sid)
     try {
-      // 本地立即显示用户消息（gateway 落库的同文本 user 行轮询时去重跳过）
+      // 本地立即显示用户消息(gateway 落库的同文本 user 行轮询时去重跳过)
       messages.value.push({
         id: uid(), role: 'user', content: text,
         sessionId: sid, timestamp: Date.now(), _fromDesktopRelay: true,
@@ -616,11 +616,11 @@ export const useChatStore = defineStore('chat', () => {
       scheduleScroll()
       sessionLoading.value[sid] = true
       try {
-        // A.4.4: 后端已知离线 → 等其恢复（A.4.1 看门狗自重启）后自动重发，
-        // 不弹"代发失败"红字（#DMG 实测"渠道代发失败: TypeError: Failed to fetch"根因）。
+        // A.4.4: 后端已知离线 → 等其恢复(A.4.1 看门狗自重启)后自动重发,
+        // 不弹"代发失败"红字(#DMG 实测"渠道代发失败: TypeError: Failed to fetch"根因)。
         let res = await sendFromDesktopAPI(sid, text)
         if (!res.ok && res.pending) {
-          showToast('后端重连中，正在自动重试发送…', 'info')
+          showToast('后端重连中,正在自动重试发送...', 'info')
           const recovered = await waitForBackendOnline(12000)
           if (recovered) res = await sendFromDesktopAPI(sid, text)
         }
@@ -637,17 +637,17 @@ export const useChatStore = defineStore('chat', () => {
           messages.value.filter(m => m.sessionId === sid && m._fromStateDB).map(m => m.id)
         )
         let gotAssistant = false
-        // P3 幂等命中且已是终态（sent/failed/expired）：跳过轮询 2s 空等，直接处理。
-        // 否则 failed 态要白等一整轮才在轮询里被发现；sent 态立即拉取，极端竞态交常规轮询兜底。
+        // P3 幂等命中且已是终态(sent/failed/expired):跳过轮询 2s 空等,直接处理。
+        // 否则 failed 态要白等一整轮才在轮询里被发现;sent 态立即拉取,极端竞态交常规轮询兜底。
         if (res.terminal) {
           if (res.state === 'failed') {
             messages.value.push({
               id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
-              content: `❌ 渠道代发失败: ${res.error || res.detail || 'relay 已失败'}（gateway 未运行或该渠道未连接）`,
+              content: `❌ 渠道代发失败: ${res.error || res.detail || 'relay 已失败'}(gateway 未运行或该渠道未连接)`,
             })
             return
           }
-          // sent/expired：立即拉一次消息（不空等 2s），极端竞态再交常规轮询兜底
+          // sent/expired:立即拉一次消息(不空等 2s),极端竞态再交常规轮询兜底
           const _mappedNow = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
           for (const m of _mappedNow) {
             if (knownIds.has(m.id)) continue
@@ -658,14 +658,14 @@ export const useChatStore = defineStore('chat', () => {
           }
           if (gotAssistant) scheduleScroll()
         }
-        const deadline = Date.now() + 300000  // 5 分钟超时护栏（与后端 ttl 对齐）
+        const deadline = Date.now() + 300000  // 5 分钟超时护栏(与后端 ttl 对齐)
         while (Date.now() < deadline && !gotAssistant) {
           await new Promise(r => setTimeout(r, 2000))
           const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
           for (const m of mapped) {
             if (knownIds.has(m.id)) continue
             knownIds.add(m.id)
-            // gateway 落库的 user 行若与刚发文本相同则跳过（本地已显示）
+            // gateway 落库的 user 行若与刚发文本相同则跳过(本地已显示)
             if (m.role === 'user' && m.content.trim() === text.trim()) continue
             messages.value.push(m)
             if (m.role === 'assistant' && m.timestamp >= sentAtMs - 10000) gotAssistant = true
@@ -675,7 +675,7 @@ export const useChatStore = defineStore('chat', () => {
           if (relay && relay.state === 'failed') {
             messages.value.push({
               id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
-              content: `❌ 渠道代发失败: ${relay.error || '未知错误'}（gateway 未运行或该渠道未连接）`,
+              content: `❌ 渠道代发失败: ${relay.error || '未知错误'}(gateway 未运行或该渠道未连接)`,
             })
             return
           }
@@ -683,7 +683,7 @@ export const useChatStore = defineStore('chat', () => {
         if (!gotAssistant) {
           messages.value.push({
             id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
-            content: '⏱ 渠道回复超时（5 分钟）。消息可能仍在处理，稍后重新打开本会话查看。',
+            content: '⏱ 渠道回复超时(5 分钟)。消息可能仍在处理,稍后重新打开本会话查看。',
           })
         }
       } finally {
@@ -694,7 +694,7 @@ export const useChatStore = defineStore('chat', () => {
       }
   }
 
-  // ── 渠道会话消息轮询：当前打开渠道会话时，定时拉取新消息 ──
+  // ── 渠道会话消息轮询:当前打开渠道会话时,定时拉取新消息 ──
   let _channelMsgPollTimer = null
   function startChannelMessagePolling(sid) {
     stopChannelMessagePolling()
@@ -702,8 +702,8 @@ export const useChatStore = defineStore('chat', () => {
       try {
         const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
         const existingIds = new Set(messages.value.filter(m => m.sessionId === sid).map(m => m.id))
-        // 本地 _fromDesktopRelay 的 user 消息与 gateway 落库的 user 行 id 不同但内容相同，
-        // 需按文本去重避免轮询 push 第二条相同用户消息（双发根因）。
+        // 本地 _fromDesktopRelay 的 user 消息与 gateway 落库的 user 行 id 不同但内容相同,
+        // 需按文本去重避免轮询 push 第二条相同用户消息(双发根因)。
         const localUserTexts = new Set(
           messages.value
             .filter(m => m.sessionId === sid && m.role === 'user' && m._fromDesktopRelay)
@@ -725,7 +725,7 @@ export const useChatStore = defineStore('chat', () => {
     if (_channelMsgPollTimer) { clearInterval(_channelMsgPollTimer); _channelMsgPollTimer = null }
   }
 
-  // ── 渠道会话消息即时刷新（WS 推送触发，替代轮询等待）──
+  // ── 渠道会话消息即时刷新(WS 推送触发,替代轮询等待)──
   async function refreshChannelMessages(sid) {
     if (!sid) return
     try {
@@ -748,9 +748,9 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) { /* ignore */ }
   }
 
-  // ── 全渠道实时同步：独立 WS 连接（与聊天传输层解耦）──
-  // 后端每 2s 轮询 state.db 渠道会话，有新消息即广播轻量通知；
-  // 本连接仅维护未读角标，不触发任何模型调用。
+  // ── 全渠道实时同步:独立 WS 连接(与聊天传输层解耦)──
+  // 后端每 2s 轮询 state.db 渠道会话,有新消息即广播轻量通知;
+  // 本连接仅维护未读角标,不触发任何模型调用。
   let _syncWs = null
   let _syncRetry = 0
   const _SYNC_MAX_RETRIES = 20
@@ -763,7 +763,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function markChannelRead(sid) {
     if (!sid) return
-    // 本地即时清零，避免角标闪烁
+    // 本地即时清零,避免角标闪烁
     channelUnread.value = { ...channelUnread.value, [sid]: 0 }
     if (_syncWs && _syncWs.readyState === WebSocket.OPEN) {
       try { _syncWs.send(JSON.stringify({ type: 'mark_read', session_id: sid })) } catch (e) {}
@@ -796,9 +796,9 @@ export const useChatStore = defineStore('chat', () => {
               refreshChannelMessages(sid)
               markChannelRead(sid)
             }
-            // 新渠道会话首次出现：即时拉取会话列表，把入口发现延迟
-            // 从 ≤5s 轮询降到 ≤0.5s（对齐事件即时广播会话列表变更）。
-            // 幂等：loadChannelSessions 整体替换列表；in-flight 守卫防并发重复拉取。
+            // 新渠道会话首次出现:即时拉取会话列表,把入口发现延迟
+            // 从 ≤5s 轮询降到 ≤0.5s(对齐事件即时广播会话列表变更)。
+            // 幂等:loadChannelSessions 整体替换列表;in-flight 守卫防并发重复拉取。
             if (!channelSessions.value.some(s => s.id === sid) && !_sessionListRefreshing) {
               _sessionListRefreshing = true
               loadChannelSessions()
@@ -827,19 +827,19 @@ export const useChatStore = defineStore('chat', () => {
     const providerId = _provider_ || currentProvider.value
 
     if ((!content || !content.trim()) && (!attachments || attachments.length === 0)) return
-    // CLI 体验: 如果 agent 正在工作，先停止再发新消息（等效 CLI 中直接输入）
+    // CLI 体验: 如果 agent 正在工作,先停止再发新消息(等效 CLI 中直接输入)
     if (currentSessionId.value && sessionLoading.value[currentSessionId.value]) {
       stopGeneration()
     }
     if (!currentSessionId.value) {
-      showToast('会话未初始化，请刷新页面重试', 'error')
+      showToast('会话未初始化,请刷新页面重试', 'error')
       return
     }
 
-    // 步骤3：渠道会话续聊 → send-from-desktop 桥（gateway 消费，绝不走 chat.py）
+    // 步骤3:渠道会话续聊 → send-from-desktop 桥(gateway 消费,绝不走 chat.py)
     if (isChannelSession(currentSessionId.value)) {
       if (attachments && attachments.length > 0) {
-        showToast('渠道代发暂不支持附件，仅发送文本', 'info')
+        showToast('渠道代发暂不支持附件,仅发送文本', 'info')
       }
       if (content && content.trim()) {
         await sendToChannelSession(currentSessionId.value, content.trim())
@@ -849,12 +849,12 @@ export const useChatStore = defineStore('chat', () => {
 
     const msgId = uid()
 
-    // 处理 attachments — 将 File 对象转为 base64
+    // 处理 attachments - 将 File 对象转为 base64
     let processedAttachments = []
     if (attachments && attachments.length > 0) {
       processedAttachments = await Promise.all(
         attachments.map(async (a) => {
-          // 如果有 file 对象，用 fileToBase64 转换
+          // 如果有 file 对象,用 fileToBase64 转换
           if (a.file instanceof File) {
             const b64 = await fileToBase64(a.file)
             return {
@@ -886,7 +886,7 @@ export const useChatStore = defineStore('chat', () => {
         attachments: processedAttachments
       })
       await persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
-      // 自动生成会话标题（首次消息时）
+      // 自动生成会话标题(首次消息时)
       const _session = sessions.value.find(s => s.id === currentSessionId.value)
       if (_session && (!_session.name || _session.name === '新会话' || _session.name === 'New Session')) {
         const autoTitle = userContent.trim().slice(0, 30) + (userContent.trim().length > 30 ? '...' : '')
@@ -900,7 +900,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // P4: per-session loading
     if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = true
-    // 重置当前会话的实时任务面板状态（per-session 分片）
+    // 重置当前会话的实时任务面板状态(per-session 分片)
     const _sid_reset = currentSessionId.value
     sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [_sid_reset]: {} }
     sessionTodoAllDone.value = { ...sessionTodoAllDone.value, [_sid_reset]: false }
@@ -943,7 +943,7 @@ export const useChatStore = defineStore('chat', () => {
           if (chunk?.type === 'text' || chunk?.type === 'delta') {
             am._streamBuffer += chunk.content || ''
           } else if (chunk?.type === 'turn_boundary') {
-            // 工具输出与 Agent 回复之间的分隔：刷新 buffer
+            // 工具输出与 Agent 回复之间的分隔:刷新 buffer
             // 分隔符由 _fire_stream_delta 的 _stream_needs_break 机制处理
             if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
           } else if (chunk?.type === 'tool') {
@@ -955,7 +955,7 @@ export const useChatStore = defineStore('chat', () => {
           scheduleScroll()
         },
         onStatus: (event) => {
-          // 只保留最新一条，避免推理步数淹没聊天
+          // 只保留最新一条,避免推理步数淹没聊天
           if (event.type === 'stream_start') return // 跳过 stream_start
           const arr = sessionStatusMessages.value[sendSessionId] || []
           if (arr.length > 0 && arr[arr.length - 1].type === 'thinking') {
@@ -971,7 +971,7 @@ export const useChatStore = defineStore('chat', () => {
           scheduleScroll()
         },
         onReasoning: (text) => {
-          // 推理链内容 delta：累加到 assistant message 的 reasoning 字段
+          // 推理链内容 delta:累加到 assistant message 的 reasoning 字段
           const am = messages.value.find(m => m.id === aid)
           if (!am) return
           if (!am.reasoning) am.reasoning = ''
@@ -979,7 +979,7 @@ export const useChatStore = defineStore('chat', () => {
           scheduleScroll()
         },
         onEvolution: (event) => {
-          // 进化事件：成就解锁或策略建议
+          // 进化事件:成就解锁或策略建议
           const evoEvent = {
             id: uid(),
             message: event.message || '',
@@ -988,18 +988,18 @@ export const useChatStore = defineStore('chat', () => {
             timestamp: Date.now(),
           }
           evolutionEvents.value.push(evoEvent)
-          // 限制进化事件列表最多 5 条，避免堆积
+          // 限制进化事件列表最多 5 条,避免堆积
           if (evolutionEvents.value.length > 5) {
             evolutionEvents.value = evolutionEvents.value.slice(-5)
           }
-          // 如果是成就解锁（消息含🏆），弹出通知（5秒自动消失）
+          // 如果是成就解锁(消息含🏆),弹出通知(5秒自动消失)
           if (evoEvent.message.includes('🏆')) {
             achievementData.value = evoEvent
             showAchievement.value = true
-            // 5 秒后自动消失，避免长期遮挡
+            // 5 秒后自动消失,避免长期遮挡
             setTimeout(() => { showAchievement.value = false }, 5000)
           }
-          // 非成就的进化事件 8 秒后从列表移除（保持界面干净）
+          // 非成就的进化事件 8 秒后从列表移除(保持界面干净)
           if (!evoEvent.message.includes('🏆')) {
             setTimeout(() => {
               const idx = evolutionEvents.value.findIndex(e => e.id === evoEvent.id)
@@ -1009,7 +1009,7 @@ export const useChatStore = defineStore('chat', () => {
           scheduleScroll()
         },
         onApprovalRequest: (approvalData) => {
-          // 工具审批请求：弹出审批对话框
+          // 工具审批请求:弹出审批对话框
           pendingApproval.value = {
             ...approvalData,
             session_key: approvalData.session_key || ('gui-' + (sendSessionId || 'default')),
@@ -1017,8 +1017,8 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onTodoUpdate: (data) => {
-          // P0-2: merge 而非 replace，避免 plan 与 todo 竞态覆盖
-          // 方案 B: per-session 分片写入，用 sendSessionId 定位
+          // P0-2: merge 而非 replace,避免 plan 与 todo 竞态覆盖
+          // 方案 B: per-session 分片写入,用 sendSessionId 定位
           if (!data.todos || !Array.isArray(data.todos)) return
           const cur = sessionTodoItems.value[sendSessionId] || []
           const existingMap = new Map(cur.map(i => [i.id, i]))
@@ -1053,13 +1053,13 @@ export const useChatStore = defineStore('chat', () => {
           scheduleScroll()
         },
         onToolCall: (data) => {
-          // 工具调用实时事件：挂到当前进行中的步骤下，形成"步骤 → 子任务"树
+          // 工具调用实时事件:挂到当前进行中的步骤下,形成"步骤 → 子任务"树
           // 方案 B: per-session 分片写入
           const items = sessionTodoItems.value[sendSessionId] || []
           const fallbackStep = items.find(i => i.status === 'in_progress')
           let sid = data.step_id || (fallbackStep ? fallbackStep.id : null)
-          // 无 todo 步骤的多步任务（用户已拍板不做任务制状态机，流式步骤
-          // 基于 tool 事件流实现）：工具事件不丢弃，挂到「未分组活动」区，
+          // 无 todo 步骤的多步任务(用户已拍板不做任务制状态机,流式步骤
+          // 基于 tool 事件流实现):工具事件不丢弃,挂到「未分组活动」区,
           // 由 TaskDrawer 的「未分组工具调用」区块渲染。
           if (!sid) sid = '__ungrouped__'
           const curActs = sessionTodoStepActivities.value[sendSessionId] || {}
@@ -1078,14 +1078,14 @@ export const useChatStore = defineStore('chat', () => {
               duration: data.duration || 0,
               is_error: data.is_error || false,
               preview: data.result_preview || '',
-              // 把产物附加到该 tool（MessageList 会基于此渲染「产物文件」可点击 chip）
+              // 把产物附加到该 tool(MessageList 会基于此渲染「产物文件」可点击 chip)
               artifacts: data.artifacts && data.artifacts.length > 0
                 ? data.artifacts.map(a => ({ path: a.path, title: a.title || (a.path ? a.path.split('/').pop() : '产物'), mime: a.mime || '', source: a.source || data.name || 'tool' }))
                 : [],
             }
             if (idx >= 0) list[idx] = done
             else list.push(done)
-            // 阶段 3: 自动提取产物到 ArtifactPanel；只有"最终交付物"才自动展开右栏
+            // 阶段 3: 自动提取产物到 ArtifactPanel;只有"最终交付物"才自动展开右栏
             if (data.artifacts && data.artifacts.length > 0) {
               const va = window.__vermesArtifacts
               const { autoOpen, openPanel, setTab } = useArtifactPanel()
@@ -1101,10 +1101,10 @@ export const useChatStore = defineStore('chat', () => {
                   if (id) addedIds.push(id)
                 })
               }
-              // 仅当产物含可渲染交付物(md/html/docx/xlsx/csv/pdf/图片)时才自动展开面板并直接渲染内容，
+              // 仅当产物含可渲染交付物(md/html/docx/xlsx/csv/pdf/图片)时才自动展开面板并直接渲染内容,
               // 避免 .txt 日志、临时文件、中间产物频繁打扰。
               if (autoOpen.value && data.artifacts.some(a => isRenderableDeliverable(a.path))) {
-                // 直接打开首个可渲染交付物的文件标签渲染，而不是只跳到产物列表
+                // 直接打开首个可渲染交付物的文件标签渲染,而不是只跳到产物列表
                 const firstIdx = data.artifacts.findIndex(a => isRenderableDeliverable(a.path))
                 const firstId = addedIds[firstIdx]
                 const opened = firstId && va && typeof va.openArtifactById === 'function'
@@ -1113,7 +1113,7 @@ export const useChatStore = defineStore('chat', () => {
                 if (!opened) { openPanel('artifacts'); setTab('artifacts') }
               }
             }
-            // P1: 文件变更审计 — write_file/patch 推送到变更 tab
+            // P1: 文件变更审计 - write_file/patch 推送到变更 tab
             if (data.file_change) {
               const vc = window.__vermesChanges
               if (vc && typeof vc.addChange === 'function') {
@@ -1134,7 +1134,7 @@ export const useChatStore = defineStore('chat', () => {
           sessionTodoAllDone.value = { ...sessionTodoAllDone.value, [sendSessionId]: true }
           // 兜底：一轮结束时，未分组活动里可能残留 running（tool_start 后无 tool_end，
           // 如流式中断/连接断开/agent 在工具进行中结束回复）。强制归零，避免任务清单
-          // 永久挂“正在 XX…”。
+          // 永久挂"正在 XX…"。
           const curActs = sessionTodoStepActivities.value[sendSessionId]
           if (curActs && curActs['__ungrouped__']) {
             const list = curActs['__ungrouped__'].map(a =>
@@ -1144,6 +1144,44 @@ export const useChatStore = defineStore('chat', () => {
               ...sessionTodoStepActivities.value,
               [sendSessionId]: { ...curActs, '__ungrouped__': list },
             }
+          }
+          // ── 交付意识 M1：接住 summary + push DeliveryCard 消息 ──
+          const summary = data?.summary || {}
+          const curItems = sessionTodoItems.value[sendSessionId] || []
+          const startTime = curItems[0]?.started_at ? curItems[0].started_at * 1000 : 0
+          // 取最后一条 assistant 消息作为结论摘要（前 200 字）
+          const sessionMsgs = messages.value.filter(m => m.sessionId === sendSessionId && m.role === 'assistant')
+          const lastAssistant = sessionMsgs[sessionMsgs.length - 1]
+          const summaryText = lastAssistant?.content
+            ? lastAssistant.content.replace(/<[^>]*>/g, '').slice(0, 200)
+            : ''
+          // 从全局产物/变更列表取当前会话的数据
+          const va = window.__vermesArtifacts
+          const vc = window.__vermesChanges
+          const sessionArtifacts = (va?.artifacts?.value || []).filter(a => a.sessionId === sendSessionId)
+          const sessionChanges = (vc?.changes?.value || []).filter(c => c.sessionId === sendSessionId)
+          // push delivery 消息（仅当有产物/变更/摘要时才发）
+          if (sessionArtifacts.length > 0 || sessionChanges.length > 0 || summaryText) {
+            // 去重：同会话已有的 delivery 消息先移除
+            const existIdx = messages.value.findIndex(m => m.sessionId === sendSessionId && m.type === 'delivery')
+            if (existIdx >= 0) messages.value.splice(existIdx, 1)
+            messages.value.push({
+              id: uid(),
+              type: 'delivery',
+              role: 'assistant',
+              sessionId: sendSessionId,
+              timestamp: Date.now(),
+              delivery: {
+                summary,
+                artifacts: sessionArtifacts.map(a => ({ id: a.id, path: a.path, title: a.title || a.path?.split('/').pop() })),
+                changesCount: sessionChanges.length,
+                summaryText,
+                startTime,
+                endTime: Date.now(),
+              },
+            })
+            persistMessages(sendSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+            scheduleScroll()
           }
         },
         onPlanCreated: (plan) => {
@@ -1182,8 +1220,8 @@ export const useChatStore = defineStore('chat', () => {
           if (subtype === 'step_update' || subtype === 'step_started' || subtype === 'step_completed') {
             const step = data.step
             if (!step) return
-            // P2#1：步骤不存在(idx<0)时 applyPlanStepUpdate 返回 null，
-            // 跳过「无变化副本」的重赋值，避免白触发一次响应式更新。
+            // P2#1:步骤不存在(idx<0)时 applyPlanStepUpdate 返回 null,
+            // 跳过「无变化副本」的重赋值,避免白触发一次响应式更新。
             const newItems = applyPlanStepUpdate(curItems, step)
             if (newItems !== null) {
               sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: newItems }
@@ -1263,14 +1301,14 @@ export const useChatStore = defineStore('chat', () => {
             if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
             am.streaming = false; am._currentStep = null; am._streamStartTime = null; am._toolCount = null
             am.checkpoint = null  // clear checkpoint on done
-            // 检测空回复：后端流结束但没有任何内容输出
+            // 检测空回复:后端流结束但没有任何内容输出
             if (!am.content || !am.content.trim()) {
-              // 带上后端最后一条 warn（空响应重试/切换服务商/最终失败原因），
+              // 带上后端最后一条 warn(空响应重试/切换服务商/最终失败原因),
               // 让用户看到真实原因而非笼统提示
               const _warns = (sessionStatusMessages.value[sendSessionId] || []).filter(s => s.type === 'warn')
               const _lastWarn = _warns.length ? _warns[_warns.length - 1].message : ''
-              am.content = '⚠️ 回复为空，可能是后端处理异常。'
-                + (_lastWarn ? `\n\n后端状态：${_lastWarn}` : '')
+              am.content = '⚠️ 回复为空,可能是后端处理异常。'
+                + (_lastWarn ? `\n\n后端状态:${_lastWarn}` : '')
                 + '\n\n请重试或更换模型。'
               am._isEmpty = true
             }
@@ -1282,11 +1320,11 @@ export const useChatStore = defineStore('chat', () => {
           if (usageInfo && usageInfo.total_tokens > 0) {
             lastTokenUsage.value = usageInfo
           }
-          // 持久化助手回复（防止崩溃丢失）
+          // 持久化助手回复(防止崩溃丢失)
           if (sendSessionId) {
             persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
           }
-          // nextTurnSnapshot: 当前轮结束后，应用 pending 模型切换
+          // nextTurnSnapshot: 当前轮结束后,应用 pending 模型切换
           _applyPendingModel(sendSessionId)
         },
         onError: (error) => {
@@ -1295,17 +1333,17 @@ export const useChatStore = defineStore('chat', () => {
             const errMsgs = sessionStatusMessages.value[sendSessionId] || []
             errMsgs.push({ id: uid(), type: 'info', message: error.message || '重连中', timestamp: Date.now() })
             sessionStatusMessages.value[sendSessionId] = errMsgs
-            return  // Don't mark as error — caller may retry
+            return  // Don't mark as error - caller may retry
           }
           const am = messages.value.find(m => m.id === aid)
           if (am) {
             if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
             am.streaming = false
-            // 如果已有部分内容，追加错误信息；否则用友好提示替代空白
+            // 如果已有部分内容,追加错误信息;否则用友好提示替代空白
             if (am.content && am.content.trim()) {
               am.content += `\n\n\`\`\`error\n${error}\n\`\`\``
             } else {
-              am.content = `⚠️ 回复失败：${error}\n\n请重试或更换模型。`
+              am.content = `⚠️ 回复失败:${error}\n\n请重试或更换模型。`
               am._isEmpty = true
             }
             am._streamStartTime = null
@@ -1315,7 +1353,7 @@ export const useChatStore = defineStore('chat', () => {
           const errMsgs = sessionStatusMessages.value[sendSessionId] || []
           errMsgs.push({ id: uid(), type: 'error', message: error, timestamp: Date.now() })
           sessionStatusMessages.value[sendSessionId] = errMsgs
-          // 持久化（即使出错也保存已收到的部分内容）
+          // 持久化(即使出错也保存已收到的部分内容)
           if (sendSessionId) {
             persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
           }
@@ -1341,7 +1379,7 @@ export const useChatStore = defineStore('chat', () => {
         am.streaming = false
         // 网络异常导致空回复时显示友好提示
         if (!am.content || !am.content.trim()) {
-          am.content = `⚠️ 发送失败：${e.message || '未知错误'}\n\n请重试或更换模型。`
+          am.content = `⚠️ 发送失败:${e.message || '未知错误'}\n\n请重试或更换模型。`
           am._isEmpty = true
         }
       }
@@ -1374,7 +1412,7 @@ export const useChatStore = defineStore('chat', () => {
       sessionStatusMessages.value[sid] = []
     }
     evolutionEvents.value = []  // 清空进化事件
-    // 保留 todoItems：小白用户停止后仍需看到「已完成 / 进行中」进度，不清空
+    // 保留 todoItems:小白用户停止后仍需看到「已完成 / 进行中」进度,不清空
     if (sid) {
       sessionTodoInterrupted.value = { ...sessionTodoInterrupted.value, [sid]: true }
     }
@@ -1460,7 +1498,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingApproval.value = null
   }
 
-  // 3.4：统一设置当前模型（响应式 + 持久化），替代 Settings 的 localStorage + window 事件中转
+  // 3.4:统一设置当前模型(响应式 + 持久化),替代 Settings 的 localStorage + window 事件中转
   function setCurrentModel(modelId, provider) {
     currentModel.value = modelId
     currentProvider.value = provider
@@ -1482,6 +1520,7 @@ export const useChatStore = defineStore('chat', () => {
     todoItems, showTodoPanel,
     showTaskDrawer, todoStepActivities, todoAllDone, todoInterrupted,
     currentTodoStepId, todoInProgressCount, toggleTaskDrawer,
+    sessionTodoItems, sessionTodoAllDone,
     taskVerbosity, setTaskVerbosity,
     pendingApproval, resolveApproval,
     pendingModel, appendModelChange,
