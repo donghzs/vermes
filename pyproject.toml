@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vermes"
-version = "2.4.3"
+version = "2.4.4"
 description = "Vermes — 开箱即用的 AI Agent，融合官方 Vermes 引擎 + QClaw 技能生态"
 readme = "README.md"
 requires-python = ">=3.11"

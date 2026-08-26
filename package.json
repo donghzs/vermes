@@ -23,7 +23,7 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "version": "2.4.3",
+  "version": "2.4.4",
   "build": {
     "appId": "top.vbit.vermes",
     "productName": "Vermes",
