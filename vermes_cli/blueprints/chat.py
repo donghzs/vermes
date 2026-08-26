@@ -1390,7 +1390,9 @@ async def chat_completions(req: ChatRequest, request: Request):
                         _update_session_plan(_session_id, todo_states=_prev_todo_states, plan_emitted=_plan_emitted)
                         # 任务全部完成 → 发 delivery + 庆祝事件（additive，旧前端忽略）
                         _s = todo_data.get("summary", {})
-                        if _s.get("total", 0) > 0 and _s.get("completed", 0) == _s.get("total") \
+                        # F1 修复：含 cancelled 步骤也算完成（终态 = completed + cancelled == total）
+                        _done = _s.get("completed", 0) + _s.get("cancelled", 0)
+                        if _s.get("total", 0) > 0 and _done == _s.get("total") \
                                 and _s.get("in_progress", 0) == 0:
                             # E1: 结构化 delivery 事件 — 后端携带产物/变更/统计
                             _delivery = {

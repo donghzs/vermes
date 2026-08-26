@@ -1203,9 +1203,10 @@ export const useChatStore = defineStore('chat', () => {
           const vc = window.__vermesChanges
           const sessionArtifacts = (va?.artifacts?.value || []).filter(a => a.sessionId === sendSessionId)
           const sessionChanges = (vc?.changes?.value || []).filter(c => c.sessionId === sendSessionId)
-          // push delivery 消息（仅当有产物/变更/摘要时才发）
-          if (sessionArtifacts.length > 0 || sessionChanges.length > 0 || summaryText) {
-            // 去重：同会话已有的 delivery 消息先移除
+          // F2 修复：onDelivery 是 delivery 消息的唯一 owner（后端结构化数据更可靠）。
+          // onTaskComplete 只在 onDelivery 未触发（旧后端兼容）时补一条 delivery 消息。
+          const hasDelivery = messages.value.some(m => m.sessionId === sendSessionId && m.type === 'delivery')
+          if (!hasDelivery && (sessionArtifacts.length > 0 || sessionChanges.length > 0 || summaryText)) {
             const existIdx = messages.value.findIndex(m => m.sessionId === sendSessionId && m.type === 'delivery')
             if (existIdx >= 0) messages.value.splice(existIdx, 1)
             messages.value.push({
@@ -1218,6 +1219,7 @@ export const useChatStore = defineStore('chat', () => {
                 summary,
                 artifacts: sessionArtifacts.map(a => ({ id: a.id, path: a.path, title: a.title || a.path?.split('/').pop() })),
                 changesCount: sessionChanges.length,
+                changes: sessionChanges.map(c => ({ path: c.path, action: c.action })),
                 summaryText,
                 startTime,
                 endTime: Date.now(),
