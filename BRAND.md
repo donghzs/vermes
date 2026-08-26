@@ -2,7 +2,7 @@
 
 Vermes = V(速度) + ermes(Vermes 引擎)
 
-基于官方 Vermes Agent (Nous Research) 引擎，融合 QClaw 技能生态，
+基于官方 Vermes Agent 引擎，融合 QClaw 技能生态，
 打造面向中文用户的开箱即用 AI Agent 分发版。
 
 ## 品牌色

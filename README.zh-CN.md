@@ -177,4 +177,4 @@ python -m pytest tests/ -q
 
 MIT — 详见 [LICENSE](LICENSE)。
 
-由 [Nous Research](https://donghzs.com) 构建。
+开源 MIT 协议，由社区驱动。

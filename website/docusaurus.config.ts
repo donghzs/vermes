@@ -162,11 +162,11 @@ const config: Config = {
           title: 'More',
           items: [
             { label: 'GitHub', href: 'https://github.com/donghzs/vermes' },
-            { label: 'Nous Research', href: 'https://donghzs.com' },
+            { label: 'Vermes', href: 'https://vbit.top' },
           ],
         },
       ],
-      copyright: `Built by <a href="https://donghzs.com">Nous Research</a> · MIT License · ${new Date().getFullYear()}`,
+      copyright: `Built by <a href="https://vbit.top">Vermes</a> · MIT License · ${new Date().getFullYear()}`,
     },
     prism: {
       theme: prismThemes.github,

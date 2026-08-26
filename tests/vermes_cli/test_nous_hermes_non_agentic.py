@@ -5,7 +5,7 @@ Prior to this check, the warning fired on any model whose name contained
 local Modelfiles such as ``Vermes-brain:qwen3-14b-ctx16k`` — a tool-capable
 Qwen3 wrapper that happens to live under the "Vermes" tag namespace.
 
-``is_nous_vermes_non_agentic`` should only match the actual Nous Research
+``is_nous_vermes_non_agentic`` should only match the actual
 Vermes-3 / Vermes-4 chat family.
 """
 

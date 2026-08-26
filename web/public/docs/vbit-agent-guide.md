@@ -1,6 +1,6 @@
 # vbit Agent 使用文档
 
-> 基于 Nous Research 官方 Vermes Agent 构建，由 vbit.top 定制部署。
+> 基于 Vermes Agent 构建，由 vbit.top 定制部署。
 > 版本：v1.0 | 更新：2026-05-20
 
 ---

@@ -13,7 +13,7 @@ body:
         - If you're in a chat session, you can use `/debug` instead — it does the same thing
         - Try `vermes update` to get the latest version
         - Check the [README troubleshooting section](https://github.com/donghzs/vermes#troubleshooting)
-        - For general questions, consider the [Nous Research Discord](https://discord.gg/donghzs) for faster help
+        - For general questions, consider the [Vermes Discord](https://discord.gg/donghzs) for faster help
 
   - type: textarea
     id: description

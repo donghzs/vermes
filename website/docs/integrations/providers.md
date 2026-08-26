@@ -164,7 +164,7 @@ If you're trying to switch to a provider you haven't set up yet (e.g. you only h
 
 ### Nous Portal
 
-Subscription-based access to Vermes-4 models (`Vermes-4-70B`, `Vermes-4.3-36B`, `Vermes-4-405B`) via Nous Research's portal. Run `vermes model`, pick **Nous Portal**, sign in through the browser — Vermes stores a long-lived refresh token at `~/.vermes/auth.json`.
+Subscription-based access to Vermes-4 models (`Vermes-4-70B`, `Vermes-4.3-36B`, `Vermes-4-405B`) via Vermes Portal. Run `vermes model`, pick **Nous Portal**, sign in through the browser — Vermes stores a long-lived refresh token at `~/.vermes/auth.json`.
 
 The refresh token is also shared across profiles via a shared token store, so logging in on one profile carries over to the others.
 

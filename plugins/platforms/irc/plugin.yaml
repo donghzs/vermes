@@ -7,7 +7,7 @@ description: >
   Connects to an IRC server and relays messages between an IRC channel
   (or DMs) and the Vermes agent.  No external dependencies — uses
   Python's stdlib asyncio for the IRC protocol.
-author: Nous Research
+author: Vermes
 # ``requires_env`` entries are surfaced in ``vermes config`` UI via the
 # platform-plugin env var injector in ``vermes_cli/config.py``.
 requires_env:

@@ -17,7 +17,7 @@ Quick answers and fixes for the most common questions and issues.
 Vermes Agent works with any OpenAI-compatible API. Supported providers include:
 
 - **[OpenRouter](https://openrouter.ai/)** — access hundreds of models through one API key (recommended for flexibility)
-- **Nous Portal** — Nous Research's own inference endpoint
+- **Nous Portal** — Vermes Portal inference endpoint
 - **OpenAI** — GPT-5.4, GPT-5-codex, GPT-4.1, GPT-4o, etc.
 - **Anthropic** — Claude models (direct API, OAuth via `vermes login anthropic`, OpenRouter, or any compatible proxy)
 - **Google** — Gemini models (direct API via `gemini` provider, the `google-gemini-cli` OAuth provider, OpenRouter, or compatible proxy)
@@ -856,5 +856,5 @@ If using OpenRouter, make sure your API key has credits. A 400 from OpenRouter o
 If your issue isn't covered here:
 
 1. **Search existing issues:** [GitHub Issues](https://github.com/donghzs/vermes/issues)
-2. **Ask the community:** [Nous Research Discord](https://discord.gg/donghzs)
+2. **Ask the community:** [Vermes Discord](https://discord.gg/donghzs)
 3. **File a bug report:** Include your OS, Python version (`python3 --version`), Vermes version (`vermes --version`), and the full error message

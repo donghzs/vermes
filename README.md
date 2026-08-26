@@ -53,7 +53,7 @@ vermes skills install weather  # 安装技能
 
 ## 🙏 致谢
 
-- [Vermes Agent](https://github.com/donghzs/vermes) by Nous Research — 核心引擎
+- [Vermes Agent](https://github.com/donghzs/vermes) — 核心引擎
 - [QClaw / Skillhub](https://skillhub.cn) — 技能生态
 
 ## 📄 许可

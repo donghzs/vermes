@@ -51,13 +51,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _vermes_MODEL_WARNING = (
-    "Nous Research Vermes 3 & 4 models are NOT agentic and are not designed "
+    "Vermes 3 & 4 models are NOT agentic and are not designed "
     "for use with Vermes. They lack the tool-calling capabilities "
     "required for agent workflows. Consider using an agentic model instead "
     "(Claude, GPT, Gemini, DeepSeek, etc.)."
 )
 
-# Match only the real Nous Research Vermes 3 / Vermes 4 chat families.
+# Match only the real Vermes 3 / Vermes 4 chat families.
 # The previous substring check (`"Vermes" in name.lower()`) false-positived on
 # unrelated local Modelfiles like ``Vermes-brain:qwen3-14b-ctx16k`` that just
 # happen to carry "Vermes" in their tag but are fully tool-capable.

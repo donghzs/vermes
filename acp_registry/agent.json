@@ -2,10 +2,10 @@
   "id": "vermes-agent",
   "name": "Vermes Agent",
   "version": "0.14.0",
-  "description": "Self-improving open-source AI agent by Nous Research with ACP editor integration, persistent memory, skills, and rich tool support.",
+  "description": "Self-improving open-source AI agent with ACP editor integration, persistent memory, skills, and rich tool support.",
   "repository": "https://github.com/donghzs/vermes",
   "website": "https://donghzs.github.io/vermes/docs/user-guide/features/acp",
-  "authors": ["Nous Research"],
+  "authors": ["Vermes"],
   "license": "MIT",
   "distribution": {
     "uvx": {

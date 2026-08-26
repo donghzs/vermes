@@ -19,7 +19,7 @@ Add a first-class `gemini` provider that authenticates via Google OAuth, using t
 - **PKCE:** S256 code challenge, 32-byte random verifier
 
 ## Client ID
-- Need to register a "Desktop app" OAuth client on a Nous Research GCP project
+- Need to register a "Desktop app" OAuth client on a Vermes GCP project
 - Ship client_id + client_secret in code (Google considers installed app secrets non-confidential)
 - Alternatively: accept user-provided client_id via env vars as override
 
@@ -71,7 +71,7 @@ Add a first-class `gemini` provider that authenticates via Google OAuth, using t
 ~400 lines new code, ~150 lines modifications, ~100 lines tests, ~50 lines docs = ~700 lines total
 
 ## Prerequisites
-- Nous Research GCP project with Desktop OAuth client registered
+- Vermes GCP project with Desktop OAuth client registered
 - OR: accept user-provided client_id via VERMES_GEMINI_CLIENT_ID env var
 
 ## Reference implementations
