@@ -1692,7 +1692,6 @@ class FeishuAdapter(BasePlatformAdapter):
         await self._cancel_pending_tasks(self._pending_text_batch_tasks)
         await self._cancel_pending_tasks(self._pending_media_batch_tasks)
         self._reset_batch_buffers()
-        self._disable_websocket_auto_reconnect()
         await self._stop_webhook_server()
 
         ws_thread_loop = self._ws_thread_loop
@@ -4409,7 +4408,6 @@ class FeishuAdapter(BasePlatformAdapter):
                 return
             except Exception as exc:
                 self._running = False
-                self._disable_websocket_auto_reconnect()
                 self._ws_future = None
                 await self._stop_webhook_server()
                 if attempt >= _FEISHU_CONNECT_ATTEMPTS - 1:

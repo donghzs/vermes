@@ -501,6 +501,108 @@ async function testApi() {
     apiTesting.value = false
   }
 }
+
+// ── ⏰ 定时任务 ──
+const cronJobs = ref([])
+const cronLoading = ref(false)
+const cronCreating = ref(false)
+const cronMsg = ref(null)
+const newCron = ref({ name: '', schedule: '', prompt: '', deliver: '' })
+
+async function fetchCronJobs() {
+  cronLoading.value = true
+  try {
+    const r = await fetch('/api/cron/jobs?profile=all')
+    if (r.ok) cronJobs.value = await r.json()
+  } catch (e) {
+    console.error('[CronJobs]', e)
+  } finally {
+    cronLoading.value = false
+  }
+}
+
+function fmtCronTime(iso) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return iso
+  }
+}
+
+function cronStateBadge(state) {
+  if (state === 'scheduled') return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+  if (state === 'paused') return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+  if (state === 'completed') return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+  return 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+}
+
+async function createCronJob() {
+  cronMsg.value = null
+  if (!newCron.value.schedule.trim() || !newCron.value.prompt.trim()) {
+    cronMsg.value = { ok: false, error: '调度表达式和 Prompt 必填' }
+    return
+  }
+  cronCreating.value = true
+  try {
+    const r = await fetch('/api/cron/jobs?profile=default', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newCron.value.name.trim() || undefined,
+        schedule: newCron.value.schedule.trim(),
+        prompt: newCron.value.prompt.trim(),
+        deliver: newCron.value.deliver.trim() || undefined
+      })
+    })
+    const data = await r.json()
+    if (!r.ok) {
+      cronMsg.value = { ok: false, error: (data.detail || JSON.stringify(data)).slice(0, 200) }
+    } else {
+      cronMsg.value = { ok: true, error: '✅ 已创建' }
+      newCron.value = { name: '', schedule: '', prompt: '', deliver: '' }
+      fetchCronJobs()
+    }
+  } catch (e) {
+    cronMsg.value = { ok: false, error: e.message }
+  } finally {
+    cronCreating.value = false
+  }
+}
+
+async function cronJobAction(job, action) {
+  cronMsg.value = null
+  try {
+    const r = await fetch(`/api/cron/jobs/${encodeURIComponent(job.id)}/${action}`, { method: 'POST' })
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}))
+      cronMsg.value = { ok: false, error: (data.detail || action + ' 失败').slice(0, 200) }
+      return
+    }
+    cronMsg.value = { ok: true, error: `✅ 已${action === 'pause' ? '暂停' : action === 'resume' ? '恢复' : '触发'}` }
+    fetchCronJobs()
+  } catch (e) {
+    cronMsg.value = { ok: false, error: e.message }
+  }
+}
+
+async function deleteCronJob(job) {
+  if (!confirm(`删除定时任务「${job.name}」？`)) return
+  cronMsg.value = null
+  try {
+    const r = await fetch(`/api/cron/jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE' })
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}))
+      cronMsg.value = { ok: false, error: (data.detail || '删除失败').slice(0, 200) }
+      return
+    }
+    cronMsg.value = { ok: true, error: '✅ 已删除' }
+    fetchCronJobs()
+  } catch (e) {
+    cronMsg.value = { ok: false, error: e.message }
+  }
+}
+
 const providerSearch = ref('')
 const saved = ref(false)
 const maxTokensInput = ref(null)
@@ -1359,6 +1461,8 @@ onMounted(async () => {
   fetch('/api/storage/usage').then(r => r.ok && r.json().then(d => storageUsage.value = d)).catch(() => {})
   // 加载缓存性能指标
   fetchCacheMetrics()
+  // 加载定时任务列表
+  fetchCronJobs()
   // 加载知识库文档列表
   fetchRagDocs()
   // 加载统一服务 API 凭证表单（services 分区）
@@ -2526,6 +2630,64 @@ async function toggleChannel(platformKey) {
             </div>
           </div>
           <div v-else class="text-xs text-gray-400 dark:text-gray-500 text-center">加载中...</div>
+        </div>
+
+        <!-- ⏰ 定时任务 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 text-center flex items-center justify-center gap-2">
+            ⏰ 定时任务
+            <button @click="fetchCronJobs" :disabled="cronLoading" class="text-xs text-green-600 hover:text-green-700 disabled:opacity-50">
+              {{ cronLoading ? '⌛' : '🔄' }}
+            </button>
+          </h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 text-center">让 Agent 按计划自动执行任务（支持 cron 表达式 / 间隔 / 一次性）</p>
+
+          <!-- 新建表单 -->
+          <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 space-y-2">
+            <div class="flex gap-2">
+              <input v-model="newCron.name" placeholder="任务名称（可选）" class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500" />
+              <input v-model="newCron.schedule" placeholder="调度表达式：0 9 * * * / every 30m / 30m" class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500" />
+            </div>
+            <input v-model="newCron.prompt" placeholder="Prompt：要 Agent 执行的任务，如 生成每日简报并总结" class="w-full px-2.5 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500" />
+            <div class="flex gap-2">
+              <input v-model="newCron.deliver" placeholder="投递目标（可选）：origin / local / telegram" class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500" />
+              <button @click="createCronJob" :disabled="cronCreating" class="px-4 py-1.5 rounded-lg text-xs bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50 shrink-0">
+                {{ cronCreating ? '⏳ 创建中...' : '➕ 创建' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="cronMsg" class="text-xs rounded-lg p-3" :class="cronMsg.ok ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'">
+            {{ cronMsg.ok ? cronMsg.error : '❌ ' + cronMsg.error }}
+          </div>
+
+          <!-- 任务列表 -->
+          <div v-if="cronJobs.length" class="space-y-2">
+            <div v-for="job in cronJobs" :key="job.id" class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{{ job.name }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" :class="cronStateBadge(job.state)">{{ job.state || (job.enabled ? 'scheduled' : 'paused') }}</span>
+                </div>
+                <div class="flex gap-1 shrink-0">
+                  <button v-if="job.state !== 'paused' && job.enabled !== false" @click="cronJobAction(job, 'pause')" class="px-2 py-1 rounded text-[10px] bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition">⏸</button>
+                  <button v-else @click="cronJobAction(job, 'resume')" class="px-2 py-1 rounded text-[10px] bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition">▶️</button>
+                  <button @click="cronJobAction(job, 'trigger')" title="立即运行" class="px-2 py-1 rounded text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition">⚡</button>
+                  <button @click="deleteCronJob(job)" title="删除" class="px-2 py-1 rounded text-[10px] bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition">🗑</button>
+                </div>
+              </div>
+              <div class="text-[11px] text-gray-500 dark:text-gray-400 font-mono truncate">{{ job.schedule_display }}</div>
+              <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400 dark:text-gray-500">
+                <span>下次：{{ fmtCronTime(job.next_run_at) }}</span>
+                <span>上次：{{ fmtCronTime(job.last_run_at) }}</span>
+                <span v-if="job.last_status">状态：{{ job.last_status }}</span>
+                <span v-if="job.deliver">投递：{{ job.deliver }}</span>
+                <span v-if="job.profile && !job.is_default_profile">配置：{{ job.profile }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="!cronLoading" class="text-xs text-gray-400 dark:text-gray-500 text-center py-2">暂无定时任务，创建第一个吧 🚀</div>
+          <div v-else class="text-xs text-gray-400 dark:text-gray-500 text-center py-2">加载中...</div>
         </div>
 
         <!-- 🔌 API 接入 -->
