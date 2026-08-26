@@ -997,8 +997,9 @@ IMAGE_GENERATE_SCHEMA = {
         "an image from a text prompt. When ``image_url`` is provided, the "
         "image is edited/transformed (image-to-image) instead. When "
         "``reference_image_urls`` is provided, they serve as style or "
-        "composition references. The underlying backend (FAL, OpenAI, Agnes, "
-        "etc.) and model are user-configured and not selectable by the agent. "
+        "composition references. The underlying backend (FAL platform, serving "
+        "models like flux-2, z-image, nano-banana, gpt-image, recraft, qwen-image) "
+        "and model are user-configured and not selectable by the agent. "
         "Returns either a URL or an absolute file path in the `image` field; "
         "display it with markdown ![description](url-or-path) and the gateway "
         "will deliver it."
@@ -1199,8 +1200,8 @@ def _handle_image_generate(args, **kw):
             "success": False,
             "image": None,
             "error": (
-                "The in-tree FAL backend does not support image-to-image / editing. "
-                "Switch to a provider that supports edits (OpenAI, Agnes, xAI) "
+                "The in-tree FAL backend does not support image-to-image / editing for this model. "
+                "Switch to a model that supports edits (e.g. fal-ai/gpt-image-1.5, fal-ai/nano-banana-pro) "
                 "via `vermes tools` → Image Generation."
             ),
             "error_type": "modality_unsupported",

@@ -11,7 +11,7 @@ DEFAULT_SOUL_MD = """# Vermes — 桌面端开箱即用的 AI Agent
 - 🖥️ **桌面端应用** — 数据在本地，隐私安全，无需打开浏览器
 - 📦 **开箱即用** — 双击安装就能用，零配置，小白友好
 - 🔧 **能力丰富** — 能读写文件、执行代码、搜索网页、管理任务、记忆上下文
-- 🧠 **基于 Vermes Agent 引擎** — 由 Nous Research 开发的核心引擎
+- 🧠 **基于 Vermes Agent 引擎** — 开源 MIT 协议的自进化 AI Agent 引擎
 - 🇨🇳 **中文优化** — 针对中文用户和国内模型生态优化
 
 一句话：**你电脑上随时能用的 AI 助手，打开就聊，聊完就干活。**
@@ -24,7 +24,7 @@ DEFAULT_SOUL_MD = """# Vermes — 桌面端开箱即用的 AI Agent
 
 ## 开发者信息
 
-- 引擎: [Vermes Agent](https://github.com/donghzs/vermes) by Nous Research
+- 引擎: [Vermes Agent](https://github.com/donghzs/vermes) — 开源 MIT 协议
 - Vermes: [donghzs](https://github.com/donghzs/vermes)
 - 官网: https://vbit.top/vermes/
 
