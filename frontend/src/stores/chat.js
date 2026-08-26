@@ -1095,7 +1095,7 @@ export const useChatStore = defineStore('chat', () => {
                     title: a.title || a.path.split('/').pop(),
                     mime: '',
                     source: a.source || data.name || 'tool',
-                  })
+                  }, sendSessionId)
                 })
               }
               // 仅当产物含可渲染交付物(md/html/docx/xlsx/csv/pdf/图片)时才自动展开面板，
@@ -1115,7 +1115,7 @@ export const useChatStore = defineStore('chat', () => {
                   path: fc.path,
                   action: fc.action,
                   diff: fc.preview || '',
-                })
+                }, sendSessionId)
               }
             }
           }
@@ -1150,6 +1150,8 @@ export const useChatStore = defineStore('chat', () => {
             started_at: s.started_at ? s.started_at : null,
             finished_at: s.finished_at ? s.finished_at : null,
             description: s.description || '',
+            deliverable: s.deliverable || '',
+            done_when: s.done_when || '',
           }))
           // 标记第一个步骤为进行中
           if (items.length > 0) {

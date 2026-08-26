@@ -12,15 +12,31 @@ const { open, width, autoOpen, activeTabId, fileTabs, openPanel, closePanel, tog
 const artifacts = ref([])
 const changes = ref([])
 
-function addArtifact(item) {
+// ── 产物 / 变更 数据（per-session 隔离：内存只放当前会话，其余会话只落各自 localStorage）──
+const _curSession = () => (window.__vermes_current_session_id || 'default')
+
+function addArtifact(item, sid) {
+  const cur = sid || _curSession()
   const id = item.id || (item.path + ':' + Date.now())
-  if (artifacts.value.find(a => a.id === id)) return
-  artifacts.value.push({
+  const rec = {
     id, title: item.title || item.path?.split('/').pop() || '未知文件',
     path: item.path, mime: item.mime || '', ts: Date.now(), source: 'agent',
     _content: item.content || null,
-  })
-  _persistArtifacts()
+  }
+  if (cur === _curSession()) {
+    // 当前会话：更新内存 + 持久化（现有行为）
+    if (artifacts.value.find(a => a.id === id)) return
+    artifacts.value.push(rec)
+    _persistArtifacts()
+  } else {
+    // 非当前会话（迟到事件）：只落该会话自己的存储，绝不污染当前视图
+    try {
+      const key = 'vermes-artifacts-' + cur
+      const raw = localStorage.getItem(key)
+      const list = raw ? JSON.parse(raw) : []
+      if (!list.find(a => a.id === id)) { list.push(rec); localStorage.setItem(key, JSON.stringify(list)) }
+    } catch (e) {}
+  }
 }
 function removeArtifact(id) {
   const idx = artifacts.value.findIndex(a => a.id === id)
@@ -42,11 +58,22 @@ function clearArtifacts() { artifacts.value = []; _persistArtifacts() }
 
 const isDesktop = !!(window.vermes?.saveAs)
 
-function addChange(item) {
+function addChange(item, sid) {
+  const cur = sid || _curSession()
   const id = item.id || (item.path + ':' + Date.now())
-  if (changes.value.find(c => c.id === id)) return
-  changes.value.push({ id, path: item.path, action: item.action || 'write', ts: Date.now(), source: 'agent' })
-  _persistChanges()
+  const rec = { id, path: item.path, action: item.action || 'write', ts: Date.now(), source: 'agent' }
+  if (cur === _curSession()) {
+    if (changes.value.find(c => c.id === id)) return
+    changes.value.push(rec)
+    _persistChanges()
+  } else {
+    try {
+      const key = 'vermes-artifacts-' + cur + '-changes'
+      const raw = localStorage.getItem(key)
+      const list = raw ? JSON.parse(raw) : []
+      if (!list.find(c => c.id === id)) { list.push(rec); localStorage.setItem(key, JSON.stringify(list)) }
+    } catch (e) {}
+  }
 }
 function removeChange(id) {
   const i = changes.value.findIndex(c => c.id === id)
@@ -478,6 +505,17 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
                       <span class="text-sm text-gray-800 dark:text-gray-100 break-words" :class="{ 'line-through': item.status === 'completed' || item.status === 'cancelled' }">{{ item.content }}</span>
                       <span class="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full" :class="{ 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300': item.status === 'in_progress', 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300': item.status === 'completed', 'bg-gray-100 text-gray-400': item.status === 'pending', 'bg-red-100 text-red-500 dark:bg-red-900/30 dark:text-red-300': item.status === 'cancelled' }">{{ STATUS_TEXT[item.status] || item.status }}<template v-if="item.status === 'in_progress' && stepElapsed(item) != null"> · {{ fmtDuration(stepElapsed(item)) }}</template><template v-else-if="item.status === 'completed' && stepElapsed(item) != null"> · {{ fmtDuration(stepElapsed(item)) }}</template></span>
                     </div>
+                    <!-- 每步量化信息：交付物 + 完成标准 -->
+                    <div v-if="item.deliverable || item.done_when" class="mt-1.5 pl-1 space-y-0.5 border-l-2 border-gray-200 dark:border-gray-700">
+                      <div v-if="item.deliverable" class="flex items-start gap-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        <span class="flex-shrink-0 mt-px">📦</span>
+                        <span class="break-words">{{ item.deliverable }}</span>
+                      </div>
+                      <div v-if="item.done_when" class="flex items-start gap-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        <span class="flex-shrink-0 mt-px">✅</span>
+                        <span class="break-words">{{ item.done_when }}</span>
+                      </div>
+                    </div>
                     <!-- 详细档：展开步骤下的工具调用 -->
                     <div v-if="chat.taskVerbosity === 'verbose' && stepActivities(item.id).length" class="mt-2 space-y-1">
                       <div v-for="act in stepActivities(item.id)" :key="act.id" class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 pl-1"><span v-if="act.status === 'running'" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span><span v-else-if="act.is_error" class="flex-shrink-0">⚠️</span><span v-else class="flex-shrink-0 text-green-500">✓</span><span class="truncate">{{ chat.toolLabel(act.name) || act.name }}</span></div>
@@ -487,23 +525,25 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               </div>
             </div>
 
-            <!-- 没有规划任务时 -->
-            <div v-else class="flex flex-col items-center justify-center text-center py-10 px-4">
-              <div class="text-3xl mb-2">🧭</div>
-              <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">当 AI 规划并执行多步骤交付任务时，进度会自动显示在这里</p>
-              <!-- 详细档：显示未分组工具调用作为补充信息 -->
-              <div v-if="chat.taskVerbosity === 'verbose' && ungroupedActs.length" class="mt-4 w-full text-left">
-                <div class="text-[11px] text-gray-400 mb-1.5 px-1">⚙️ 工具调用记录</div>
-                <div class="space-y-1 px-1">
-                  <div v-for="act in ungroupedActs" :key="act.id" class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-                    <span v-if="act.status === 'running' && !_isStaleRunning(act)" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
-                    <span v-else-if="act.is_error && act.status === 'done'" class="flex-shrink-0">⚠️</span>
-                    <span v-else-if="act.status === 'done'" class="flex-shrink-0 text-green-500">✓</span>
-                    <span v-else class="flex-shrink-0 text-gray-400">•</span>
-                    <span class="truncate">{{ chat.toolLabel(act.name) || act.name }}</span>
-                  </div>
+            <!-- 没有规划任务时：诚实显示「执行进度」（操作轨迹），绝不伪装成计划 -->
+            <template v-if="ungroupedActs.length">
+              <div class="mb-2 flex items-center gap-1.5 text-[11px] text-gray-400">
+                <span>⚙️ 执行进度</span>
+                <span class="tabular-nums">{{ ungroupedActs.length }} 次操作</span>
+              </div>
+              <div class="space-y-1">
+                <div v-for="act in ungroupedActs" :key="act.id" class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 pl-1">
+                  <span v-if="act.status === 'running' && !_isStaleRunning(act)" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
+                  <span v-else-if="act.is_error && act.status === 'done'" class="flex-shrink-0">⚠️</span>
+                  <span v-else-if="act.status === 'done'" class="flex-shrink-0 text-green-500">✓</span>
+                  <span v-else class="flex-shrink-0 text-gray-400">•</span>
+                  <span class="truncate">{{ chat.toolLabel(act.name) || act.name }}</span>
                 </div>
               </div>
+            </template>
+            <div v-else class="flex flex-col items-center justify-center text-center py-10 px-4">
+              <div class="text-3xl mb-2">🧭</div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">执行任务时的操作进度会实时显示在这里</p>
             </div>
           </div>
 

@@ -446,6 +446,30 @@ function formatSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+// ── 产物文件图标映射（WorkBuddy 风格）──
+function fileIconFor(path) {
+  if (!path) return '📄'
+  const ext = path.split('.').pop()?.toLowerCase()
+  const map = {
+    md: '📝', html: '🌐', htm: '🌐', json: '📋', csv: '📊', xlsx: '📊', xls: '📊',
+    png: '🖼️', jpg: '🖼️', jpeg: '🖼️', gif: '🖼️', webp: '🖼️', svg: '🖼️',
+    pdf: '📑', docx: '📄', doc: '📄', pptx: '📽️', ppt: '📽️',
+    py: '🐍', js: '📜', ts: '📜', go: '🐹', rs: '⚙️', java: '☕',
+    sh: '🔧', yaml: '🔧', yml: '🔧', xml: '🔧', sql: '🗃️',
+    zip: '📦', rar: '📦', '7z': '📦', tar: '📦', gz: '📦',
+    txt: '📃', log: '📃'
+  }
+  return map[ext] || '📄'
+}
+
+// ── 格式化文件大小（产物卡片用）──
+function formatFileSize(bytes) {
+  if (!bytes || bytes === 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 // ── 图片预览：点击放大 ──
 const previewImage = ref(null)
 function openImagePreview(url) {
@@ -864,12 +888,14 @@ function streamElapsed(startTime) {
                 </span>
               </div>
               <!-- 产物文件行（WorkBuddy 风格）：消息流中可直接看到生成的产物文件，点击 → 右侧 drawer 渲染 -->
-              <div v-if="messageArtifacts(msg).length > 0" class="flex flex-wrap gap-1.5 mt-1.5">
+              <div v-if="messageArtifacts(msg).length > 0" class="flex flex-wrap gap-2 mt-2">
                 <button v-for="a in messageArtifacts(msg)" :key="a.path"
                         @click.stop="openArtifactInPanel(a)"
-                        class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition cursor-pointer">
-                  <span>📄</span>
-                  <span class="truncate max-w-[180px]" :title="a.path">{{ a.title }}</span>
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 transition shadow-sm cursor-pointer group">
+                  <span class="text-sm">{{ fileIconFor(a.path) }}</span>
+                  <span class="truncate max-w-[180px] font-medium" :title="a.path">{{ a.title }}</span>
+                  <span v-if="a.size" class="text-[10px] text-gray-400 dark:text-gray-500">{{ formatFileSize(a.size) }}</span>
+                  <span class="text-gray-300 dark:text-gray-600 group-hover:text-green-400 transition">›</span>
                 </button>
               </div>
               <!-- 可折叠的结果摘要 -->
@@ -1010,22 +1036,26 @@ function streamElapsed(startTime) {
   </div>
 
   <!-- 查看所有产物 (N) / 查看所有变更 (N) 链接（WorkBuddy 风格：对话底部目录感） -->
-  <div v-if="artifactCount > 0 || changeCount > 0" class="px-4 py-1.5 flex justify-start gap-4">
+  <div v-if="artifactCount > 0 || changeCount > 0" class="px-4 py-2 flex justify-start gap-3">
     <button
       v-if="artifactCount > 0"
       @click="openRightPanel('artifacts')"
-      class="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition flex items-center gap-1"
+      class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition"
     >
-      <span>查看所有产物 ({{ artifactCount }})</span>
-      <span>›</span>
+      <span>📦</span>
+      <span>查看所有产物</span>
+      <span class="tabular-nums text-gray-400 dark:text-gray-500">({{ artifactCount }})</span>
+      <span class="text-gray-400 dark:text-gray-500">›</span>
     </button>
     <button
       v-if="changeCount > 0"
       @click="openRightPanel('artifacts'); setArtifactTab('changes')"
-      class="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition flex items-center gap-1"
+      class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition"
     >
-      <span>查看所有变更 ({{ changeCount }})</span>
-      <span>›</span>
+      <span>🔧</span>
+      <span>查看所有变更</span>
+      <span class="tabular-nums text-gray-400 dark:text-gray-500">({{ changeCount }})</span>
+      <span class="text-gray-400 dark:text-gray-500">›</span>
     </button>
   </div>
 

@@ -253,8 +253,13 @@ def check_todo_requirements() -> bool:
 TODO_SCHEMA = {
     "name": "todo",
     "description": (
-        "Manage your task list for the current session. Use for complex tasks "
-        "with 3+ steps or when the user provides multiple tasks. "
+        "REQUIRED FIRST ACTION for any task with 3+ steps. "
+        "Before doing anything else, call this tool to create a visible task plan. "
+        "Example: todos=[{id:'1',content:'P0: 搜索竞品数据',status:'in_progress'},"
+        "{id:'2',content:'P1: 整理对比表格',status:'pending'},"
+        "{id:'3',content:'P2: 撰写分析报告',status:'pending'}]\n\n"
+        "After creating the plan, immediately start executing step 1 in the same response. "
+        "Update each item's status as you progress (pending → in_progress → completed). "
         "Call with no parameters to read the current list.\n\n"
         "Writing:\n"
         "- Provide 'todos' array to create/update items\n"

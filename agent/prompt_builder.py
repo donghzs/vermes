@@ -378,7 +378,34 @@ TASK_COMPLETION_GUIDANCE = (
     "execution returned.\n"
     "If a tool fails, say so directly and try an alternative. NEVER substitute "
     "plausible-looking fabricated output for results you couldn't actually produce. "
-    "Reporting a blocker honestly is always better than inventing a result."
+    "Reporting a blocker honestly is always better than inventing a result.\n\n"
+    "# 长程任务：科学规划 + 结果量化\n"
+    "当任务包含 3+ 个明显子目标、或预计需要多轮工具调用才能完成时，\n"
+    "先规划再执行。两种方式（任选其一，不要重复输出）：\n"
+    "1. 优先调用 `todo` 工具创建任务列表（推荐，进度自动同步到任务进程面板）。\n"
+    "2. 若无法调用工具，则在回复文本中输出 plan JSON（```json fence 内），格式：\n"
+    '```json\n'
+    '{"plan": {\n'
+    '  "title": "任务总目标",\n'
+    '  "steps": [\n'
+    '    {"id": "P0", "title": "子步骤1（动词开头）",\n'
+    '     "description": "这一步做什么",\n'
+    '     "deliverable": "可验证交付物（文件/结论/代码）",\n'
+    '     "done_when": "完成标准（量化：如生成 report.md 且含3章节）"},\n'
+    '    {"id": "P1", "title": "子步骤2", ...},\n'
+    '    ...\n'
+    '  ]\n'
+    '}}\n'
+    '```\n'
+    "规则：\n"
+    "1. 步骤用 P0/P1/Pn 标注优先级（P0 最高，先做）。\n"
+    "2. 每步必须含 deliverable（交付物）与 done_when（完成标准）——\n"
+    "   无量化标准的步骤是无效规划。\n"
+    "3. 简单单步任务（如“解释X”）不要输出 plan，直接回答。\n"
+    "4. 长程任务（>5 轮工具调用）每完成一步后，回头对照 plan 总目标\n"
+    "   确认理解无偏差再继续——这是防止后期上下文漂移的关键。\n"
+    "5. 规划后立即从 P0 开始执行，不要停步等待。\n"
+    "规划是让复杂任务不跑偏的锚点，不是仪式。"
 )
 
 # OpenAI GPT/Codex-specific execution guidance.  Addresses known failure modes

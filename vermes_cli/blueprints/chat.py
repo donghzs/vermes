@@ -1183,20 +1183,31 @@ async def chat_completions(req: ChatRequest, request: Request):
             stripped = re.sub(r'```\s*$', '', stripped, flags=re.MULTILINE)
             # 平衡括号解析：找第一个包含 "plan" 键的 JSON 对象
             result = _find_first_plan_json(stripped)
+            _loose = False
+            if result is None:
+                # 兜底：模型未输出严格 JSON 时，从 P0/P1 或 第N步 文本提取
+                result = _extract_plan_loose(stripped)
+                _loose = True
             if result is None:
                 return
             plan_data = result.get("plan", result)
-            steps_out = []
-            for i_s, s in enumerate(plan_data.get("steps", [])):
-                steps_out.append({
-                    "id": s.get("id") or f"step_{i_s+1}",
-                    "title": s.get("title", f"Step {i_s+1}"),
-                    "description": s.get("description", ""),
-                    "status": "pending",
-                    "agent_role": s.get("agent_role", "default"),
-                    "order": i_s,
-                    "tool_calls": [],
-                })
+            if _loose:
+                # 宽松解析已构造完整 step 字典，直接复用
+                steps_out = plan_data.get("steps", [])
+            else:
+                steps_out = []
+                for i_s, s in enumerate(plan_data.get("steps", [])):
+                    steps_out.append({
+                        "id": s.get("id") or f"step_{i_s+1}",
+                        "title": s.get("title", f"Step {i_s+1}"),
+                        "description": s.get("description", ""),
+                        "deliverable": s.get("deliverable", ""),
+                        "done_when": s.get("done_when", ""),
+                        "status": "pending",
+                        "agent_role": s.get("agent_role", "default"),
+                        "order": i_s,
+                        "tool_calls": [],
+                    })
             plan_event = {
                 "type": "plan_created",
                 "plan": {
@@ -1739,6 +1750,63 @@ def _find_first_plan_json(text: str) -> dict | None:
                     return parsed
                 start = -1
     return None
+
+def _extract_plan_loose(text: str) -> dict | None:
+    """宽松 plan 提取：当模型未输出严格 JSON 时，从文本中识别步骤标记。
+
+    识别模式：
+      - P0:/P1:/Pn: 优先级标记（行首约束，减少误匹配）
+      - 第一步/第二步/第N步（支持中文数字）
+    返回 {"plan": {"title":..., "steps":[...]}} 或 None。
+    """
+    # 1) P0/P1/Pn 模式（行首或空白后，减少误匹配）
+    p_pattern = re.compile(r'(?:^|\n)\s*([Pp]\d+)\s*[:：]\s*([^\n]+)', re.MULTILINE)
+    p_matches = p_pattern.findall(text)
+    if len(p_matches) >= 2:
+        steps = []
+        for i, (pid, title) in enumerate(p_matches):
+            t = title.strip()[:120]
+            if not t or len(t) < 2:
+                continue
+            steps.append({
+                "id": pid.upper(),
+                "title": t,
+                "description": "",
+                "deliverable": "",
+                "done_when": "",
+                "status": "pending",
+                "agent_role": "default",
+                "order": i,
+                "tool_calls": [],
+            })
+        if len(steps) >= 2:
+            return {"plan": {"title": "任务规划", "steps": steps}}
+
+    # 2) 第N步 模式（中文数字 + 阿拉伯数字）
+    _cn_num = r'(\d+|一|二|三|四|五|六|七|八|九|十|两)'
+    cn_pattern = re.compile(r'第\s*' + _cn_num + r'\s*步\s*[:：]?\s*([^\n]+)', re.MULTILINE)
+    cn_matches = cn_pattern.findall(text)
+    if len(cn_matches) >= 2:
+        steps = []
+        for i, (num, title) in enumerate(cn_matches):
+            t = title.strip()[:120]
+            if not t or len(t) < 2:
+                continue
+            steps.append({
+                "id": f"step_{num}",
+                "title": t,
+                "description": "",
+                "deliverable": "",
+                "done_when": "",
+                "status": "pending",
+                "agent_role": "default",
+                "order": i,
+                "tool_calls": [],
+            })
+        if len(steps) >= 2:
+            return {"plan": {"title": "任务规划", "steps": steps}}
+    return None
+
 
 
 class AgentRunRequest(BaseModel):
