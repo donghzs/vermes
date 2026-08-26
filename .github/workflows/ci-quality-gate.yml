@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -131,7 +131,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -200,7 +200,7 @@ jobs:
           python-version: '3.11'
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -284,7 +284,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
       - name: Run desktop contract harnesses (c1-c5 + update-path)
