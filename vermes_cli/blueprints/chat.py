@@ -95,6 +95,20 @@ def clean_session_plan_state(session_id: str) -> None:
         pass
 
 
+def should_emit_delivery(summary: dict) -> bool:
+    """判断任务是否到达终态，应发 delivery + task_complete 事件。
+
+    终态 = 所有步骤到达完成或取消（completed + cancelled == total）且无进行中步骤。
+    F1 修复：旧逻辑只看 completed==total，含 cancelled 步骤的任务静默无交付。
+    """
+    _done = summary.get("completed", 0) + summary.get("cancelled", 0)
+    return (
+        summary.get("total", 0) > 0
+        and _done == summary.get("total")
+        and summary.get("in_progress", 0) == 0
+    )
+
+
 def _normalize_stream_text(text) -> str:
     """折叠空白做宽松比对（与 run_agent._normalize_interim_visible_text 同规则）。"""
     return re.sub(r"\s+", " ", str(text or "")).strip()
@@ -1390,10 +1404,7 @@ async def chat_completions(req: ChatRequest, request: Request):
                         _update_session_plan(_session_id, todo_states=_prev_todo_states, plan_emitted=_plan_emitted)
                         # 任务全部完成 → 发 delivery + 庆祝事件（additive，旧前端忽略）
                         _s = todo_data.get("summary", {})
-                        # F1 修复：含 cancelled 步骤也算完成（终态 = completed + cancelled == total）
-                        _done = _s.get("completed", 0) + _s.get("cancelled", 0)
-                        if _s.get("total", 0) > 0 and _done == _s.get("total") \
-                                and _s.get("in_progress", 0) == 0:
+                        if should_emit_delivery(_s):
                             # E1: 结构化 delivery 事件 — 后端携带产物/变更/统计
                             _delivery = {
                                 "type": "delivery",
