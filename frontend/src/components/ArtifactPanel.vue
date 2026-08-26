@@ -25,8 +25,7 @@ function addArtifact(item, sid) {
   }
   if (cur === _curSession()) {
     // 当前会话：更新内存 + 持久化（现有行为）
-    if (artifacts.value.find(a => a.id === id)) return
-    artifacts.value.push(rec)
+    if (!artifacts.value.find(a => a.id === id)) artifacts.value.push(rec)
     _persistArtifacts()
   } else {
     // 非当前会话（迟到事件）：只落该会话自己的存储，绝不污染当前视图
@@ -37,6 +36,7 @@ function addArtifact(item, sid) {
       if (!list.find(a => a.id === id)) { list.push(rec); localStorage.setItem(key, JSON.stringify(list)) }
     } catch (e) {}
   }
+  return id
 }
 function removeArtifact(id) {
   const idx = artifacts.value.findIndex(a => a.id === id)
@@ -443,11 +443,11 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
             <div v-if="activeArtifact?.path" class="flex items-center gap-0.5">
               <button @click="openInFolder(activeArtifact)" class="group relative p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
-                <span class="header-tooltip group-hover:opacity-100">在文件夹中显示</span>
+                <span class="header-tooltip header-tooltip-below group-hover:opacity-100">在文件夹中显示</span>
               </button>
               <button @click="downloadArtifact(activeArtifact)" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                <span class="header-tooltip group-hover:opacity-100">{{ isDesktop ? '另存为…' : '下载' }}</span>
+                <span class="header-tooltip header-tooltip-below group-hover:opacity-100">{{ isDesktop ? '另存为…' : '下载' }}</span>
               </button>
             </div>
           </div>
@@ -597,6 +597,10 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
   position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
   padding: 4px 8px; background: #1f2937; color: #f3f4f6; font-size: 11px; border-radius: 4px;
   white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 50;
+}
+/* 产物区标题栏按钮的 tooltip：向下弹，避免被上方 header / 滚动容器裁剪 */
+.header-tooltip-below {
+  bottom: auto; top: calc(100% + 6px); z-index: 60;
 }
 .dark .header-tooltip { background: #374151; color: #e5e7eb; }
 

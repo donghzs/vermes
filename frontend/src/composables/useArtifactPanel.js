@@ -42,6 +42,16 @@ export function useArtifactPanel() {
     open.value = true
   }
 
+  // 直接打开某个产物的文件标签并渲染其内容（而非只切到产物列表）
+  function openArtifactFile(id, artifactsRef) {
+    const a = artifactsRef && artifactsRef.value ? artifactsRef.value.find(x => x.id === id) : null
+    if (a) {
+      openFileTab('artifact', a.id, a.title || a.path?.split('/').pop() || '未知文件', a.path, a.icon)
+    } else {
+      openFileTab('artifact', id, id, id, null)
+    }
+  }
+
   function closeFileTab(tabId) {
     const idx = fileTabs.value.findIndex(t => t.id === tabId)
     if (idx < 0) return
@@ -56,6 +66,6 @@ export function useArtifactPanel() {
   return {
     open, width, autoOpen, activeTabId, fileTabs,
     openPanel, closePanel, togglePanel,
-    setView, setTab, openFileTab, closeFileTab, setWidth,
+    setView, setTab, openFileTab, closeFileTab, openArtifactFile, setWidth,
   }
 }

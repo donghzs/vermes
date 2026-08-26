@@ -21,7 +21,7 @@ import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import yaml from 'highlight.js/lib/languages/yaml'
 
-const { openPanel: openRightPanel, setTab: setArtifactTab } = useArtifactPanel()
+const { openPanel: openRightPanel, setTab: setArtifactTab, openArtifactFile: openChatArtifact } = useArtifactPanel()
 
 // ── 产物计数（用于底部「查看所有产物 (N)」链接）──
 const artifactCount = ref(0)
@@ -539,8 +539,10 @@ function handleContentClick(e) {
       const mimeMap = { md: 'text/markdown', html: 'text/html', htm: 'text/html', json: 'application/json', csv: 'text/csv', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', doc: 'application/msword', xls: 'application/vnd.ms-excel', ppt: 'application/vnd.ms-powerpoint', step: 'application/step', stp: 'application/step', stl: 'application/sla', obj: 'application/wavefront-obj', fcdoc: 'application/octet-stream', dxf: 'application/dxf', gcode: 'text/plain', iges: 'application/iges', '3mf': 'model/3mf', gltf: 'model/gltf+json' }
       const mime = mimeMap[ext] || 'text/plain'
       if (window.__vermesArtifacts) {
-        window.__vermesArtifacts.addArtifact({ path, title, mime, source: 'chat' })
-        openRightPanel('artifacts')
+        const id = window.__vermesArtifacts.addArtifact({ path, title, mime, source: 'chat' })
+        // 直接打开该产物的文件标签并渲染，而不是只跳到产物列表再让用户点一次
+        if (id) openChatArtifact(id)
+        else openRightPanel('artifacts')
       }
       return
     }

@@ -1088,22 +1088,27 @@ export const useChatStore = defineStore('chat', () => {
             // 阶段 3: 自动提取产物到 ArtifactPanel；只有"最终交付物"才自动展开右栏
             if (data.artifacts && data.artifacts.length > 0) {
               const va = window.__vermesArtifacts
+              const { autoOpen, openPanel, setTab, openArtifactFile } = useArtifactPanel()
+              const addedIds = []
               if (va && typeof va.addArtifact === 'function') {
                 data.artifacts.forEach(a => {
-                  va.addArtifact({
+                  const id = va.addArtifact({
                     path: a.path,
                     title: a.title || a.path.split('/').pop(),
                     mime: '',
                     source: a.source || data.name || 'tool',
                   }, sendSessionId)
+                  if (id) addedIds.push(id)
                 })
               }
-              // 仅当产物含可渲染交付物(md/html/docx/xlsx/csv/pdf/图片)时才自动展开面板，
+              // 仅当产物含可渲染交付物(md/html/docx/xlsx/csv/pdf/图片)时才自动展开面板并直接渲染内容，
               // 避免 .txt 日志、临时文件、中间产物频繁打扰。
-              const { autoOpen, openPanel, setTab } = useArtifactPanel()
               if (autoOpen.value && data.artifacts.some(a => isRenderableDeliverable(a.path))) {
-                openPanel('artifacts')
-                setTab('artifacts')
+                // 直接打开首个可渲染交付物的文件标签渲染，而不是只跳到产物列表
+                const firstIdx = data.artifacts.findIndex(a => isRenderableDeliverable(a.path))
+                const firstId = addedIds[firstIdx]
+                if (firstId) openArtifactFile(firstId)
+                else { openPanel('artifacts'); setTab('artifacts') }
               }
             }
             // P1: 文件变更审计 — write_file/patch 推送到变更 tab
