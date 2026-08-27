@@ -5709,6 +5709,13 @@ def cmd_webhook(args):
     webhook_command(args)
 
 
+def cmd_workflow(args):
+    """Reusable workflow template management (G3)."""
+    from vermes_cli.workflow_cli import workflow_command
+
+    workflow_command(args)
+
+
 def cmd_slack(args):
     """Slack integration helpers.
 
@@ -11141,6 +11148,11 @@ def main():
     _add_accept_hooks_flag(cron_tick)
     _add_accept_hooks_flag(cron_parser)
     cron_parser.set_defaults(func=cmd_cron)
+
+    # Workflow templates (G3)
+    from vermes_cli.workflow_cli import build_workflow_parser
+
+    build_workflow_parser(subparsers).set_defaults(func=cmd_workflow)
 
     # =========================================================================
     # webhook command
