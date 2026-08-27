@@ -48,7 +48,7 @@ from vermes_cli.config import (
     redact_key,
 )
 try:
-    from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+    from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
     from fastapi.staticfiles import StaticFiles
@@ -60,7 +60,7 @@ except ImportError:
     try:
         from tools.lazy_deps import ensure as _lazy_ensure
         _lazy_ensure("tool.dashboard", prompt=False)
-        from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+        from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
         from fastapi.staticfiles import StaticFiles
@@ -2878,20 +2878,69 @@ async def claim_trial_token_wrapper(wechat_openid: str) -> dict:
     from vermes_cli.blueprints.quota import _claim_trial_token
     return await _claim_trial_token(wechat_openid)
 
-async def discover_models():
-    """Scan local Ollama for available models."""
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get("http://localhost:11434/api/tags")
-            if resp.status_code != 200:
-                return {"ok": False, "error": "Ollama not running on localhost:11434"}
-            data = resp.json()
-            models = [m["name"] for m in data.get("models", [])]
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+LOCAL_MODEL_ENDPOINTS = [
+    # (display name, OpenAI-compatible /v1/models URL, provider id)
+    ("vMLX (mlx-engine)", "http://localhost:9000/v1/models", "vmlx"),
+    ("oMLX (SSD cache)", "http://localhost:12345/v1/models", "omlx"),
+    ("Ollama", "http://localhost:11434/v1/models", "ollama"),
+    ("LM Studio", "http://localhost:1234/v1/models", "lmstudio"),
+    ("vLLM", "http://localhost:8000/v1/models", "vllm"),
+]
 
-# Mount SPA sub-app LAST so API routes take priority over its catch-all
+
+async def discover_models(payload: dict = Body(default={})):
+    """Scan local OpenAI-compatible model servers (vMLX/Ollama/LM Studio/vLLM).
+
+    If `base_url` is provided in the JSON body (user customised the local
+    endpoint), only that endpoint is probed.  Otherwise all well-known local
+    ports are scanned.  Returns models grouped by detected server so the UI
+    can show which local runtime each model came from.
+    """
+    import httpx
+
+    base_url = (payload or {}).get("base_url", "")
+    found = []
+    errors = []
+
+    async def _probe(client, name, base, pid):
+        nonlocal found, errors
+        url = base.rstrip("/") + "/v1/models"
+        try:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                errors.append(f"{name}: HTTP {resp.status_code}")
+                return
+            data = resp.json()
+            for m in data.get("data", []):
+                mid = m.get("id", "")
+                if not mid:
+                    continue
+                found.append({
+                    "id": mid,
+                    "name": f"{mid} ({name})",
+                    "provider": pid,
+                    "source": name,
+                    "base_url": base.rstrip("/"),
+                })
+        except Exception as e:
+            errors.append(f"{name}: {str(e)}")
+
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        if base_url:
+            # 自定义端点：只探测用户指定的地址
+            name = "本地服务"
+            pid = "local"
+            await _probe(client, name, base_url, pid)
+        else:
+            for name, url, pid in LOCAL_MODEL_ENDPOINTS:
+                await _probe(client, name, url.rsplit("/v1/models", 1)[0], pid)
+
+    if not found:
+        detail = "; ".join(errors) if errors else "无"
+        return {"ok": False, "error": f"未发现本地模型服务。已探测: {detail}"}
+    return {"ok": True, "models": found, "errors": errors}
+
+
 # ─────────────────────────────────────────────────────────────────
 # Blueprint 注册（功能域路由模块化）
 # 函数已全部定义完毕，导入 blueprints 不会产生循环依赖问题

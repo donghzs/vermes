@@ -661,10 +661,31 @@ async function syncModels(p) {
   p.syncing = true
   try {
     if (p.id === 'ollama') {
-      const resp = await fetch('/api/model/discover', { method: 'POST' })
+      const body = {}
+      // 本地模型：支持自定义 base_url（vMLX/Ollama/LM Studio 等），
+      // 不填则自动探测常见本地端口
+      if (p.baseUrl && p.baseUrl !== DEFAULT_BASE_URLS[p.id]) body.base_url = p.baseUrl
+      const resp = await fetch('/api/model/discover', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      })
       const data = await resp.json()
-      if (data.ok) { p.models = data.models; saveProvidersToStorage() }
-      else toast.error('同步失败: ' + (data.error || 'Ollama 未运行'))
+      if (data.ok) {
+        // 后端返回结构化数组 [{id,name,provider,source,base_url}]，兼容旧字符串数组
+        if (data.models && data.models.length > 0 && typeof data.models[0] === 'object') {
+          const synced = new Set(data.models.map(m => m.id))
+          const manual = (p.models || []).filter(m => typeof m === 'string' && !synced.has(m))
+          // 自动把探测到的本地服务 base_url 写回 provider（若无自定义）
+          if (!body.base_url && data.models[0].base_url && p.baseUrl === DEFAULT_BASE_URLS[p.id]) {
+            p.baseUrl = data.models[0].base_url
+          }
+          p.models = [...data.models.map(m => m.name), ...manual]
+          saveProvidersToStorage()
+          toast.success('已发现 ' + data.models.length + ' 个本地模型：' + data.models.map(m => m.source).filter((v,i,a) => a.indexOf(v) === i).join('、'))
+        } else {
+          p.models = data.models || []
+          saveProvidersToStorage()
+        }
+      } else toast.error('同步失败: ' + (data.error || '未发现本地模型服务'))
       return
     }
     const body = { provider_id: p.id }
