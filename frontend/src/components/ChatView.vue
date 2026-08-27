@@ -9,6 +9,7 @@ import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
 import MemoryFlags from './MemoryFlags.vue'
 import QuotaModal from './QuotaModal.vue'
+import TaskFlowCard from './TaskFlowCard.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import WechatLogin from './WechatLogin.vue'
 import WelcomeGuide from './WelcomeGuide.vue'
@@ -198,6 +199,8 @@ onUnmounted(() => {
 
     <!-- 中间内容区：消息列表 / 引导页 -->
     <div class="flex-1 min-h-0 flex flex-col">
+      <!-- 中栏任务流(WorkBuddy 风格)：规划创建后常驻展示,与右栏产物并排不遮挡 -->
+      <TaskFlowCard v-if="chat.taskTree.length" :items="chat.taskTree" />
       <MessageList v-if="(chat.filteredMessages?.length ?? 0) > 0" @quickStart="onQuickStart" @editMessage="onEditMessage" />
       <!-- 加载中不显示欢迎界面，防覆盖历史会话：仅在 hydrate 未完成且消息为 0 时才显示 spinner -->
       <div v-else-if="chat.currentSessionId && chat.sessionLoading?.[chat.currentSessionId] && (chat.sessionHydrated?.[chat.currentSessionId] ?? false) === false" class="flex-1 flex items-center justify-center text-slate-500">

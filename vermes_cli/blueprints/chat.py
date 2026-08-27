@@ -1262,7 +1262,11 @@ async def chat_completions(req: ChatRequest, request: Request):
     # 保证同一会话中途切换联网开关即时生效（复用路径此前完全失效）。
     if agent is not None:
         _evo_base = getattr(agent, "_evo_base_prompt", "") or ""
-        agent.ephemeral_system_prompt = (_evo_base + "\n" + _search_prompt + "\n" + _mode_prompt).strip() or None
+        # Bug #6 结构层：把「已自动打开的产物」注记并入 ephemeral 提示，跨轮次生效
+        _opened_note = _build_opened_artifacts_note(_session_id)
+        agent.ephemeral_system_prompt = (
+            (_evo_base + "\n" + _search_prompt + "\n" + _mode_prompt + ("\n" + _opened_note if _opened_note else "")).strip()
+        ) or None
         # 交互模式设到 agent 上，供 tool_executor 硬约束 Ask 模式（禁工具调用）
         agent.interaction_mode = _interaction_mode
 
@@ -3435,6 +3439,33 @@ async def plan_snapshot(session_id: str):
     }
 
 
+# ── Bug #6 结构层：前端打开产物后回告，跨轮次消除「要打开吗」反问 ──
+# session_id -> set of 已自动在右侧面板打开并渲染的产物路径
+_opened_artifacts: dict = {}
+
+
+def _build_opened_artifacts_note(session_id: str) -> str:
+    """生成注入 LLM 系统提示的「已打开产物」注记，避免模型重复询问是否打开。"""
+    opened = _opened_artifacts.get(session_id)
+    if not opened:
+        return ""
+    names = ", ".join(sorted(p.split("/")[-1] for p in opened))
+    return (
+        "【系统状态】以下交付产物已由系统在用户界面右侧面板自动打开并渲染，"
+        "用户可直接在右侧面板查看，无需再被询问是否需要打开："
+        f"{names}。"
+    )
+
+
+async def artifact_opened(session_id: str, body: dict):
+    """前端在右栏打开/渲染产物后调用，记录已打开状态供后续轮次注入。"""
+    p = (body or {}).get("path")
+    t = (body or {}).get("title") or (p.split("/")[-1] if p else None)
+    if p:
+        _opened_artifacts.setdefault(session_id, set()).add(p)
+    return {"ok": True, "opened": sorted(_opened_artifacts.get(session_id, set()))}
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -3442,6 +3473,12 @@ def register_to(app):
         chat_completions,
         methods=["POST"],
         name="chat_completions",
+    )
+    app.add_api_route(
+        "/api/chat/{session_id}/artifact_opened",
+        artifact_opened,
+        methods=["POST"],
+        name="artifact_opened",
     )
     app.add_api_route(
         "/api/chat/models",

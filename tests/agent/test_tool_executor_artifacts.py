@@ -76,3 +76,25 @@ class TestBuildToolArtifacts:
         artifacts = _build_tool_artifacts("write_file", result, args)
         assert len(artifacts) == 1
         assert artifacts[0]["path"] == "/data/config.yaml"
+
+    def test_artifact_includes_mime(self):
+        """Bug #2: 每个产物应带 mime（按扩展名推断），供前端 rendererFor 准确选型。"""
+        result = json.dumps({"bytes_written": 1})
+        args = {"path": "/out/report.html"}
+        arts = _build_tool_artifacts("write_file", result, args)
+        assert arts[0]["mime"] == "text/html"
+        # 默认/未知扩展名落空字符串而非缺失键
+        arts2 = _build_tool_artifacts("write_file", result, {"path": "/out/x.unknown"})
+        assert "mime" in arts2[0] and arts2[0]["mime"] == ""
+
+    def test_present_files_result_dict_passthrough_with_mime(self):
+        """Bug #3: present_files 返回 {'preview','artifacts'} 时，artifacts 应透传且补 mime。"""
+        result = {
+            "preview": "交付产物 1 个:",
+            "artifacts": [{"path": "/out/plot.png", "title": "Chart"}],
+        }
+        arts = _build_tool_artifacts("present_files", result, None)
+        assert len(arts) == 1
+        assert arts[0]["path"] == "/out/plot.png"
+        assert arts[0]["mime"] == "image/png"  # 未显式给 mime 时自动推断
+        assert arts[0]["source"] == "present_files"

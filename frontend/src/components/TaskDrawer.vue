@@ -136,6 +136,18 @@ function openDeliveryArtifact(a) {
     va.openArtifactById(a.id)
   }
 }
+
+function iconFor(a) {
+  const ext = (a.path || '').split('.').pop()?.toLowerCase()
+  if (['md', 'markdown'].includes(ext)) return '📄'
+  if (['html', 'htm'].includes(ext)) return '🌐'
+  if (['pdf'].includes(ext)) return '📕'
+  if (['docx', 'doc'].includes(ext)) return '📘'
+  if (['xlsx', 'xls', 'csv'].includes(ext)) return '📊'
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return '🖼️'
+  if (['py', 'js', 'ts', 'sh'].includes(ext)) return '🐍'
+  return '📄'
+}
 </script>
 
 <template>
@@ -209,7 +221,7 @@ function openDeliveryArtifact(a) {
           <button v-for="a in deliveryArtifacts.slice(0, 5)" :key="a.id"
             @click="openDeliveryArtifact(a)"
             class="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-700 hover:text-green-600 dark:hover:text-green-400 transition">
-            <span>📄</span><span class="truncate max-w-[120px]">{{ a.title || a.path?.split('/').pop() }}</span>
+            <span>{{ iconFor(a) }}</span><span class="truncate max-w-[120px]">{{ a.title || a.path?.split('/').pop() }}</span>
           </button>
         </div>
       </div>

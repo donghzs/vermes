@@ -85,7 +85,10 @@ class Step:
     # Dependencies and ordering
     dependencies: List[str] = field(default_factory=list)
     order: int = 0
-    
+
+    # Hierarchy: parent step id for sub-task tree rendering
+    parent_id: Optional[str] = None
+
     # Tool calls within this step
     tool_calls: List[ToolCall] = field(default_factory=list)
     current_tool: Optional[ToolCall] = None
@@ -134,6 +137,7 @@ class Step:
             "elapsed": self.elapsed,
             "dependencies": self.dependencies,
             "order": self.order,
+            "parent_id": self.parent_id,
             "tool_calls": [
                 {
                     "id": tc.id,
@@ -347,6 +351,7 @@ def parse_plan_from_agent_output(content: str) -> Optional[TaskPlan]:
                 description=step_data.get("description", ""),
                 agent_role=AgentRole(step_data.get("agent_role", "default")),
                 dependencies=step_data.get("dependencies", []),
+                parent_id=step_data.get("parent_id"),
                 order=i,
             )
             steps.append(step)
@@ -411,6 +416,13 @@ Before executing, output your plan in this exact JSON format:
         "title": "Step description",
         "description": "Detailed explanation",
         "agent_role": "coder|tester|reviewer|researcher|analyst|writer|debugger|default"
+      },
+      {
+        "id": "step_2",
+        "title": "Sub-task of step_1",
+        "description": "Break a large step into child steps for a clearer tree",
+        "agent_role": "coder",
+        "parent_id": "step_1"
       }
     ],
     "estimated_duration": 300,
@@ -424,7 +436,8 @@ Rules:
 2. Steps should be sequential and logical
 3. Use appropriate agent_role for each step
 4. Mark dependencies if a step relies on previous output
-5. After outputting the plan, wait for user confirmation or proceed with step 1
+5. For large/complex steps, split into child steps and set "parent_id" to the parent step's "id" to form a task tree (the UI renders it as a collapsible hierarchy)
+6. After outputting the plan, wait for user confirmation or proceed with step 1
 
 Available agent roles:
 - coder: Write or modify code

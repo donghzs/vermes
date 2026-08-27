@@ -240,6 +240,24 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── 当前会话的 computed 视图(自动跟随 currentSessionId)──
   const todoItems = computed(() => sessionTodoItems.value[currentSessionId.value] || [])
+  // 任务树：按 parent_id 把扁平 todoItems 组装成带 children / depth 的层级结构，
+  // 供中栏 TaskFlowCard 渲染 WorkBuddy 风格的可折叠任务流。
+  const taskTree = computed(() => {
+    const items = todoItems.value || []
+    if (!items.length) return []
+    const nodes = new Map()
+    items.forEach(it => nodes.set(it.id, { ...it, children: [] }))
+    const roots = []
+    items.forEach(it => {
+      const node = nodes.get(it.id)
+      const pid = it.parent_id
+      if (pid && nodes.has(pid)) nodes.get(pid).children.push(node)
+      else roots.push(node)
+    })
+    const assignDepth = (list, d) => list.forEach(n => { n.depth = d; assignDepth(n.children, d + 1) })
+    assignDepth(roots, 0)
+    return roots
+  })
   const todoStepActivities = computed(() => sessionTodoStepActivities.value[currentSessionId.value] || {})
   const todoAllDone = computed(() => !!sessionTodoAllDone.value[currentSessionId.value])
   const todoInterrupted = computed(() => !!sessionTodoInterrupted.value[currentSessionId.value])
@@ -1112,7 +1130,7 @@ export const useChatStore = defineStore('chat', () => {
                   const id = va.addArtifact({
                     path: a.path,
                     title: a.title || a.path.split('/').pop(),
-                    mime: '',
+                    mime: a.mime || '',
                     source: a.source || data.name || 'tool',
                   }, sendSessionId)
                   if (id) addedIds.push(id)
@@ -1160,13 +1178,29 @@ export const useChatStore = defineStore('chat', () => {
             ? lastAssistant.content.replace(/<[^>]*>/g, '').slice(0, 200)
             : ''
           // 后端 artifacts 直接用，不需再从前端全局列表猜
-          const deliveryArtifacts = backendArtifacts.map((a, i) => ({
-            id: `delivery-art-${i}-${Date.now()}`,
-            path: a.path,
-            title: a.title || a.path?.split('/').pop(),
-            source: a.source,
-            sessionId: sendSessionId,
-          }))
+          // 但必须复用全局产物注册表 id，否则 DeliveryCard 点击调用 openArtifactById
+          // 时在全局 artifacts 里找不到（旧 id 体系 self-made），只能降级到产物列表。
+          const _va = window.__vermesArtifacts
+          const deliveryArtifacts = backendArtifacts.map((a) => {
+            // 优先复用全局表里已存在的同 path 产物 id（tool_end 自动打开路径可能已注册）
+            let gid = _va?.artifacts?.value?.find(x => x.path === a.path)?.id
+            if (!gid && _va && typeof _va.addArtifact === 'function') {
+              gid = _va.addArtifact({
+                path: a.path,
+                title: a.title || a.path?.split('/').pop(),
+                source: a.source,
+                mime: a.mime || '',
+              }, sendSessionId)
+            }
+            return {
+              id: gid || `delivery-art-${a.path}`,
+              path: a.path,
+              title: a.title || a.path?.split('/').pop(),
+              source: a.source,
+              mime: a.mime || '',
+              sessionId: sendSessionId,
+            }
+          })
           // 去重：同会话已有的 delivery 消息先移除
           const existIdx = messages.value.findIndex(m => m.sessionId === sendSessionId && m.type === 'delivery')
           if (existIdx >= 0) messages.value.splice(existIdx, 1)
@@ -1247,13 +1281,14 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onPlanCreated: (plan) => {
-          // 任务规划已创建 → 填充当前会话的 todoItems 并自动打开抽屉
+          // 任务规划已创建 → 填充当前会话的 todoItems（含父子层级 parent_id）
           if (!plan || !plan.steps) return
           const items = plan.steps.map(s => ({
             id: s.id,
             content: s.title,
             status: s.status || 'pending',
             agent_role: s.agent_role,
+            parent_id: s.parent_id || null,
             started_at: s.started_at ? s.started_at : null,
             finished_at: s.finished_at ? s.finished_at : null,
             description: s.description || '',
@@ -1266,8 +1301,9 @@ export const useChatStore = defineStore('chat', () => {
             items[0].started_at = Math.floor(Date.now() / 1000)
           }
           sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: items }
-          sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [sendSessionId]: true }
-          // 自动弹出右栏任务进程
+          // 注意：不再自动弹出右侧覆盖式 TaskDrawer（会遮住产物面板），
+          // 任务流改由中栏 TaskFlowCard 常驻展示，与 WorkBuddy 三栏布局一致。
+          // 仅打开右栏 ArtifactPanel 的 tasks 视图（侧栏，不遮挡）。
           const { openPanel: _openPanel, setView: _setView } = useArtifactPanel()
           _openPanel('tasks')
           _setView('tasks')
@@ -1288,9 +1324,8 @@ export const useChatStore = defineStore('chat', () => {
             if (newItems !== null) {
               sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: newItems }
             }
-            if (subtype === 'step_started') {
-              sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [sendSessionId]: true }
-            }
+            // 不再自动弹出覆盖式 TaskDrawer（避免遮挡产物面板）；
+            // 任务推进由中栏 TaskFlowCard 实时展示。
           } else if (subtype === 'tool_started') {
             const sid = data.step_id
             if (!sid) return
@@ -1579,7 +1614,7 @@ export const useChatStore = defineStore('chat', () => {
     lastTokenUsage, streamConnected, isOnline, isWindows,
     cacheMetrics,
     evolutionEvents, showAchievement, achievementData,
-    todoItems, showTodoPanel,
+    todoItems, taskTree, showTodoPanel,
     showTaskDrawer, todoStepActivities, todoAllDone, todoInterrupted,
     currentTodoStepId, todoInProgressCount, toggleTaskDrawer,
     sessionTodoItems, sessionTodoAllDone,

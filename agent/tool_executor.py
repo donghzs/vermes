@@ -111,6 +111,23 @@ def _get_tool_preview_length(tool_name: str) -> int:
     return _TOOL_RESULT_PREVIEW_LENGTHS.get(tool_name, _TOOL_RESULT_PREVIEW_LENGTHS["default"])
 
 
+def _guess_mime(path: str) -> str:
+    """按扩展名推断产物 MIME（供前端 rendererFor 准确选择渲染器，闭合 Bug #2）。"""
+    ext = (path or "").split(".")[-1].lower()
+    return {
+        "html": "text/html", "htm": "text/html",
+        "md": "text/markdown", "markdown": "text/markdown",
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls": "application/vnd.ms-excel",
+        "csv": "text/csv",
+        "json": "application/json",
+        "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "gif": "image/gif", "webp": "image/webp", "svg": "image/svg+xml",
+    }.get(ext, "")
+
+
 def _build_tool_artifacts(tool_name: str, result: Any, args: dict = None) -> list:
     """从工具执行结果 + 工具入参中提取结构化产物（供产物面板捕获，闭合 G3 生产端）。
 
@@ -119,7 +136,7 @@ def _build_tool_artifacts(tool_name: str, result: Any, args: dict = None) -> lis
     因此 path 必须从工具入参 args["path"] 取（这是唯一可靠来源）。result JSON 提取
     仅作为兜底（某些自定义工具会在结果里带 path）。
     其他工具可主动在 result dict 里带 artifacts 字段声明结构化产物。
-    返回的列表元素形如 {"path", "title", "source"}，透传给 tool_progress_callback
+    返回的列表元素形如 {"path", "title", "source", "mime"}，透传给 tool_progress_callback
     的 artifacts= kwarg，由 chat.py 的 tool_progress_handler 合并进 SSE 事件。
     """
     artifacts = []
@@ -128,7 +145,7 @@ def _build_tool_artifacts(tool_name: str, result: Any, args: dict = None) -> lis
         if isinstance(args, dict):
             p = args.get("path") or args.get("file_path") or args.get("filepath")
             if p:
-                artifacts.append({"path": p, "title": str(p).split("/")[-1], "source": tool_name})
+                artifacts.append({"path": p, "title": str(p).split("/")[-1], "source": tool_name, "mime": _guess_mime(p)})
         # 兜底：从结果 JSON 提取（自定义工具或老版本结果可能带 path）
         if not artifacts and isinstance(result, str):
             try:
@@ -136,7 +153,7 @@ def _build_tool_artifacts(tool_name: str, result: Any, args: dict = None) -> lis
                 if isinstance(data, dict) and not data.get("error"):
                     p = data.get("path")
                     if p:
-                        artifacts.append({"path": p, "title": p.split("/")[-1], "source": tool_name})
+                        artifacts.append({"path": p, "title": p.split("/")[-1], "source": tool_name, "mime": _guess_mime(p)})
             except Exception:
                 pass
     if isinstance(result, dict) and isinstance(result.get("artifacts"), list):
@@ -146,6 +163,7 @@ def _build_tool_artifacts(tool_name: str, result: Any, args: dict = None) -> lis
                     "path": a["path"],
                     "title": a.get("title") or a["path"].split("/")[-1],
                     "source": a.get("source") or tool_name,
+                    "mime": a.get("mime") or _guess_mime(a["path"]),
                 })
     return artifacts
 
@@ -686,7 +704,12 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     result_preview = ""
                     if function_result and not is_error:
                         try:
-                            result_str = str(function_result)
+                            # 工具可返回 {"preview": ..., "artifacts": [...]} 结构，
+                            # 优先用 preview 字段作为给 UI/LLM 看的文本，避免把 dict 原文塞进去
+                            if isinstance(function_result, dict) and function_result.get("preview"):
+                                result_str = str(function_result["preview"])
+                            else:
+                                result_str = str(function_result)
                             preview_len = _get_tool_preview_length(name)
                             result_preview = result_str[:preview_len] + ("..." if len(result_str) > preview_len else "")
                         except Exception:

@@ -353,6 +353,17 @@ function openArtifactById(id) {
   const a = artifacts.value.find(x => x.id === id)
   if (!a) return false
   openFileTab('artifact', a.id, a.title || a.path?.split('/').pop() || '未知文件', a.path, fileIconFor(a))
+  // Bug #6 结构层：把「已打开产物」回告后端，跨轮次注入 LLM 系统提示，彻底消除反问
+  try {
+    const sid = chat.currentSessionId || window.__vermes_current_session_id
+    if (sid && a.path) {
+      fetch('/api/chat/' + encodeURIComponent(sid) + '/artifact_opened', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: a.path, title: a.title || a.path?.split('/').pop() }),
+      }).catch(() => {})
+    }
+  } catch (_) {}
   return true
 }
 </script>
@@ -472,7 +483,7 @@ function openArtifactById(id) {
               <div v-if="contentLoading" class="flex items-center justify-center text-gray-400 py-20"><span class="animate-pulse text-sm">加载中…</span></div>
               <div v-else-if="contentError" class="flex flex-col items-center justify-center text-gray-400 p-5"><div class="text-2xl mb-1">⚠️</div><div class="text-sm text-red-400">加载失败</div><div class="text-xs mt-0.5 text-gray-400">{{ contentError }}</div></div>
               <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown p-5 prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(content)"></div>
-              <div v-else-if="rendererFor(activeArtifact) === 'html'" class="w-full h-full"><iframe class="w-full h-full border-0 bg-white" sandbox="" :srcdoc="content"></iframe></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'html'" class="w-full h-full"><iframe class="w-full h-full border-0 bg-white" sandbox="allow-scripts allow-same-origin" :srcdoc="content"></iframe></div>
               <div v-else-if="rendererFor(activeArtifact) === 'json'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200"><code>{{ formatJson(content) }}</code></pre></div>
               <div v-else-if="rendererFor(activeArtifact) === 'csv'" class="p-5 overflow-auto"><table class="text-sm border-collapse w-full"><tbody><tr v-for="(row, i) in parseCsv(content)" :key="i" :class="i === 0 ? 'font-semibold bg-gray-50 dark:bg-gray-800' : ''"><td v-for="(cell, j) in row" :key="j" class="border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-gray-700 dark:text-gray-200">{{ cell }}</td></tr></tbody></table></div>
               <div v-else-if="rendererFor(activeArtifact) === 'code'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded-lg p-4"><code>{{ content }}</code></pre></div>

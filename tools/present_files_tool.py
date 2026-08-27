@@ -30,6 +30,8 @@ PRESENT_FILES_SCHEMA = {
             "向用户展示任务交付产物。当完成文档、报告、图表、代码文件等交付物后，"
             "调用此工具将产物推送到用户界面右侧的产物面板，用户可点击预览、下载或在文件夹中查看。"
             "应在任务完成时调用，列出所有交付文件路径。"
+            "注意：可渲染交付物（html/md/docx/pdf/csv/图片等）UI 会自动在右侧面板打开并渲染，"
+            "无需询问用户是否需要打开——直接说明产物已在右侧面板可查看即可。"
         ),
         "parameters": {
             "type": "object",
@@ -83,16 +85,29 @@ def _handle_present_files(args, **kwargs):
     if description:
         preview_lines.append(f"交付说明: {description}")
     preview_lines.append(f"交付产物 {len(results)} 个:")
+    artifacts = []
     for r in results:
         status = "✅" if r["exists"] else "⚠️ (文件不存在)"
         size_str = f"{r['size']:,} bytes" if r["exists"] else "N/A"
         preview_lines.append(f"  {r['path']} ({size_str}) {status}")
+        # 结构化产物声明：tool_executor._build_tool_artifacts 会读取 result["artifacts"]
+        # 直接灌入 SSE tool_end 事件的 artifacts 字段，无需 chat.py 再正则猜测路径。
+        artifacts.append({
+            "path": r["path"],
+            "title": r["title"],
+            "source": "present_files",
+        })
 
     preview = "\n".join(preview_lines)
 
     # 关键：在 preview 中包含文件路径，让 chat.py 的 _ARTIFACT_EXT_RE 能提取
-    # 这样 SSE tool_end 事件的 artifacts 字段会自动填充
-    return preview
+    # 这样 SSE tool_end 事件的 artifacts 字段会自动填充（结构化兜底）
+    # 返回 dict：preview 给 LLM 看，artifacts 给前端产物面板消费（闭合 Bug #3）。
+    return {
+        "ok": True,
+        "preview": preview,
+        "artifacts": artifacts,
+    }
 
 
 def _check_present_files_requirements(**kwargs):
