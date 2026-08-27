@@ -27,7 +27,7 @@ import {
   getFirstMessage as _getFirstMessage,
   evictOldSessions as _evictOldSessions,
 } from './chat-session'
-import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64, listChannelSessionsFromAPI, loadChannelMessagesFromAPI, deleteChannelSessionFromAPI, sendFromDesktopAPI, getRelayStateAPI, loadMessagesFromAPI } from './chat-storage'
+import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64, listChannelSessionsFromAPI, loadChannelMessagesFromAPI, deleteChannelSessionFromAPI, sendFromDesktopAPI, getRelayStateAPI, loadMessagesFromAPI, listSessionsFromAPI } from './chat-storage'
 import { uid, persistMessages } from './chat-session'
 import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import { flushStorageWrites } from './chat-storage'
@@ -143,6 +143,8 @@ export const useChatStore = defineStore('chat', () => {
   const currentSessionId = ref(null)
   const messages = ref([])
   const sessionLoading = ref({})
+  // 当前会话是否已完成历史消息加载（防首屏闪 WelcomeGuide）
+  const sessionHydrated = ref({})
   const loading = computed(() =>
     currentSessionId.value ? sessionLoading.value[currentSessionId.value] || false : false
   )
@@ -387,6 +389,16 @@ export const useChatStore = defineStore('chat', () => {
   // ── 初始化 ──
   async function init() {
     try {
+      // localStorage 被 Electron 版本变更清理后，先从后端 API 恢复会话列表
+      if (sessions.value.length === 0) {
+        try {
+          const apiSessions = await listSessionsFromAPI()
+          if (apiSessions && apiSessions.length > 0) {
+            sessions.value = apiSessions
+            saveToStorage(SESSIONS_KEY, sessions.value)
+          }
+        } catch (e) { /* API 不可用，继续走新建 */ }
+      }
       // 恢复最后使用的会话
       if (sessions.value.length > 0) {
         let lastId = localStorage.getItem('vermes-last-session')
@@ -472,6 +484,8 @@ export const useChatStore = defineStore('chat', () => {
 
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
+    // 切会话时重置 hydrated 标记（防旧会话的标记误导新会话）
+    sessionHydrated.value[id] = false
     // 通知 ArtifactPanel 等组件做 per-session 隔离
     window.__vermes_current_session_id = id
     window.dispatchEvent(new CustomEvent('vermes-session-change', { detail: { id } }))
@@ -528,6 +542,8 @@ export const useChatStore = defineStore('chat', () => {
     }
     // 渠道会话已打开并呈现历史 → 清除其未读角标
     if (isChannelSession(id)) markChannelRead(id)
+    // 标记当前会话历史已加载完成（防首屏闪 WelcomeGuide）
+    sessionHydrated.value[id] = true
   }
 
   async function deleteSession(id) {
@@ -1554,7 +1570,7 @@ export const useChatStore = defineStore('chat', () => {
   return {
     sessions, channelSessions, loadChannelSessions, isChannelSession,
     currentSessionId, currentSession, messages, loading, filteredMessages,
-    sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
+    sessionLoading, sessionHydrated, sidebarOpen, theme, currentModel, currentProvider,
     reasoningEffort, searchEnabled, searchMode, searchQuery,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,

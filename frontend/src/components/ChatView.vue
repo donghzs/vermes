@@ -199,7 +199,14 @@ onUnmounted(() => {
     <!-- 中间内容区：消息列表 / 引导页 -->
     <div class="flex-1 min-h-0 flex flex-col">
       <MessageList v-if="(chat.filteredMessages?.length ?? 0) > 0" @quickStart="onQuickStart" @editMessage="onEditMessage" />
-      <WelcomeGuide v-if="(chat.filteredMessages?.length ?? 0) === 0" @openWeChatQR="openWeChatQR" />
+      <!-- 加载中不显示欢迎界面，防覆盖历史会话 -->
+      <div v-else-if="chat.currentSessionId && !(chat.sessionHydrated?.[chat.currentSessionId] ?? false)" class="flex-1 flex items-center justify-center text-slate-500">
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-6 h-6 border-2 border-slate-600 border-t-emerald-500 rounded-full animate-spin"></div>
+          <span class="text-sm">加载会话历史…</span>
+        </div>
+      </div>
+      <WelcomeGuide v-else @openWeChatQR="openWeChatQR" />
       <MemoryFlags />
     </div>
 

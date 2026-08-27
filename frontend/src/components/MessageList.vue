@@ -850,7 +850,7 @@ function streamElapsed(startTime) {
         <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" :class="msg.role === 'user' ? 'bg-indigo-500' : 'bg-green-500'">
           {{ msg.role === 'user' ? '我' : 'V' }}
         </div>
-        <div class="max-w-[75%] min-w-0">
+        <div :class="[msg.role === 'user' ? 'max-w-[75%]' : 'max-w-[92%]', 'min-w-0']">
           <!-- P3-8: 对比模式标签 -->
           <div v-if="msg._compareModel" class="text-[10px] text-purple-500 dark:text-purple-400 mb-1 font-medium px-1">
             🔬 {{ msg._compareModel }}
