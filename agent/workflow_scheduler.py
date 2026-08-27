@@ -261,10 +261,12 @@ class WorkflowScheduler:
         backend: PlanBackend,
         step_executor: StepExecFunc,
         max_concurrency: int = 4,
+        retry_budget: int = 1,
     ) -> None:
         self._backend = backend
         self._executor = step_executor
         self._max_concurrency = max_concurrency
+        self._retry_budget = max(0, int(retry_budget))  # G2：每步重试预算（防雪崩，默认 1）
         # 边界③ reducer 原语
         self._state_lock = asyncio.Lock()      # plan 状态写回互斥（reducer #1）
         self._results_lock = asyncio.Lock()    # 结果聚合互斥（reducer #2）
@@ -310,6 +312,66 @@ class WorkflowScheduler:
             session_id, deadlocked=False, exec_order=order, results=list(self._results)
         )
 
+    async def resume(
+        self, session_id: str, concurrent: bool = False
+    ) -> "WorkflowResult":
+        """G2 断点续跑：加载持久化 plan+states，只跑剩余 pending 步。
+
+        compute_ready_steps 天然只返回 pending（已完成/failed/skipped 不重跑），故 resume
+        语义即 execute。风险兜底（§0.10.7）：load/execute 抛异常（plan 损坏）→ 降级返回空
+        结果，由调用方（chat.py）走重新规划 pass。
+        """
+        try:
+            return await self.execute(session_id, concurrent=concurrent)
+        except Exception:
+            return WorkflowResult(session_id, deadlocked=False, exec_order=[], results=[])
+
+    async def retry_step(
+        self, session_id: str, step_id: str, concurrent: bool = False
+    ) -> "WorkflowResult":
+        """G2 人工重试某步：重置该步及其下游非完成态为 pending，再 execute 重跑。
+
+        语义（§0.10.2）：failed 步被重试时，其下游曾因传播而被 skip 的步也应复活，
+        否则下游将永久 stuck 在 skipped。completed 步不动。
+        幂等：若目标步已 completed，直接 resume（无害）。
+        """
+        plan_json, todo_states = await self._backend.load(session_id)
+        if todo_states.get(step_id) == "completed":
+            return await self.resume(session_id, concurrent=concurrent)
+        async with self._state_lock:
+            closure = self._downstream_closure(plan_json, step_id)
+            for sid in (closure | {step_id}):
+                if todo_states.get(sid) != "completed":
+                    todo_states[sid] = "pending"
+            await self._persist(session_id, plan_json, todo_states)
+        return await self.execute(session_id, concurrent=concurrent)
+
+    def _downstream_closure(self, plan_json: dict, step_id: str) -> set:
+        """返回 step_id 的传递下游闭包（含直接 + 间接依赖者）。"""
+        by_id = _steps_by_id(plan_json)
+        closure: set = set()
+        stack = [step_id]
+        while stack:
+            cur = stack.pop()
+            for sid, step in by_id.items():
+                if sid in closure:
+                    continue
+                deps = step.get("dependencies") or []
+                if cur in deps:
+                    closure.add(sid)
+                    stack.append(sid)
+        return closure
+
+    async def mark_skipped(self, session_id: str, step_id: str) -> None:
+        """G2 人工跳过某步：标 skipped → 触发下游 skipped 静态传播（不重规划）。"""
+        plan_json, todo_states = await self._backend.load(session_id)
+        if step_id not in todo_states:
+            return
+        async with self._state_lock:
+            todo_states[step_id] = "skipped"
+            self._apply_deadlock_skip(plan_json, todo_states)
+            await self._persist(session_id, plan_json, todo_states)
+
     async def _run_step(
         self,
         session_id: str,
@@ -330,10 +392,26 @@ class WorkflowScheduler:
             # 写的是本步私有字段、读的是已完成步（只读），并发屏障内无共享写冲突。
             step["inputs"] = self._gather_inputs(plan_json, step, todo_states)
             ctx = self._make_context(plan_json, step)  # 边界①只读快照
-            async with self._sem:                        # 边界③ LLM/工具限流
-                result = await self._executor(step, ctx)
-            status = result.status if result else "completed"
-            outputs = (result.outputs if result else {}) or {}
+            # G2 retry 预算：失败（status==failed 或抛异常）按预算重试，超限才终态。
+            # 其他终态（completed/skipped/cancelled）不重试（非临时性失败）。
+            max_attempts = 1 + self._retry_budget
+            attempt = 0
+            status = "completed"
+            outputs: Dict[str, Any] = {}
+            last_error: Optional[str] = None
+            while attempt < max_attempts:
+                attempt += 1
+                try:
+                    async with self._sem:                        # 边界③ LLM/工具限流
+                        result = await self._executor(step, ctx)
+                    status = result.status if result else "completed"
+                    outputs = (result.outputs if result else {}) or {}
+                except Exception as e:
+                    status = "failed"
+                    last_error = str(e)
+                    outputs = {}
+                if status != "failed":
+                    break
             # reducer #1：写结果状态 + 合并 outputs + 落盘，持锁
             async with self._state_lock:
                 todo_states[step_id] = status
@@ -343,7 +421,13 @@ class WorkflowScheduler:
             # reducer #2：结果聚合
             async with self._results_lock:
                 self._results.append(
-                    {"step_id": step_id, "status": status, "outputs": outputs}
+                    {
+                        "step_id": step_id,
+                        "status": status,
+                        "outputs": outputs,
+                        "attempts": attempt,
+                        **({"error": last_error} if status == "failed" else {}),
+                    }
                 )
         except Exception as e:  # 单步失败隔离：不击垮屏障
             async with self._state_lock:

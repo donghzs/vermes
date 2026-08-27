@@ -994,7 +994,7 @@ def _make_workflow_step_executor(agent, conversation_history, user_message, pare
     return _exec
 
 
-def _run_workflow(session_id, agent, conversation_history, user_message, model):
+def _run_workflow(session_id, agent, conversation_history, user_message, model, resume: bool = False):
     """b-2 两阶段编排：①规划 pass 产出并持久化 plan；②Scheduler 按依赖门控驱动（可并发）。
 
     步骤执行体为 B1（LLM 驱动）：每步一次受限 run_conversation，其流式输出经现有
@@ -1011,6 +1011,18 @@ def _run_workflow(session_id, agent, conversation_history, user_message, model):
         WorkflowScheduler,
     )
     import asyncio as _asyncio
+
+    if resume:
+        # G2 断点续跑（§0.10.2）：跳过规划 pass，直接 scheduler.resume（只跑持久化的
+        # pending 步；completed/failed/skipped 不重跑）。由 API/前端「从此续跑」按钮触发。
+        backend = SessionPlanBackend()
+        executor = _make_workflow_step_executor(
+            agent, conversation_history, user_message, session_id
+        )
+        concurrent = _workflow_concurrent_enabled()
+        scheduler = WorkflowScheduler(backend=backend, step_executor=executor, max_concurrency=4)
+        _asyncio.run(scheduler.resume(session_id, concurrent=concurrent))
+        return None
 
     # 规划期静默提示（b-2 体验修复）：用户发消息后到逐步推送之间有一段「无输出」空窗，
     # 先推一个生命周期状态事件，避免前端看似卡死。guard 防回调缺失（正常路径必存在）。
