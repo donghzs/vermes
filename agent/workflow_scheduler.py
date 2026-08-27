@@ -31,6 +31,8 @@ from typing import (
     runtime_checkable,
 )
 
+from .session_plan_store import load_plan_state, save_plan_state
+
 # deps 视为「已满足」的状态：仅 completed 解锁下游。
 _SATISFIED = ("completed",)
 # 终态（不再参与调度，也不阻塞——被跳过/取消的步骤不挡下游，
@@ -210,6 +212,27 @@ class PlanBackend(Protocol):
     ) -> None:
         """原子保存 plan 状态（调用方须已持 self._state_lock）。"""
         ...
+
+
+class SessionPlanBackend:
+    """PlanBackend 真实适配：持久化到 ``session_plan_store``（SQLite，跨重启恢复）。
+
+    b-1 接线点：WorkflowScheduler 经此读写 ``session_plan_store``，取代 plan 会话里
+    手写的 ``_prev_todo_states`` 追踪（设计稿 §0.8.3）。``load`` 返回活链路权威
+    (plan_json, todo_states)，``save`` 原子落盘（reducer #1 落点）。
+    """
+
+    async def load(self, session_id: str) -> Tuple[dict, Dict[str, str]]:
+        data = load_plan_state(session_id)
+        if not data or data.get("plan") is None:
+            # 计划尚未发射：返回空 plan，调度器立即退出（幂等、不崩主循环）
+            return ({"steps": []}, {})
+        return (data["plan"], data.get("todo_states") or {})
+
+    async def save(
+        self, session_id: str, plan_json: dict, todo_states: Dict[str, str]
+    ) -> None:
+        save_plan_state(session_id, plan_json, todo_states, plan_emitted=True)
 
 
 # step_executor: 给定 (step, ctx) 跑该步工作，返回 StepExecResult；抛异常 = 该步 failed。

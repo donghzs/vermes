@@ -817,6 +817,124 @@ def _extract_artifact_paths(preview: str, max_paths: int = 5):
     return paths
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# G1b 增量 (b-1)：工作流调度接管执行（MVP 纯 B1，默认关闭，验证链路用）
+#
+# 设计约束（用户拍板，见 A2 设计稿 §0.8）：
+#   - Scheduler 只决定「该执行哪步 + 注入指令」，step 完成后的状态回写复用现有
+#     tool_progress_handler → plan_step_update SSE 路径；Scheduler 自己的
+#     PlanBackend.save() 仅负责落盘持久化（DAG 门控权威态），两条线不冲突。
+#   - 方案 (b)：父会话 asyncio 协程并发。b-1 串行（concurrent=False），b-2 才开 gather。
+#   - run_conversation 是同步阻塞体，且活链路里它跑在全局 _agent_executor 线程。
+#     为免同池死锁且让 run_conversation 脱离调度器事件循环线程，步骤执行体把
+#     run_conversation 丢进独立的 _wf_step_pool 线程池（refinement 2 落点）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_wf_step_pool = None  # 独立线程池：跑步骤级 run_conversation，避免与 _agent_executor 同池死锁
+
+
+def _workflow_scheduler_enabled() -> bool:
+    """b-1 开关：默认关闭，零回归。置 VERMES_WORKFLOW_V1=1 启用（验证用）。"""
+    import os
+
+    return os.environ.get("VERMES_WORKFLOW_V1", "0") == "1"
+
+
+def _get_wf_step_pool():
+    global _wf_step_pool
+    if _wf_step_pool is None or _wf_step_pool._shutdown:
+        import concurrent.futures
+
+        _wf_step_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="vermes-wf-step"
+        )
+    return _wf_step_pool
+
+
+def _build_workflow_step_prompt(step: dict) -> str:
+    """B1 指令：限定 LLM 只跑这一步，不重新规划、不拆新步骤。"""
+    return (
+        "你正在执行一个已确定的多步计划中的【单一步骤】。\n"
+        f"步骤标题：{step.get('title', '')}\n"
+        f"步骤目标：{step.get('description', '')}\n"
+        f"交付物：{step.get('deliverable', '')}\n"
+        f"完成标准：{step.get('done_when', '')}\n"
+        "要求：只完成这一个步骤并调用必要的工具，完成后停止。"
+        "不要重新规划、不要拆解新的步骤、不要修改其他步骤。\n"
+    )
+
+
+def _make_workflow_step_executor(agent, conversation_history, user_message):
+    """构造 B1 step_executor：每步一次受限 run_conversation（丢独立线程池，不阻塞调度循环）。"""
+    from agent.workflow_scheduler import StepExecResult
+
+    async def _exec(step: dict, ctx: dict):
+        import asyncio as _asyncio
+
+        loop = _asyncio.get_running_loop()
+        prompt = _build_workflow_step_prompt(step)
+
+        def _run():
+            return agent.run_conversation(
+                user_message=prompt,
+                conversation_history=(
+                    conversation_history[:-1]
+                    if len(conversation_history) > 1
+                    else None
+                ),
+                stream_callback=None,
+            )
+
+        try:
+            # 丢独立线程池：run_conversation 同步阻塞，且须脱离调度器事件循环线程
+            res = await loop.run_in_executor(_get_wf_step_pool(), _run)
+            return StepExecResult(
+                status="completed",
+                outputs={"final_response": (res or {}).get("final_response", "") or ""},
+            )
+        except Exception as e:  # 单步失败隔离（边界：不击垮屏障）
+            return StepExecResult(status="failed", error=str(e))
+
+    return _exec
+
+
+def _run_workflow(session_id, agent, conversation_history, user_message, model):
+    """b-1 两阶段编排：①规划 pass 产出并持久化 plan；②Scheduler 按依赖门控逐步驱动。
+
+    步骤执行体为 B1（LLM 驱动）：每步一次受限 run_conversation，其流式输出经现有
+    stream_callback/tool_progress_handler 回写前端 SSE；Scheduler 经 SessionPlanBackend
+    落盘 plan 状态（DAG 门控权威态）。本函数运行在 _agent_executor 线程内，故用
+    asyncio.run 在其自有事件循环驱动异步调度器。
+    """
+    from agent.workflow_scheduler import (
+        SessionPlanBackend,
+        StepExecResult,
+        WorkflowScheduler,
+    )
+    import asyncio as _asyncio
+
+    # ① 规划 pass：要求模型先只输出计划（不立即执行），plan 经现有 stream_callback
+    #    触发的 _detect_and_emit_plan 发射并持久化到 session_plan_store。
+    planning_prompt = (
+        user_message
+        + "\n\n[计划模式] 请先只输出执行计划（JSON），不要立即调用任何工具。计划输出完毕后停止。"
+    )
+    plan_result = agent.run_conversation(
+        user_message=planning_prompt,
+        conversation_history=(
+            conversation_history[:-1] if len(conversation_history) > 1 else None
+        ),
+        stream_callback=None,
+    )
+    # ② 执行 pass：Scheduler 接管（b-1 串行）。
+    backend = SessionPlanBackend()
+    executor = _make_workflow_step_executor(agent, conversation_history, user_message)
+    scheduler = WorkflowScheduler(backend=backend, step_executor=executor)
+    _asyncio.run(scheduler.execute(session_id, concurrent=False))
+    # 前端已通过现有 SSE 路径收到逐步流式输出；返回规划 pass 的结果供兜底补发。
+    return plan_result
+
+
 async def chat_completions(req: ChatRequest, request: Request):
     """Agent-powered chat: uses AIAgent with tool calling capabilities."""
     from run_agent import AIAgent
@@ -1476,11 +1594,23 @@ async def chat_completions(req: ChatRequest, request: Request):
                 agent.plan_event_callback = plan_event_handler
                 _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
                 agent.max_tokens = _max_tokens
-                result = agent.run_conversation(
-                    user_message=user_message,
-                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
-                    stream_callback=None,
-                )
+                if _workflow_scheduler_enabled():
+                    # G1b 增量 (b-1)：工作流调度接管执行（MVP 纯 B1，默认关闭，验证链路用）。
+                    # 两阶段：①规划 pass 产出并持久化 plan；②Scheduler 按依赖门控逐步驱动
+                    # 经现有 stream_callback/tool_progress_handler 回写前端 SSE（§0.8 用户约束）。
+                    result = _run_workflow(
+                        session_id=_session_id,
+                        agent=agent,
+                        conversation_history=conversation_history,
+                        user_message=user_message,
+                        model=model,
+                    )
+                else:
+                    result = agent.run_conversation(
+                        user_message=user_message,
+                        conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
+                        stream_callback=None,
+                    )
                 # ── Step 2: mirror web/desktop turn into state.db (unified view) ──
                 try:
                     _persist_web_turn_to_state_db(
