@@ -35,6 +35,9 @@ class WorkflowStep(BaseModel):
     deliverable: str = ""
     done_when: str = ""
     dependencies: List[str] = []
+    # 可视化布局坐标（前端 DAG 编辑器持久化，后端 schema-less 透传存储）
+    x: float = 0.0
+    y: float = 0.0
 
 
 class WorkflowSave(BaseModel):
@@ -61,6 +64,8 @@ def _step_to_dict(s: WorkflowStep) -> Dict[str, Any]:
         "deliverable": s.deliverable,
         "done_when": s.done_when,
         "dependencies": list(s.dependencies or []),
+        "x": s.x,
+        "y": s.y,
     }
 
 

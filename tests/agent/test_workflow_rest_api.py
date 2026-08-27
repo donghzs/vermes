@@ -54,6 +54,23 @@ def test_get_and_dependencies_persisted():
     assert by_id["a"]["dependencies"] == []
 
 
+def test_xy_coordinates_persisted():
+    """前端 DAG 编辑器持久化节点坐标（x/y），后端须原样透传存储与返回。"""
+    wf = _wf("with_xy")
+    wf["steps"][0]["x"] = 120.5
+    wf["steps"][0]["y"] = 64.0
+    wf["steps"][1]["x"] = 480.0
+    wf["steps"][1]["y"] = 200.25
+    r = client.post("/api/workflows", json=wf)
+    assert r.status_code == 200, r.text
+    body = client.get("/api/workflows/with_xy").json()
+    by_id = {s["id"]: s for s in body["steps"]}
+    assert by_id["a"]["x"] == 120.5
+    assert by_id["a"]["y"] == 64.0
+    assert by_id["b"]["x"] == 480.0
+    assert by_id["b"]["y"] == 200.25
+
+
 def test_bad_dependency_rejected():
     bad = _wf("bad_dep")
     bad["steps"][1]["dependencies"] = ["ghost"]

@@ -323,6 +323,11 @@ const api = {
   deleteWorkflow(name) { return this.del(`/workflows/${encodeURIComponent(name)}`) },
   runWorkflow(name, opts = {}) { return this.post(`/workflows/${encodeURIComponent(name)}/run`, opts) },
 
+  // 触发器：cron 定时任务（G6，绑定工作流）
+  listCronJobs() { return this.get('/cron/jobs') },
+  createCronJob(payload) { return this.post('/cron/jobs', payload) },
+  deleteCronJob(id) { return this.del(`/cron/jobs/${encodeURIComponent(id)}`) },
+
   // 发送消息（SSE 流式）
   async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, onStatus, provider, attachments, session_id }) {
     // 新的非重试请求，重置重试计数器
