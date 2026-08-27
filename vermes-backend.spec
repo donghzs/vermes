@@ -342,7 +342,12 @@ for _pkg in [
         _extra_hidden.extend(_h)
         print(f"[Vermes Backend] collect_all({_pkg}) OK")
     except Exception as _e:
-        print(f"[Vermes Backend] collect_all({_pkg}) SKIP: {_e}")
+        import sys
+        # CRITICAL: collect_all 失败意味着该包不会进产物（如 telegram 缺失→渠道连不上）
+        # 必须用 stderr 明确报错，不能静默跳过
+        print(f"[Vermes Backend] ❌ collect_all({_pkg}) FAILED: {_e}", file=sys.stderr)
+        print(f"[Vermes Backend] ❌ {_pkg} will be MISSING from the build!", file=sys.stderr)
+        raise
 
 hiddenimports.extend(_extra_hidden)
 

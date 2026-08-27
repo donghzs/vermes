@@ -423,8 +423,16 @@ def _scan_gateway_pids(exclude_pids: set[int], all_profiles: bool = False) -> li
                     pass
 
             if not _found_via_proc:
+                # macOS BSD ps does not support the "eww" flag (Linux procps)
+                # and exits with code 1, causing all gateway scans to fail.
+                # Use plain -o pid=,command= on macOS; eww is only needed on
+                # Linux to expose VERMES_HOME= in the environment for profile
+                # matching.
+                _ps_args = (["ps", "-A", "-o", "pid=,command="]
+                           if is_macos()
+                           else ["ps", "-A", "eww", "-o", "pid=,command="])
                 result = subprocess.run(
-                    ["ps", "-A", "eww", "-o", "pid=,command="],
+                    _ps_args,
                     capture_output=True,
                     text=True,
                     timeout=10,
