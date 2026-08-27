@@ -2594,12 +2594,23 @@ def _discover_builtin_mcp_servers() -> Dict[str, dict]:
             if not cmd:
                 logger.debug("builtin-mcp: %s has no command, skipping", name)
                 continue
+            connect_mode = manifest.get("connect", "eager")
             servers[name] = {
                 "command": cmd,
                 "args": list(manifest.get("args", [])),
                 "enabled": True,
+                "_connect": connect_mode,
             }
-            logger.debug("builtin-mcp: discovered '%s'", name)
+            # Lazy servers are NOT connected at startup — they are only
+            # spawned on-demand when an agent actually invokes one of their
+            # tools.  This prevents failed-import loops (e.g. short-drama
+            # whose module isn't bundled in the PyInstaller archive) from
+            # burning CPU with repeated reconnect attempts.
+            if connect_mode == "lazy":
+                logger.info("builtin-mcp: '%s' is lazy-connect, skipping startup registration", name)
+                servers.pop(name, None)
+                continue
+            logger.debug("builtin-mcp: discovered '%s' (connect=%s)", name, connect_mode)
         except Exception as exc:
             logger.debug("builtin-mcp: failed to load %s: %s", manifest_path, exc)
 
