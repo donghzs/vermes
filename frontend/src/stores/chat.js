@@ -8,7 +8,7 @@
  *   chat-storage.js  - IndexedDB 图片 + localStorage 异步写入
  */
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { logger } from '../utils/logger'
 import { showToast } from '../utils/toast'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
@@ -144,7 +144,8 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref([])
   const sessionLoading = ref({})
   // 当前会话是否已完成历史消息加载（防首屏闪 WelcomeGuide）
-  const sessionHydrated = ref({})
+  // 必须用 reactive(对象) 而不是 ref(对象) —— 内部属性写值要触发响应
+  const sessionHydrated = reactive({})
   const loading = computed(() =>
     currentSessionId.value ? sessionLoading.value[currentSessionId.value] || false : false
   )
@@ -485,7 +486,7 @@ export const useChatStore = defineStore('chat', () => {
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
     // 切会话时重置 hydrated 标记（防旧会话的标记误导新会话）
-    sessionHydrated.value[id] = false
+    sessionHydrated[id] = false
     // 通知 ArtifactPanel 等组件做 per-session 隔离
     window.__vermes_current_session_id = id
     window.dispatchEvent(new CustomEvent('vermes-session-change', { detail: { id } }))
@@ -543,7 +544,7 @@ export const useChatStore = defineStore('chat', () => {
     // 渠道会话已打开并呈现历史 → 清除其未读角标
     if (isChannelSession(id)) markChannelRead(id)
     // 标记当前会话历史已加载完成（防首屏闪 WelcomeGuide）
-    sessionHydrated.value[id] = true
+    sessionHydrated[id] = true
   }
 
   async function deleteSession(id) {

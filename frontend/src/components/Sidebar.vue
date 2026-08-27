@@ -345,7 +345,7 @@ async function handleImportFile(e) {
 <template>
   <div
     class="bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300"
-    :class="chat.sidebarOpen ? 'w-64' : 'w-10'"
+    :class="chat.sidebarOpen ? 'w-56' : 'w-10'"
     @click.self="closeContextMenu()"
   >
     <!-- 收起状态：窄边栏 -->
@@ -481,11 +481,18 @@ async function handleImportFile(e) {
               <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(s.id)">{{ getFirstMessagePreview(s.id) }}</div>
               <div class="text-[10px] text-gray-400 mt-0.5 flex justify-between items-center">
                 <span>{{ formatTime(s.lastActive || s.createdAt) }}</span>
-                <button
-                  @click.stop="handleDelete(s.id)"
-                  class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition ml-1"
-                  title="删除会话"
-                >×</button>
+                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                  <button
+                    @click.stop="onContextMenu($event, s)"
+                    class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition px-0.5"
+                    title="更多操作"
+                  >⋯</button>
+                  <button
+                    @click.stop="handleDelete(s.id)"
+                    class="text-red-400 hover:text-red-600 transition"
+                    title="删除会话"
+                  >×</button>
+                </div>
               </div>
             </template>
           </div>
@@ -529,11 +536,18 @@ async function handleImportFile(e) {
               <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(item.data.id)">{{ getFirstMessagePreview(item.data.id) }}</div>
               <div class="text-[10px] text-gray-400 mt-0.5 flex justify-between items-center">
                 <span>{{ formatTime(item.data.createdAt) }}</span>
-                <button
-                  @click.stop="handleDelete(item.data.id)"
-                  class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition ml-1"
-                  title="删除会话"
-                >×</button>
+                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                  <button
+                    @click.stop="onContextMenu($event, item.data)"
+                    class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition px-0.5"
+                    title="更多操作"
+                  >⋯</button>
+                  <button
+                    @click.stop="handleDelete(item.data.id)"
+                    class="text-red-400 hover:text-red-600 transition"
+                    title="删除会话"
+                  >×</button>
+                </div>
               </div>
             </template>
           </div>

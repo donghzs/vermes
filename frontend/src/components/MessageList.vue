@@ -800,11 +800,11 @@ function streamElapsed(startTime) {
 </script>
 
 <template>
-  <div ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto px-4 py-6 bg-gray-50 dark:bg-gray-900 relative">
+  <div ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto px-3 py-4 bg-gray-50 dark:bg-gray-900 relative">
     <!-- 骨架屏：loading 且无消息（切换会话/loading 中） -->
-    <div v-if="(chat.filteredMessages?.length ?? 0) === 0 && chat.loading" class="space-y-4 px-4 py-6">
-      <div v-for="i in 3" :key="'skeleton-'+i" class="flex gap-3" :class="i % 2 === 0 ? 'flex-row-reverse' : ''">
-        <div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse flex-shrink-0"></div>
+    <div v-if="(chat.filteredMessages?.length ?? 0) === 0 && chat.loading" class="space-y-4 px-3 py-4">
+      <div v-for="i in 3" :key="'skeleton-'+i" class="flex gap-2" :class="i % 2 === 0 ? 'flex-row-reverse' : ''">
+        <div class="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse flex-shrink-0"></div>
         <div class="max-w-[75%] space-y-2">
           <div class="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" :style="{width: (120 + i * 60) + 'px'}"></div>
           <div class="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" :style="{width: (80 + i * 40) + 'px'}"></div>
@@ -816,7 +816,7 @@ function streamElapsed(startTime) {
     <!-- 消息列表 -->
     <div v-else>
       <!-- 2.1 推理面板：展开全部 / 收起全部 -->
-      <div v-if="reasoningMsgs.length > 0" class="flex justify-end px-4 pb-1">
+      <div v-if="reasoningMsgs.length > 0" class="flex justify-end px-3 pb-1">
         <button @click="toggleAllReasoning"
                 class="text-[11px] text-purple-500 dark:text-purple-400 hover:underline select-none">
           {{ allReasoningExpanded ? '▾ 收起全部推理' : '▸ 展开全部推理' }} ({{ reasoningMsgs.length }})
@@ -824,7 +824,7 @@ function streamElapsed(startTime) {
       </div>
       <div v-for="msg in chat.filteredMessages" :key="msg.id"
            :data-role="msg.role"
-           class="flex gap-3 group px-4 py-2"
+           class="flex gap-2 group px-3 py-1.5"
            :class="msg.role === 'user' ? 'flex-row-reverse' : msg._isModelChange ? 'flex-row justify-center' : ''">
         <!-- 模型切换提示：居中轻量样式 -->
         <div v-if="msg._isModelChange" class="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800/50 rounded-full px-3 py-1 inline-flex items-center gap-1">
@@ -847,10 +847,10 @@ function streamElapsed(startTime) {
           class="w-full"
         />
         <template v-else>
-        <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" :class="msg.role === 'user' ? 'bg-indigo-500' : 'bg-green-500'">
+        <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0" :class="msg.role === 'user' ? 'bg-indigo-500' : 'bg-green-500'">
           {{ msg.role === 'user' ? '我' : 'V' }}
         </div>
-        <div :class="[msg.role === 'user' ? 'max-w-[75%]' : 'max-w-[92%]', 'min-w-0']">
+        <div :class="[msg.role === 'user' ? 'max-w-[80%]' : 'max-w-[96%]', 'min-w-0']">
           <!-- P3-8: 对比模式标签 -->
           <div v-if="msg._compareModel" class="text-[10px] text-purple-500 dark:text-purple-400 mb-1 font-medium px-1">
             🔬 {{ msg._compareModel }}

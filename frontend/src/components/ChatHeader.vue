@@ -250,8 +250,7 @@ function closeDropdowns() {
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
       <button @click="chat.toggleSidebar()" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="切换侧边栏">☰<span class="header-tooltip group-hover:opacity-100">切换侧边栏</span></button>
-      <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新 Agent' }}</h2>
-      <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages?.length ?? 0 }} 条消息</span>
+      <!-- 会话名称和消息数已移除：左栏已有，避免中间栏被挤压 -->
       <button @click="emit('toggleHistory')" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋<span class="header-tooltip group-hover:opacity-100">历史记录</span></button>
 
       <!-- 消息搜索 -->
