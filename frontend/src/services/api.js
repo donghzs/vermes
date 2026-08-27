@@ -316,6 +316,13 @@ const api = {
   searchSkills(q, source, limit) { return this.get(`/skills/market?q=${encodeURIComponent(q)}&source=${source}&limit=${limit}`) },
   getTrendingSkills() { return this.get('/skills/market/trending') },
 
+  // 工作流编排（A2/G3+G6）
+  listWorkflows() { return this.get('/workflows') },
+  getWorkflow(name) { return this.get(`/workflows/${encodeURIComponent(name)}`) },
+  saveWorkflow(payload) { return this.post('/workflows', payload) },
+  deleteWorkflow(name) { return this.del(`/workflows/${encodeURIComponent(name)}`) },
+  runWorkflow(name, opts = {}) { return this.post(`/workflows/${encodeURIComponent(name)}/run`, opts) },
+
   // 发送消息（SSE 流式）
   async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, onStatus, provider, attachments, session_id }) {
     // 新的非重试请求，重置重试计数器

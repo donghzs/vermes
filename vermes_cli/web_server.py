@@ -2959,6 +2959,7 @@ blueprints.providers.register_to(app)
 blueprints.dashboard.register_to(app)
 blueprints.session.register_to(app)
 blueprints.cron_jobs.register_to(app)
+blueprints.workflows.register_to(app)  # A2/G3+G6: 工作流模板 REST 管理 + 运行
 blueprints.storage.register_to(app)
 blueprints.analytics.register_to(app)
 blueprints.skills_tools.register_to(app)

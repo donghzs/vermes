@@ -26,6 +26,7 @@ function goScholarForge() { router.push('/scholarforge') }
 function go3DStudio() { router.push('/3d-studio') }
 function goSkillMarket() { router.push('/skill-market') }
 function goKanban() { router.push('/kanban') }
+function goWorkflows() { router.push('/workflows') }
 // goModuleStore 已移除（模块商店归入 Agent 管理→软件 tab）
 
 // 点击会话项：切换会话 + 如果不在聊天页则跳回
@@ -581,6 +582,10 @@ async function handleImportFile(e) {
         <button @click="goKanban()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/kanban' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="蜂群看板">
           <span class="text-base">🐝</span>
           <span class="sidebar-tooltip group-hover:opacity-100">蜂群看板</span>
+        </button>
+        <button @click="goWorkflows()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/workflows' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="工作流编排">
+          <span class="text-base">🔀</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">工作流编排</span>
         </button>
         </div>
 

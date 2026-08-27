@@ -8,6 +8,7 @@ from . import chat
 from . import config
 from . import providers
 from . import cron_jobs
+from . import workflows
 from . import update
 from . import skills_tools
 from . import analytics
@@ -25,7 +26,7 @@ __all__ = [
     "quota_bp", "wechat_bp", "models_bp",
     "dashboard_bp", "session_bp",
     "chat", "config", "providers",
-    "cron_jobs", "update", "skills_tools",
+    "cron_jobs", "workflows", "update", "skills_tools",
     "analytics", "status", "gateway_channels", "profiles",
     "oauth", "storage", "artifacts", "modules_market", "mcp_catalog", "credential_lifecycle",
 ]

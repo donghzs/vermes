@@ -8,6 +8,7 @@ import ModuStore from '../components/ModuStore.vue'
 import SkillManager from '../components/SkillManager.vue'
 import SkillMarketPage from '../components/SkillMarketPage.vue'
 import KanbanBoard from '../components/KanbanBoard.vue'
+import WorkflowsPage from '../components/WorkflowsPage.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -22,6 +23,8 @@ const routes = [
   { path: '/skill-market', component: SkillMarketPage },
   // 蜂群协作看板：Vermes 任务图可视化（多 Agent 并行执行）
   { path: '/kanban', component: KanbanBoard },
+  // A2 工作流编排：可视化 DAG 编辑器 + 触发器配置
+  { path: '/workflows', component: WorkflowsPage },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/

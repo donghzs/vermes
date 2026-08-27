@@ -23,6 +23,7 @@ class CronJobCreate(BaseModel):
     schedule: str
     name: str = ""
     deliver: str = "local"
+    workflow: str = ""  # A2/G6: 关联工作流模板名 → 定时跑该工作流
 
 
 class CronJobUpdate(BaseModel):
@@ -151,6 +152,7 @@ async def create_cron_job(body: CronJobCreate, profile: str = "default"):
             schedule=body.schedule,
             name=body.name,
             deliver=body.deliver,
+            workflow=body.workflow or None,
         )
     except Exception as e:
         _log.exception("POST /api/cron/jobs failed")
