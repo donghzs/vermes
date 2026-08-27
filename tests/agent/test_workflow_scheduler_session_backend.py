@@ -146,9 +146,16 @@ def test_dependency_order_is_load_bearing(tmp_path, monkeypatch):
     asyncio.run(sch_ok.execute("sess-rv", concurrent=False))
     assert order_ok.index("s1") < order_ok.index("s2") < order_ok.index("s3")
 
-    # ② 破门控：返回反向 step 列表（s3,s2,s1），无视依赖
+    # ② 破门控：仍按「已完成则跳过」过滤 ts（否则 execute 循环会重跑已完成的步 → 死循环），
+    #    但无视依赖、把剩余 pending 步按 id 逆序返回 → s3/s2 会在 s1 未完成前被执行。
     def _broken_gate(p, ts=None):
-        return [s["id"] for s in p["steps"]][::-1]
+        ts = ts or {}
+        pending = [
+            s["id"]
+            for s in p["steps"]
+            if ts.get(s["id"], s.get("status", "pending")) == "pending"
+        ]
+        return pending[::-1]
 
     monkeypatch.setattr("agent.workflow_scheduler.compute_ready_steps", _broken_gate)
     # 重置 DB 状态
