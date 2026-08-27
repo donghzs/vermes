@@ -868,16 +868,36 @@ def _get_wf_step_pool():
 
 
 def _build_workflow_step_prompt(step: dict) -> str:
-    """B1 指令：限定 LLM 只跑这一步，不重新规划、不拆新步骤。"""
-    return (
-        "你正在执行一个已确定的多步计划中的【单一步骤】。\n"
-        f"步骤标题：{step.get('title', '')}\n"
-        f"步骤目标：{step.get('description', '')}\n"
-        f"交付物：{step.get('deliverable', '')}\n"
-        f"完成标准：{step.get('done_when', '')}\n"
+    """B1 指令：限定 LLM 只跑这一步，不重新规划、不拆新步骤。
+
+    G4 数据流：若本步有上游注入的 ``inputs``（来自已完成依赖步的 outputs），
+    渲染为「已知前置产物」上下文，让 LLM 直接消费而非自行在上下文翻找。
+    """
+    parts = [
+        "你正在执行一个已确定的多步计划中的【单一步骤】。\n",
+        f"步骤标题：{step.get('title', '')}\n",
+        f"步骤目标：{step.get('description', '')}\n",
+        f"交付物：{step.get('deliverable', '')}\n",
+        f"完成标准：{step.get('done_when', '')}\n",
+    ]
+    # G4：已知前置产物（上游步骤 outputs 已聚合到 step['inputs']，§0.12.2）
+    inputs = step.get("inputs") or {}
+    if inputs:
+        parts.append(
+            "\n【已知前置产物】以下是本步骤依赖的上游步骤产出，可直接使用，无需重新生成：\n"
+        )
+        for dep_id, dep_out in inputs.items():
+            summary = dep_out.get("summary")
+            if summary:
+                parts.append(f"- 来自步骤「{dep_id}」：{summary}\n")
+            # 截断 artifacts 防 context 爆量（§0.12.3），最多 3 条
+            for art in (dep_out.get("artifacts") or [])[:3]:
+                parts.append(f"  - 产物：{art}\n")
+    parts.append(
         "要求：只完成这一个步骤并调用必要的工具，完成后停止。"
         "不要重新规划、不要拆解新的步骤、不要修改其他步骤。\n"
     )
+    return "".join(parts)
 
 
 def _make_step_agent(parent_agent, step: dict, parent_session_id: str):
@@ -957,9 +977,12 @@ def _make_workflow_step_executor(agent, conversation_history, user_message, pare
                 conversation_history=history,
                 stream_callback=None,
             )
+            final = (res or {}).get("final_response", "") or ""
+            # G4：把本步产物摘要写入 outputs，供下游步骤 inputs 消费（§0.12.2 第4点）。
+            # summary = 该步最终回复（B1 模式下「步骤产物」即其自然语言交付）。
             return StepExecResult(
                 status="completed",
-                outputs={"final_response": (res or {}).get("final_response", "") or ""},
+                outputs={"final_response": final, "summary": final},
             )
 
         try:

@@ -18,6 +18,7 @@ Vermes 活链路里计划是**被动追踪覆盖层**——步骤状态由解析
 from __future__ import annotations
 
 import asyncio
+import copy
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -324,6 +325,10 @@ class WorkflowScheduler:
             await self._persist(session_id, plan_json, todo_states)
         try:
             step = next(s for s in plan_json["steps"] if s["id"] == step_id)
+            # G4 数据流：聚合已完成依赖步的 outputs → 本步 inputs（边界②私有态）。
+            # 此时上游必已完成（compute_ready_steps 保证），plan_json 内上游 outputs 已就位。
+            # 写的是本步私有字段、读的是已完成步（只读），并发屏障内无共享写冲突。
+            step["inputs"] = self._gather_inputs(plan_json, step, todo_states)
             ctx = self._make_context(plan_json, step)  # 边界①只读快照
             async with self._sem:                        # 边界③ LLM/工具限流
                 result = await self._executor(step, ctx)
@@ -354,6 +359,28 @@ class WorkflowScheduler:
     ) -> None:
         """reducer #1 落点。调用方须已持 self._state_lock（不重复加锁，避免重入死锁）。"""
         await self._backend.save(session_id, plan_json, todo_states)
+
+    def _gather_inputs(
+        self, plan_json: dict, step: dict, todo_states: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """G4 数据流：聚合已完成依赖步的 outputs → 当前步 inputs。
+
+        只读上游 outputs（边界②步骤私有态），写入当前步 inputs（亦为步骤私有态），
+        不反向写、不触碰 plan_json 其他位置。上游未完成或未产出 outputs 则跳过该依赖。
+        deepcopy 上游产物，防止下游改 inputs 污染上游 outputs（T3 承重墙）。
+        """
+        inputs: Dict[str, Any] = {}
+        for dep in (step.get("dependencies") or []):
+            dstep = next((s for s in plan_json["steps"] if s["id"] == dep), None)
+            if dstep is None:
+                continue  # 幽灵依赖放行（与 compute_ready_steps 一致）
+            dst = todo_states.get(dep) or dstep.get("status", "pending")
+            if dst != "completed":
+                continue  # 上游未完成 → 不注入（依赖门控保证此处正常不会命中）
+            dep_outputs = dstep.get("outputs")
+            if dep_outputs:
+                inputs[dep] = copy.deepcopy(dep_outputs)
+        return inputs
 
     def _make_context(self, plan_json: dict, step: dict) -> dict:
         """边界①：只读共享态快照。返回 plan 结构与本步 goal；协程不得改 plan_json。"""
