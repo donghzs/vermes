@@ -78,7 +78,7 @@ const filteredSessions = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return mergedSessions.value
   return mergedSessions.value.filter(s =>
-    (s.name || '新 Agent').toLowerCase().includes(q) || (s.source || '').toLowerCase().includes(q)
+    (s.name || '新会话').toLowerCase().includes(q) || (s.source || '').toLowerCase().includes(q)
   )
 })
 
@@ -128,7 +128,7 @@ const renameRef = ref(null)
 
 function startRename(s) {
   renamingId.value = s.id
-  renameInput.value = s.name || '新 Agent'
+  renameInput.value = s.name || '新会话'
   closeContextMenu()
   nextTick(() => {
     const el = document.querySelector('.rename-input')
@@ -283,7 +283,7 @@ function confirmCustomPrompt() {
   const prompt = customPromptInput.value.trim()
   if (!prompt) {
     // 空的就当空白会话
-    chat.createSession('新 Agent', SESSION_TEMPLATES[0])
+    chat.createSession('新会话', SESSION_TEMPLATES[0])
   } else {
     chat.createSession('自定义', { id: 'custom', name: '自定义', icon: '⚙️', systemPrompt: prompt })
   }
@@ -351,10 +351,7 @@ async function handleImportFile(e) {
     <!-- 收起状态：窄边栏 -->
     <template v-if="!chat.sidebarOpen">
       <div class="flex flex-col items-center py-3 gap-2">
-        <button @click="chat.toggleSidebar()" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition" title="展开侧边栏">
-          <div class="w-6 h-6 bg-green-500 rounded flex items-center justify-center text-white font-bold text-xs">V</div>
-        </button>
-        <button @click="chat.createSession('新 Agent')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition text-sm" title="新 Agent">
+        <button @click="chat.createSession('新会话')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition text-sm" title="新建会话">
           ➕
         </button>
       </div>
@@ -362,20 +359,12 @@ async function handleImportFile(e) {
 
     <!-- 展开状态：完整侧边栏 -->
     <template v-else>
-      <!-- 顶部 Logo -->
-      <div class="p-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
-        <div class="flex items-center gap-2">
-          <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">V</div>
-          <span class="font-semibold text-gray-800 dark:text-gray-200">Vermes</span>
-        </div>
-      </div>
-
-      <!-- 新 Agent按钮 + 模板选择 -->
+      <!-- 新建会话按钮 + 模板选择 -->
       <div class="p-3 shrink-0 relative">
         <button
           @click="showTemplateMenu = !showTemplateMenu"
           class="w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition"
-        >＋ 新 Agent</button>
+        >＋ 新建会话</button>
         <div v-if="showTemplateMenu" class="absolute left-3 right-3 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1">
           <div v-for="tpl in SESSION_TEMPLATES" :key="tpl.id"
             @click="selectTemplate(tpl)"
@@ -470,7 +459,7 @@ async function handleImportFile(e) {
             <template v-else>
               <div class="flex items-center gap-1">
                 <span class="text-[10px] shrink-0">📌</span>
-                <span class="truncate font-medium flex-1">{{ s.name || '新 Agent' }}</span>
+                <span class="truncate font-medium flex-1">{{ s.name || '新会话' }}</span>
                 <span v-if="chat.sessionLoading[s.id]" class="shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" title="运行中"></span>
                 <!-- 任务状态 chip：进行中 📋 N/M / 完成 ✅ -->
                 <span v-if="getTodoCount(s.id) > 0" class="shrink-0 text-[10px] px-1 py-0.5 rounded font-medium" :class="chat.sessionTodoAllDone[s.id] ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30' : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'" :title="chat.sessionTodoAllDone[s.id] ? '任务已完成' : '任务进行中'">
@@ -527,7 +516,7 @@ async function handleImportFile(e) {
             </div>
             <template v-else>
               <div class="flex items-center gap-1">
-                <span class="truncate font-medium flex-1">{{ item.data.name || '新 Agent' }}</span>
+                <span class="truncate font-medium flex-1">{{ item.data.name || '新会话' }}</span>
                 <span v-if="item.data.channel" class="shrink-0 text-[9px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300" :title="'来自渠道: ' + item.data.source">{{ sourceBadge(item.data) }}</span>
                 <span v-if="chat.channelUnread[item.data.id] > 0" class="shrink-0 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-semibold rounded-full bg-red-500 text-white" :title="chat.channelUnread[item.data.id] + ' 条未读'">{{ chat.channelUnread[item.data.id] > 99 ? '99+' : chat.channelUnread[item.data.id] }}</span>
                 <span v-if="chat.sessionLoading[item.data.id]" class="shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" title="运行中"></span>

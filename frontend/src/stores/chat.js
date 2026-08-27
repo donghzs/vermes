@@ -427,7 +427,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         await switchSession(lastId, { hydrate: false })
       } else {
-        await createSession('新 Agent')
+        await createSession('新会话')
       }
       // 注入进化简报(非阻塞:后台拉取,不挡首屏)
       injectEvolutionBriefing().catch(() => {})
@@ -436,7 +436,7 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) {
       console.error('❌ init failed:', e)
       if (sessions.value.length === 0) {
-        await createSession('新 Agent')
+        await createSession('新会话')
       }
     }
   }
@@ -574,7 +574,7 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = messages.value.filter(m => m.sessionId !== id)
       if (currentSessionId.value === id) {
         if (sessions.value.length > 0) await switchSession(sessions.value[0].id)
-        else await createSession('新 Agent')
+        else await createSession('新会话')
       }
       return
     }
@@ -596,7 +596,7 @@ export const useChatStore = defineStore('chat', () => {
       if (sessions.value.length > 0) {
         await switchSession(sessions.value[0].id)
       } else {
-        await createSession('新 Agent')
+        await createSession('新会话')
       }
     }
   }
@@ -1531,7 +1531,7 @@ export const useChatStore = defineStore('chat', () => {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
-  function newSession() { createSession('新 Agent') }
+  function newSession() { createSession('新会话') }
 
   function searchAllMessages(query, dateFilter) {
     const results = []

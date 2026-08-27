@@ -186,7 +186,7 @@ async function createSession(sessions, messages, name, template, SESSIONS_KEY, M
   const tpl = template || SESSION_TEMPLATES[0]
   const s = {
     id: uid(),
-    name: name || tpl.name || '新 Agent',
+    name: name || tpl.name || '新会话',
     createdAt: new Date().toISOString(),
     lastActive: new Date().toISOString(),
     templateId: tpl.id,
