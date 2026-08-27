@@ -824,7 +824,8 @@ def _extract_artifact_paths(preview: str, max_paths: int = 5):
 #   - Scheduler 只决定「该执行哪步 + 注入指令」，step 完成后的状态回写复用现有
 #     tool_progress_handler → plan_step_update SSE 路径；Scheduler 自己的
 #     PlanBackend.save() 仅负责落盘持久化（DAG 门控权威态），两条线不冲突。
-#   - 方案 (b)：父会话 asyncio 协程并发。b-1 串行（concurrent=False），b-2 才开 gather。
+#   - 方案 (b)：父会话 asyncio 协程并发。b-1 默认串行（concurrent=False）；b-2 新增
+#     VERMES_WORKFLOW_CONCURRENT 开关（默认关，先串行基线），置 1 后同屏障就绪步开 gather。
 #   - run_conversation 是同步阻塞体，且活链路里它跑在全局 _agent_executor 线程。
 #     为免同池死锁且让 run_conversation 脱离调度器事件循环线程，步骤执行体把
 #     run_conversation 丢进独立的 _wf_step_pool 线程池（refinement 2 落点）。
@@ -834,10 +835,25 @@ _wf_step_pool = None  # 独立线程池：跑步骤级 run_conversation，避免
 
 
 def _workflow_scheduler_enabled() -> bool:
-    """b-1 开关：默认关闭，零回归。置 VERMES_WORKFLOW_V1=1 启用（验证用）。"""
+    """b-1 总开关：默认关闭，零回归。置 VERMES_WORKFLOW_V1=1 启用（验证用）。"""
     import os
 
     return os.environ.get("VERMES_WORKFLOW_V1", "0") == "1"
+
+
+def _workflow_concurrent_enabled() -> bool:
+    """b-2 并发开关：默认关闭，零回归（用户策略：先串行基线，验证后再开并发）。
+
+    仅当总开关 VERMES_WORKFLOW_V1=1 **且** 并发开关 VERMES_WORKFLOW_CONCURRENT=1
+    同时为真才并发。两者默认皆 0 → 串行基线。验证路径：先默认串行跑通真实对话 →
+    手动置 CONCURRENT=1 验证并发 → 稳定后再改默认。
+    """
+    import os
+
+    return (
+        os.environ.get("VERMES_WORKFLOW_V1", "0") == "1"
+        and os.environ.get("VERMES_WORKFLOW_CONCURRENT", "0") == "1"
+    )
 
 
 def _get_wf_step_pool():
@@ -864,34 +880,91 @@ def _build_workflow_step_prompt(step: dict) -> str:
     )
 
 
-def _make_workflow_step_executor(agent, conversation_history, user_message):
-    """构造 B1 step_executor：每步一次受限 run_conversation（丢独立线程池，不阻塞调度循环）。"""
+def _make_step_agent(parent_agent, step: dict, parent_session_id: str):
+    """b-2 每步隔离 AIAgent 工厂（§0.9.2 核心改动）。
+
+    约束② 步骤私有态：每步用唯一 ``session_id``（``{parent}__wf_{step_id}``）构造独立实例，
+    各自 session DB / 轨迹文件互不覆盖。构造参数 + 8 个 SSE 回调 + 运行期属性全部从父 agent
+    **原样**读取（chat.py:1176 真实构造口径，§0.9.0），保证 step agent 与父会话行为一致。
+    约束① 只读共享态（history deepcopy）由 executor 负责，本工厂不碰共享态。
+    """
+    from run_agent import AIAgent
+
+    kwargs = {
+        "base_url": getattr(parent_agent, "base_url", None),
+        "api_key": getattr(parent_agent, "api_key", None),
+        "provider": getattr(parent_agent, "provider", None),
+        "model": getattr(parent_agent, "model", None),
+        "max_iterations": getattr(parent_agent, "max_iterations", 30),
+        "quiet_mode": True,
+        "verbose_logging": False,
+        "platform": getattr(parent_agent, "platform", "web"),
+        "enabled_toolsets": getattr(parent_agent, "enabled_toolsets", None),
+        "disabled_toolsets": getattr(parent_agent, "disabled_toolsets", None),
+        "ephemeral_system_prompt": getattr(parent_agent, "ephemeral_system_prompt", None),
+        "reasoning_config": getattr(parent_agent, "reasoning_config", None),
+        "session_id": f"{parent_session_id}__wf_{step['id']}",
+        "parent_session_id": parent_session_id,
+    }
+    # 约束④ SSE 回调透传（流式/工具/计划/思考）——前端逐步进度仍可见（§0.9.4）。
+    for _cb in (
+        "status_callback",
+        "plan_event_callback",
+        "stream_delta_callback",
+        "tool_progress_callback",
+        "tool_start_callback",
+        "tool_complete_callback",
+        "thinking_callback",
+        "reasoning_callback",
+    ):
+        _v = getattr(parent_agent, _cb, None)
+        if _v is not None:
+            kwargs[_cb] = _v
+    step_agent = AIAgent(**kwargs)
+    # 运行期属性透传（联网提示重组 / 交互模式硬约束，chat.py:1215-1217）
+    _mode = getattr(parent_agent, "interaction_mode", None)
+    if _mode is not None:
+        step_agent.interaction_mode = _mode
+    _evo = getattr(parent_agent, "_evo_base_prompt", None)
+    if _evo:
+        step_agent._evo_base_prompt = _evo
+    return step_agent
+
+
+def _make_workflow_step_executor(agent, conversation_history, user_message, parent_session_id):
+    """b-2 构造 B1 step_executor：每步在 _wf_step_pool 线程内构造**隔离** AIAgent（§0.9.2）。
+
+    与 b-1 的区别：b-1 把同一 ``agent`` 实例传给每步 → 并发时多线程竞态共享可变状态。
+    b-2 改为每步由 _make_step_agent 构造全新实例（唯一 session_id + deepcopy 只读 history），
+    并发屏障内多个 run_conversation 各自跑在独立线程 / 独立实例，无共享可变状态。
+    """
     from agent.workflow_scheduler import StepExecResult
 
     async def _exec(step: dict, ctx: dict):
         import asyncio as _asyncio
+        import copy
 
         loop = _asyncio.get_running_loop()
         prompt = _build_workflow_step_prompt(step)
 
         def _run():
-            return agent.run_conversation(
+            step_agent = _make_step_agent(agent, step, parent_session_id)
+            # 约束① 只读共享态：严格 deepcopy，step 不得改父 history、兄弟步互不可见
+            seed = conversation_history[:-1] if len(conversation_history) > 1 else None
+            history = copy.deepcopy(seed) if seed is not None else None
+            res = step_agent.run_conversation(
                 user_message=prompt,
-                conversation_history=(
-                    conversation_history[:-1]
-                    if len(conversation_history) > 1
-                    else None
-                ),
+                conversation_history=history,
                 stream_callback=None,
             )
-
-        try:
-            # 丢独立线程池：run_conversation 同步阻塞，且须脱离调度器事件循环线程
-            res = await loop.run_in_executor(_get_wf_step_pool(), _run)
             return StepExecResult(
                 status="completed",
                 outputs={"final_response": (res or {}).get("final_response", "") or ""},
             )
+
+        try:
+            # 丢独立线程池：run_conversation 同步阻塞，且须脱离调度器事件循环线程
+            return await loop.run_in_executor(_get_wf_step_pool(), _run)
         except Exception as e:  # 单步失败隔离（边界：不击垮屏障）
             return StepExecResult(status="failed", error=str(e))
 
@@ -899,19 +972,31 @@ def _make_workflow_step_executor(agent, conversation_history, user_message):
 
 
 def _run_workflow(session_id, agent, conversation_history, user_message, model):
-    """b-1 两阶段编排：①规划 pass 产出并持久化 plan；②Scheduler 按依赖门控逐步驱动。
+    """b-2 两阶段编排：①规划 pass 产出并持久化 plan；②Scheduler 按依赖门控驱动（可并发）。
 
     步骤执行体为 B1（LLM 驱动）：每步一次受限 run_conversation，其流式输出经现有
     stream_callback/tool_progress_handler 回写前端 SSE；Scheduler 经 SessionPlanBackend
     落盘 plan 状态（DAG 门控权威态）。本函数运行在 _agent_executor 线程内，故用
     asyncio.run 在其自有事件循环驱动异步调度器。
+
+    b-2 并发：并发开关由 _workflow_concurrent_enabled() 控制（默认关，仅 V1=1 && CONCURRENT=1
+    才开）；开启后同屏障就绪步经 asyncio.gather 并行，每步在 _wf_step_pool 线程内构造隔离
+    AIAgent（见 _make_workflow_step_executor）。
     """
     from agent.workflow_scheduler import (
         SessionPlanBackend,
-        StepExecResult,
         WorkflowScheduler,
     )
     import asyncio as _asyncio
+
+    # 规划期静默提示（b-2 体验修复）：用户发消息后到逐步推送之间有一段「无输出」空窗，
+    # 先推一个生命周期状态事件，避免前端看似卡死。guard 防回调缺失（正常路径必存在）。
+    _status_cb = getattr(agent, "status_callback", None)
+    if _status_cb is not None:
+        try:
+            _status_cb("lifecycle", "正在制定计划…")
+        except Exception:
+            pass
 
     # ① 规划 pass：要求模型先只输出计划（不立即执行），plan 经现有 stream_callback
     #    触发的 _detect_and_emit_plan 发射并持久化到 session_plan_store。
@@ -926,11 +1011,16 @@ def _run_workflow(session_id, agent, conversation_history, user_message, model):
         ),
         stream_callback=None,
     )
-    # ② 执行 pass：Scheduler 接管（b-1 串行）。
+    # ② 执行 pass：Scheduler 接管。concurrent 由开关控制（默认串行，零回归）。
     backend = SessionPlanBackend()
-    executor = _make_workflow_step_executor(agent, conversation_history, user_message)
-    scheduler = WorkflowScheduler(backend=backend, step_executor=executor)
-    _asyncio.run(scheduler.execute(session_id, concurrent=False))
+    executor = _make_workflow_step_executor(
+        agent, conversation_history, user_message, session_id
+    )
+    concurrent = _workflow_concurrent_enabled()
+    scheduler = WorkflowScheduler(
+        backend=backend, step_executor=executor, max_concurrency=4
+    )
+    _asyncio.run(scheduler.execute(session_id, concurrent=concurrent))
     # 前端已通过现有 SSE 路径收到逐步流式输出；返回规划 pass 的结果供兜底补发。
     return plan_result
 
@@ -1595,7 +1685,7 @@ async def chat_completions(req: ChatRequest, request: Request):
                 _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
                 agent.max_tokens = _max_tokens
                 if _workflow_scheduler_enabled():
-                    # G1b 增量 (b-1)：工作流调度接管执行（MVP 纯 B1，默认关闭，验证链路用）。
+                    # G1b 增量 (b-1/b-2)：工作流调度接管执行（MVP 纯 B1，默认关闭，验证链路用）。
                     # 两阶段：①规划 pass 产出并持久化 plan；②Scheduler 按依赖门控逐步驱动
                     # 经现有 stream_callback/tool_progress_handler 回写前端 SSE（§0.8 用户约束）。
                     result = _run_workflow(
