@@ -403,8 +403,26 @@ function _loadArtifacts() {
     const rawC = localStorage.getItem(_storageKey() + '-changes'); if (rawC) changes.value = JSON.parse(rawC)
   } catch (e) {}
 }
+
+// 文件标签同样按会话隔离，避免切会话后仍堆积旧会话打开的标签页
+function _fileTabsKey() { return 'vermes-filetabs-' + (window.__vermes_current_session_id || 'default') }
+function _persistFileTabs() { try { localStorage.setItem(_fileTabsKey(), JSON.stringify(fileTabs.value)) } catch (e) {} }
+function _loadFileTabs() {
+  try {
+    const raw = localStorage.getItem(_fileTabsKey())
+    const list = raw ? JSON.parse(raw) : []
+    fileTabs.value = Array.isArray(list) ? list : []
+    // 若当前打开的是文件标签，但新会话里没有这个标签，则切回任务视图，避免展示旧会话残留
+    if (activeTabId.value?.startsWith('file:') && !fileTabs.value.find(t => t.id === activeTabId.value)) {
+      activeTabId.value = fileTabs.value.length ? fileTabs.value[0].id : 'tasks'
+    }
+  } catch (e) { fileTabs.value = [] }
+}
+watch(fileTabs, _persistFileTabs, { deep: true })
+
 _loadArtifacts()
-window.addEventListener('vermes-session-change', _loadArtifacts)
+_loadFileTabs()
+window.addEventListener('vermes-session-change', () => { _loadArtifacts(); _loadFileTabs() })
 
 window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifacts, addChange, removeChange, clearChanges, changes, openArtifactById }
 
@@ -538,8 +556,8 @@ function openArtifactById(id) {
               </button>
             </div>
           </div>
-          <!-- 渲染区 -->
-          <div class="flex-1 overflow-y-auto">
+          <!-- 渲染区：flex-col 让编辑模式 textarea 能撑满整片高度，而不是被普通 block 布局压成小框 -->
+          <div class="flex-1 overflow-y-auto flex flex-col">
             <div v-if="activeChange" class="p-5">
               <div class="text-xs text-gray-400 mb-3 break-all">{{ activeChange.path }}</div>
               <span class="text-xs px-2 py-0.5 rounded-full" :class="activeChange.action === 'write' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'">{{ activeChange.action === 'write' ? '新建/覆盖' : '修改' }}</span>

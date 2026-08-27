@@ -378,7 +378,7 @@ md.renderer.rules.link_open = function(tokens, idx, options, env, self) {
 
 // ── 裸文件路径自动链接化 �─
 // 匹配文本中的 /path/to/file.ext 或 path/to/file.ext（至少含一个 /）
-const ARTIFACT_PATH_RE = /(?:^|[\s(\[{"'\u3000`])((?:\.?\/)?(?:[\w\u4e00-\u9fff-]+\/)*[\w\u4e00-\u9fff.-]+\.(?:md|html|htm|json|csv|txt|log|py|js|ts|sh|yaml|yml|toml|ini|cfg|png|jpg|jpeg|gif|webp|svg))(?=[\s)\]},"'\u3000`?!，。、；：]|$)/gi
+const ARTIFACT_PATH_RE = /(?:^|[\s(\[{"'\u3000`：:])((?:\.?\/)?(?:[\w\u4e00-\u9fff~-]+\/)*[\w\u4e00-\u9fff~.-]+\.(?:md|html|htm|json|csv|txt|log|py|js|ts|sh|yaml|yml|toml|ini|cfg|png|jpg|jpeg|gif|webp|svg|xlsx|xls|pdf|docx|pptx))(?=[\s)\]},"'\u3000`?!，。、；：]|$)/gi
 
 // 后处理：在 sanitize 之后的 HTML 中把裸路径转为产物链接
 // 比 markdown-it 内联规则更安全（在 DOMPurify 之后操作）

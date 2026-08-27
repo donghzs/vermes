@@ -34,6 +34,8 @@ _SECURITY_HEADERS = {
 
 def _is_safe_path(path_str: str) -> Path:
     """路径安全校验：规范化 + 白名单根目录检查"""
+    # 展开 ~ / ~user（前端消息流常出现 ~/Documents/... 这类用户目录路径）
+    path_str = os.path.expanduser(path_str)
     # 先把 tmp/ 前缀映射到 /tmp/（URL path 丢失前导 / 的常见情况）
     if path_str.startswith('tmp/') and not Path.cwd().joinpath('tmp').exists():
         path_str = '/' + path_str
