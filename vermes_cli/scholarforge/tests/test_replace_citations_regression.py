@@ -171,5 +171,64 @@ class TestForceResarchOnCollision(unittest.TestCase):
         self.assertNotIn("Initial Study", report)
 
 
+class TestNegativeScoreThreshold(unittest.TestCase):
+    """#5 负值/过低分回归：llm_rerank 全返回低于阈值(0.3)时，match_citations 必须跳过该引用，
+    不得 argmax 强塞噪声文献（避免伪造引用）。守护 F-23 的 0.3 阈值不被未来改动破坏。"""
+
+    def test_skips_all_below_threshold(self):
+        from vermes_cli.scholarforge.citation_matcher import match_citations, MIN_MATCH_SCORE
+
+        # 锁定阈值常量：若被调低，本条即报警
+        self.assertEqual(MIN_MATCH_SCORE, 0.3)
+
+        # 候选与引用上下文完全不相关
+        pool = [
+            _paper("Quantum Computing Survey", abstract="qubits and quantum gates"),
+            _paper("Stock Market Prediction", abstract="trading and volatility"),
+            _paper("Cooking Recipes", abstract="ingredients and oven"),
+        ]
+
+        async def fake_llm(prompt, system="", **kwargs):
+            # 所有候选分数均远低于阈值
+            return "1: 0.1\n2: 0.1\n3: 0.1"
+
+        async def go():
+            return await match_citations(
+                unique_nums=[1],
+                candidates={1: pool},
+                num_context={1: "memory consolidation during slow-wave sleep"},
+                num_keywords={1: "memory consolidation"},
+                llm_call_fn=fake_llm,
+            )
+
+        result = asyncio.run(go())
+        self.assertIn(1, result.failed, "低于阈值的匹配应被跳过(failed)")
+        self.assertNotIn(1, result.num_to_ref, "不得把噪声文献编入参考文献")
+        self.assertEqual(len(result.ref_list), 0, "ref_list 应为空")
+
+    def test_cites_above_threshold(self):
+        # 对照：分数高于阈值时应被正确引用，证明上面的跳过不是测试本身恒真
+        from vermes_cli.scholarforge.citation_matcher import match_citations
+
+        pool = [_paper("Memory Consolidation in Sleep", abstract="memory consolidation sleep")]
+
+        async def fake_llm(prompt, system="", **kwargs):
+            return "1: 0.9"
+
+        async def go():
+            return await match_citations(
+                unique_nums=[1],
+                candidates={1: pool},
+                num_context={1: "memory consolidation during sleep"},
+                num_keywords={1: "memory consolidation"},
+                llm_call_fn=fake_llm,
+            )
+
+        result = asyncio.run(go())
+        self.assertNotIn(1, result.failed)
+        self.assertIn(1, result.num_to_ref)
+        self.assertEqual(len(result.ref_list), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

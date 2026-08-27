@@ -274,7 +274,18 @@ def export_docx(title: str, content: str, papers: list, abstract: str = "") -> b
             timeout=30,
         )
         if result.returncode == 0 and result.stdout:
-            return result.stdout
+            # 后处理：把 pandoc 生成的默认有框表格改为学术三线表
+            try:
+                import io as _io
+                from docx import Document
+                d = Document(_io.BytesIO(result.stdout))
+                _style_three_line_tables(d)
+                out = _io.BytesIO()
+                d.save(out)
+                return out.getvalue()
+            except Exception as e:
+                logger.warning(f"docx 三线表后处理失败，回退原始 pandoc 输出: {e}")
+                return result.stdout
         # 失败时回退到纯 Python
         logger.warning(f"pandoc failed: {result.stderr.decode()}, falling back to python-docx")
     except FileNotFoundError:
@@ -287,7 +298,7 @@ def export_docx(title: str, content: str, papers: list, abstract: str = "") -> b
 
 
 def _export_docx_fallback(title: str, content: str, papers: list, abstract: str, md_text: str) -> bytes:
-    """python-docx 回退方案"""
+    """python-docx 回退方案（无 pandoc 时使用）。表格渲染为学术三线表。"""
     try:
         from docx import Document
         from docx.shared import Pt, RGBColor
@@ -298,38 +309,132 @@ def _export_docx_fallback(title: str, content: str, papers: list, abstract: str,
     # 标题样式
     title_para = doc.add_heading(title, level=0)
 
-    # 简单按行解析 Markdown
+    # 简单按行解析 Markdown（表格行先缓冲，连续 | 行合并为一个表格）
+    table_lines: list[str] = []
+
+    def _flush_table():
+        if table_lines:
+            _add_markdown_table(doc, table_lines)
+            table_lines.clear()
+
     for line in md_text.split("\n"):
         line = line.rstrip()
         if not line:
+            _flush_table()
             continue
         if line.startswith("# "):
+            _flush_table()
             continue  # 标题已添加
         elif line.startswith("## "):
+            _flush_table()
             doc.add_heading(line[3:].strip(), level=1)
         elif line.startswith("### "):
+            _flush_table()
             doc.add_heading(line[4:].strip(), level=2)
         elif line.startswith("#### "):
+            _flush_table()
             doc.add_heading(line[5:].strip(), level=3)
         elif line.startswith("---"):
+            _flush_table()
             doc.add_paragraph("─" * 30)
         elif line.startswith("```"):
+            _flush_table()
             continue  # 简化：跳过代码块标记
         elif re.match(r"^\d+\.\s", line):
+            _flush_table()
             doc.add_paragraph(line, style="List Number")
         elif line.startswith("- "):
+            _flush_table()
             doc.add_paragraph(line[2:].strip(), style="List Bullet")
         elif line.startswith("|"):
-            # 表格行 - 简单拼接
-            doc.add_paragraph(line)
+            table_lines.append(line)
         else:
-            # 普通段落：粗体/斜体
+            _flush_table()
             para = doc.add_paragraph()
             _add_runs(para, line)
+    _flush_table()
+
+    # 全部表格改为学术三线表
+    _style_three_line_tables(doc)
 
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+def _add_markdown_table(doc, lines: list[str]):
+    """把一组 markdown 表格行解析为 python-docx 表格（首行视为表头，分隔行 --- 跳过）。"""
+    rows: list[list[str]] = []
+    for ln in lines:
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if cells and all(re.match(r"^:?-+:?$", c) for c in cells):
+            continue  # 分隔行
+        rows.append(cells)
+    if not rows:
+        return
+    ncols = max(len(r) for r in rows)
+    table = doc.add_table(rows=len(rows), cols=ncols)
+    for ri, cells in enumerate(rows):
+        tcells = table.rows[ri].cells
+        for ci in range(ncols):
+            text = cells[ci] if ci < len(cells) else ""
+            para = tcells[ci].paragraphs[0]
+            para.text = ""
+            _add_runs(para, text)
+
+
+def _set_cell_border(cell, edge: str, sz: int, val: str = "single", color: str = "auto"):
+    """设置单元格某条边的边框（用于三线表表头下横线）。"""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcBorders = tcPr.find(qn("w:tcBorders"))
+    if tcBorders is None:
+        tcBorders = OxmlElement("w:tcBorders")
+        tcPr.append(tcBorders)
+    el = tcBorders.find(qn(f"w:{edge}"))
+    if el is None:
+        el = OxmlElement(f"w:{edge}")
+        tcBorders.append(el)
+    el.set(qn("w:val"), val)
+    el.set(qn("w:sz"), str(sz))
+    el.set(qn("w:space"), "0")
+    el.set(qn("w:color"), color)
+
+
+def _style_three_line_tables(doc):
+    """把文档中所有表格改为学术三线表：上下粗线 1.5pt(24)、表头下细线 0.75pt(12)、无竖线、无内部横线。"""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    for table in doc.tables:
+        tbl = table._tbl
+        tblPr = tbl.tblPr
+        borders = tblPr.find(qn("w:tblBorders"))
+        if borders is None:
+            borders = OxmlElement("w:tblBorders")
+            tblPr.append(borders)
+        for edge, sz in (
+            ("top", 24), ("bottom", 24), ("left", 0),
+            ("right", 0), ("insideV", 0), ("insideH", 0),
+        ):
+            el = borders.find(qn(f"w:{edge}"))
+            if el is None:
+                el = OxmlElement(f"w:{edge}")
+                borders.append(el)
+            if sz == 0:
+                el.set(qn("w:val"), "none")
+            else:
+                el.set(qn("w:val"), "single")
+                el.set(qn("w:sz"), str(sz))
+                el.set(qn("w:space"), "0")
+                el.set(qn("w:color"), "auto")
+        # 表头（首行）下方细线
+        if table.rows:
+            for cell in table.rows[0].cells:
+                _set_cell_border(cell, "bottom", 12)
 
 
 def _add_runs(para, text: str):
