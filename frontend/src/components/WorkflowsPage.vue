@@ -5,7 +5,7 @@
     <aside class="w-64 shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
       <div class="p-3 border-b border-slate-200 dark:border-slate-700">
         <h1 class="text-base font-semibold">工作流编排</h1>
-        <p class="text-xs text-slate-400 mt-0.5">可视化 DAG 编辑器 · A2 闭环</p>
+        <p class="text-xs text-slate-400 mt-0.5">可视化 DAG 编辑器</p>
         <div class="flex gap-2 mt-3">
           <button @click="newWorkflow" class="flex-1 text-xs px-2 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition">＋ 新建</button>
           <button @click="loadList" class="text-xs px-2 py-1.5 rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition" title="刷新">↻</button>
