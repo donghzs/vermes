@@ -309,6 +309,14 @@ function openDeliveryArtifact(a) {
               </span>
             </div>
 
+            <!-- A2: 依赖边（DAG）只读展示；G5 完整图视图在后续里程碑 -->
+            <div v-if="item.dependencies && item.dependencies.length" class="mt-1 flex flex-wrap gap-1">
+              <span v-for="dep in item.dependencies" :key="dep"
+                    class="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300">
+                ↳ {{ dep }}
+              </span>
+            </div>
+
             <!-- 进行中步骤：实时子工具树（verbose 档展开，summary 档克制只显示步骤本身） -->
             <div v-if="chat.taskVerbosity === 'verbose' && item.status === 'in_progress' && stepActivities(item.id).length" class="mt-2 space-y-1">
               <div v-for="act in stepActivities(item.id)" :key="act.id"

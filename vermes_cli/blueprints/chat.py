@@ -985,6 +985,8 @@ async def chat_completions(req: ChatRequest, request: Request):
         _mode_prompt = (
             "【Plan 模式】请先输出执行计划（列出将调用的工具和预期步骤），"
             "等用户确认后再执行工具调用。"
+            "计划 JSON 中每个步骤可含 \"dependencies\" 字段（依赖的其他步骤 id 列表），"
+            "以表达步骤间的先后依赖（DAG）。"
         )
     elif _interaction_mode == "ask":
         _mode_prompt = "【Ask 模式】只回答问题，不调用任何工具。"
@@ -1211,6 +1213,11 @@ async def chat_completions(req: ChatRequest, request: Request):
             else:
                 steps_out = []
                 for i_s, s in enumerate(plan_data.get("steps", [])):
+                    # A2: 保留依赖边（dependencies），使 DAG 能贯通实时管线到前端与持久化。
+                    # 旧逻辑在此丢弃 dependencies，导致并发调度/可视化缺少边数据。
+                    _deps = s.get("dependencies") or []
+                    if not isinstance(_deps, list):
+                        _deps = []
                     steps_out.append({
                         "id": s.get("id") or f"step_{i_s+1}",
                         "title": s.get("title", f"Step {i_s+1}"),
@@ -1220,6 +1227,7 @@ async def chat_completions(req: ChatRequest, request: Request):
                         "status": "pending",
                         "agent_role": s.get("agent_role", "default"),
                         "order": i_s,
+                        "dependencies": _deps,
                         "tool_calls": [],
                     })
             plan_event = {
@@ -1795,6 +1803,8 @@ def _extract_plan_loose(text: str) -> dict | None:
             t = title.strip()[:120]
             if not t or len(t) < 2:
                 continue
+            # A2: 宽松路径尝试保留后续"依赖 step_x"标注；无则空依赖
+            _deps = _extract_deps_from_text(title)
             steps.append({
                 "id": pid.upper(),
                 "title": t,
@@ -1804,6 +1814,7 @@ def _extract_plan_loose(text: str) -> dict | None:
                 "status": "pending",
                 "agent_role": "default",
                 "order": i,
+                "dependencies": _deps,
                 "tool_calls": [],
             })
         if len(steps) >= 2:
@@ -1819,6 +1830,7 @@ def _extract_plan_loose(text: str) -> dict | None:
             t = title.strip()[:120]
             if not t or len(t) < 2:
                 continue
+            _deps = _extract_deps_from_text(title)
             steps.append({
                 "id": f"step_{num}",
                 "title": t,
@@ -1828,11 +1840,30 @@ def _extract_plan_loose(text: str) -> dict | None:
                 "status": "pending",
                 "agent_role": "default",
                 "order": i,
+                "dependencies": _deps,
                 "tool_calls": [],
             })
         if len(steps) >= 2:
             return {"plan": {"title": "任务规划", "steps": steps}}
     return None
+
+
+def _extract_deps_from_text(text: str) -> list:
+    """从步骤标题/描述文本中提取 '依赖 step_x' / 'depends on step_x' 标注的依赖边。
+
+    仅用于宽松解析路径（模型未输出严格 JSON 时）尽力保留依赖信息；
+    严格 JSON 路径直接读取 steps[].dependencies 字段，不走此函数。
+    """
+    if not text:
+        return []
+    _dep_pattern = re.compile(r'(?:依赖|depends?\s+on|前置)\s*[:：]?\s*([A-Za-z0-9_,\s]+)', re.IGNORECASE)
+    found = []
+    for m in _dep_pattern.finditer(text):
+        for tok in re.split(r'[,\s]+', m.group(1)):
+            tok = tok.strip()
+            if tok and tok not in found:
+                found.append(tok)
+    return found
 
 
 
