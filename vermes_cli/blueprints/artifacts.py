@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import PlainTextResponse, HTMLResponse, Response
+from fastapi.responses import PlainTextResponse, HTMLResponse, Response, JSONResponse
+import base64
 
 
 def _allowed_roots():
@@ -233,3 +234,75 @@ def register_to(app):
                 return Response(content=f.read(), media_type=mime, headers=_SECURITY_HEADERS)
 
         return PlainTextResponse(content, media_type=mime, headers=_SECURITY_HEADERS)
+
+    @app.get('/api/v1/artifacts/{path:path}/preview')
+    async def preview_artifact(path: str, request: Request):
+        """Office 文档静态预览（零依赖）：当前支持 pptx，复用 python-pptx 抽取每页文本与图片。
+
+        返回 JSON：{'kind':'pptx','pages':[{'i':页码,'text':文本,'images':[data_url...]}]}
+        不支持的格式（doc/ppt 老二进制等）返回 {'kind':'unsupported'}，前端回退为下载卡片。
+        """
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
+        if not safe_path.exists():
+            raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
+        ext = safe_path.suffix.lower()
+        if ext == '.pptx':
+            try:
+                from pptx import Presentation
+            except ImportError:
+                return JSONResponse({'kind': 'unsupported', 'reason': 'python-pptx 未安装（请安装 office 能力：pip install python-pptx 或 vermes 的 office extra）'}, status_code=501)
+            try:
+                prs = Presentation(str(safe_path))
+            except Exception as e:
+                return JSONResponse({'kind': 'unsupported', 'reason': f'解析失败: {e}'}, status_code=422)
+            pages = []
+            for idx, slide in enumerate(prs.slides, 1):
+                texts, images = [], []
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        t = shape.text_frame.text.strip()
+                        if t:
+                            texts.append(t)
+                    if shape.shape_type == 13:  # MSO_SHAPE_TYPE.PICTURE
+                        try:
+                            blob = shape.image.blob
+                            img_ext = (shape.image.ext or 'png').lower()
+                            mime = 'image/png' if img_ext == 'png' else ('image/jpeg' if img_ext in ('jpg', 'jpeg') else 'image/png')
+                            images.append(f'data:{mime};base64,{base64.b64encode(blob).decode()}')
+                        except Exception:
+                            pass
+                pages.append({'i': idx, 'text': '\n'.join(texts), 'images': images})
+            return JSONResponse({'kind': 'pptx', 'pages': pages})
+        return JSONResponse({'kind': 'unsupported', 'reason': '仅支持 pptx 预览'}, status_code=415)
+
+    @app.post('/api/v1/artifacts/{path:path}/content')
+    async def write_artifact_content(path: str, request: Request):
+        """回存产物文件内容（轻量可编辑右栏的"人改→保存"落点）。
+
+        安全：复用产物白名单根 + 路径穿越防护 + 跨站校验；仅允许已存在的文本类文件回写，
+        写入前再确认父目录存在。大小上限与读取一致（50MB）。
+        """
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
+
+        if not safe_path.exists():
+            raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
+        if not safe_path.is_file():
+            raise HTTPException(status_code=400, detail=f"不是文件: {path}")
+
+        body = await request.body()
+        if len(body) > _MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"内容过大（{len(body) // 1024 // 1024}MB），上限 50MB")
+
+        try:
+            safe_path.parent.mkdir(parents=True, exist_ok=True)
+            # 文本类以 UTF-8 写回；二进制（如图片被误命中）按字节写回
+            try:
+                safe_path.write_text(body.decode('utf-8'), encoding='utf-8')
+            except UnicodeDecodeError:
+                safe_path.write_bytes(body)
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"写入失败: {e}")
+
+        return {'ok': True, 'path': str(safe_path), 'size': safe_path.stat().st_size}

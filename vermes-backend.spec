@@ -246,6 +246,8 @@ hiddenimports = [
     'toolset_distributions',
     # Vector backend (A-1): sqlite-vec
     'sqlite_vec',
+    # Office preview (pptx) — static import in artifacts.py /preview endpoint
+    'pptx',
 
     # ── 平台渠道依赖（全量打包，即配即用）──
     # 飞书/Lark

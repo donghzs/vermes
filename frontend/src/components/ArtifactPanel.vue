@@ -216,12 +216,23 @@ function rendererFor(artifact) {
 const content = ref('')
 const contentLoading = ref(false)
 const contentError = ref('')
+const rawText = ref('')            // 文本类原始内容（编辑用）
+const editing = ref(false)         // 是否处于编辑模式
+const editBuffer = ref('')         // 编辑缓冲区
+const saveState = ref('')          // '', 'saving', 'saved', 'error'
+const previewData = ref(null)      // office 静态预览数据（pptx 分页：{kind:'pptx',pages:[...]}）
+const EDITABLE_TYPES = new Set(['markdown', 'code', 'html', 'csv', 'json'])
+const isEditableType = computed(() => {
+  const a = activeArtifact.value
+  return !!a && EDITABLE_TYPES.has(rendererFor(a))
+})
 
 async function loadContent(artifact) {
   if (!artifact) return
   const type = rendererFor(artifact)
-  if (type === 'pdf' || type === 'office') { content.value = ''; contentLoading.value = false; return }
-  if (artifact._content) { content.value = artifact._content; contentLoading.value = false; return }
+  if (type === 'pdf') { content.value = ''; contentLoading.value = false; return }
+  if (type === 'office') { await loadOfficePreview(artifact); return }
+  if (artifact._content) { content.value = artifact._content; if (typeof artifact._content === 'string') rawText.value = artifact._content; contentLoading.value = false; return }
   contentLoading.value = true; contentError.value = ''; content.value = ''
   try {
     const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(artifact.path)}`)
@@ -236,8 +247,59 @@ async function loadContent(artifact) {
       const mammoth = await loadMammoth()
       const buf = await resp.blob().then(b => b.arrayBuffer())
       content.value = (await mammoth.convertToHtml({ arrayBuffer: buf })).value || '<p style="color:#999">文档内容为空</p>'
-    } else { content.value = await resp.text() }
+    } else {
+      const text = await resp.text()
+      rawText.value = text
+      content.value = type === 'markdown' ? renderMarkdown(text) : text
+    }
   } catch (e) { contentError.value = e.message || String(e) } finally { contentLoading.value = false }
+}
+
+async function loadOfficePreview(artifact) {
+  contentLoading.value = true; contentError.value = ''; previewData.value = null
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(artifact.path)}/preview`)
+    if (!resp.ok) { const d = await resp.json().catch(() => ({})); throw new Error(d.reason || d.detail || `HTTP ${resp.status}`) }
+    const data = await resp.json()
+    previewData.value = (data && data.kind === 'pptx') ? data : null
+  } catch (e) { previewData.value = null; contentError.value = e.message || String(e) } finally { contentLoading.value = false }
+}
+
+// ── 轻量编辑（人改 → 回存原文件）── Gap #5 当前阶段形态：零新依赖、markdown/code 可编辑
+function startEdit() {
+  editBuffer.value = rawText.value || ''
+  editing.value = true
+  saveState.value = ''
+}
+function cancelEdit() {
+  editing.value = false
+  editBuffer.value = ''
+  saveState.value = ''
+}
+async function saveEdit() {
+  const a = activeArtifact.value
+  if (!a) return
+  saveState.value = 'saving'
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(a.path)}/content`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: editBuffer.value,
+    })
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}))
+      throw new Error(d.detail || `HTTP ${resp.status}`)
+    }
+    rawText.value = editBuffer.value
+    const type = rendererFor(a)
+    content.value = type === 'markdown' ? renderMarkdown(editBuffer.value) : editBuffer.value
+    editing.value = false
+    saveState.value = 'saved'
+    setTimeout(() => { if (saveState.value === 'saved') saveState.value = '' }, 2000)
+  } catch (e) {
+    saveState.value = 'error'
+    contentError.value = e.message || String(e)
+  }
 }
 
 watch(() => activeTabId.value, (id) => {
@@ -466,6 +528,10 @@ function openArtifactById(id) {
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
                 <span class="header-tooltip header-tooltip-below group-hover:opacity-100">在文件夹中显示</span>
               </button>
+              <button v-if="isEditableType && !editing" @click="startEdit" class="group relative p-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition" title="编辑此文件">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                <span class="header-tooltip header-tooltip-below group-hover:opacity-100">编辑</span>
+              </button>
               <button @click="downloadArtifact(activeArtifact)" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 <span class="header-tooltip header-tooltip-below group-hover:opacity-100">{{ isDesktop ? '另存为…' : '下载' }}</span>
@@ -482,6 +548,18 @@ function openArtifactById(id) {
             <template v-else-if="activeArtifact">
               <div v-if="contentLoading" class="flex items-center justify-center text-gray-400 py-20"><span class="animate-pulse text-sm">加载中…</span></div>
               <div v-else-if="contentError" class="flex flex-col items-center justify-center text-gray-400 p-5"><div class="text-2xl mb-1">⚠️</div><div class="text-sm text-red-400">加载失败</div><div class="text-xs mt-0.5 text-gray-400">{{ contentError }}</div></div>
+              <div v-else-if="editing && isEditableType" class="flex-1 flex flex-col overflow-hidden">
+                <div class="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
+                  <span class="text-xs font-medium text-amber-700 dark:text-amber-300">编辑模式</span>
+                  <span v-if="saveState==='saving'" class="text-xs text-gray-500">保存中…</span>
+                  <span v-else-if="saveState==='saved'" class="text-xs text-green-600">已回存原文件</span>
+                  <span v-else-if="saveState==='error'" class="text-xs text-red-500">保存失败，见下方提示</span>
+                  <div class="flex-1"></div>
+                  <button @click="saveEdit" :disabled="saveState==='saving'" class="px-3 py-1 rounded-md bg-green-500 text-white text-xs font-medium hover:bg-green-600 disabled:opacity-50">保存回存</button>
+                  <button @click="cancelEdit" class="px-3 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs hover:bg-gray-300 dark:hover:bg-gray-600">取消</button>
+                </div>
+                <textarea v-model="editBuffer" spellcheck="false" class="flex-1 w-full resize-none p-4 font-mono text-sm leading-relaxed bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 border-0 outline-none"></textarea>
+              </div>
               <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown p-5 prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(content)"></div>
               <div v-else-if="rendererFor(activeArtifact) === 'html'" class="w-full h-full"><iframe class="w-full h-full border-0 bg-white" sandbox="allow-scripts allow-same-origin" :srcdoc="content"></iframe></div>
               <div v-else-if="rendererFor(activeArtifact) === 'json'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200"><code>{{ formatJson(content) }}</code></pre></div>
@@ -491,7 +569,28 @@ function openArtifactById(id) {
               <div v-else-if="rendererFor(activeArtifact) === 'pdf'" class="w-full h-full"><iframe :src="`/api/v1/artifacts/${encodeURIComponent(activeArtifact.path)}`" class="w-full h-full border-0 bg-white" referrerpolicy="no-referrer"></iframe></div>
               <div v-else-if="rendererFor(activeArtifact) === 'excel'" class="overflow-auto p-3 bg-gray-50 dark:bg-gray-800/30"><div v-if="content" class="excel-render" v-html="content"></div></div>
               <div v-else-if="rendererFor(activeArtifact) === 'docx'" class="overflow-y-auto p-6 bg-white dark:bg-gray-900"><div v-if="content" class="docx-render prose prose-sm max-w-none dark:prose-invert" v-html="content"></div></div>
-              <div v-else-if="rendererFor(activeArtifact) === 'office'" class="flex flex-col items-center justify-center text-gray-400 py-20"><div class="text-5xl mb-3">📘</div><div class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ activeArtifact.title || activeArtifact.path?.split('/').pop() }}</div><div class="text-xs mt-1 text-gray-400">Office 文档无法在浏览器中直接预览</div><button @click="downloadArtifact(activeArtifact)" class="mt-4 px-4 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition flex items-center gap-2"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>{{ isDesktop ? '另存为…' : '下载文件' }}</button></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'office'" class="w-full h-full overflow-auto bg-gray-50 dark:bg-gray-800/30">
+                <template v-if="previewData && previewData.kind === 'pptx'">
+                  <div class="p-4 space-y-4 max-w-3xl mx-auto">
+                    <div v-for="page in previewData.pages" :key="page.i" class="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                      <div class="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>第 {{ page.i }} 页 / 共 {{ previewData.pages.length }} 页</div>
+                      <div v-if="page.text" class="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-relaxed mb-2">{{ page.text }}</div>
+                      <div v-if="page.images && page.images.length" class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <img v-for="(img, idx) in page.images" :key="idx" :src="img" class="rounded-md max-w-full border border-gray-100 dark:border-gray-800" alt="slide image" />
+                      </div>
+                      <div v-if="!page.text && (!page.images || !page.images.length)" class="text-xs text-gray-400 italic">（空白页）</div>
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="flex flex-col items-center justify-center text-gray-400 py-20">
+                    <div class="text-5xl mb-3">📘</div>
+                    <div class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ activeArtifact.title || activeArtifact.path?.split('/').pop() }}</div>
+                    <div class="text-xs mt-1 text-gray-400">{{ (contentError && previewData === null) ? '该 Office 格式暂不支持预览' : 'Office 文档无法在浏览器中直接预览' }}</div>
+                    <button @click="downloadArtifact(activeArtifact)" class="mt-4 px-4 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition flex items-center gap-2"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>{{ isDesktop ? '另存为…' : '下载文件' }}</button>
+                  </div>
+                </template>
+              </div>
               <div v-else class="flex flex-col items-center justify-center text-gray-400 py-20"><div class="text-3xl mb-2">📦</div><div class="text-sm">暂不支持此格式</div><div class="text-xs mt-1 text-gray-400">{{ activeArtifact.path }}</div></div>
             </template>
           </div>
