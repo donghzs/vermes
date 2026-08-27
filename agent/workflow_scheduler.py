@@ -17,7 +17,19 @@ Vermes 活链路里计划是**被动追踪覆盖层**——步骤状态由解析
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+import asyncio
+from dataclasses import dataclass, field
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Tuple,
+    runtime_checkable,
+)
 
 # deps 视为「已满足」的状态：仅 completed 解锁下游。
 _SATISFIED = ("completed",)
@@ -152,3 +164,203 @@ def steps_unlocked_by(plan: dict, completed_step_id: str, todo_states: Optional[
     _after[completed_step_id] = "completed"
     ready_after = set(compute_ready_steps(plan, _after))
     return sorted(ready_after - ready_before)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# G1b 增量 (a)：WorkflowScheduler —— 串行版执行器（纯依赖门控 + 顺序执行）
+#
+# 设计边界（见 A2 设计稿 §0.7「并发安全边界」）：
+#   ① 只读共享态：_make_context 只给步骤「快照式只读引用」，协程不得改 plan 结构。
+#   ② 步骤私有态：每步的 StepExecResult 由该步协程独占写，兄弟协程不可见。
+#   ③ 需串行化/合并（= LangGraph reducer）：
+#        - plan 状态写回：self._state_lock 包裹「改 todo_states + backend.save」（reducer #1）
+#        - 结果聚合：self._results_lock 包裹 append（reducer #2）
+#        - 文件写入：file_lock(path) 按目标文件串行锁（reducer #3，并发切片启用）
+#        - LLM/工具限流：self._sem = asyncio.Semaphore(max_concurrency)
+#
+# 静态 DAG 铁律（用户 refinement 3）：本调度器**绝不**在执行中途调用 LLM 重新拆步骤。
+# 计划一旦由 chat.py 解析确定即冻结；调度器只是「依赖门控 + 执行 + 状态回写」。
+# 动态重规划留给后续迭代。
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class StepExecResult:
+    """单步执行结果（步骤私有态，边界②）。由 step_executor 返回。"""
+
+    status: str = "completed"  # completed / failed
+    outputs: Dict[str, Any] = field(default_factory=dict)
+    error: Optional[str] = None
+
+
+@runtime_checkable
+class PlanBackend(Protocol):
+    """plan 状态的持久化后端（reducer #1 的落点）。
+
+    活链路里由 session_plan_store 适配（见 G1b 增量 b：chat.py 接线）；
+    单测里用内存 fake 注入，不 mock 调度器本身。
+    """
+
+    async def load(self, session_id: str) -> Tuple[dict, Dict[str, str]]:
+        """返回 (plan_json, todo_states)。todo_states: step_id -> 状态。"""
+        ...
+
+    async def save(
+        self, session_id: str, plan_json: dict, todo_states: Dict[str, str]
+    ) -> None:
+        """原子保存 plan 状态（调用方须已持 self._state_lock）。"""
+        ...
+
+
+# step_executor: 给定 (step, ctx) 跑该步工作，返回 StepExecResult；抛异常 = 该步 failed。
+StepExecFunc = Callable[[dict, dict], Awaitable[Optional[StepExecResult]]]
+
+
+@dataclass
+class WorkflowResult:
+    session_id: str
+    deadlocked: bool = False
+    exec_order: List[str] = field(default_factory=list)
+    results: List[Dict[str, Any]] = field(default_factory=list)
+
+
+class WorkflowScheduler:
+    """G1b 执行器（增量 a：串行；concurrent=True 时同层 steps 经 asyncio.gather 并发）。
+
+    纯依赖门控 + 顺序/并发执行 + 状态回写。不含 LLM 调用、不含动态重规划。
+    step 的实际工作由注入的 step_executor 完成（活链路里由 chat.py 接真执行体，
+    见增量 b/c）。
+    """
+
+    def __init__(
+        self,
+        backend: PlanBackend,
+        step_executor: StepExecFunc,
+        max_concurrency: int = 4,
+    ) -> None:
+        self._backend = backend
+        self._executor = step_executor
+        self._max_concurrency = max_concurrency
+        # 边界③ reducer 原语
+        self._state_lock = asyncio.Lock()      # plan 状态写回互斥（reducer #1）
+        self._results_lock = asyncio.Lock()    # 结果聚合互斥（reducer #2）
+        self._sem = asyncio.Semaphore(max_concurrency)  # LLM/工具限流
+        self._file_locks: Dict[str, asyncio.Lock] = {}   # 按路径文件锁（reducer #3）
+        self._file_locks_guard = asyncio.Lock()
+        self._results: List[Dict[str, Any]] = []
+
+    def file_lock(self, path: str) -> asyncio.Lock:
+        """边界③ #3：按目标文件路径的串行锁。同文件串行、异文件并发。
+
+        供 step_executor 写文件时使用；增量 a 单测不触发，并发切片启用。
+        """
+        if path not in self._file_locks:
+            self._file_locks[path] = asyncio.Lock()
+        return self._file_locks[path]
+
+    async def execute(
+        self, session_id: str, concurrent: bool = False
+    ) -> WorkflowResult:
+        plan_json, todo_states = await self._backend.load(session_id)
+        order: List[str] = []
+        while True:
+            ready = compute_ready_steps(plan_json, todo_states)
+            if not ready:
+                if is_plan_deadlocked(plan_json, todo_states):
+                    # G2 地基：上游 failed/skipped → 下游标 skipped（静态传播，不重规划）
+                    self._apply_deadlock_skip(plan_json, todo_states)
+                    await self._persist(session_id, plan_json, todo_states)
+                    return WorkflowResult(
+                        session_id, deadlocked=True, exec_order=order, results=list(self._results)
+                    )
+                # 无就绪且不卡死 → 全完成或不一致态，退出
+                break
+            if concurrent:
+                await asyncio.gather(
+                    *[self._run_step(session_id, plan_json, todo_states, sid, order) for sid in ready]
+                )
+            else:
+                for sid in ready:
+                    await self._run_step(session_id, plan_json, todo_states, sid, order)
+        return WorkflowResult(
+            session_id, deadlocked=False, exec_order=order, results=list(self._results)
+        )
+
+    async def _run_step(
+        self,
+        session_id: str,
+        plan_json: dict,
+        todo_states: Dict[str, str],
+        step_id: str,
+        order: List[str],
+    ) -> None:
+        # reducer #1：标记 running + 记录执行顺序 + 落盘，全程持锁（原子）
+        async with self._state_lock:
+            todo_states[step_id] = "running"
+            order.append(step_id)
+            await self._persist(session_id, plan_json, todo_states)
+        try:
+            step = next(s for s in plan_json["steps"] if s["id"] == step_id)
+            ctx = self._make_context(plan_json, step)  # 边界①只读快照
+            async with self._sem:                        # 边界③ LLM/工具限流
+                result = await self._executor(step, ctx)
+            status = result.status if result else "completed"
+            outputs = (result.outputs if result else {}) or {}
+            # reducer #1：写结果状态 + 合并 outputs + 落盘，持锁
+            async with self._state_lock:
+                todo_states[step_id] = status
+                if outputs:
+                    step.setdefault("outputs", {}).update(outputs)
+                await self._persist(session_id, plan_json, todo_states)
+            # reducer #2：结果聚合
+            async with self._results_lock:
+                self._results.append(
+                    {"step_id": step_id, "status": status, "outputs": outputs}
+                )
+        except Exception as e:  # 单步失败隔离：不击垮屏障
+            async with self._state_lock:
+                todo_states[step_id] = "failed"
+                await self._persist(session_id, plan_json, todo_states)
+            async with self._results_lock:
+                self._results.append(
+                    {"step_id": step_id, "status": "failed", "error": str(e)}
+                )
+
+    async def _persist(
+        self, session_id: str, plan_json: dict, todo_states: Dict[str, str]
+    ) -> None:
+        """reducer #1 落点。调用方须已持 self._state_lock（不重复加锁，避免重入死锁）。"""
+        await self._backend.save(session_id, plan_json, todo_states)
+
+    def _make_context(self, plan_json: dict, step: dict) -> dict:
+        """边界①：只读共享态快照。返回 plan 结构与本步 goal；协程不得改 plan_json。"""
+        return {
+            "step": step,
+            "plan_readonly": plan_json,
+            "dependencies": step.get("dependencies") or [],
+        }
+
+    def _apply_deadlock_skip(
+        self, plan_json: dict, todo_states: Dict[str, str]
+    ) -> None:
+        """G2 地基：把依赖链上存在 failed/skipped/cancelled/interrupted 的步骤标 skipped。
+
+        静态传播（不重规划）。幽灵依赖视为满足（与 compute_ready_steps 一致）。
+        """
+        by_id = _steps_by_id(plan_json)
+        changed = True
+        while changed:
+            changed = False
+            for sid, step in by_id.items():
+                st = todo_states.get(sid) or step.get("status", "pending")
+                if st in ("completed", "skipped", "cancelled", "interrupted"):
+                    continue
+                for dep in (step.get("dependencies") or []):
+                    dstep = by_id.get(dep)
+                    if dstep is None:
+                        continue  # 幽灵依赖放行
+                    dst = todo_states.get(dep) or dstep.get("status", "pending")
+                    if dst in ("failed", "skipped", "cancelled", "interrupted"):
+                        todo_states[sid] = "skipped"
+                        changed = True
+                        break
