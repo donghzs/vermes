@@ -325,6 +325,8 @@ def _format_job(job: Dict[str, Any]) -> Dict[str, Any]:
         result["workdir"] = job["workdir"]
     if job.get("profile"):
         result["profile"] = job["profile"]
+    if job.get("workflow"):
+        result["workflow"] = job["workflow"]
     return result
 
 
@@ -349,6 +351,7 @@ def cronjob(
     workdir: Optional[str] = None,
     profile: Optional[str] = None,
     no_agent: Optional[bool] = None,
+    workflow: Optional[str] = None,
     task_id: str = None,
 ) -> str:
     """Unified cron job management tool."""
@@ -374,8 +377,11 @@ def cronjob(
                         "the script is the job.",
                         success=False,
                     )
-            elif not prompt and not canonical_skills:
-                return tool_error("create requires either prompt or at least one skill", success=False)
+            elif not prompt and not canonical_skills and not workflow:
+                return tool_error(
+                    "create requires either prompt, at least one skill, or a workflow template name",
+                    success=False,
+                )
             if prompt:
                 scan_error = _scan_cron_prompt(prompt)
                 if scan_error:
@@ -416,6 +422,7 @@ def cronjob(
                 workdir=_normalize_optional_job_value(workdir),
                 profile=_normalize_optional_job_value(profile),
                 no_agent=_no_agent,
+                workflow=_normalize_optional_job_value(workflow),
             )
             return json.dumps(
                 {
@@ -567,6 +574,21 @@ def cronjob(
                             success=False,
                         )
                 updates["no_agent"] = target_no_agent
+            if workflow is not None:
+                # Empty string clears the field (falls back to prompt/skill mode).
+                _wf = _normalize_optional_job_value(workflow)
+                if _wf:
+                    # Mutual exclusivity with no_agent (mirrors create_job validation).
+                    effective_no_agent = updates.get("no_agent") if "no_agent" in updates else job.get("no_agent")
+                    if effective_no_agent:
+                        return tool_error(
+                            "Cannot set workflow on a no_agent job — a workflow needs an agent "
+                            "to run its steps. Clear no_agent first (or clear workflow).",
+                            success=False,
+                        )
+                    updates["workflow"] = _wf
+                else:
+                    updates["workflow"] = None
             if repeat is not None:
                 # Normalize: treat 0 or negative as None (infinite)
                 normalized_repeat = None if repeat <= 0 else repeat
@@ -709,6 +731,18 @@ Important safety rule: cron-run sessions should not recursively schedule more cr
                 "type": "string",
                 "description": "Optional Vermes profile name to run the job under. When set, the scheduler resolves that profile, applies a context-local Vermes home override, loads that profile's config/.env for the run, and bridges VERMES_HOME into subprocesses. Any temporary process-environment changes from profile .env loading are restored after the job exits. Use 'default' for the root Vermes profile. Named profiles must already exist. When unset (default), preserves the scheduler's existing profile. On update, pass an empty string to clear. Jobs with profile run sequentially (not parallel) to keep profile-scoped runtime state isolated."
             },
+            "workflow": {
+                "type": "string",
+                "description": (
+                    "Optional name of a saved workflow template (see the `vermes workflow` CLI / "
+                    "WorkflowTemplateStore) to run instead of a free-form prompt. When set, the cron "
+                    "job instantiates that template and executes its steps via the scheduler's "
+                    "dependency-gated runner (reusing the job's model/provider/credentials). The job's "
+                    "`prompt` becomes optional context for the first step and is otherwise ignored. "
+                    "Mutually exclusive with no_agent=True (a workflow needs an agent to run its steps). "
+                    "On update, pass an empty string to clear and fall back to prompt/skill mode."
+                ),
+            },
         },
         "required": ["action"]
     }
@@ -765,6 +799,7 @@ registry.register(
         workdir=args.get("workdir"),
         profile=args.get("profile"),
         no_agent=args.get("no_agent"),
+        workflow=args.get("workflow"),
         task_id=kw.get("task_id"),
     ))(),
     check_fn=check_cronjob_requirements,

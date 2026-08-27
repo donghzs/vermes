@@ -524,6 +524,7 @@ def create_job(
     workdir: Optional[str] = None,
     profile: Optional[str] = None,
     no_agent: bool = False,
+    workflow: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Create a new cron job.
@@ -609,6 +610,16 @@ def create_job(
     normalized_profile = _normalize_profile(profile)
     normalized_no_agent = bool(no_agent)
 
+    # G6：工作流触发器 —— 存模板名，运行时复用已建 agent 跑工作流。
+    normalized_workflow = str(workflow).strip() if isinstance(workflow, str) else None
+    normalized_workflow = normalized_workflow or None
+    # 工作流需要 LLM agent 跑每步，不能与 no_agent=True 同存（no_agent 下没有 agent）。
+    if normalized_workflow and normalized_no_agent:
+        raise ValueError(
+            "workflow and no_agent=True are mutually exclusive — a workflow needs "
+            "an LLM agent to run its steps."
+        )
+
     # no_agent jobs are meaningless without a script — the script IS the job.
     # Surface this as a clear ValueError at create time so bad configs never
     # reach the scheduler.
@@ -662,6 +673,7 @@ def create_job(
         "enabled_toolsets": normalized_toolsets,
         "workdir": normalized_workdir,
         "profile": normalized_profile,
+        "workflow": normalized_workflow,
     }
 
     jobs = load_jobs()

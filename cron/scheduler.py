@@ -1131,6 +1131,46 @@ def _scan_assembled_cron_prompt(assembled: str, job: dict) -> str:
     return assembled
 
 
+def _run_workflow_job(job: dict, agent, cron_session_id: str, prompt) -> dict:
+    """G6 — workflow trigger worker.
+
+    Instantiate the named template into ``cron_session_id`` and run its steps via
+    the already-built ``agent`` (reused as the per-step parent). Returns a
+    ``result`` dict shaped like ``agent.run_conversation`` output so the normal
+    delivery path downstream treats it uniformly.
+
+    On any failure (template missing, scheduler error) returns a ``failed`` dict
+    so run_job marks the job failed rather than silently succeeding.
+    """
+    from agent.workflow_runtime import get_step_pool, run_workflow_template_sync
+
+    wf_name = job.get("workflow")
+    job_id = job.get("id", "?")
+    logger.info("Job '%s': running workflow template '%s'", job_id, wf_name)
+    try:
+        wf_result = run_workflow_template_sync(
+            wf_name,
+            agent,
+            cron_session_id,
+            user_message=prompt or None,
+            step_pool=get_step_pool(),
+        )
+        summary = wf_result.get("summary") or wf_result.get("final_response") or ""
+        if wf_result.get("deadlocked"):
+            logger.warning(
+                "Job '%s': workflow '%s' completed with deadlock/skipped steps",
+                job_id, wf_name,
+            )
+        return {
+            "final_response": summary,
+            "workflow_completed": True,
+            "workflow_deadlocked": bool(wf_result.get("deadlocked")),
+        }
+    except Exception as exc:
+        logger.exception("Job '%s': workflow '%s' failed", job_id, wf_name)
+        return {"final_response": "", "failed": True, "error": str(exc)}
+
+
 def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
     """Execute a single cron job, applying any per-job profile override."""
     job_id = job["id"]
@@ -1585,64 +1625,70 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
             session_db=_session_db,
         )
         
-        # Run the agent with an *inactivity*-based timeout: the job can run
-        # for hours if it's actively calling tools / receiving stream tokens,
-        # but a hung API call or stuck tool with no activity for the configured
-        # duration is caught and killed.  Default 600s (10 min inactivity);
-        # override via VERMES_CRON_TIMEOUT env var.  0 = unlimited.
-        #
-        # Uses the agent's built-in activity tracker (updated by
-        # _touch_activity() on every tool call, API call, and stream delta).
-        _raw_cron_timeout = os.getenv("VERMES_CRON_TIMEOUT", "").strip()
-        if _raw_cron_timeout:
-            try:
-                _cron_timeout = float(_raw_cron_timeout)
-            except (ValueError, TypeError):
-                logger.warning(
-                    "Invalid VERMES_CRON_TIMEOUT=%r; using default 600s",
-                    _raw_cron_timeout,
-                )
-                _cron_timeout = 600.0
+        _inactivity_timeout = False  # G6: defined here; only the inactivity monitor below may set True
+
+        # G6 — workflow trigger: if the job carries a workflow template name, run
+        # it via the already-built agent instead of the single-prompt path below.
+        if job.get("workflow"):
+            result = _run_workflow_job(job, agent, _cron_session_id, prompt)
         else:
-            _cron_timeout = 600.0
-        _cron_inactivity_limit = _cron_timeout if _cron_timeout > 0 else None
-        _POLL_INTERVAL = 5.0
-        _cron_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        # Preserve scheduler-scoped ContextVar state (for example skill-declared
-        # env passthrough registrations) when the cron run hops into the worker
-        # thread used for inactivity timeout monitoring.
-        _cron_context = contextvars.copy_context()
-        _cron_future = _cron_pool.submit(_cron_context.run, agent.run_conversation, prompt)
-        _inactivity_timeout = False
-        try:
-            if _cron_inactivity_limit is None:
-                # Unlimited — just wait for the result.
-                result = _cron_future.result()
-            else:
-                result = None
-                while True:
-                    done, _ = concurrent.futures.wait(
-                        {_cron_future}, timeout=_POLL_INTERVAL,
+            # Run the agent with an *inactivity*-based timeout: the job can run
+            # for hours if it's actively calling tools / receiving stream tokens,
+            # but a hung API call or stuck tool with no activity for the configured
+            # duration is caught and killed.  Default 600s (10 min inactivity);
+            # override via VERMES_CRON_TIMEOUT env var.  0 = unlimited.
+            #
+            # Uses the agent's built-in activity tracker (updated by
+            # _touch_activity() on every tool call, API call, and stream delta).
+            _raw_cron_timeout = os.getenv("VERMES_CRON_TIMEOUT", "").strip()
+            if _raw_cron_timeout:
+                try:
+                    _cron_timeout = float(_raw_cron_timeout)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Invalid VERMES_CRON_TIMEOUT=%r; using default 600s",
+                        _raw_cron_timeout,
                     )
-                    if done:
-                        result = _cron_future.result()
-                        break
-                    # Agent still running — check inactivity.
-                    _idle_secs = 0.0
-                    if hasattr(agent, "get_activity_summary"):
-                        try:
-                            _act = agent.get_activity_summary()
-                            _idle_secs = _act.get("seconds_since_activity", 0.0)
-                        except Exception:
-                            pass
-                    if _idle_secs >= _cron_inactivity_limit:
-                        _inactivity_timeout = True
-                        break
-        except Exception:
-            _cron_pool.shutdown(wait=False, cancel_futures=True)
-            raise
-        finally:
-            _cron_pool.shutdown(wait=False, cancel_futures=True)
+                    _cron_timeout = 600.0
+            else:
+                _cron_timeout = 600.0
+            _cron_inactivity_limit = _cron_timeout if _cron_timeout > 0 else None
+            _POLL_INTERVAL = 5.0
+            _cron_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            # Preserve scheduler-scoped ContextVar state (for example skill-declared
+            # env passthrough registrations) when the cron run hops into the worker
+            # thread used for inactivity timeout monitoring.
+            _cron_context = contextvars.copy_context()
+            _cron_future = _cron_pool.submit(_cron_context.run, agent.run_conversation, prompt)
+            try:
+                if _cron_inactivity_limit is None:
+                    # Unlimited — just wait for the result.
+                    result = _cron_future.result()
+                else:
+                    result = None
+                    while True:
+                        done, _ = concurrent.futures.wait(
+                            {_cron_future}, timeout=_POLL_INTERVAL,
+                        )
+                        if done:
+                            result = _cron_future.result()
+                            break
+                        # Agent still running — check inactivity.
+                        _idle_secs = 0.0
+                        if hasattr(agent, "get_activity_summary"):
+                            try:
+                                _act = agent.get_activity_summary()
+                                _idle_secs = _act.get("seconds_since_activity", 0.0)
+                            except Exception:
+                                pass
+                        if _idle_secs >= _cron_inactivity_limit:
+                            _inactivity_timeout = True
+                            break
+            except Exception:
+                _cron_pool.shutdown(wait=False, cancel_futures=True)
+                raise
+            finally:
+                _cron_pool.shutdown(wait=False, cancel_futures=True)
 
         if _inactivity_timeout:
             # Build diagnostic summary from the agent's activity tracker.

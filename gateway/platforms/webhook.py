@@ -388,6 +388,16 @@ class WebhookAdapter(BasePlatformAdapter):
                     {"error": "Cannot parse body"}, status=400
                 )
 
+        # G6 — workflow trigger: a payload of the form
+        #   {"type": "run_workflow", "workflow": "<template_name>", "version": <int?>}
+        # runs a saved workflow template. Auth + rate-limit + body-size checks above
+        # already apply; we deliberately check this BEFORE the event-type filter so a
+        # workflow trigger is never silently dropped by an `events` allowlist.
+        if isinstance(payload, dict) and payload.get("type") == "run_workflow":
+            return await self._handle_webhook_workflow(
+                route_name, route_config, payload, request
+            )
+
         # Check event type filter
         event_type = (
             request.headers.get("X-GitHub-Event", "")
@@ -578,6 +588,132 @@ class WebhookAdapter(BasePlatformAdapter):
                 "status": "accepted",
                 "route": route_name,
                 "event": event_type,
+                "delivery_id": delivery_id,
+            },
+            status=202,
+        )
+
+    # ------------------------------------------------------------------
+    # G6 — workflow trigger handling
+    # ------------------------------------------------------------------
+
+    async def _handle_webhook_workflow(
+        self,
+        route_name: str,
+        route_config: dict,
+        payload: dict,
+        request: "web.Request",
+    ) -> "web.Response":
+        """Run a saved workflow template in response to a ``run_workflow`` webhook.
+
+        Auth/rate-limit/body-size were already enforced by ``_handle_webhook``.
+        We build a parent agent, instantiate the template, run it off the event
+        loop (``run_workflow_template_sync`` uses ``asyncio.run`` internally), and
+        deliver the resulting summary through the route's normal delivery path.
+        Returns 202 Accepted immediately — the run happens in a background task.
+        """
+        # delivery_id + idempotency are computed here (the outer handler computes
+        # them later, after prompt rendering, which hasn't happened yet on this path).
+        delivery_id = request.headers.get(
+            "X-GitHub-Delivery",
+            request.headers.get("X-Request-ID", str(int(time.time() * 1000))),
+        )
+        now = time.time()
+        self._seen_deliveries = {
+            k: v for k, v in self._seen_deliveries.items()
+            if now - v < self._idempotency_ttl
+        }
+        if delivery_id in self._seen_deliveries:
+            logger.info(
+                "[webhook] Skipping duplicate workflow delivery %s", delivery_id
+            )
+            return web.json_response(
+                {"status": "duplicate", "delivery_id": delivery_id}, status=200
+            )
+        self._seen_deliveries[delivery_id] = now
+
+        wf_name = payload.get("workflow")
+        if not isinstance(wf_name, str) or not wf_name.strip():
+            return web.json_response(
+                {"error": "run_workflow requires a non-empty 'workflow' name"},
+                status=400,
+            )
+        wf_name = wf_name.strip()
+        wf_version = payload.get("version")
+        if wf_version is not None:
+            try:
+                wf_version = int(wf_version)
+            except (ValueError, TypeError):
+                wf_version = None
+
+        wf_session = f"webhook:{route_name}:{delivery_id}"
+
+        # Build a parent agent for the per-step isolated execution.
+        from agent.workflow_runtime import build_agent, get_step_pool, run_workflow_template_sync
+
+        try:
+            parent_agent = build_agent(session_id=wf_session)
+        except Exception as exc:
+            logger.exception("[webhook] failed to build agent for workflow %s", wf_name)
+            return web.json_response(
+                {"status": "error", "error": f"agent init failed: {exc}"},
+                status=500,
+            )
+
+        logger.info(
+            "[webhook] run_workflow event=%s route=%s workflow=%s delivery=%s",
+            payload.get("event_type", "run_workflow"),
+            route_name,
+            wf_name,
+            delivery_id,
+        )
+
+        async def _run_and_deliver():
+            try:
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: run_workflow_template_sync(
+                        wf_name,
+                        parent_agent,
+                        wf_session,
+                        user_message=None,
+                        version=wf_version,
+                        step_pool=get_step_pool(),
+                    ),
+                )
+                summary = result.get("summary") or result.get("final_response") or "(no output)"
+                delivery = {
+                    "deliver": route_config.get("deliver", "log"),
+                    "deliver_extra": self._render_delivery_extra(
+                        route_config.get("deliver_extra", {}), payload
+                    ),
+                    "payload": {
+                        "type": "run_workflow",
+                        "workflow": wf_name,
+                        "result": summary,
+                    },
+                }
+                await self._direct_deliver(summary, delivery)
+            except Exception:
+                logger.exception(
+                    "[webhook] workflow %s failed route=%s delivery=%s",
+                    wf_name, route_name, delivery_id,
+                )
+            finally:
+                try:
+                    parent_agent.close()
+                except Exception:
+                    pass
+
+        task = asyncio.create_task(_run_and_deliver())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+        return web.json_response(
+            {
+                "status": "accepted",
+                "route": route_name,
+                "workflow": wf_name,
                 "delivery_id": delivery_id,
             },
             status=202,

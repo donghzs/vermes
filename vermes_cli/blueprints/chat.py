@@ -867,88 +867,13 @@ def _get_wf_step_pool():
     return _wf_step_pool
 
 
-def _build_workflow_step_prompt(step: dict) -> str:
-    """B1 指令：限定 LLM 只跑这一步，不重新规划、不拆新步骤。
-
-    G4 数据流：若本步有上游注入的 ``inputs``（来自已完成依赖步的 outputs），
-    渲染为「已知前置产物」上下文，让 LLM 直接消费而非自行在上下文翻找。
-    """
-    parts = [
-        "你正在执行一个已确定的多步计划中的【单一步骤】。\n",
-        f"步骤标题：{step.get('title', '')}\n",
-        f"步骤目标：{step.get('description', '')}\n",
-        f"交付物：{step.get('deliverable', '')}\n",
-        f"完成标准：{step.get('done_when', '')}\n",
-    ]
-    # G4：已知前置产物（上游步骤 outputs 已聚合到 step['inputs']，§0.12.2）
-    inputs = step.get("inputs") or {}
-    if inputs:
-        parts.append(
-            "\n【已知前置产物】以下是本步骤依赖的上游步骤产出，可直接使用，无需重新生成：\n"
-        )
-        for dep_id, dep_out in inputs.items():
-            summary = dep_out.get("summary")
-            if summary:
-                parts.append(f"- 来自步骤「{dep_id}」：{summary}\n")
-            # 截断 artifacts 防 context 爆量（§0.12.3），最多 3 条
-            for art in (dep_out.get("artifacts") or [])[:3]:
-                parts.append(f"  - 产物：{art}\n")
-    parts.append(
-        "要求：只完成这一个步骤并调用必要的工具，完成后停止。"
-        "不要重新规划、不要拆解新的步骤、不要修改其他步骤。\n"
-    )
-    return "".join(parts)
-
-
-def _make_step_agent(parent_agent, step: dict, parent_session_id: str):
-    """b-2 每步隔离 AIAgent 工厂（§0.9.2 核心改动）。
-
-    约束② 步骤私有态：每步用唯一 ``session_id``（``{parent}__wf_{step_id}``）构造独立实例，
-    各自 session DB / 轨迹文件互不覆盖。构造参数 + 8 个 SSE 回调 + 运行期属性全部从父 agent
-    **原样**读取（chat.py:1176 真实构造口径，§0.9.0），保证 step agent 与父会话行为一致。
-    约束① 只读共享态（history deepcopy）由 executor 负责，本工厂不碰共享态。
-    """
-    from run_agent import AIAgent
-
-    kwargs = {
-        "base_url": getattr(parent_agent, "base_url", None),
-        "api_key": getattr(parent_agent, "api_key", None),
-        "provider": getattr(parent_agent, "provider", None),
-        "model": getattr(parent_agent, "model", None),
-        "max_iterations": getattr(parent_agent, "max_iterations", 30),
-        "quiet_mode": True,
-        "verbose_logging": False,
-        "platform": getattr(parent_agent, "platform", "web"),
-        "enabled_toolsets": getattr(parent_agent, "enabled_toolsets", None),
-        "disabled_toolsets": getattr(parent_agent, "disabled_toolsets", None),
-        "ephemeral_system_prompt": getattr(parent_agent, "ephemeral_system_prompt", None),
-        "reasoning_config": getattr(parent_agent, "reasoning_config", None),
-        "session_id": f"{parent_session_id}__wf_{step['id']}",
-        "parent_session_id": parent_session_id,
-    }
-    # 约束④ SSE 回调透传（流式/工具/计划/思考）——前端逐步进度仍可见（§0.9.4）。
-    for _cb in (
-        "status_callback",
-        "plan_event_callback",
-        "stream_delta_callback",
-        "tool_progress_callback",
-        "tool_start_callback",
-        "tool_complete_callback",
-        "thinking_callback",
-        "reasoning_callback",
-    ):
-        _v = getattr(parent_agent, _cb, None)
-        if _v is not None:
-            kwargs[_cb] = _v
-    step_agent = AIAgent(**kwargs)
-    # 运行期属性透传（联网提示重组 / 交互模式硬约束，chat.py:1215-1217）
-    _mode = getattr(parent_agent, "interaction_mode", None)
-    if _mode is not None:
-        step_agent.interaction_mode = _mode
-    _evo = getattr(parent_agent, "_evo_base_prompt", None)
-    if _evo:
-        step_agent._evo_base_prompt = _evo
-    return step_agent
+# G6：步骤指令构造与每步隔离 agent 工厂已提炼到 agent.workflow_runtime
+# （单一事实来源，供 chat / cron / webhook 复用）。此处仅做别名导入，
+# 下方 _make_workflow_step_executor 的调用点保持不变。
+from agent.workflow_runtime import (
+    build_workflow_step_prompt as _build_workflow_step_prompt,
+    make_step_agent as _make_step_agent,
+)
 
 
 def _make_workflow_step_executor(agent, conversation_history, user_message, parent_session_id):
