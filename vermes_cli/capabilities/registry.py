@@ -77,6 +77,12 @@ class BrickRegistry:
         self.bricks_json = Path(bricks_json) if bricks_json else (vermes_home() / "bricks.json")
         self._overlay: Dict[str, Dict[str, Any]] = {}
         self._custom_bricks: List[BrickEntry] = []
+        # discover() 快照缓存：扫 234 个 skill 目录 + discover_l2_adapters()（有 register
+        # 副作用）开销不小，API 层可能频繁调用（P1-2），故按 TTL 缓存；overlay/custom
+        # 变更时立即失效，保证装态不陈旧。
+        self._cache: Optional[List[BrickEntry]] = None
+        self._cache_ts: float = 0.0
+        self.cache_ttl: float = 60.0
         self._load_overlay()
 
     # ---- overlay 持久化 -------------------------------------------------
@@ -121,19 +127,30 @@ class BrickRegistry:
                 ov["installed_at"] = time.time()
             self._overlay[brick_id] = ov
         self.persist()
+        self.invalidate_cache()
 
     def add_custom_brick(self, entry: BrickEntry) -> None:
         with self._lock:
             self._custom_bricks.append(entry)
         self.persist()
+        self.invalidate_cache()
 
     # ---- discover（四源聚合） -------------------------------------------
-    def discover(self) -> List[BrickEntry]:
+    def discover(self, refresh: bool = False) -> List[BrickEntry]:
+        now = time.time()
+        if not refresh:
+            with self._lock:
+                if self._cache is not None and (now - self._cache_ts) < self.cache_ttl:
+                    return list(self._cache)   # 新 list，元素按只读对待
+
         entries: List[BrickEntry] = []
+        # 顺序有讲究：discover_l2_adapters() 会把 L2 适配器工具（freecad_*/blender_* 等）
+        # 注册进 TOOL_REGISTRY，故先扫 software 再扫 tools，首次调用即可拿到完整工具集
+        #（否则首轮只有内置工具，要等缓存过期才补齐 L2 那批）。
+        entries.extend(self._discover_software())
         entries.extend(self._discover_tools())
         entries.extend(self._discover_modules())
         entries.extend(self._discover_skills())
-        entries.extend(self._discover_software())
         # merge overlay + custom（overlay 以用户决策为准，校正 install_state/installed_at）
         with self._lock:
             for e in entries:
@@ -144,7 +161,15 @@ class BrickRegistry:
                     if ov.get("installed_at"):
                         e.installed_at = ov["installed_at"]
             entries.extend(self._custom_bricks)
+            self._cache = list(entries)
+            self._cache_ts = now
         return entries
+
+    def invalidate_cache(self) -> None:
+        """安装/卸载/overlay 变更后调用，丢弃快照使下次 discover() 重新聚合。"""
+        with self._lock:
+            self._cache = None
+            self._cache_ts = 0.0
 
     # ---- 四源适配器（只读，fail-open） -----------------------------------
     def _discover_tools(self) -> List[BrickEntry]:
@@ -182,8 +207,10 @@ class BrickRegistry:
         out: List[BrickEntry] = []
         try:
             from agent.module_catalog import (
-                bundled_catalog_path, get_catalog_modules, is_module_installed,
+                bundled_catalog_path, default_catalog_path,
+                get_catalog_modules, is_module_installed,
             )
+            modules_dir = default_catalog_path().parent   # ~/.vermes/modules/
             modules = get_catalog_modules(str(bundled_catalog_path()))
             for m in modules:
                 try:
@@ -200,7 +227,7 @@ class BrickRegistry:
                         size_bytes=m.size_code or None,
                         requires=[],
                         provides_tools=list(m.provides_tools or []),
-                        entry_point=str(bundled_catalog_path().parent),
+                        entry_point=str(modules_dir / m.name) if installed else None,
                         extra={"keywords": list(m.keywords or []),
                                "repository": m.repository,
                                "homepage": m.homepage,
@@ -229,9 +256,25 @@ class BrickRegistry:
                         fm, _ = parse_frontmatter(raw)
                         name = fm.get("name") or skill_file.parent.name
                         desc = extract_skill_description(fm)
-                        vermes = (fm.get("metadata") or {}).get("Vermes", {}) or {}
-                        caps = list(vermes.get("requires_toolsets", []) or [])
-                        caps += list(vermes.get("fallback_for_toolsets", []) or [])
+                        # 护栏：metadata 可能是字符串（畸形 YAML）——照 skill_utils 的
+                        # 处理方式降级为空，避免该 skill 被 except 吞掉、从注册表消失。
+                        _meta = fm.get("metadata")
+                        if not isinstance(_meta, dict):
+                            _meta = {}
+                        # 兼容 fork 双键名：**实测 102 个 SKILL.md 用小写 `hermes:`、
+                        # 0 个用大写 `Vermes:`**（Hermes→Vermes fork 遗留），故两个键都读。
+                        # 注：仓库 skill_utils.extract_skill_conditions 只读大写 Vermes，
+                        # 对全部 skill 静默返回空（既有 bug，此处不修，见审计报告）。
+                        vermes = _meta.get("Vermes") or _meta.get("hermes") or {}
+                        if not isinstance(vermes, dict):
+                            vermes = {}
+                        conds = {
+                            k: list(vermes.get(k, []) or [])
+                            for k in ("requires_toolsets", "fallback_for_toolsets",
+                                      "requires_tools", "fallback_for_tools")
+                        }
+                        caps = conds["requires_toolsets"] + conds["fallback_for_toolsets"]
+                        caps = list(dict.fromkeys(caps))  # 去重保序
                         out.append(BrickEntry(
                             id=f"skill:{name}",
                             type="skill",
@@ -241,7 +284,7 @@ class BrickRegistry:
                             install_state="installed",   # 目录即状态
                             source="community",
                             entry_point=str(skill_file),
-                            extra={"vermes_meta": vermes},
+                            extra={"conditions": conds, "vermes_meta": vermes},
                         ))
                     except Exception as exc:  # noqa: BLE001
                         logger.debug("skill %s parse skipped: %s", skill_file, exc)
@@ -307,7 +350,7 @@ class BrickRegistry:
 
     # ---- 统一能力索引（合并 brick caps + P0 模型 caps） -------------------
     def capability_index(self, refresh: bool = False) -> Dict[str, Any]:
-        bricks = self.discover()
+        bricks = self.discover(refresh=refresh)
         by_type: Dict[str, int] = {}
         for b in bricks:
             by_type[b.type] = by_type.get(b.type, 0) + 1
