@@ -2869,10 +2869,6 @@ def start_server(
     # proxy_headers=False so _ws_client_is_allowed sees the real connection peer
     # rather than X-Forwarded-For's rewritten value (which would defeat the
     # loopback gate when behind a reverse proxy).
-    # ── P0: 能力目录端点（models.dev 聚合降维，只读，不改动现有逻辑） ──
-    from vermes_cli.blueprints.capabilities import router as _capabilities_router
-    app.include_router(_capabilities_router)
-
     uvicorn.run(app, host=host, port=port, log_level="info", proxy_headers=False)
 
 # --- Trial Token wrapper (delegates to blueprints.quota) ---
@@ -2987,6 +2983,7 @@ blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
 blueprints.artifacts.register_to(app)
 blueprints.modules_market.register_to(app)  # Phase 3.2 市场后端中间层
+blueprints.capabilities.register_to(app)  # P0: 能力目录端点（GET /api/v1/capabilities）
 
 # P1-1: MCP 目录 + 安全规格
 try:

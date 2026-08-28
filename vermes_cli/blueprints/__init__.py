@@ -19,6 +19,7 @@ from . import oauth
 from . import storage
 from . import artifacts
 from . import modules_market
+from . import capabilities
 from . import mcp_catalog
 from . import credential_lifecycle
 

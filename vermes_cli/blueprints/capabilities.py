@@ -20,3 +20,14 @@ def get_capabilities(
 ):
     """Return the curated capability manifest (pinned / mainstream / longtail)."""
     return generate_capability_manifest(refresh=refresh)
+
+
+def register_to(app):
+    """Register the capability catalog route at module level (before SPA catch-all).
+
+    Must be called alongside the other ``blueprints.*.register_to(app)`` calls
+    (module import time), NOT inside ``start_server()`` — otherwise the SPA
+    catch-all ``/{full_path:path}`` route (mounted at module level via
+    ``mount_spa(app)``) shadows the route and returns 404.
+    """
+    app.include_router(router)
