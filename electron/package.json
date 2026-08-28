@@ -1,6 +1,6 @@
 {
   "name": "vermes-electron",
-  "version": "2.4.4",
+  "version": "2.4.5",
   "description": "Vermes - AI Agent Desktop (Electron Shell + Python Backend)",
   "main": "main.js",
   "author": "Vbit (vbit.top)",

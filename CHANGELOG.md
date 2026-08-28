@@ -2,6 +2,20 @@
 
 All notable changes to Vermes will be documented in this file.
 
+## [2.4.5] - 2026-08-28
+
+- 本地模型智能发现：通用本地/自定义端点 + 端口范围扫描 + base_url 自动补 /v1
+- 修复 gateway 状态检测（gateway_state.json fallback + macOS ps 标志兼容）
+- 修复内置 MCP 尊重 connect:lazy 字段，不再启动即烧 CPU
+- 修复 Telegram 渠道构建漏包（改用 venv Python 重打）
+- 右栏编辑撑满 + 产物路径蓝卡片 + 文件标签会话隔离
+- 新增 p5.js 创意技能（headless 帧导出 + 导出管线文档）
+- 左栏去冗余 + 会话文案统一（新建会话）
+- 修复 scholarforge 三线表（LaTeX + docx）+ 负值回归
+- 右栏 Office 文档能力增强（轻量可编辑 + pptx 静态预览）
+- 修复产物右栏渲染与 Agent/UI 状态同步，新增树形任务流
+- 工作流可视化 DAG 编辑器 + 触发器（cron/webhook）
+
 ## [v2.1.0] - 2026-06-11
 
 ### 架构重建（从 v2.0.9 重新出发）
