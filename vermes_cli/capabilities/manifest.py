@@ -45,6 +45,28 @@ MAINSTREAM_IDS = [
     "vllm", "lmstudio", "novita", "meta-llama", "ai21",
 ]
 
+# ── 前端 curated id -> models.dev 真实 key 映射 ──
+# 前端 Settings.vue 的 providers 数组用「产品内部 id」（如 qwen/zhipu/moonshot），
+# 而 models.dev 缓存的 key 是厂商原生命名（alibaba/zhipuai/moonshotai…）。
+# 审计发现：MAINSTREAM_IDS 直接用前端 id 去查 models.dev，30 个只命中 15 个，
+# 导致能力目录只渲染 7 个 provider、8 个国产入口从目录块消失。
+# 修复：聚合时按此映射取真实 key 的能力数据，但输出 meta「id」仍用前端 curated id，
+# 使前端 capProviders（byId[m.id] 匹配 providers.value）能正确渲染为可配置 ProviderCard。
+# 实跑核对（~/.vermes/models_dev_cache.json，2026-08-28）：baidu/hunyuan/yi/baichuan
+# 在 models.dev 无对应条目（MISS），无能力数据可显示，诚实跳过（仍在国产组可配）。
+# ollama/local/custom 是本地/自定义 provider，不映射任何云端 key。
+PROVIDER_TO_MODELS_DEV = {
+    "qwen": "alibaba",
+    "zhipu": "zhipuai",
+    "glm": "zhipuai",
+    "moonshot": "moonshotai",
+    "gemini": "google",
+    "together": "togetherai",
+    "fireworks": "fireworks-ai",
+    "novita": "novita-ai",
+    "meta-llama": "meta",
+}
+
 
 def _cache_mtime() -> float:
     try:
@@ -122,12 +144,36 @@ def generate_capability_manifest(refresh: bool = False) -> Dict[str, Any]:
             "latest_models": latest[:5],
         }
 
-    mainstream = [meta[pid] for pid in MAINSTREAM_IDS if pid in meta]
-    pinned_present = [pid for pid in PINNED_IDS if pid in meta]
-    longtail = [
-        v for v in meta.values()
-        if v["id"] not in MAINSTREAM_IDS and v["id"] not in PINNED_IDS
-    ]
+    def resolve_real_key(cid: str) -> str | None:
+        """把前端 curated id 解析为 models.dev 真实 key（同名则直接命中）。"""
+        if cid in meta:
+            return cid
+        rk = PROVIDER_TO_MODELS_DEV.get(cid)
+        if rk and rk in meta:
+            return rk
+        return None
+
+    # 已纳入策展（主流+置顶）的 models.dev 真实 key 集合，用于下游长尾排除
+    curated_real_keys: set = set()
+
+    mainstream = []
+    for cid in MAINSTREAM_IDS:
+        rk = resolve_real_key(cid)
+        if rk is None:
+            continue
+        curated_real_keys.add(rk)
+        entry = dict(meta[rk])
+        entry["id"] = cid  # 输出用前端 curated id，对齐前端 providers.value
+        mainstream.append(entry)
+
+    pinned_present = []
+    for pid in PINNED_IDS:
+        rk = resolve_real_key(pid)
+        if rk is not None:
+            curated_real_keys.add(rk)
+            pinned_present.append(pid)
+
+    longtail = [v for k, v in meta.items() if k not in curated_real_keys]
     longtail_groups: Dict[str, int] = {}
     for v in longtail:
         key = (v["id"][0].upper()) if v["id"] else "#"
