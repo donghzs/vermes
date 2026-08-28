@@ -55,6 +55,15 @@ MAINSTREAM_IDS = [
 # 实跑核对（~/.vermes/models_dev_cache.json，2026-08-28）：baidu/hunyuan/yi/baichuan
 # 在 models.dev 无对应条目（MISS），无能力数据可显示，诚实跳过（仍在国产组可配）。
 # ollama/local/custom 是本地/自定义 provider，不映射任何云端 key。
+# 2026-08-28 第二轮实拉补全（按厂商别名搜全部 204 个 key，而非只按前端 id）：
+#   scnet    → scnet-token-plan  (国家超算互联网，17 模型：DeepSeek/Kimi/GLM/MiniMax/MiMo，
+#              本身即聚合平台，聚合能力正好代表它能提供什么)
+#   ant-ling → bailing           (蚂蚁百灵 = Bailing，Ling-1T / Ring-1T)
+#   hunyuan  → tencent-tokenhub  (纯腾讯自研 hy3/hy3-preview。**不用** tencent-coding-plan：
+#              那是混合套餐，含 glm-5/kimi-k2.5/minimax-m2.5 等他厂模型，
+#              聚合会把别人的能力算成腾讯的 → 能力虚高)
+# 仍确认 MISS（models.dev 无任何条目，诚实留空而非编造）：baidu / yi / baichuan /
+# xinghuo / vbit。xiaomi 与 agnes 是**直接同名命中**，无需映射。
 PROVIDER_TO_MODELS_DEV = {
     "qwen": "alibaba",
     "zhipu": "zhipuai",
@@ -65,7 +74,22 @@ PROVIDER_TO_MODELS_DEV = {
     "fireworks": "fireworks-ai",
     "novita": "novita-ai",
     "meta-llama": "meta",
+    "scnet": "scnet-token-plan",
+    "ant-ling": "bailing",
+    "hunyuan": "tencent-tokenhub",
 }
+
+# ── 前端 Settings.vue `DEFAULT_PROVIDERS` 的全部 id（2026-08-28 实拉核对，25 个） ──
+# P0-4 要求「模型卡片 100% 带能力徽标」，而 `mainstream` 只覆盖 MAINSTREAM_IDS，
+# 导致 agnes/xiaomi 这类「只在 PINNED_IDS」的 provider 即便 models.dev 有数据也拿不到
+# 能力 meta。因此额外输出 `curated`（覆盖下面每一个 id），与 `mainstream` 分离，
+# 避免把推荐区已有的 deepseek/xiaomi/ollama 重复渲染进「主流模型」分组。
+FRONTEND_PROVIDER_IDS = [
+    "openai", "deepseek", "qwen", "agnes", "scnet", "openrouter", "vbit",
+    "xiaomi", "ant-ling", "ollama", "local", "minimax", "baidu", "xinghuo",
+    "stepfun", "yi", "baichuan", "zhipu", "hunyuan", "moonshot", "groq",
+    "together", "anthropic", "gemini", "custom",
+]
 
 
 def _cache_mtime() -> float:
@@ -244,6 +268,24 @@ def generate_capability_manifest(refresh: bool = False) -> Dict[str, Any]:
             curated_real_keys.add(rk)
             pinned_present.append(pid)
 
+    # ── curated：为「前端每一张卡片」提供能力 meta（P0-4 徽标数据源） ──
+    # 与 mainstream 分离：mainstream 决定「主流模型」分组渲染哪些卡片，
+    # curated 只提供徽标数据，因此不会让推荐区的 provider 重复出现。
+    curated_meta: List[Dict[str, Any]] = []
+    seen_curated: set = set()
+    for cid in list(MAINSTREAM_IDS) + list(PINNED_IDS) + list(FRONTEND_PROVIDER_IDS):
+        if cid in seen_curated:
+            continue
+        seen_curated.add(cid)
+        rk = resolve_real_key(cid)
+        if rk is None:
+            continue  # models.dev 未收录 → 前端显示「能力待收录」，不编造
+        curated_real_keys.add(rk)
+        entry = dict(meta[rk])
+        entry["id"] = cid
+        entry["source_key"] = rk  # 便于审计：这条能力数据到底取自哪个 models.dev key
+        curated_meta.append(entry)
+
     longtail = [v for k, v in meta.items() if k not in curated_real_keys]
     longtail_groups: Dict[str, int] = {}
     for v in longtail:
@@ -256,6 +298,7 @@ def generate_capability_manifest(refresh: bool = False) -> Dict[str, Any]:
         "total_models": total_models,
         "pinned": pinned_present,
         "mainstream": mainstream,
+        "curated": curated_meta,
         "longtail_count": len(longtail),
         "longtail_groups": dict(sorted(longtail_groups.items())),
     }
@@ -268,6 +311,7 @@ def _fallback_manifest() -> Dict[str, Any]:
         "total_models": 0,
         "pinned": PINNED_IDS,
         "mainstream": [],
+        "curated": [],
         "longtail_count": 0,
         "longtail_groups": {},
         "note": (

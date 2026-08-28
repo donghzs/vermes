@@ -52,6 +52,9 @@ const DEFAULT_BASE_URLS = {
 }
 
 const RECOMMENDED_IDS_FALLBACK = ['vbit', 'agnes', 'scnet', 'deepseek', 'xiaomi', 'ollama', 'local']
+// 推荐区实际用 ProviderCard 渲染的 provider（vbit 是独立特殊卡片，不走 ProviderCard）。
+// 单一真相源：模板 v-for 与能力目录去重都读它，避免两处硬编码漂移。
+const RECOMMENDED_CARD_IDS = ['deepseek', 'agnes', 'scnet', 'xiaomi', 'ollama', 'local', 'custom']
 const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan','zhipu','hunyuan','moonshot']
 const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together']
 
@@ -1468,7 +1471,15 @@ const capProviders = computed(() => {
   if (!capCatalogReady.value) return []
   const byId = {}
   for (const p of providers.value) byId[p.id] = p
-  return capManifest.value.mainstream.filter(m => byId[m.id]).map(m => byId[m.id])
+  // 只渲染「上面各分组都没出现过」的 provider。
+  // 原实现把 mainstream 全量渲染一遍，而推荐区 ∪ 国产 ∪ 国际已覆盖全部 25 个
+  // provider → 每张卡片在设置页出现两次。P0-4 已把能力徽标直接贴到原卡片上，
+  // 这里只保留「目录里有、但本地分组还没收录」的新 provider 作为增量入口，
+  // 因此该组通常为空并自动隐藏，将来 MAINSTREAM_IDS 新增厂商时才会出现。
+  const shown = [...RECOMMENDED_CARD_IDS, 'vbit', ...CHINESE_IDS, ...INTERNATIONAL_IDS]
+  return capManifest.value.mainstream
+    .filter(m => byId[m.id] && !shown.includes(m.id))
+    .map(m => byId[m.id])
 })
 // ── 能力徽标（P0-4）──
 // 五个固定维度逐卡渲染：支持的高亮，不支持的灰显划掉（"灰显不支持的入口"），
@@ -1516,6 +1527,9 @@ function capBadges(id) {
 function _applyCapManifest(data) {
   capManifest.value = data
   const meta = {}
+  // curated 覆盖前端全部 provider（含只在置顶区的 agnes/xiaomi/scnet/ant-ling/hunyuan），
+  // mainstream 只是「主流模型」分组的渲染清单；两者合并才能让每张卡片都拿到徽标数据。
+  for (const m of (data.curated || [])) meta[m.id] = m
   for (const m of (data.mainstream || [])) meta[m.id] = m
   capMetaById.value = meta
 }
@@ -1860,7 +1874,7 @@ async function toggleChannel(platformKey) {
 
           <!-- DeepSeek / Agnes / MiMo / Ollama — 使用 ProviderCard -->
           <ProviderCard
-            v-for="p in providers.filter(pr => ['deepseek','agnes','scnet','xiaomi','ollama','local','custom'].includes(pr.id))"
+            v-for="p in providers.filter(pr => RECOMMENDED_CARD_IDS.includes(pr.id))"
             :key="p.id"
             :provider="p"
             :expanded="isExpanded(p.id)"
@@ -1908,6 +1922,7 @@ async function toggleChannel(platformKey) {
               </div>
               <div v-if="capError" class="text-[11px] text-amber-500">{{ capError }}</div>
               <p class="text-[11px] text-gray-400">后端保留全部 {{ capManifest?.total_providers || 204 }} 家作为真相源，前端仅展示聚合后的主流与分组；不改动本地/自定义链路。</p>
+              <p class="text-[11px] text-gray-400">能力徽标（🛠工具 / 🧠推理 / 👁视觉 / 📄文档 / 📏长程）直接标在下方每张卡片上，灰色划掉＝该家不支持。</p>
             </div>
 
             <!-- 🇨🇳 国产模型（保留原硬编码分组，能力目录是新增增值，不替代） -->
@@ -1938,9 +1953,9 @@ async function toggleChannel(platformKey) {
                 </div>
               </div>
 
-            <!-- 🌐 主流模型（能力目录新增增值区块，仅后端就绪时展示，不替代原分组） -->
-            <div v-if="capCatalogReady">
-              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌐 主流模型（来自能力目录 · 点开填 Key 即可用）</div>
+            <!-- 🌐 目录新增（能力目录里有、但上面各分组尚未收录的 provider；通常为空并自动隐藏） -->
+            <div v-if="capCatalogReady && capProviders.length">
+              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌐 目录新增（能力目录新收录 · 点开填 Key 即可用）</div>
               <div class="space-y-2">
                 <ProviderCard v-for="p in capProviders" :key="p.id"
                   :provider="p" :expanded="isExpanded(p.id)" compact

@@ -190,6 +190,10 @@ elif sys.platform == 'darwin':
         'WebKit', 'Quartz', 'UniformTypeIdentifiers',
     ])
 
+# 能力网关/清单（P0-2/3/4：chat.py 与 doctor.py 依赖 vermes_cli.capabilities，
+# 显式收录避免重打 DMG 后 ImportError）
+hiddenimports.extend(collect_submodules('vermes_cli.capabilities'))
+
 a = Analysis(
     ['vermes_cli/gui_app.py'],
     pathex=[],

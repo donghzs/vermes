@@ -359,6 +359,15 @@ try:
 except Exception as _e:
     print(f"[Vermes Backend] collect_submodules(vermes_cli.adapters) SKIP: {_e}")
 
+# 能力网关/清单（P0-2/3/4：chat.py 与 doctor.py 依赖 vermes_cli.capabilities，
+# 显式收录避免重打 DMG 后 ImportError）
+try:
+    _caps_sub = collect_submodules('vermes_cli.capabilities')
+    hiddenimports.extend(_caps_sub)
+    print(f"[Vermes Backend] collect_submodules(vermes_cli.capabilities) → {_caps_sub}")
+except Exception as _e:
+    print(f"[Vermes Backend] collect_submodules(vermes_cli.capabilities) SKIP: {_e}")
+
 # experts_catalog.json 和 adapters 目录已在主 datas 列表中，无需追加
 
 a = Analysis(
