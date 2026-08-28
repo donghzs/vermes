@@ -638,6 +638,10 @@ PROVIDERS = {
     "agnes": {"env_key": "AGNES_API_KEY", "base_url": "https://apihub.agnes-ai.com/v1", "cloud": True, "free": True, "recommended": True},
     "scnet": {"env_key": "SCNET_API_KEY", "base_url": "https://api.scnet.cn/api/llm/v1", "cloud": True, "free": False, "recommended": True},
     "ollama": {"env_key": None, "base_url": "http://localhost:11434/v1", "cloud": False, "free": True, "recommended": True},
+    "local": {"env_key": None, "base_url": "", "cloud": False, "free": True, "recommended": True},
+    "vmlx": {"env_key": None, "base_url": "http://localhost:9000/v1", "cloud": False, "free": True, "recommended": False},
+    "lmstudio": {"env_key": None, "base_url": "http://localhost:1234/v1", "cloud": False, "free": True, "recommended": False},
+    "vllm": {"env_key": None, "base_url": "http://localhost:8000/v1", "cloud": False, "free": True, "recommended": False},
 }
 
 
@@ -664,6 +668,8 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
         "零一万物": "yi", "百川智能": "baichuan", "Groq (极速推理)": "groq",
         "Together AI": "together", "Anthropic Claude": "anthropic", "Google Gemini": "gemini",
         "Agnes AI": "agnes",
+        "本地模型 / 自定义端点": "local", "本地模型": "local", "自定义端点": "local",
+        "vMLX (mlx-engine)": "vmlx", "vMLX": "vmlx", "LM Studio": "lmstudio", "vLLM": "vllm",
     }
     provider = provider.lower(); provider = provider_aliases.get(provider, provider)
 
@@ -708,7 +714,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
             if line.startswith(f"{custom_env_key}="):
                 api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
 
-    if provider == "ollama" and not api_key:
+    if provider in ("ollama", "local", "vmlx", "lmstudio", "vllm") and not api_key:
         api_key = "ollama"
 
     # Strip provider prefix from model name
@@ -717,7 +723,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
         actual_model = model[len("openrouter/"):]
     elif provider == "vbit" and model.startswith("vbit/"):
         actual_model = model[len("vbit/"):]
-    elif "/" in model and provider not in ("ollama", "openrouter", "vbit"):
+    elif "/" in model and provider not in ("ollama", "openrouter", "vbit", "local", "vmlx", "lmstudio", "vllm"):
         actual_model = model.split("/", 1)[1]
 
     return provider, base_url, api_key, actual_model

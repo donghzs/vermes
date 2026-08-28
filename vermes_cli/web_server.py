@@ -2885,7 +2885,13 @@ LOCAL_MODEL_ENDPOINTS = [
     ("Ollama", "http://localhost:11434/v1/models", "ollama"),
     ("LM Studio", "http://localhost:1234/v1/models", "lmstudio"),
     ("vLLM", "http://localhost:8000/v1/models", "vllm"),
+    ("llama.cpp", "http://localhost:8080/v1/models", "llamacpp"),
+    ("SGLang", "http://localhost:30000/v1/models", "sglang"),
+    ("TGI", "http://localhost:8090/v1/models", "tgi"),
 ]
+
+# 额外扫描端口范围（常见本地推理服务端口）
+_LOCAL_SCAN_PORTS = [8888, 5000, 5001, 6000, 7000, 7001, 7860, 8081, 8443, 9090, 9999, 10000, 11435]
 
 
 async def discover_models(payload: dict = Body(default={})):
@@ -2920,7 +2926,7 @@ async def discover_models(payload: dict = Body(default={})):
                     "name": f"{mid} ({name})",
                     "provider": pid,
                     "source": name,
-                    "base_url": base.rstrip("/"),
+                    "base_url": url.rsplit("/v1/models", 1)[0] + "/v1",  # 带 /v1 后缀，agent 拼接时 rstrip('/') + '/chat/completions'
                 })
         except Exception as e:
             errors.append(f"{name}: {str(e)}")
@@ -2932,8 +2938,15 @@ async def discover_models(payload: dict = Body(default={})):
             pid = "local"
             await _probe(client, name, base_url, pid)
         else:
+            # 1. 先扫已知端点
             for name, url, pid in LOCAL_MODEL_ENDPOINTS:
                 await _probe(client, name, url.rsplit("/v1/models", 1)[0], pid)
+            # 2. 再扫额外端口（跳过已探测的）
+            known_ports = {int(u.split(":")[2].split("/")[0]) for _, u, _ in LOCAL_MODEL_ENDPOINTS}
+            for port in _LOCAL_SCAN_PORTS:
+                if port in known_ports:
+                    continue
+                await _probe(client, f"端口 {port}", f"http://localhost:{port}", "local")
 
     if not found:
         detail = "; ".join(errors) if errors else "无"

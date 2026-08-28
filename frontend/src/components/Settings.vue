@@ -33,6 +33,7 @@ const DEFAULT_BASE_URLS = {
   xiaomi: 'https://api.xiaomimimo.com/v1',
   'ant-ling': 'https://api.ant-ling.com/v1',
   ollama: 'http://localhost:11434/v1',
+  local: '',  // 本地/自定义端点：默认空，由智能发现或用户填入
   minimax: 'https://api.minimax.chat/v1',
   baidu: 'https://qianfan.baidubce.com/v2',
   xinghuo: 'https://spark-api.xf-yun.com/v1',
@@ -50,7 +51,7 @@ const DEFAULT_BASE_URLS = {
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
 }
 
-const RECOMMENDED_IDS_FALLBACK = ['vbit', 'agnes', 'scnet', 'deepseek', 'xiaomi', 'ollama']
+const RECOMMENDED_IDS_FALLBACK = ['vbit', 'agnes', 'scnet', 'deepseek', 'xiaomi', 'ollama', 'local']
 const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan','zhipu','hunyuan','moonshot']
 const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together']
 
@@ -71,6 +72,7 @@ const PROVIDER_EXTRAS = {
   hunyuan: { iconClass: 'bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-400', iconText: '混', description: '腾讯全链路自研大模型，中文能力强', linkUrl: 'https://hunyuan.cloud.tencent.com/', linkText: '→ 去腾讯混元官网获取 Key ↗' },
   moonshot: { iconClass: 'bg-violet-100 dark:bg-violet-900 text-violet-600 dark:text-violet-400', iconText: 'K', description: 'Kimi 长文本能力强，支持 20 万汉字', linkUrl: 'https://platform.moonshot.cn/', linkText: '→ 去 Moonshot 开放平台获取 Key ↗' },
   ollama: { iconClass: 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400', iconText: '💻', description: '完全免费，数据不离开你的电脑', hideKeyInput: true },
+  local: { iconClass: 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400', iconText: '🔧', description: '智能发现本地模型服务，或手动填入任意 OpenAI 兼容端点', hideKeyInput: true },
 }
 
 const providers = ref([
@@ -83,7 +85,8 @@ const providers = ref([
   { id: 'vbit', name: 'vbit.top', key: '', baseUrl: DEFAULT_BASE_URLS.vbit, models: [], syncing: false },
   { id: 'xiaomi', name: '小米 MiMo', key: '', baseUrl: DEFAULT_BASE_URLS.xiaomi, models: [], syncing: false },
   { id: 'ant-ling', name: '蚂蚁百灵', key: '', baseUrl: DEFAULT_BASE_URLS['ant-ling'], models: [], syncing: false },
-  { id: 'ollama', name: '本地模型', key: 'ollama', baseUrl: DEFAULT_BASE_URLS.ollama, models: [], syncing: false },
+  { id: 'ollama', name: 'Ollama', key: 'ollama', baseUrl: DEFAULT_BASE_URLS.ollama, models: [], syncing: false },
+  { id: 'local', name: '本地模型 / 自定义端点', key: 'local', baseUrl: '', models: [], syncing: false },
   { id: 'minimax', name: 'MiniMax', key: '', baseUrl: DEFAULT_BASE_URLS.minimax, models: [], syncing: false },
   { id: 'baidu', name: '百度文心', key: '', baseUrl: DEFAULT_BASE_URLS.baidu, models: [], syncing: false },
   { id: 'xinghuo', name: '讯飞星火', key: '', baseUrl: DEFAULT_BASE_URLS.xinghuo, models: [], syncing: false },
@@ -656,27 +659,37 @@ function getEnvKey(providerId) {
 }
 
 async function syncModels(p) {
-  if (!p.key && p.id !== 'ollama') { toast.warning('请先填写 API Key'); return }
-  if (!p.baseUrl) { toast.warning('请先填写 Base URL'); return }
+  // 统一同步逻辑：本地端点(local/ollama)走 /api/model/discover；远程 provider 走 /api/provider/sync-models
+  const isLocal = p.id === 'ollama' || p.id === 'local'
+  if (isLocal) {
+    // 本地端点：不需要 API Key
+  } else if (!p.key) {
+    toast.warning('请先填写 API Key'); return
+  }
+  if (!p.baseUrl && p.id !== 'local' && p.id !== 'ollama') { toast.warning('请先填写 Base URL'); return }
   p.syncing = true
   try {
-    if (p.id === 'ollama') {
+    if (isLocal) {
       const body = {}
-      // 本地模型：支持自定义 base_url（vMLX/Ollama/LM Studio 等），
-      // 不填则自动探测常见本地端口
-      if (p.baseUrl && p.baseUrl !== DEFAULT_BASE_URLS[p.id]) body.base_url = p.baseUrl
+      // 用户填了 baseUrl 就用用户填的；否则后端自动探测常见端口
+      if (p.baseUrl) body.base_url = p.baseUrl
       const resp = await fetch('/api/model/discover', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
       })
       const data = await resp.json()
       if (data.ok) {
-        // 后端返回结构化数组 [{id,name,provider,source,base_url}]，兼容旧字符串数组
+        // 后端返回结构化数组 [{id,name,provider,source,base_url}]
         if (data.models && data.models.length > 0 && typeof data.models[0] === 'object') {
           const synced = new Set(data.models.map(m => m.id))
           const manual = (p.models || []).filter(m => typeof m === 'string' && !synced.has(m))
-          // 自动把探测到的本地服务 base_url 写回 provider（若无自定义）
-          if (!body.base_url && data.models[0].base_url && p.baseUrl === DEFAULT_BASE_URLS[p.id]) {
-            p.baseUrl = data.models[0].base_url
+          // 自动把探测到的服务 base_url 写回 provider（确保带 /v1 后缀）
+          if (data.models[0].base_url) {
+            let discoveredUrl = data.models[0].base_url
+            // 如果 base_url 不以 /v1 结尾，自动补上（agent 拼接时需要 /v1/chat/completions）
+            if (!discoveredUrl.endsWith('/v1') && !discoveredUrl.endsWith('/v1/')) {
+              discoveredUrl = discoveredUrl.replace(/\/$/, '') + '/v1'
+            }
+            p.baseUrl = discoveredUrl
           }
           p.models = [...data.models.map(m => m.name), ...manual]
           saveProvidersToStorage()
@@ -688,6 +701,7 @@ async function syncModels(p) {
       } else toast.error('同步失败: ' + (data.error || '未发现本地模型服务'))
       return
     }
+    // 远程 provider
     const body = { provider_id: p.id }
     if (p.baseUrl && p.baseUrl !== DEFAULT_BASE_URLS[p.id]) body.base_url = p.baseUrl
     if (p.key && p.key !== '●●●●●●●●') body.api_key = p.key
@@ -788,7 +802,7 @@ async function save() {
   // 并行保存所有提供商配置
   const savePromises = []
   for (const p of providers.value) {
-    if (p.key && p.key !== '●●●●●●●●' && p.id !== 'ollama') {
+    if (p.key && p.key !== '●●●●●●●●' && p.id !== 'ollama' && p.id !== 'local') {
       const envKey = getEnvKey(p.id)
       savePromises.push(
         fetch('/api/env', { method: 'PUT', headers: envHeaders(), body: JSON.stringify({ key: envKey, value: p.key }) })
@@ -799,9 +813,10 @@ async function save() {
     }
     if (p.baseUrl) {
       const payload = { provider_id: p.id, base_url: p.baseUrl }
-      // Only include a real key. A masked provider ('●●●●●●●●') already has
-      // its key in .env; sending the empty mask would wipe it. (Backend also
-      // guards against empty api_key, but we avoid the bad request entirely.)
+      // 本地 provider (local/ollama/vmlx 等) 也需要保存 base_url 到 config
+      if (p.id === 'ollama' || p.id === 'local') {
+        payload.api_key = 'ollama'  // 本地服务不需要真实 key，但 config 需要有值
+      }
       if (p.key && p.key !== '●●●●●●●●') payload.api_key = p.key
       savePromises.push(
         fetch('/api/provider/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -1379,13 +1394,15 @@ async function testProvider(p) {
   p.testing = true
   p.testResult = null
   try {
-    if (!p.key && p.id !== 'ollama') {
+    const isLocal = p.id === 'ollama' || p.id === 'local'
+    if (!isLocal && !p.key) {
       p.testResult = { ok: false, error: '请先填写 API Key' }
       return
     }
     let data
-    if (p.id === 'ollama') {
-      const resp = await fetch('/api/model/discover', { method: 'POST' })
+    if (isLocal) {
+      const body = p.baseUrl ? { base_url: p.baseUrl } : {}
+      const resp = await fetch('/api/model/discover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       data = await resp.json()
     } else {
       const body = { provider_id: p.id }
@@ -1758,7 +1775,7 @@ async function toggleChannel(platformKey) {
 
           <!-- DeepSeek / Agnes / MiMo / Ollama — 使用 ProviderCard -->
           <ProviderCard
-            v-for="p in providers.filter(pr => ['deepseek','agnes','scnet','xiaomi','ollama'].includes(pr.id))"
+            v-for="p in providers.filter(pr => ['deepseek','agnes','scnet','xiaomi','ollama','local'].includes(pr.id))"
             :key="p.id"
             :provider="p"
             :expanded="isExpanded(p.id)"
