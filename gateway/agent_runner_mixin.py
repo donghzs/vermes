@@ -953,6 +953,39 @@ class AgentRunnerMixin:
         def _step_callback_sync(iteration: int, prev_tools: list) -> None:
             if not _run_still_current():
                 return
+
+            # ── P0-2 能力网关（约束 A：所有渠道共享同一网关实例） ──
+            # 桌面 SSE 路径挂在 chat.py 的 thinking_handler 内部，多渠道路径
+            # （飞书/Telegram/Slack/…）挂在这里，两者共用同一个进程内单例，
+            # 能力判定口径天然一致。纯字典查表（实测 0.0003 ms/step），
+            # fail-open：任何异常都不得影响 hooks 派发或本轮对话。
+            _caps = None
+            try:
+                from vermes_cli.capabilities.gateway import CAPABILITY_GATEWAY
+
+                _cap_model = ""
+                _cap_provider = ""
+                try:
+                    _cap_model = (turn_route or {}).get("model") or ""
+                    _cap_provider = (runtime_kwargs or {}).get("provider") or ""
+                except Exception:  # noqa: BLE001 - 早退路径下变量可能尚未绑定
+                    pass
+                _res = CAPABILITY_GATEWAY.on_step(
+                    iteration,
+                    prev_tools,
+                    model=_cap_model,
+                    provider=_cap_provider,
+                )
+                if _res:
+                    _caps = _res.get("capabilities")
+            except Exception:  # noqa: BLE001 - 网关永不阻断渠道链路
+                _caps = None
+
+            # 保持原语义：未加载用户 hooks 时不派发 agent:step 事件。
+            # 网关在门禁之前执行，因此「没装 hooks 的渠道」也被 100% 覆盖。
+            if not _hooks_ref.loaded_hooks:
+                return
+
             # prev_tools may be list[str] or list[dict] with "name"/"result"
             # keys.  Normalise to keep "tool_names" backward-compatible for
             # user-authored hooks that do ', '.join(tool_names)'.
@@ -970,6 +1003,7 @@ class AgentRunnerMixin:
                     "iteration": iteration,
                     "tool_names": _names,
                     "tools": prev_tools,
+                    "capabilities": _caps,
                 }),
                 _loop_for_step,
                 logger=logger,
@@ -1265,7 +1299,10 @@ class AgentRunnerMixin:
             # Per-message state — callbacks and reasoning config change every
             # turn and must not be baked into the cached agent constructor.
             agent.tool_progress_callback = progress_callback if tool_progress_enabled else None
-            agent.step_callback = _step_callback_sync if _hooks_ref.loaded_hooks else None
+            # 恒挂：P0-2 能力网关需要 100% 拦截率，而 hooks 派发的
+            # 「无 hooks 不派发」语义已下移到 _step_callback_sync 内部门禁，
+            # 因此这里去掉 loaded_hooks 条件不改变任何 hooks 行为。
+            agent.step_callback = _step_callback_sync
             agent.stream_delta_callback = _stream_delta_cb
             agent.interim_assistant_callback = _interim_assistant_cb if _want_interim_messages else None
             agent.status_callback = _status_callback_sync

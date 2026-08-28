@@ -79,24 +79,51 @@ def _cache_mtime() -> float:
     return time.time()
 
 
+# 「长程」判定阈值：models.dev 的 limit.context 字段 100% 覆盖（7433/7433 实测），
+# 其中 87.7% ≥ 128k，因此 128k 是能区分出「长程 vs 普通」的有效分界线。
+LONG_CONTEXT_THRESHOLD = 128_000
+
+
 def _extract_caps(entry: Dict[str, Any]) -> List[str]:
     """Extract capability tags from a single models.dev model entry.
 
-    Mirrors ``agent.models_dev.get_model_capabilities`` field mapping:
-      tool_call → tools, reasoning → reasoning, modalities.input(image) → vision.
+    Mirrors ``agent.models_dev.get_model_capabilities`` field mapping and extends
+    it with the two dimensions P0-4 needs for the frontend badges:
+
+      * ``tool_call``                 → tools        (🛠 工具调用)
+      * ``reasoning``                 → reasoning    (🧠 推理)
+      * ``modalities.input`` ∋ image  → vision       (👁 视觉)
+      * ``modalities.input`` ∋ pdf    → document     (📄 文档)
+      * ``limit.context`` ≥ 128k      → long_context (📏 长程)
+
+    Field availability verified against the real cache (2026-08-28,
+    ``~/.vermes/models_dev_cache.json``, 7433 models):
+    image 4091 / pdf 1684 / limit.context 7433 (100%).
     """
     caps: set = set()
     if entry.get("tool_call"):
         caps.add("tools")
     if entry.get("reasoning"):
         caps.add("reasoning")
+
     mods = entry.get("modalities")
     if isinstance(mods, dict):
         ins = mods.get("input")
-        if isinstance(ins, list) and "image" in ins:
-            caps.add("vision")
+        if isinstance(ins, list):
+            if "image" in ins:
+                caps.add("vision")
+            if "pdf" in ins:
+                caps.add("document")
     elif entry.get("attachment"):
+        # 老条目没有 modalities，只有 attachment 布尔位:附件即视为视觉/文档入口
         caps.add("vision")
+
+    lim = entry.get("limit")
+    if isinstance(lim, dict):
+        ctx = lim.get("context")
+        if isinstance(ctx, (int, float)) and ctx >= LONG_CONTEXT_THRESHOLD:
+            caps.add("long_context")
+
     return sorted(caps)
 
 

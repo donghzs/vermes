@@ -64,6 +64,102 @@ _PROVIDER_ENV_HINTS = (
 from vermes_constants import is_termux as _is_termux
 
 
+# ── 3D / CAD 可选依赖（P0-3） ──
+# 这些包**不装在主进程解释器**里，而是装在 3D 引擎 venv
+# （`~/.vermes/engines/<plat>/.venv`，即 web_server.py 做 build123d 转换时用的
+# 那个解释器）。因此直接 `__import__` 会把「引擎里已装」误报成「未装」，
+# 必须显式探测引擎 venv，否则 doctor 给出的结论是假阴性。
+_3D_OPTIONAL_PACKAGES = [
+    ("trimesh", "Trimesh (mesh 读写 / 格式转换)",
+     "mesh 处理与 STL/glTF 导出需 pip install trimesh"),
+    ("build123d", "build123d (代码化 CAD 建模)",
+     "text-to-CAD 建模链路需 pip install build123d"),
+    ("OCP", "OCP (OpenCASCADE Python 绑定)",
+     "build123d 的几何内核，随 build123d 一并安装"),
+    ("cascadio", "cascadio (STEP → glTF 转换)",
+     "STEP→mesh 预览需 pip install cascadio"),
+]
+
+
+def _spec_present(module: str) -> bool:
+    """True when *module* is importable by the current interpreter."""
+    try:
+        return importlib.util.find_spec(module) is not None
+    except Exception:
+        return False
+
+
+def _engine_venv_pythons() -> list:
+    """Locate existing 3D-engine venv interpreters.
+
+    Engines live at ``~/.vermes/engines/<platform>/.venv`` — the same path
+    ``web_server.py`` uses for build123d STEP→STL conversion.  ``VERMES_HOME``
+    can point at a profile dir (``~/.vermes/profiles/<name>``), so both it and
+    the canonical ``~/.vermes`` are probed.  Returns ``[]`` when no engine is
+    installed (a normal state, not an error).
+    """
+    bases = []
+    try:
+        bases.append(VERMES_HOME / "engines")
+    except Exception:
+        pass
+    bases.append(Path.home() / ".vermes" / "engines")
+
+    found: list = []
+    seen: set = set()
+    for base in bases:
+        try:
+            if not base.is_dir():
+                continue
+            for d in sorted(base.iterdir()):
+                if not d.is_dir():
+                    continue
+                for rel in (".venv/bin/python", ".venv/Scripts/python.exe"):
+                    p = d / rel
+                    if p.exists():
+                        rp = str(p.resolve())
+                        if rp not in seen:
+                            seen.add(rp)
+                            found.append(p)
+                        break
+        except Exception:
+            continue
+    return found
+
+
+def _probe_modules_in_interpreter(py, modules, timeout: float = 25.0):
+    """Return ``{module: bool}`` as seen by interpreter *py*.
+
+    Uses ``importlib.util.find_spec`` rather than a real import — importing OCP
+    costs seconds and can emit native warnings.  Returns ``None`` when the probe
+    itself failed, so callers can tell "not installed" apart from
+    "could not check" (a broken venv must not be reported as "not installed").
+    """
+    import json
+
+    code = (
+        "import importlib.util as u, json, sys\n"
+        "def chk(m):\n"
+        "    try:\n"
+        "        return u.find_spec(m) is not None\n"
+        "    except Exception:\n"
+        "        return False\n"
+        "print(json.dumps({m: chk(m) for m in json.loads(sys.argv[1])}))\n"
+    )
+    try:
+        r = subprocess.run(
+            [str(py), "-c", code, json.dumps(list(modules))],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return None
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except Exception:
+        return None
+
+
 def _python_install_cmd() -> str:
     return "python -m pip install" if _is_termux() else "uv pip install"
 
@@ -485,7 +581,43 @@ def run_doctor(args):
             check_ok(name, "(optional)")
         except ImportError:
             check_warn(name, "(optional, not installed)")
-    
+
+    # ── 3D / CAD 可选依赖（P0-3）：主进程 → 引擎 venv 两级探测 ──
+    # 目的是「没装就先说在前面」，而不是等到 STEP→mesh 预览时运行时崩。
+    _3d_modules = [m for m, _n, _h in _3D_OPTIONAL_PACKAGES]
+    _engine_pys = _engine_venv_pythons()
+    _engine_probe = None
+    _engine_label = ""
+    for _py in _engine_pys:
+        _res = _probe_modules_in_interpreter(_py, _3d_modules)
+        if _res is not None:
+            _engine_probe = _res
+            try:
+                # …/engines/<plat>/.venv/bin/python → <plat>
+                _engine_label = _py.parents[2].name
+            except Exception:
+                _engine_label = "engine"
+            break
+
+    for module, name, hint in _3D_OPTIONAL_PACKAGES:
+        if _spec_present(module):
+            check_ok(name, "(optional)")
+        elif _engine_probe and _engine_probe.get(module):
+            check_ok(name, f"(optional · 3D 引擎 venv: engines/{_engine_label})")
+        else:
+            check_warn(name, f"(optional, not installed) — {hint}")
+
+    if not _engine_pys:
+        check_info(
+            "3D 引擎 venv 未安装（~/.vermes/engines/<plat>/.venv）"
+            " — 3D/CAD 建模请先跑 mfg_setup_engine 安装引擎"
+        )
+    elif _engine_probe is None:
+        check_warn(
+            "3D 引擎 venv 依赖探测失败",
+            "(interpreter unusable) — 引擎 venv 可能损坏，重跑 mfg_setup_engine 修复",
+        )
+
     _section("Configuration Files")
     # Check ~/.vermes/.env (primary location for user config)
     env_path = VERMES_HOME / '.env'

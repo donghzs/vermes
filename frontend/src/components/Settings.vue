@@ -1470,16 +1470,48 @@ const capProviders = computed(() => {
   for (const p of providers.value) byId[p.id] = p
   return capManifest.value.mainstream.filter(m => byId[m.id]).map(m => byId[m.id])
 })
-// 能力徽章（配之前就能看到这模型能干嘛）
-const CAP_BADGE_MAP = {
-  tools:     { label: '🛠 工具调用', cls: 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' },
-  reasoning: { label: '🧠 推理',     cls: 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300' },
-  vision:    { label: '👁 视觉',     cls: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300' },
-}
+// ── 能力徽标（P0-4）──
+// 五个固定维度逐卡渲染：支持的高亮，不支持的灰显划掉（"灰显不支持的入口"），
+// 因此每张卡片 100% 带徽标，配 Key 之前就能看出这家能干什么。
+const CAP_DIMENSIONS = [
+  { key: 'tools',        label: '🛠 工具', name: '工具调用' },
+  { key: 'reasoning',    label: '🧠 推理', name: '推理' },
+  { key: 'vision',       label: '👁 视觉', name: '视觉输入' },
+  { key: 'document',     label: '📄 文档', name: '文档/PDF 输入' },
+  { key: 'long_context', label: '📏 长程', name: '长上下文（≥128k）' },
+]
+const CAP_ON_CLS = 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+const CAP_OFF_CLS = 'bg-gray-100 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500 line-through'
+const CAP_NEUTRAL_CLS = 'bg-gray-100 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500'
+// 本地/自定义 provider 的能力取决于用户加载的模型，不能拿云端目录判定
+const CAP_LOCAL_IDS = ['ollama', 'local', 'custom', 'lmstudio', 'vllm']
+
 function capBadges(id) {
+  // 后端未就绪时不渲染任何徽标：全灰会被误读成"全都不支持"
+  if (!capCatalogReady.value) return []
+  if (CAP_LOCAL_IDS.includes(id)) {
+    return [{
+      label: '💻 本地 · 能力随模型而定',
+      cls: CAP_NEUTRAL_CLS,
+      title: '本地推理服务的能力取决于你加载的模型，同步模型后按具体模型判定',
+    }]
+  }
   const m = capMetaById.value[id]
-  if (!m || !Array.isArray(m.capabilities)) return []
-  return m.capabilities.map(c => CAP_BADGE_MAP[c]).filter(Boolean)
+  if (!m || !Array.isArray(m.capabilities)) {
+    return [{
+      label: '· 能力待收录',
+      cls: CAP_NEUTRAL_CLS,
+      title: 'models.dev 尚未收录该 provider 的能力数据；不影响正常配置与使用',
+    }]
+  }
+  return CAP_DIMENSIONS.map(d => {
+    const on = m.capabilities.includes(d.key)
+    return {
+      label: d.label,
+      cls: on ? CAP_ON_CLS : CAP_OFF_CLS,
+      title: on ? `支持${d.name}` : `不支持${d.name}`,
+    }
+  })
 }
 function _applyCapManifest(data) {
   capManifest.value = data
@@ -1839,6 +1871,7 @@ async function toggleChannel(platformKey) {
             :link-text="PROVIDER_EXTRAS[p.id]?.linkText || ''"
             :hide-key-input="PROVIDER_EXTRAS[p.id]?.hideKeyInput || false"
             :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
+            :badges="capBadges(p.id)"
             :show-delete="true"
             @toggle="onCardToggle"
             @sync="onCardSync"
@@ -1883,6 +1916,7 @@ async function toggleChannel(platformKey) {
                 <div class="space-y-2">
                   <ProviderCard v-for="p in chineseProviders" :key="p.id"
                     :provider="p" :expanded="isExpanded(p.id)" compact
+                    :badges="capBadges(p.id)"
                     :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
                     @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
                     @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
@@ -1896,6 +1930,7 @@ async function toggleChannel(platformKey) {
                 <div class="space-y-2">
                   <ProviderCard v-for="p in internationalProviders" :key="p.id"
                     :provider="p" :expanded="isExpanded(p.id)" compact
+                    :badges="capBadges(p.id)"
                     :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
                     @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
                     @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
@@ -1907,17 +1942,13 @@ async function toggleChannel(platformKey) {
             <div v-if="capCatalogReady">
               <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌐 主流模型（来自能力目录 · 点开填 Key 即可用）</div>
               <div class="space-y-2">
-                <div v-for="p in capProviders" :key="p.id" class="rounded-xl overflow-hidden">
-                  <div v-if="capBadges(p.id).length" class="flex flex-wrap gap-1 px-4 pt-2">
-                    <span v-for="b in capBadges(p.id)" :key="b.label" :class="['text-[10px] px-1.5 py-0.5 rounded', b.cls]">{{ b.label }}</span>
-                  </div>
-                  <ProviderCard
-                    :provider="p" :expanded="isExpanded(p.id)" compact
-                    :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
-                    @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
-                    @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
-                  />
-                </div>
+                <ProviderCard v-for="p in capProviders" :key="p.id"
+                  :provider="p" :expanded="isExpanded(p.id)" compact
+                  :badges="capBadges(p.id)"
+                  :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
+                  @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
+                  @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
+                />
               </div>
             </div>
 
@@ -1926,6 +1957,7 @@ async function toggleChannel(platformKey) {
               <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🔧 自定义</div>
               <ProviderCard v-for="p in customProviders" :key="p.id"
                 :provider="p" :expanded="isExpanded(p.id)" compact
+                :badges="capBadges(p.id)"
                 :show-delete="true" :default-base-url="''"
                 @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
                 @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"

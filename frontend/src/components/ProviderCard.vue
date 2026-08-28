@@ -21,6 +21,9 @@ const props = defineProps({
   hideKeyInput: { type: Boolean, default: false },   // 隐藏 Key 输入
   hideBaseUrl: { type: Boolean, default: false },    // 隐藏 Base URL
   defaultBaseUrl: { type: String, default: '' },
+  // 能力徽标（P0-4）：[{ label, cls, title }]，由 Settings.vue 的 capBadges() 生成。
+  // 不传 = 不渲染，任何未接线的调用方行为完全不变。
+  badges: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['sync', 'save', 'delete', 'set-model', 'add-model', 'remove-model', 'toggle', 'test'])
@@ -47,6 +50,11 @@ function onAddModel() {
           <div :class="['font-medium text-gray-800 dark:text-gray-200', compact ? 'text-sm' : '']">{{ provider.name }}</div>
           <div v-if="compact" class="text-xs text-gray-400">{{ provider.models?.length || 0 }} 个模型 · {{ provider.key ? '已配置' : '未配置' }}</div>
           <div v-else-if="description" class="text-xs text-gray-500 dark:text-gray-400">{{ description }}</div>
+          <!-- 能力徽标（P0-4）：支持的高亮、不支持的灰显划掉，配之前就能看出这家能干什么 -->
+          <div v-if="badges.length" class="flex flex-wrap gap-1 mt-1">
+            <span v-for="b in badges" :key="b.label" :title="b.title || ''"
+              :class="['text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap', b.cls]">{{ b.label }}</span>
+          </div>
         </div>
       </div>
       <svg class="w-4 h-4 text-gray-400 transition-transform" :class="expanded ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
