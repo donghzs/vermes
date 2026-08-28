@@ -44,6 +44,15 @@ else
 fi
 echo "  ✅ frontend/package.json"
 
+# 3b. 同步根目录 package.json 的 version 字段（Windows electron-builder 读的是根 package.json）
+ROOT_PKG="$ROOT_DIR/package.json"
+if command -v jq &> /dev/null; then
+  jq --arg v "$VERSION" '.version = $v' "$ROOT_PKG" > "${ROOT_PKG}.tmp" && mv "${ROOT_PKG}.tmp" "$ROOT_PKG"
+else
+  sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT_PKG" && rm -f "${ROOT_PKG}.bak"
+fi
+echo "  ✅ package.json (根目录)"
+
 # 4. 同步根目录 version.txt
 ROOT_VERSION_TXT="$ROOT_DIR/version.txt"
 echo "$VERSION" > "$ROOT_VERSION_TXT"
