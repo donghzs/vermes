@@ -5761,6 +5761,98 @@ def cmd_hooks(args):
     hooks_command(args)
 
 
+def cmd_bricks(args):
+    """P1-2: `vermes bricks` — 四态合一 brick 注册表（list/show/add/remove/refresh）。
+
+    与 API 共用同一套 writer：自定义 brick 落盘 ``~/.vermes/bricks.json``
+    （overlay），故 CLI 登记后 app / API 立即可见，反之亦然。
+    """
+    import json as _json
+
+    from vermes_cli.capabilities.registry import BRICK_TYPES, BrickEntry, get_brick_registry
+
+    action = getattr(args, "bricks_action", None) or "list"
+    reg = get_brick_registry()
+
+    def _csv(v):
+        return [x.strip() for x in (v or "").split(",") if x.strip()]
+
+    if action == "refresh":
+        reg.invalidate_cache()
+        entries = reg.discover(refresh=True)
+        print(f"已重新发现：{len(entries)} 个 brick")
+        return 0
+
+    if action == "list":
+        entries = reg.discover(refresh=getattr(args, "refresh", False))
+        btype = getattr(args, "type", None)
+        installed_only = getattr(args, "installed_only", False)
+        q = getattr(args, "query", None)
+        rows = []
+        for e in entries:
+            if btype and e.type != btype:
+                continue
+            if installed_only and e.install_state != "installed":
+                continue
+            if q and q.lower() not in f"{e.id} {e.name} {e.description}".lower():
+                continue
+            rows.append(e)
+        if not rows:
+            print("(无匹配 brick)")
+            return 0
+        print(f"{'ID':<44} {'TYPE':<10} {'STATE':<10} NAME")
+        for e in rows:
+            print(f"{e.id:<44} {e.type:<10} {e.install_state:<10} {e.name}")
+        print(f"\n共 {len(rows)} 个（{len(entries)} 中发现）")
+        return 0
+
+    if action == "show":
+        bid = getattr(args, "brick_id", "")
+        entry = next((e for e in reg.discover() if e.id == bid), None)
+        if entry is None:
+            print(f"未找到 brick: {bid}")
+            sys.exit(1)
+        print(_json.dumps(entry.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if action == "add":
+        btype = getattr(args, "type", "tool")
+        if btype not in BRICK_TYPES:
+            print(f"--type 必须是 {list(BRICK_TYPES)} 之一，收到 {btype!r}")
+            sys.exit(1)
+        bid = getattr(args, "brick_id", "")
+        if not bid:
+            print("缺少 --id")
+            sys.exit(1)
+        entry = BrickEntry(
+            id=bid,
+            type=btype,
+            name=getattr(args, "name", "") or bid,
+            description=getattr(args, "description", "") or "",
+            capabilities=_csv(getattr(args, "capabilities", "")),
+            install_state="installed",
+            source="community",
+            requires=_csv(getattr(args, "requires", "")),
+            provides_tools=_csv(getattr(args, "provides_tools", "")),
+            entry_point=getattr(args, "entry_point", None),
+        )
+        reg.add_custom_brick(entry)
+        print(f"已登记自定义 brick: {bid}")
+        print(f"落盘: {reg.bricks_json}")
+        return 0
+
+    if action == "remove":
+        bid = getattr(args, "brick_id", "")
+        if reg.remove_custom_brick(bid):
+            print(f"已移除自定义 brick: {bid}")
+            return 0
+        print(f"自定义 brick 不存在: {bid}")
+        sys.exit(1)
+
+    print(f"未知动作: {action}")
+    sys.exit(1)
+
+
 def cmd_doctor(args):
     """Check configuration and dependencies."""
     from vermes_cli.doctor import run_doctor
@@ -10243,7 +10335,7 @@ def _build_provider_choices() -> list[str]:
 # to parse.
 _BUILTIN_SUBCOMMANDS = frozenset(
     {
-        "acp", "auth", "backup", "bundles", "checkpoints", "claw", "completion",
+        "acp", "auth", "backup", "bricks", "bundles", "checkpoints", "claw", "completion",
         "computer-use",
         "config", "cron", "curator", "dashboard", "debug", "doctor",
         "dump", "fallback", "gateway", "hooks", "import", "insights",
@@ -11315,6 +11407,58 @@ def main():
         ),
     )
     doctor_parser.set_defaults(func=cmd_doctor)
+
+    # =========================================================================
+    # bricks command (P1-2: 四态合一 brick 注册表)
+    # =========================================================================
+    bricks_parser = subparsers.add_parser(
+        "bricks",
+        help="Inspect and manage the unified brick registry",
+        description=(
+            "四态合一 brick 注册表（skill/tool/module/software）：列出已发现的"
+            " brick、查看详情、登记自定义 brick、刷新发现结果。"
+        ),
+    )
+    bricks_subparsers = bricks_parser.add_subparsers(dest="bricks_action")
+
+    bricks_list = bricks_subparsers.add_parser("list", help="List discovered bricks")
+    bricks_list.add_argument(
+        "--type", default=None, help="按类型过滤：skill/tool/module/software/provider"
+    )
+    bricks_list.add_argument(
+        "--installed-only", action="store_true", help="只显示已安装"
+    )
+    bricks_list.add_argument(
+        "-q", "--query", default=None, help="按 id/name/description 子串过滤"
+    )
+    bricks_list.add_argument("--refresh", action="store_true", help="强制重新发现")
+
+    bricks_show = bricks_subparsers.add_parser("show", help="Show one brick in detail")
+    bricks_show.add_argument("brick_id", help="brick id，如 tool:browser_back")
+
+    bricks_add = bricks_subparsers.add_parser("add", help="Register a custom brick")
+    bricks_add.add_argument(
+        "--id", dest="brick_id", required=True,
+        help="唯一 id，建议带前缀如 custom:mytool",
+    )
+    bricks_add.add_argument("--type", default="tool", help="skill/tool/module/software")
+    bricks_add.add_argument("--name", default="", help="展示名")
+    bricks_add.add_argument("--description", default="", help="描述")
+    bricks_add.add_argument("--capabilities", default="", help="逗号分隔的能力标签")
+    bricks_add.add_argument("--requires", default="", help="逗号分隔的依赖")
+    bricks_add.add_argument(
+        "--provides-tools", dest="provides_tools", default="", help="逗号分隔的工具名"
+    )
+    bricks_add.add_argument(
+        "--entry-point", dest="entry_point", default=None, help="入口（文件路径或命令名）"
+    )
+
+    bricks_remove = bricks_subparsers.add_parser("remove", help="Remove a custom brick")
+    bricks_remove.add_argument("brick_id")
+
+    bricks_subparsers.add_parser("refresh", help="Force re-discovery")
+
+    bricks_parser.set_defaults(func=cmd_bricks, bricks_action="list")
 
     # =========================================================================
     # dump command

@@ -135,6 +135,19 @@ class BrickRegistry:
         self.persist()
         self.invalidate_cache()
 
+    def remove_custom_brick(self, brick_id: str) -> bool:
+        """移除一条自定义 brick（含其 overlay 记录）。返回是否真的删掉了。"""
+        with self._lock:
+            before = len(self._custom_bricks)
+            self._custom_bricks = [b for b in self._custom_bricks if b.id != brick_id]
+            removed = len(self._custom_bricks) != before
+            if removed:
+                self._overlay.pop(brick_id, None)
+        if removed:
+            self.persist()
+            self.invalidate_cache()
+        return removed
+
     # ---- discover（四源聚合） -------------------------------------------
     def discover(self, refresh: bool = False) -> List[BrickEntry]:
         now = time.time()

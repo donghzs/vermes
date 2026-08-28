@@ -22,6 +22,7 @@ from . import modules_market
 from . import capabilities
 from . import mcp_catalog
 from . import credential_lifecycle
+from . import bricks  # P1-2: 四态合一注册表 API（GET/POST /api/v1/bricks）
 
 __all__ = [
     "quota_bp", "wechat_bp", "models_bp",
@@ -30,4 +31,5 @@ __all__ = [
     "cron_jobs", "workflows", "update", "skills_tools",
     "analytics", "status", "gateway_channels", "profiles",
     "oauth", "storage", "artifacts", "modules_market", "mcp_catalog", "credential_lifecycle",
+    "bricks",
 ]
