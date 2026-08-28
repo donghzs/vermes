@@ -1877,27 +1877,7 @@ async function toggleChannel(platformKey) {
               <p class="text-[11px] text-gray-400">后端保留全部 {{ capManifest?.total_providers || 204 }} 家作为真相源，前端仅展示聚合后的主流与分组；不改动本地/自定义链路。</p>
             </div>
 
-            <!-- 融合组：能力目录主流 provider（点击展开即可配置，配好即用） -->
-            <div v-if="capCatalogReady">
-              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌐 主流模型（来自能力目录 · 点开填 Key 即可用）</div>
-              <div class="space-y-2">
-                <div v-for="p in capProviders" :key="p.id" class="rounded-xl overflow-hidden">
-                  <div v-if="capBadges(p.id).length" class="flex flex-wrap gap-1 px-4 pt-2">
-                    <span v-for="b in capBadges(p.id)" :key="b.label" :class="['text-[10px] px-1.5 py-0.5 rounded', b.cls]">{{ b.label }}</span>
-                  </div>
-                  <ProviderCard
-                    :provider="p" :expanded="isExpanded(p.id)" compact
-                    :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
-                    @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
-                    @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <!-- 兜底：后端未就绪（DMG 未重打）时保留原始硬编码分组，原来都好好的 -->
-            <template v-else>
-              <!-- 🇨🇳 国产模型 -->
+            <!-- 🇨🇳 国产模型（保留原硬编码分组，能力目录是新增增值，不替代） -->
               <div>
                 <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🇨🇳 国产模型</div>
                 <div class="space-y-2">
@@ -1922,7 +1902,24 @@ async function toggleChannel(platformKey) {
                   />
                 </div>
               </div>
-            </template>
+
+            <!-- 🌐 主流模型（能力目录新增增值区块，仅后端就绪时展示，不替代原分组） -->
+            <div v-if="capCatalogReady">
+              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌐 主流模型（来自能力目录 · 点开填 Key 即可用）</div>
+              <div class="space-y-2">
+                <div v-for="p in capProviders" :key="p.id" class="rounded-xl overflow-hidden">
+                  <div v-if="capBadges(p.id).length" class="flex flex-wrap gap-1 px-4 pt-2">
+                    <span v-for="b in capBadges(p.id)" :key="b.label" :class="['text-[10px] px-1.5 py-0.5 rounded', b.cls]">{{ b.label }}</span>
+                  </div>
+                  <ProviderCard
+                    :provider="p" :expanded="isExpanded(p.id)" compact
+                    :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
+                    @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
+                    @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
+                  />
+                </div>
+              </div>
+            </div>
 
             <!-- 🔧 自定义（始终可用） -->
             <div>
