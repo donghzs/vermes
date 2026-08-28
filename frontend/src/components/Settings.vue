@@ -1535,14 +1535,14 @@ function _applyCapManifest(data) {
 }
 async function loadCapabilities() {
   try {
-    const r = await fetch('/api/v1/capabilities')
+    const r = await fetch('/api/v1/capabilities', { headers: envHeaders() })
     if (r.ok) _applyCapManifest(await r.json())
     else capError.value = '能力目录端点未就绪（后端需重新打包）'
   } catch (e) { capError.value = '能力目录端点未就绪（后端需重新打包）' }
 }
 async function refreshCapabilities() {
   try {
-    const r = await fetch('/api/v1/capabilities?refresh=true')
+    const r = await fetch('/api/v1/capabilities?refresh=true', { headers: envHeaders() })
     if (r.ok) { _applyCapManifest(await r.json()); toast.success('已刷新能力目录') }
     else capError.value = '刷新失败（后端端点不可用）'
   } catch (e) { capError.value = '刷新失败（后端端点不可用）' }
