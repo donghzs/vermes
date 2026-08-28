@@ -162,6 +162,7 @@ async def get_status():
     gateway_running = gateway_pid is not None
     remote_health_body: dict | None = None
 
+    # Fallback 1: probe gateway health endpoint (cross-container)
     if not gateway_running and _GATEWAY_HEALTH_URL:
         loop = asyncio.get_running_loop()
         alive, remote_health_body = await loop.run_in_executor(
@@ -171,6 +172,23 @@ async def get_status():
             gateway_running = True
             if remote_health_body:
                 gateway_pid = remote_health_body.get("pid")
+
+    # Fallback 2: gateway_state.json has a pid + "running" state even when
+    # the gateway.pid file was lost (e.g. another process called
+    # _cleanup_invalid_pid_path after the lock file was temporarily
+    # unlinked).  Trust the state file if the pid is still alive.
+    if not gateway_running:
+        runtime_fallback = _read_gateway_status()
+        if runtime_fallback and runtime_fallback.get("gateway_state") == "running":
+            state_pid = runtime_fallback.get("pid")
+            if state_pid:
+                try:
+                    from gateway.status import _pid_exists
+                    if _pid_exists(state_pid):
+                        gateway_pid = state_pid
+                        gateway_running = True
+                except Exception:
+                    pass
 
     gateway_state = None
     gateway_platforms: dict = {}
