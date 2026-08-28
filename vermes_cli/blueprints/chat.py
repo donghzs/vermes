@@ -1605,7 +1605,34 @@ async def chat_completions(req: ChatRequest, request: Request):
                         pass
             _safe_put(event)
 
+        # P0-2 runtime capability gateway — lazy, cached, fail-open import.
+        # Hooked INSIDE thinking_handler (the already-occupied step_callback);
+        # we intentionally do NOT replace agent.step_callback.
+        _CAPABILITY_GATEWAY = None
+
+        def _resolve_capability_gateway():
+            nonlocal _CAPABILITY_GATEWAY
+            if _CAPABILITY_GATEWAY is None:
+                try:
+                    from vermes_cli.capabilities.gateway import CAPABILITY_GATEWAY
+                    _CAPABILITY_GATEWAY = CAPABILITY_GATEWAY
+                except Exception as _e:  # noqa: BLE001
+                    logging.getLogger(__name__).debug("capability gateway unavailable: %s", _e)
+                    _CAPABILITY_GATEWAY = False
+            return _CAPABILITY_GATEWAY if _CAPABILITY_GATEWAY else None
+
         def thinking_handler(iteration: int, prev_tools: list):
+            # P0-2: resolve the current model's capability profile and emit an
+            # `agent:step` capability event (light-up + record). fail-open:
+            # any error is swallowed so the 🤔 bubble is never blocked.
+            _cap = None
+            _gw = _resolve_capability_gateway()
+            if _gw is not None:
+                try:
+                    _cap = _gw.on_step(iteration, prev_tools, model=model, provider=provider)
+                except Exception:  # noqa: BLE001
+                    _cap = None
+
             _log.info(f"[ThinkEvent] iteration={iteration}, prev_tools={[t.get('name') for t in (prev_tools or [])]}")
             tool_names = [t.get("name", "?") for t in (prev_tools or [])]
             msg = f"🤔 推理第 {iteration} 步"
@@ -1614,8 +1641,19 @@ async def chat_completions(req: ChatRequest, request: Request):
             event = {
                 "type": "thinking",
                 "iteration": iteration,
-                "message": msg
+                "message": msg,
             }
+            if _cap and _cap.get("capabilities"):
+                # Light-up: surface which capabilities this step exercised.
+                event["capabilities"] = _cap["capabilities"]
+                _safe_put({
+                    "type": "capability",
+                    "iteration": iteration,
+                    "model": model,
+                    "provider": provider,
+                    "capabilities": _cap["capabilities"],
+                    "tools_used": _cap.get("tools_used") or [],
+                })
             _safe_put(event)
 
         def evolution_event_handler(message: str, tool_name: str, is_error: bool, duration: float):

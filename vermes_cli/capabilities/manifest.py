@@ -100,6 +100,50 @@ def _extract_caps(entry: Dict[str, Any]) -> List[str]:
     return sorted(caps)
 
 
+def build_provider_capability_index() -> Dict[str, List[str]]:
+    """Return ``{provider_id: sorted capability tags}`` for ALL providers.
+
+    Used by the P0-2 runtime ``CapabilityGateway`` to resolve a model's
+    capability profile per agent step (O(1) lookup, never per-step I/O).
+    Keys include both raw ``models.dev`` ids and the curated ids in
+    ``PROVIDER_TO_MODELS_DEV`` (so the gateway can look up by either the wire
+    provider id or the frontend curated id). ``ollama``/``local``/``custom``
+    are seeded with empty capability lists so local-model steps resolve
+    fail-open instead of being flagged as "unknown".
+
+    fail-open: on a missing/unreadable cache returns ``{}`` — the gateway then
+    records the step with ``capabilities=None`` rather than raising.
+    """
+    try:
+        data = fetch_models_dev(force_refresh=False)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("build_provider_capability_index: fetch_models_dev failed: %s", e)
+        return {}
+    if not data:
+        return {}
+
+    idx: Dict[str, List[str]] = {}
+    for pid, p in data.items():
+        if not isinstance(p, dict):
+            continue
+        caps: set = set()
+        models = p.get("models") or {}
+        if not isinstance(models, dict):
+            models = {}
+        for m in models.values():
+            if isinstance(m, dict):
+                caps.update(_extract_caps(m))
+        idx[pid] = sorted(caps)
+
+    # Expose curated ids alongside raw models.dev ids.
+    for cid, rk in PROVIDER_TO_MODELS_DEV.items():
+        if rk in idx and cid not in idx:
+            idx[cid] = idx[rk]
+    for pid in ("ollama", "local", "custom"):
+        idx.setdefault(pid, [])
+    return idx
+
+
 def generate_capability_manifest(refresh: bool = False) -> Dict[str, Any]:
     """Aggregate the models.dev cache into a curated capability manifest.
 
