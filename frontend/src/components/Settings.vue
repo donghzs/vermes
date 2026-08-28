@@ -1450,6 +1450,58 @@ const _onTrialToken = (e) => {
   if (vbit) { vbit.key = token; saveProvidersToStorage() }
 }
 
+// ── 能力目录（P0：models.dev 聚合，主流 provider 可点击配置即用） ──
+const capManifest = ref(null)
+const capMetaById = ref({})        // id -> { capabilities, model_count, latest_models } 用于徽章
+const capError = ref('')
+const capAutoUpdate = ref(localStorage.getItem('vermes-cap-autoupdate') === 'true')
+function saveCapAutoUpdate() {
+  localStorage.setItem('vermes-cap-autoupdate', capAutoUpdate.value ? 'true' : 'false')
+}
+function formatCapTime(ts) {
+  if (!ts) return '—'
+  try { return new Date(ts * 1000).toLocaleString() } catch { return '—' }
+}
+// 后端就绪 → 把主流 provider 渲染成真正可配置的 ProviderCard（融合原硬编码分组，复用同一 providers 数组）
+const capCatalogReady = computed(() => !!capManifest.value && Array.isArray(capManifest.value.mainstream) && capManifest.value.mainstream.length > 0)
+const capProviders = computed(() => {
+  if (!capCatalogReady.value) return []
+  const byId = {}
+  for (const p of providers.value) byId[p.id] = p
+  return capManifest.value.mainstream.filter(m => byId[m.id]).map(m => byId[m.id])
+})
+// 能力徽章（配之前就能看到这模型能干嘛）
+const CAP_BADGE_MAP = {
+  tools:     { label: '🛠 工具调用', cls: 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' },
+  reasoning: { label: '🧠 推理',     cls: 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300' },
+  vision:    { label: '👁 视觉',     cls: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300' },
+}
+function capBadges(id) {
+  const m = capMetaById.value[id]
+  if (!m || !Array.isArray(m.capabilities)) return []
+  return m.capabilities.map(c => CAP_BADGE_MAP[c]).filter(Boolean)
+}
+function _applyCapManifest(data) {
+  capManifest.value = data
+  const meta = {}
+  for (const m of (data.mainstream || [])) meta[m.id] = m
+  capMetaById.value = meta
+}
+async function loadCapabilities() {
+  try {
+    const r = await fetch('/api/v1/capabilities')
+    if (r.ok) _applyCapManifest(await r.json())
+    else capError.value = '能力目录端点未就绪（后端需重新打包）'
+  } catch (e) { capError.value = '能力目录端点未就绪（后端需重新打包）' }
+}
+async function refreshCapabilities() {
+  try {
+    const r = await fetch('/api/v1/capabilities?refresh=true')
+    if (r.ok) { _applyCapManifest(await r.json()); toast.success('已刷新能力目录') }
+    else capError.value = '刷新失败（后端端点不可用）'
+  } catch (e) { capError.value = '刷新失败（后端端点不可用）' }
+}
+
 onMounted(async () => {
   const saved_data = localStorage.getItem('vermes-providers')
   if (saved_data) {
@@ -1510,6 +1562,7 @@ onMounted(async () => {
   // 加载移动渠道（channels 分区）
   loadChannels()
   checkGatewayStatus()
+  loadCapabilities()
 })
 
 onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
@@ -1775,7 +1828,7 @@ async function toggleChannel(platformKey) {
 
           <!-- DeepSeek / Agnes / MiMo / Ollama — 使用 ProviderCard -->
           <ProviderCard
-            v-for="p in providers.filter(pr => ['deepseek','agnes','scnet','xiaomi','ollama','local'].includes(pr.id))"
+            v-for="p in providers.filter(pr => ['deepseek','agnes','scnet','xiaomi','ollama','local','custom'].includes(pr.id))"
             :key="p.id"
             :provider="p"
             :expanded="isExpanded(p.id)"
@@ -1806,33 +1859,72 @@ async function toggleChannel(platformKey) {
           </button>
 
           <div v-if="showAdvanced" class="mt-3 space-y-3">
-            <!-- 🇨🇳 国产模型 -->
-            <div>
-              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🇨🇳 国产模型</div>
+            <!-- 🗂 能力目录（来自 models.dev 聚合，P0 新增） -->
+            <div class="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-3 space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-xs font-medium text-green-700 dark:text-green-300">🗂 能力目录（来自 models.dev 聚合 · 点开即可配置）</div>
+                <div class="flex items-center gap-2">
+                  <label class="flex items-center gap-1 text-[11px] text-gray-500 cursor-pointer select-none">
+                    <input type="checkbox" v-model="capAutoUpdate" @change="saveCapAutoUpdate" /> 启动/每日更新
+                  </label>
+                  <button @click="refreshCapabilities" class="px-2 py-1 text-[11px] bg-green-500 text-white rounded hover:bg-green-600 transition">🔄 刷新能力目录</button>
+                </div>
+              </div>
+              <div v-if="capManifest" class="text-[11px] text-gray-500">
+                更新于 {{ formatCapTime(capManifest.updated_at) }} · {{ capManifest.total_providers }} provider / {{ capManifest.total_models }} 模型 · 主流 {{ capManifest.mainstream.length }} · 长尾 {{ capManifest.longtail_count }}
+              </div>
+              <div v-if="capError" class="text-[11px] text-amber-500">{{ capError }}</div>
+              <p class="text-[11px] text-gray-400">后端保留全部 {{ capManifest?.total_providers || 204 }} 家作为真相源，前端仅展示聚合后的主流与分组；不改动本地/自定义链路。</p>
+            </div>
+
+            <!-- 融合组：能力目录主流 provider（点击展开即可配置，配好即用） -->
+            <div v-if="capCatalogReady">
+              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌐 主流模型（来自能力目录 · 点开填 Key 即可用）</div>
               <div class="space-y-2">
-                <ProviderCard v-for="p in chineseProviders" :key="p.id"
-                  :provider="p" :expanded="isExpanded(p.id)" compact
-                  :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
-                  @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
-                  @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
-                />
+                <div v-for="p in capProviders" :key="p.id" class="rounded-xl overflow-hidden">
+                  <div v-if="capBadges(p.id).length" class="flex flex-wrap gap-1 px-4 pt-2">
+                    <span v-for="b in capBadges(p.id)" :key="b.label" :class="['text-[10px] px-1.5 py-0.5 rounded', b.cls]">{{ b.label }}</span>
+                  </div>
+                  <ProviderCard
+                    :provider="p" :expanded="isExpanded(p.id)" compact
+                    :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
+                    @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
+                    @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
+                  />
+                </div>
               </div>
             </div>
 
-            <!-- 🌍 国际模型 -->
-            <div>
-              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌍 国际模型</div>
-              <div class="space-y-2">
-                <ProviderCard v-for="p in internationalProviders" :key="p.id"
-                  :provider="p" :expanded="isExpanded(p.id)" compact
-                  :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
-                  @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
-                  @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
-                />
+            <!-- 兜底：后端未就绪（DMG 未重打）时保留原始硬编码分组，原来都好好的 -->
+            <template v-else>
+              <!-- 🇨🇳 国产模型 -->
+              <div>
+                <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🇨🇳 国产模型</div>
+                <div class="space-y-2">
+                  <ProviderCard v-for="p in chineseProviders" :key="p.id"
+                    :provider="p" :expanded="isExpanded(p.id)" compact
+                    :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
+                    @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
+                    @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
+                  />
+                </div>
               </div>
-            </div>
 
-            <!-- 🔧 自定义 -->
+              <!-- 🌍 国际模型 -->
+              <div>
+                <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌍 国际模型</div>
+                <div class="space-y-2">
+                  <ProviderCard v-for="p in internationalProviders" :key="p.id"
+                    :provider="p" :expanded="isExpanded(p.id)" compact
+                    :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
+                    @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
+                    @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
+                  />
+                </div>
+              </div>
+            </template>
+
+            <!-- 🔧 自定义（始终可用） -->
             <div>
               <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🔧 自定义</div>
               <ProviderCard v-for="p in customProviders" :key="p.id"
