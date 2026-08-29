@@ -348,7 +348,8 @@ def render_skill_page(
     # Heuristic nicer title from name
     display_name = name.replace("-", " ").replace("_", " ").title()
 
-    VERMES_meta = (fm.get("metadata") or {}).get("Vermes") or {}
+    _meta = fm.get("metadata") or {}
+    VERMES_meta = _meta.get("Vermes") or _meta.get("vermes") or _meta.get("hermes") or {}
     tags = VERMES_meta.get("tags") or []
     related = VERMES_meta.get("related_skills") or []
     platforms = fm.get("platforms")

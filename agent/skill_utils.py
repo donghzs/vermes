@@ -338,15 +338,31 @@ def get_all_skills_dirs() -> List[Path]:
 # ── Condition extraction ──────────────────────────────────────────────────
 
 
+# ── Fork 键名兼容（Hermes→Vermes）─────────────────────────────────────────────
+# 技能元数据块在真实 SKILL.md 中以三种键出现（详见 _resolve_vendor_block）。
+_VENDOR_METADATA_KEYS = ("Vermes", "vermes", "hermes", "Hermes")
+
+
+def _resolve_vendor_block(metadata: Any) -> Dict[str, Any]:
+    """从 SKILL.md frontmatter 的 ``metadata`` 取出厂商/条件元数据块。
+
+    Hermes→Vermes fork 遗留键名分歧：历史 SKILL.md 用大写 ``Vermes``（实测 0 个）、
+    小写 ``vermes``（fork 后品牌名小写，仓库 optional-skills 在用）、小写 ``hermes``
+    （Hermes legacy，用户级 ~/.vermes/skills 在用）。兼容读取首个存在的 dict 块，
+    避免对全部 skill 静默返回空（旧实现只读大写 Vermes，三键全不匹配 → 全死）。
+    """
+    if not isinstance(metadata, dict):
+        return {}
+    for key in _VENDOR_METADATA_KEYS:
+        block = metadata.get(key)
+        if isinstance(block, dict):
+            return block
+    return {}
+
+
 def extract_skill_conditions(frontmatter: Dict[str, Any]) -> Dict[str, List]:
     """Extract conditional activation fields from parsed frontmatter."""
-    metadata = frontmatter.get("metadata")
-    # Handle cases where metadata is not a dict (e.g., a string from malformed YAML)
-    if not isinstance(metadata, dict):
-        metadata = {}
-    Vermes = metadata.get("Vermes") or {}
-    if not isinstance(Vermes, dict):
-        Vermes = {}
+    Vermes = _resolve_vendor_block(frontmatter.get("metadata"))
     return {
         "fallback_for_toolsets": Vermes.get("fallback_for_toolsets", []),
         "requires_toolsets": Vermes.get("requires_toolsets", []),
@@ -377,7 +393,7 @@ def extract_skill_config_vars(frontmatter: Dict[str, Any]) -> List[Dict[str, Any
     metadata = frontmatter.get("metadata")
     if not isinstance(metadata, dict):
         return []
-    Vermes = metadata.get("Vermes")
+    Vermes = _resolve_vendor_block(metadata)
     if not isinstance(Vermes, dict):
         return []
     raw = Vermes.get("config")

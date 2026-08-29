@@ -19,6 +19,7 @@ from tools.skills_tool import (
     skill_view,
     MAX_DESCRIPTION_LENGTH,
 )
+from agent.skill_utils import extract_skill_conditions, extract_skill_config_vars
 
 
 def _make_skill(
@@ -1241,3 +1242,36 @@ class TestSkillViewCollisionDetection:
         result = json.loads(raw)
         assert result["success"] is True
         assert "LOCAL BODY" in result["content"]
+
+
+# ---------------------------------------------------------------------------
+# extract_skill_conditions / extract_skill_config_vars — fork 键名兼容
+# ---------------------------------------------------------------------------
+
+
+class TestExtractSkillVendorMetadata:
+    """Hermes→Vermes fork 键名分歧：元数据块可能是大写 Vermes / 小写 vermes / 小写 hermes。
+
+    回归测试：旧实现只读大写 ``Vermes``，对全部真实 skill 静默返回空。
+    """
+
+    def test_hermes_lowercase(self):
+        fm = {"metadata": {"hermes": {"requires_toolsets": ["cadir"], "fallback_for_tools": ["x"]}}}
+        assert extract_skill_conditions(fm)["requires_toolsets"] == ["cadir"]
+
+    def test_vermes_lowercase_brand(self):
+        fm = {"metadata": {"vermes": {"config": [{"key": "wiki.path", "description": "Wiki dir", "default": "~/wiki"}]}}}
+        vars_ = extract_skill_config_vars(fm)
+        assert vars_[0]["key"] == "wiki.path"
+
+    def test_vermes_capital_backward_compat(self):
+        fm = {"metadata": {"Vermes": {"requires_toolsets": ["y"]}}}
+        assert extract_skill_conditions(fm)["requires_toolsets"] == ["y"]
+
+    def test_no_metadata_returns_empty(self):
+        assert extract_skill_conditions({"metadata": {}}) == {
+            "fallback_for_toolsets": [],
+            "requires_toolsets": [],
+            "fallback_for_tools": [],
+            "requires_tools": [],
+        }

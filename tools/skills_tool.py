@@ -1267,11 +1267,17 @@ def skill_view(
                     )
 
         # Read tags/related_skills with backward compat:
-        # Check metadata.Vermes.* first (agentskills.io convention), fall back to top-level
+        # Check metadata.Vermes.* first (agentskills.io convention), fall back to top-level.
+        # Fork 键名兼容：真实 SKILL.md 元数据块三键并存（大写 Vermes / 小写 vermes 品牌名 /
+        # 小写 hermes legacy），旧实现只读大写 Vermes 对全部 skill 静默返回空。
         VERMES_meta = {}
         metadata = frontmatter.get("metadata")
         if isinstance(metadata, dict):
-            VERMES_meta = metadata.get("Vermes", {}) or {}
+            for _k in ("Vermes", "vermes", "hermes", "Hermes"):
+                _b = metadata.get(_k)
+                if isinstance(_b, dict):
+                    VERMES_meta = _b
+                    break
 
         tags = _parse_tags(VERMES_meta.get("tags") or frontmatter.get("tags", ""))
         related_skills = _parse_tags(

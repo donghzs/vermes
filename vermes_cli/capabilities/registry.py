@@ -282,11 +282,12 @@ class BrickRegistry:
                         _meta = fm.get("metadata")
                         if not isinstance(_meta, dict):
                             _meta = {}
-                        # 兼容 fork 双键名：**实测 102 个 SKILL.md 用小写 `hermes:`、
-                        # 0 个用大写 `Vermes:`**（Hermes→Vermes fork 遗留），故两个键都读。
-                        # 注：仓库 skill_utils.extract_skill_conditions 只读大写 Vermes，
-                        # 对全部 skill 静默返回空（既有 bug，此处不修，见审计报告）。
-                        vermes = _meta.get("Vermes") or _meta.get("hermes") or {}
+                        # 兼容 fork 三键名：大写 `Vermes`（实测 0 个）/ 小写 `vermes`（fork 后
+                        # 品牌名小写，仓库 optional-skills 在用）/ 小写 `hermes`（Hermes legacy，
+                        # 用户级 ~/.vermes/skills 在用）。三键都读，避免漏掉任一组条件。
+                        # skill_utils.extract_skill_conditions 的同类大写 Vermes 只读 bug 已修复
+                        # （改为 _resolve_vendor_block 大小写兼容），此处保持同等覆盖。
+                        vermes = _meta.get("Vermes") or _meta.get("vermes") or _meta.get("hermes") or {}
                         if not isinstance(vermes, dict):
                             vermes = {}
                         conds = {
