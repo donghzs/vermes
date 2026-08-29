@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-29T01:12:34Z",
+  "generated_at": "2026-08-29T01:50:54Z",
   "modules": [
     {
       "name": "mfgcad",
@@ -28,7 +28,10 @@
         "mfg_export_dxf",
         "mfg_slice_gcode",
         "mfg_send_print",
-        "mfg_export_urdf"
+        "mfg_export_urdf",
+        "mfg_open_in_freecad",
+        "mfg_edit_feature",
+        "mfg_export_fcstd"
       ],
       "keywords": [
         "3D",
@@ -116,6 +119,41 @@
       "repository": "donghzs/vermes-mod-scholarforge",
       "homepage": "https://github.com/donghzs/vermes-mod-scholarforge",
       "description": "AI 驱动的学术论文写作全链路",
+      "recommended": true
+    },
+    {
+      "name": "cadir",
+      "display_name": "CAD-IR 契约建模",
+      "latest": "0.1.0",
+      "vermes_min": "2.3.9",
+      "code_asset": "https://github.com/donghzs/vermes-mod-cadir/releases/download/v0.1.0/cadir-0.1.0.tar.gz",
+      "code_sha256": "eff9a665a02032542ce9f0cf3f183061d805086f267692d8e73137e81e8b2563",
+      "size_code": 20206,
+      "assets": [],
+      "provides_tools": [
+        "cadir_compile",
+        "cadir_build",
+        "cadir_verify_step",
+        "cadir_verify_stl"
+      ],
+      "keywords": [
+        "CAD",
+        "契约",
+        "IR",
+        "cad.ir.v1",
+        "build123d",
+        "STEP",
+        "STL",
+        "建模",
+        "几何核验",
+        "3D打印",
+        "齿轮",
+        "参数化",
+        "Partloom"
+      ],
+      "repository": "donghzs/vermes-mod-cadir",
+      "homepage": "https://github.com/donghzs/vermes-mod-cadir",
+      "description": "CAD-IR 契约建模工具集：LLM 生成 JSON 契约→确定性编译→build123d→STEP，附几何独立核验",
       "recommended": true
     }
   ]

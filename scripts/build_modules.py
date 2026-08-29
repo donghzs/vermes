@@ -44,6 +44,17 @@ MODULES = [
         "recommended": True,
     },
     {
+        "name": "cadir",
+        "display_name": "CAD-IR 契约建模",
+        "source_dir": "vermes_cli/cadir",
+        "version": "0.1.0",
+        "vermes_min": "2.3.9",
+        "repository": "donghzs/vermes-mod-cadir",
+        "homepage": "https://github.com/donghzs/vermes-mod-cadir",
+        "description": "CAD-IR 契约建模工具集：LLM 生成 JSON 契约→确定性编译→build123d→STEP，附几何独立核验",
+        "recommended": True,
+    },
+    {
         "name": "vermes-mod-freecad-engine",
         "display_name": "FreeCAD 引擎（专业精修后端）",
         "source_dir": "vermes-mod-freecad-engine",
@@ -162,6 +173,22 @@ def pack_module(mod: dict) -> dict:
     }
 
 
+def release_asset_info(repo: str, tag: str, asset_name: str) -> tuple[str | None, int | None]:
+    """查询 GitHub release 资产的 (sha256 digest, size)（gh api）。查不到返回 (None, None)。"""
+    try:
+        out = subprocess.check_output(
+            ["gh", "api", f"repos/{repo}/releases/tags/{tag}", "--jq",
+             f'.assets[] | select(.name=="{asset_name}") | (.digest // "") + " " + (.size|tostring)'],
+            timeout=30,
+        ).decode().strip()
+        if not out:
+            return None, None
+        digest, _, size = out.partition(" ")
+        return (digest.removeprefix("sha256:") or None), (int(size) if size.isdigit() else None)
+    except Exception:
+        return None, None
+
+
 def main(argv=None):
     from argparse import ArgumentParser
 
@@ -179,6 +206,34 @@ def main(argv=None):
     entries = []
     for mod in MODULES:
         entry = pack_module(mod)
+        name = entry["name"]
+
+        # 供应链纪律（P1-5，2026-08-29 scholarforge sha 漂移教训固化）：
+        # catalog 条目必须与「已发布 release 资产」一致——本地源码演进后重打 tarball
+        # 的 sha 与远端不符时，采用远端已发布 sha（保证可安装），并提示需要发新版。
+        if entry.get("code_asset"):
+            tag = f"v{entry['latest']}"
+            asset_name = entry["code_asset"].rsplit("/", 1)[-1]
+            remote_sha, remote_size = release_asset_info(mod["repository"], tag, asset_name)
+            if remote_sha is None:
+                print(f"  ⚠ {name}-{entry['latest']}: 远端 {tag} 无资产 {asset_name} —— 条目标记未发布")
+                entry["_unpublished"] = True
+            elif remote_sha != entry["code_sha256"]:
+                print(
+                    f"  ⚠ {name}-{entry['latest']}: 本地 tarball sha 与远端 release 不一致"
+                    f"（源码已演进）——catalog 采用远端已发布 sha，需发新版本才能更新"
+                )
+                entry["code_sha256"] = remote_sha
+                if remote_size is not None:
+                    entry["size_code"] = remote_size
+
+        # 未发布的 asset_only 模块（code_asset 为空 = 资产 pending）同样不进 catalog
+        # ——否则市场页出现"装不了"的死条目
+        if entry.get("_unpublished") or (
+            not entry.get("code_asset") and not any(a.get("url") for a in entry.get("assets", []))
+        ):
+            print(f"  ⏭ {name}: 跳过（未发布，不进 catalog；先 gh release 上传资产再重跑本脚本）")
+            continue
         entries.append(entry)
 
     # 生成 catalog.json

@@ -1,0 +1,39 @@
+name: cadir
+display_name: CAD-IR 契约建模
+version: 0.1.0
+author: Vermes Team
+homepage: https://github.com/donghzs/vermes-mod-cadir
+description: CAD-IR 契约建模工具集（cad.ir.v1）：LLM 生成 JSON 契约→确定性编译→build123d→STEP，附 STEP/STL 几何独立核验
+repository: donghzs/vermes-mod-cadir
+
+backend:
+  tools_entry: tools.py
+
+permissions:
+  - subprocess
+  - filesystem_write
+
+compatibility:
+  vermes_min: "2.3.9"
+  engine: 可选——cadir_compile 纯 Python 无需引擎；build/verify 需 3D 引擎（build123d/trimesh/numpy，mfg_setup_engine 安装）
+
+provides_tools:
+  - cadir_compile
+  - cadir_build
+  - cadir_verify_step
+  - cadir_verify_stl
+
+keywords:
+  - CAD
+  - 契约
+  - IR
+  - cad.ir.v1
+  - build123d
+  - STEP
+  - STL
+  - 建模
+  - 几何核验
+  - 3D打印
+  - 齿轮
+  - 参数化
+  - Partloom
