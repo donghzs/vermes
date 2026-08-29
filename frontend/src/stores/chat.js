@@ -58,6 +58,19 @@ function isRenderableDeliverable(path) {
   ].includes(ext)
 }
 
+// 取某会话最后一条「有非空文本」的 assistant 消息作为结论摘要(前 200 字)。
+// 反向查找:跳过末尾的纯 tool_calls 消息(content 为 null)或多模态数组 content。
+function _lastAssistantText(messages, sessionId) {
+  const list = messages.filter(m => m.sessionId === sessionId && m.role === 'assistant')
+  for (let i = list.length - 1; i >= 0; i--) {
+    const c = list[i].content
+    if (typeof c === 'string' && c.trim()) {
+      return c.replace(/<[^>]*>/g, '').slice(0, 200)
+    }
+  }
+  return ''
+}
+
 // ── 工具名 → 用户友好中文标签(任务清单聚合展示用)──
 // 内部名(以 _ 开头,如 _thinking)一律视为非工具,不展示。
 const TOOL_LABELS = {
@@ -1139,8 +1152,8 @@ export const useChatStore = defineStore('chat', () => {
                   if (id) {
                     addedIds.push(id)
                     // P0: 记录本回合新产物，供 onDone 无任务规划时聚合为 delivery 消息
-                    const pending = sessionPendingDeliveryArtifacts.value[sendSessionId] || {}
-                    pending[id] = true
+                    const pending = sessionPendingDeliveryArtifacts.value[sendSessionId] || new Set()
+                    pending.add(id)
                     sessionPendingDeliveryArtifacts.value = { ...sessionPendingDeliveryArtifacts.value, [sendSessionId]: pending }
                   }
                 })
@@ -1180,13 +1193,8 @@ export const useChatStore = defineStore('chat', () => {
           const backendChangesCount = data?.changes_count || 0
           const curItems = sessionTodoItems.value[sendSessionId] || []
           const startTime = curItems[0]?.started_at ? curItems[0].started_at * 1000 : 0
-          // 取最后一条 assistant 消息作为结论摘要
-          const sessionMsgs = messages.value.filter(m => m.sessionId === sendSessionId && m.role === 'assistant')
-          const lastAssistant = sessionMsgs[sessionMsgs.length - 1]
-          const summaryText = lastAssistant?.content
-            ? lastAssistant.content.replace(/<[^>]*>/g, '').slice(0, 200)
-            : ''
           // 后端 artifacts 直接用，不需再从前端全局列表猜
+          const summaryText = _lastAssistantText(messages.value, sendSessionId)
           // 但必须复用全局产物注册表 id，否则 DeliveryCard 点击调用 openArtifactById
           // 时在全局 artifacts 里找不到（旧 id 体系 self-made），只能降级到产物列表。
           const _va = window.__vermesArtifacts
@@ -1231,6 +1239,10 @@ export const useChatStore = defineStore('chat', () => {
           })
           persistMessages(sendSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
           scheduleScroll()
+          // 后端已接管 delivery，清空 pending，避免 onDone 兜底再重复聚合
+          if (sendSessionId) {
+            sessionPendingDeliveryArtifacts.value = { ...sessionPendingDeliveryArtifacts.value, [sendSessionId]: new Set() }
+          }
         },
         onTaskComplete: (data) => {
           // 全部步骤完成 → 庆祝态（per-session）
@@ -1252,12 +1264,7 @@ export const useChatStore = defineStore('chat', () => {
           const summary = data?.summary || {}
           const curItems = sessionTodoItems.value[sendSessionId] || []
           const startTime = curItems[0]?.started_at ? curItems[0].started_at * 1000 : 0
-          // 取最后一条 assistant 消息作为结论摘要（前 200 字）
-          const sessionMsgs = messages.value.filter(m => m.sessionId === sendSessionId && m.role === 'assistant')
-          const lastAssistant = sessionMsgs[sessionMsgs.length - 1]
-          const summaryText = lastAssistant?.content
-            ? lastAssistant.content.replace(/<[^>]*>/g, '').slice(0, 200)
-            : ''
+          const summaryText = _lastAssistantText(messages.value, sendSessionId)
           // 从全局产物/变更列表取当前会话的数据
           const va = window.__vermesArtifacts
           const vc = window.__vermesChanges
@@ -1430,21 +1437,18 @@ export const useChatStore = defineStore('chat', () => {
           if (sendSessionId) {
             persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
           }
-          // P0: 无任务规划时，若本回合产生了新产物且尚未生成 delivery 消息，自动聚合一条 delivery 卡片
+          // P0: 无任务规划时，若本回合产生了新产物，自动聚合/更新 delivery 卡片（每回合更新，非一次性）
           const pendingIds = sendSessionId ? sessionPendingDeliveryArtifacts.value[sendSessionId] : null
-          const hasDelivery = sendSessionId && messages.value.some(m => m.sessionId === sendSessionId && m.type === 'delivery')
-          if (sendSessionId && pendingIds && Object.keys(pendingIds).length > 0 && !hasDelivery) {
+          if (sendSessionId && pendingIds && pendingIds.size > 0) {
             const va = window.__vermesArtifacts
             const pendingArtifactList = (va?.artifacts?.value || [])
-              .filter(a => a.sessionId === sendSessionId && pendingIds[a.id])
+              .filter(a => a.sessionId === sendSessionId && pendingIds.has(a.id))
               .map(a => ({ id: a.id, path: a.path, title: a.title || a.path?.split('/').pop(), mime: a.mime || '', source: a.source || 'tool' }))
             if (pendingArtifactList.length > 0) {
-              const lastAssistant = messages.value
-                .filter(m => m.sessionId === sendSessionId && m.role === 'assistant')
-                .slice(-1)[0]
-              const summaryText = lastAssistant?.content
-                ? lastAssistant.content.replace(/<[^>]*>/g, '').slice(0, 200)
-                : ''
+              const summaryText = _lastAssistantText(messages.value, sendSessionId)
+              // 每回合更新：先删旧 delivery 再 push 新（与 onDelivery 语义一致）
+              const existIdx = messages.value.findIndex(m => m.sessionId === sendSessionId && m.type === 'delivery')
+              if (existIdx >= 0) messages.value.splice(existIdx, 1)
               messages.value.push({
                 id: uid(),
                 type: 'delivery',
@@ -1466,7 +1470,7 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
           if (sendSessionId) {
-            sessionPendingDeliveryArtifacts.value = { ...sessionPendingDeliveryArtifacts.value, [sendSessionId]: {} }
+            sessionPendingDeliveryArtifacts.value = { ...sessionPendingDeliveryArtifacts.value, [sendSessionId]: new Set() }
           }
           // nextTurnSnapshot: 当前轮结束后,应用 pending 模型切换
           _applyPendingModel(sendSessionId)
