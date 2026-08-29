@@ -24,6 +24,7 @@ for src, dst in [
     ('vermes_cli/blueprints', 'vermes_cli/blueprints'),
     ('vermes_cli/scholarforge', 'vermes_cli/scholarforge'),
     ('vermes_cli/mfgcad', 'vermes_cli/mfgcad'),
+    ('vermes_cli/cadir', 'vermes_cli/cadir'),
     ('vermes_cli/processors', 'vermes_cli/processors'),
     ('vermes_cli/adapters', 'vermes_cli/adapters'),
     ('vermes_cli/modules', 'vermes_cli/modules'),
