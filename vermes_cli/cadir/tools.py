@@ -163,6 +163,7 @@ async def _handle_cadir_build(args: dict, **kw: Any) -> str:
     # 引擎 venv 执行（cwd=out_dir → output.step 落在工作目录）
     stdout, _ = _run_engine([str(script_path)], cwd=out_dir, timeout=args.get("timeout") or 300)
     step_path = out_dir / "output.step"
+    stl_path = out_dir / "output.stl"
     if not step_path.is_file():
         return (
             "❌ build123d 构建失败（未产出 output.step）：\n"
@@ -183,6 +184,7 @@ async def _handle_cadir_build(args: dict, **kw: Any) -> str:
     return (
         "✅ CAD-IR 构建完成：\n"
         f"  STEP：{step_path}\n"
+        f"  STL：{stl_path}（预览网格，tolerance=0.005）\n"
         f"  脚本：{script_path}\n"
         f"  特征数：{len(result.ir.get('features', []))}{metrics}\n"
         "💡 可用 cadir_verify_step 带期望值做严格核验。"

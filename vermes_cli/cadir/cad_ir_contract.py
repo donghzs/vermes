@@ -600,6 +600,7 @@ def ir_to_build123d(ir: dict[str, Any]) -> str:
     if current:
         lines.append(f"result = {current}")
         lines.append("if result: export_step(result, 'output.step')")
+        lines.append("if result: export_stl(result, 'output.stl', tolerance=0.005)")
     return "\n".join(lines)
 
 

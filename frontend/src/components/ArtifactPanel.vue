@@ -1,10 +1,13 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
+import ModelViewer from './ModelViewer.vue'
 
+const router = useRouter()
 const chat = useChatStore()
 const { open, width, autoOpen, activeTabId, fileTabs, openPanel, closePanel, togglePanel, setView, openFileTab, closeFileTab, setWidth } = useArtifactPanel()
 
@@ -200,6 +203,7 @@ function rendererFor(artifact) {
   if (!artifact) return 'empty'
   const mime = artifact.mime || ''
   const ext = artifact.path?.split('.').pop()?.toLowerCase() || ''
+  if (['stl','step','stp','glb','gltf'].includes(ext)) return 'model'
   if (mime.startsWith('image/') || ['png','jpg','jpeg','gif','webp','svg'].includes(ext)) return 'image'
   if (mime === 'text/html' || ext === 'html') return 'html'
   if (mime === 'text/markdown' || ext === 'md') return 'markdown'
@@ -372,6 +376,32 @@ async function openInFolder(artifact) {
   } catch (e) { console.error(e) }
   if (window.vermes?.showItemInFolder) { const r = await window.vermes.showItemInFolder(artifact.path); if (!r?.ok) console.error(r?.err) }
   else window.open(`file://${artifact.path.substring(0, artifact.path.lastIndexOf('/'))}`)
+}
+
+// 在 3D 工作室打开：把右栏预览的 STEP/STL 导入 3D 工作室做深度编辑
+async function openIn3DStudio(artifact) {
+  if (!artifact || !artifact.path) return
+  const filename = artifact.path.split('/').pop() || 'model'
+  // 只支持可导入 3D 工作室的格式（其余不跳，避免 404 空白）
+  if (!/\.(step|stp|stl|3mf)$/i.test(filename)) return
+  // 从产物 serve 端点拉文件二进制，再走 mfgcad upload 导入新会话
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(artifact.path)}`)
+    if (!resp.ok) throw new Error(`fetch artifact ${resp.status}`)
+    const blob = await resp.blob()
+    const formData = new FormData()
+    formData.append('file', blob, filename)
+    formData.append('name', filename.replace(/\.(step|stp|stl|3mf)$/i, ''))
+    const up = await fetch('/api/mfgcad/upload', { method: 'POST', body: formData })
+    const data = await up.json()
+    if (!up.ok || !data.session_id) throw new Error(data.error || `upload ${up.status}`)
+    // 跳转 3D 工作室，带 session_id 让工作室直接选中新会话
+    router.push({ path: '/3d-studio', query: { session: data.session_id } })
+  } catch (e) {
+    console.error('[openIn3DStudio]', e)
+    // 兜底：至少跳到 3D 工作室，让用户手动导入
+    router.push('/3d-studio')
+  }
 }
 
 // 打开文件标签
@@ -608,6 +638,17 @@ function openArtifactById(id) {
                     <button @click="downloadArtifact(activeArtifact)" class="mt-4 px-4 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition flex items-center gap-2"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>{{ isDesktop ? '另存为…' : '下载文件' }}</button>
                   </div>
                 </template>
+              </div>
+              <div v-else-if="rendererFor(activeArtifact) === 'model'" class="relative w-full h-full bg-gray-50 dark:bg-gray-900">
+                <ModelViewer :src="`/api/v1/artifacts/${encodeURIComponent(activeArtifact.path)}`" />
+                <button
+                  @click="openIn3DStudio(activeArtifact)"
+                  class="absolute top-3 right-3 z-10 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition flex items-center gap-1.5 shadow"
+                  title="在 3D 工作室中打开，进行深度编辑"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                  在 3D 工作室打开
+                </button>
               </div>
               <div v-else class="flex flex-col items-center justify-center text-gray-400 py-20"><div class="text-3xl mb-2">📦</div><div class="text-sm">暂不支持此格式</div><div class="text-xs mt-1 text-gray-400">{{ activeArtifact.path }}</div></div>
             </template>

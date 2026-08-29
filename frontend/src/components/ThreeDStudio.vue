@@ -9,10 +9,11 @@
 // - 底部：历史时间线
 
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import ModelViewer from './ModelViewer.vue'
 
 const router = useRouter()
+const route = useRoute()
 
 // ── 状态 ──
 const sessions = ref([])
@@ -718,7 +719,15 @@ function cycleSection() {
 
 const hasModel = computed(() => !!selectedFile.value)
 
-onMounted(loadSessions)
+onMounted(async () => {
+  await loadSessions()
+  // 从右栏产物面板「在 3D 工作室打开」跳转而来：自动选中目标会话
+  const sid = route.query.session
+  if (sid) {
+    const target = sessions.value.find(s => s.session_id === sid)
+    if (target) selectSession(target)
+  }
+})
 </script>
 
 <template>

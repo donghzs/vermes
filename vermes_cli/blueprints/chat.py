@@ -793,11 +793,11 @@ def _persist_web_turn_to_state_db(session_id: str, user_message: str, final_resp
 # 从工具结果 preview 中提取文件路径，推送到前端产物面板
 import re as _re
 _ARTIFACT_EXT_RE = _re.compile(
-    r'(?<!\w)(\.?\/(?:[\w\u4e00-\u9fff-]+\/)*[\w\u4e00-\u9fff.-]+\.'
+    r'(?<!\w)(\.?\/(?:[\w\u4e00-\u9fff.-]+\/)*[\w\u4e00-\u9fff.-]+\.'
     r'(?:md|html|htm|json|csv|txt|log|py|js|ts|sh|yaml|yml|toml|ini|cfg'
 r'|png|jpg|jpeg|gif|webp|svg'
 r'|docx|pdf|pptx|xlsx|doc|xls|ppt'
-r'|step|stp|stl|obj|fcdoc|dxf|gcode|iges|3mf|gltf))'
+r'|step|stp|stl|obj|fcdoc|dxf|gcode|iges|3mf|gltf|glb))'
     r'(?=[\s)\]},"\'\u3000`?!，。、；：]|$)',
     _re.IGNORECASE | _re.UNICODE,
 )
