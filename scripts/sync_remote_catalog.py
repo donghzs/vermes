@@ -25,6 +25,7 @@ import base64
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -43,18 +44,36 @@ def gh_available() -> bool:
     return _run(["gh", "--version"], check=False).returncode == 0
 
 
-def remote_sha(repo: str, path: str, branch: str) -> Optional[str]:
-    """查询远程 catalog.json 的当前 sha；不存在返回 None。"""
-    r = _run(
-        ["gh", "api", f"repos/{repo}/contents/{path}?ref={branch}"],
-        check=False,
+def remote_sha(repo: str, path: str, branch: str, retries: int = 3) -> Optional[str]:
+    """查询远程 catalog.json 的当前 sha；文件不存在(404)返回 None。
+
+    保留旧签名（返回 Optional[str]）以兼容既有调用方，但**失败时不再静默**：
+    查询出错（网络抖动/权限/限流）会直接抛 SystemExit 中止，而不是当作
+    「文件不存在」——否则后续 PUT 不带 sha，GitHub 只会回一个极具误导性的
+    ``"sha" wasn't supplied. (HTTP 422)``（2026-08-29 实测踩过：代理抖动导致
+    remote_sha 静默返回 None，同步失败却看不出真因）。
+    """
+    last_err = ""
+    for attempt in range(1, retries + 1):
+        r = _run(
+            ["gh", "api", f"repos/{repo}/contents/{path}?ref={branch}"],
+            check=False,
+        )
+        if r.returncode == 0:
+            try:
+                return json.loads(r.stdout).get("sha")
+            except Exception as e:  # noqa: BLE001
+                raise SystemExit(f"[error] 远程 catalog 响应解析失败: {e}")
+        last_err = (r.stderr or r.stdout or "").strip()
+        # 404 = 文件确实不存在，是合法的“新建”场景，不重试
+        if "404" in last_err or "Not Found" in last_err:
+            return None
+        if attempt < retries:
+            time.sleep(1.5 * attempt)
+    raise SystemExit(
+        f"[error] 无法查询远程 catalog 当前 sha（已重试 {retries} 次），"
+        f"中止推送以免覆盖异常。gh 输出: {last_err[:300]}"
     )
-    if r.returncode != 0:
-        return None
-    try:
-        return json.loads(r.stdout).get("sha")
-    except Exception:
-        return None
 
 
 def sync_catalog(

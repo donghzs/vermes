@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-17T01:12:13Z",
+  "generated_at": "2026-08-29T01:12:34Z",
   "modules": [
     {
       "name": "mfgcad",
@@ -69,7 +69,7 @@
       "latest": "1.0.0",
       "vermes_min": "2.3.9",
       "code_asset": "https://github.com/donghzs/vermes-mod-scholarforge/releases/download/v1.0.0/scholarforge-1.0.0.tar.gz",
-      "code_sha256": "241edc7744e24e2322242bdeee1d0a740f0d8c5d98e6162104a09b996c100cc4",
+      "code_sha256": "55db826d50242a834cc351e14addb31281c1b1dc5f561a1755a0d77dec31cf0b",
       "size_code": 218627,
       "assets": [],
       "provides_tools": [
