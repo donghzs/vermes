@@ -3328,6 +3328,7 @@ async def list_mfgcad_sessions():
                 "ts": data.get("ts", 0),
                 "has_parameters": data.get("has_parameters", False),
                 "build123d_source": data.get("build123d_source"),
+                "contract": data.get("contract"),
             })
         except Exception:
             continue
@@ -3472,6 +3473,46 @@ async def rebuild_mfgcad_parametric(session_id: str, request):
     })
 
 
+@app.post("/api/mfgcad/sessions/{session_id}/rebuild_contract")
+async def rebuild_mfgcad_contract(session_id: str, request):
+    """P2-4 契约重建：用编辑后的 cad.ir.v1 契约重新生成模型，覆盖同会话 step/stl。
+
+    body: {"contract": {...cad.ir.v1 JSON 对象...}}
+    """
+    import re
+    from fastapi.responses import JSONResponse
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json body"}, status_code=400)
+
+    contract = (body or {}).get("contract")
+    if not isinstance(contract, dict):
+        return JSONResponse({"error": "missing contract object"}, status_code=400)
+
+    from vermes_cli.mfgcad import tools as mfgcad_tools
+
+    message = await mfgcad_tools._handle_mfg_rebuild_contract({
+        "session_id": session_id,
+        "contract": contract,
+    })
+
+    # 读取更新后的 session 元数据（含新 step/stl 路径 + 契约原文）返回前端
+    sess_file = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id / "session.json"
+    updated = None
+    if sess_file.is_file():
+        try:
+            updated = json.loads(sess_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    return JSONResponse({"message": message, "session": updated})
+
+
 @app.post("/api/mfgcad/upload")
 async def upload_mfgcad_file(request: Request):
     """上传用户自有 STEP/STL/3MF 文件，创建新会话。"""
@@ -3487,6 +3528,9 @@ async def upload_mfgcad_file(request: Request):
     form = await request.form()
     upload_file = form.get("file")
     name = (form.get("name") or "uploaded").strip()
+
+    # P2-4：携带 cadir 契约原文（优先 contract_path 服务端读文件，其次 inline）
+    contract = _parse_upload_contract(form)
 
     if not upload_file or not hasattr(upload_file, "filename"):
         return JSONResponse({"error": "no file uploaded"}, status_code=400)
@@ -3542,6 +3586,7 @@ print("OK")
         "stl_3mf_path": str(file_path) if ext == ".3mf" else None,
         "volume_mm3": None,
         "qa": {"passed": 0, "failed": 0, "issues": []},
+        "contract": contract,
         "has_parameters": False,
         "ts": int(time.time()),
     }
@@ -3568,6 +3613,30 @@ def _safe_upload_filename(name: str) -> str:
     下载端点须复用同一规则，避免「上传名改、下载用原名」绕过 relative_to 兜底。
     """
     return re.sub(r'[^a-zA-Z0-9_.\-]', '_', name)
+
+
+def _parse_upload_contract(form) -> Optional[dict]:
+    """P2-4：从上传表单解析 cad.ir.v1 契约原文。
+
+    优先 contract_path（绝对路径，须位于 ~/.vermes 下，服务端直读文件）；
+    其次 inline contract（JSON 字符串）。解析失败返回 None（不影响上传）。
+    """
+    vermes_home = Path.home() / ".vermes"
+    cp = form.get("contract_path")
+    if isinstance(cp, str) and cp.strip():
+        p = Path(cp).expanduser()
+        try:
+            if p.is_absolute() and str(p).startswith(str(vermes_home)):
+                return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    ci = form.get("contract")
+    if isinstance(ci, str) and ci.strip():
+        try:
+            return json.loads(ci)
+        except Exception:
+            pass
+    return None
 
 
 @app.post("/api/upload")

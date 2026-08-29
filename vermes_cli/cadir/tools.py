@@ -154,6 +154,14 @@ async def _handle_cadir_build(args: dict, **kw: Any) -> str:
     out_dir = Path((args.get("output_dir") or "").strip() or (Path.home() / ".vermes" / "cadir" / "output" / session_id)).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # 持久化契约原文（供 3D 工作室「编辑契约→重建」读取；P2-4）
+    try:
+        (out_dir / "contract.json").write_text(
+            json.dumps(design, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
     # 生成脚本 + 同目录放置 spur_gear.py（gear 操作依赖）
     script = cc.ir_to_build123d(result.ir)
     script_path = out_dir / "generated_model.py"

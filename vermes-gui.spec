@@ -157,6 +157,11 @@ hiddenimports = [
     'vermes_cli.scholarforge.search',
     'vermes_cli.scholarforge.export', 'vermes_cli.scholarforge.export.full',
     'vermes_cli.scholarforge.export.latex', 'vermes_cli.scholarforge.export.pdf_css',
+    # CAD-IR 契约建模模块（P2-4 契约重建走普通 import，须进 PYZ 才可 import）
+    'vermes_cli.cadir', 'vermes_cli.cadir.tools',
+    'vermes_cli.cadir.cad_ir_contract', 'vermes_cli.cadir.spur_gear',
+    'vermes_cli.cadir.stl_verify', 'vermes_cli.cadir.verify_step',
+    'vermes_cli.cadir._engine_runner',
     # Harness layer (B1/B2/B3 — imported by tools.browser_tool via recoverable_tool)
     'harness', 'harness.recoverable', 'harness.stability', 'harness.constraints',
     'run_agent', 'vermes_constants', 'model_tools',

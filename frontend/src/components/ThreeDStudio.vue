@@ -48,6 +48,12 @@ let rebuildTimer = null
 // ── 参数联动 ──
 const linkages = ref({}) // {INNER_DIAMETER: {from: 'OUTER_DIAMETER', formula: (v) => v - 2 * WALL_THICKNESS}}
 
+// ── 契约编辑（P2-4）──
+const contractText = ref('')
+const rightTab = ref('params') // params / contract
+const contractRebuilding = ref(false)
+const contractMsg = ref('')
+
 // ── AI 协助 ──
 const aiPrompt = ref('')
 const aiThinking = ref(false)
@@ -193,6 +199,14 @@ function selectSession(s) {
   loadTimeline(s)
   aiHistory.value = []
   measureResult.value = null
+  // P2-4：会话带 cadir 契约原文则预填契约 tab
+  if (s?.contract) {
+    contractText.value = JSON.stringify(s.contract, null, 2)
+    rightTab.value = 'contract'
+  } else {
+    contractText.value = ''
+    rightTab.value = paramsForSession.length ? 'params' : 'contract'
+  }
 }
 
 // ── 删除会话 ──
@@ -425,6 +439,39 @@ async function rebuild() {
     rebuildMsg.value = `重建失败: ${e.message}`
   } finally {
     rebuilding.value = false
+  }
+}
+
+// P2-4 契约重建：编辑 cad.ir.v1 契约 JSON → 调后端重建端点 → 刷新视口
+async function rebuildContract() {
+  const sid = selectedSession.value?.session_id
+  if (!sid || contractRebuilding.value) return
+  let parsed
+  try {
+    parsed = JSON.parse(contractText.value)
+  } catch (e) {
+    contractMsg.value = '❌ 契约 JSON 解析失败: ' + e.message
+    return
+  }
+  contractRebuilding.value = true
+  contractMsg.value = '重建中…'
+  try {
+    const resp = await fetch(`/api/mfgcad/sessions/${sid}/rebuild_contract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contract: parsed }),
+    })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`)
+    contractMsg.value = '✅ 重建完成'
+    if (data.session) selectedSession.value = { ...selectedSession.value, ...data.session }
+    await loadSessions()
+    const files = availableFiles.value
+    if (files.length) selectedFile.value = files.find(f => f.ext === 'stl') || files[0]
+  } catch (e) {
+    contractMsg.value = '❌ ' + e.message
+  } finally {
+    contractRebuilding.value = false
   }
 }
 
@@ -1067,8 +1114,14 @@ onMounted(async () => {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
 
+        <!-- P2-4 右侧面板 tab 切换：参数 / 契约 -->
+        <div class="flex border-b border-gray-200 dark:border-gray-700">
+          <button @click.stop="rightTab = 'params'" :class="rightTab === 'params' ? 'flex-1 text-xs py-2 border-b-2 border-green-500 text-green-600' : 'flex-1 text-xs py-2 text-gray-400 hover:text-gray-600'">🎚️ 参数</button>
+          <button @click.stop="rightTab = 'contract'" :class="rightTab === 'contract' ? 'flex-1 text-xs py-2 border-b-2 border-green-500 text-green-600' : 'flex-1 text-xs py-2 text-gray-400 hover:text-gray-600'">📐 契约</button>
+        </div>
+
         <!-- 参数面板（分组折叠） -->
-        <div v-if="paramsForSession.length" class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+        <div v-if="rightTab === 'params' && paramsForSession.length" class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500">🎚️ 参数 ({{ paramsForSession.length }})</span>
             <span v-if="rebuilding" class="text-xs text-blue-500">重建中…</span>
@@ -1133,8 +1186,29 @@ onMounted(async () => {
         </div>
 
         <!-- 无参数提示 -->
-        <div v-else-if="selectedSession && !selectedSession.has_parameters" class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+        <div v-else-if="rightTab === 'params' && selectedSession && !selectedSession.has_parameters" class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
           <p class="text-xs text-gray-400">⚠️ 此会话无可调参数，可用 AI 协助重新建模</p>
+        </div>
+
+        <!-- P2-4 契约编辑面板 -->
+        <div v-if="rightTab === 'contract'" class="flex-1 flex flex-col px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-medium text-gray-500">📐 cad.ir.v1 契约</span>
+            <span v-if="contractRebuilding" class="text-xs text-blue-500">重建中…</span>
+            <span v-else-if="contractMsg" class="text-xs truncate max-w-40" :class="contractMsg.startsWith('✅') ? 'text-green-600' : 'text-red-500'">{{ contractMsg }}</span>
+          </div>
+          <textarea
+            v-model="contractText"
+            @click.stop
+            spellcheck="false"
+            placeholder="编辑契约 JSON，点击「重建」重新生成模型…"
+            class="flex-1 min-h-[200px] max-h-72 text-xs font-mono px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+          ></textarea>
+          <button
+            @click.stop="rebuildContract"
+            :disabled="contractRebuilding || !contractText.trim()"
+            class="mt-2 text-xs px-3 py-1.5 rounded bg-green-500 text-white disabled:opacity-50 hover:bg-green-600"
+          >🔧 重建模型</button>
         </div>
 
         <!-- AI 协助 -->

@@ -393,6 +393,11 @@ async function openIn3DStudio(artifact) {
     const formData = new FormData()
     formData.append('file', blob, filename)
     formData.append('name', filename.replace(/\.(step|stp|stl|3mf)$/i, ''))
+    // P2-4：cadir 产物携带契约原文路径，供 3D 工作室「编辑契约→重建」预填
+    if (artifact.source === 'cadir_build') {
+      const cp = artifact.path.replace(/output\.(step|stp)$/i, 'contract.json')
+      if (cp && cp !== artifact.path) formData.append('contract_path', cp)
+    }
     const up = await fetch('/api/mfgcad/upload', { method: 'POST', body: formData })
     const data = await up.json()
     if (!up.ok || !data.session_id) throw new Error(data.error || `upload ${up.status}`)

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -535,6 +536,72 @@ async def _handle_mfg_clarify(args: dict, **kw: Any) -> str:
     lines.append("")
     lines.append("补充信息后调用 mfg_text_to_cad 建模。")
     return "\n".join(lines)
+
+
+async def _handle_mfg_rebuild_contract(args: dict, **kw: Any) -> str:
+    """契约重建（P2-4）：用编辑后的 cad.ir.v1 契约重新生成模型，落到同会话输出目录。
+
+    与参数化重建（_handle_mfg_rebuild_parametric）不同：本入口直接走 cadir 编译器
+    （compile → ir_to_build123d → 引擎执行），产出对齐 mfgcad 会话命名
+    （model.step / model.stl）覆盖原文件，并更新 session.json。
+    """
+    session_id = (args.get("session_id") or "").strip()
+    if not session_id:
+        return "❌ 缺少必填参数 session_id（要重建的会话 ID）。"
+    contract = args.get("contract")
+    if not isinstance(contract, dict):
+        return "❌ 缺少必填参数 contract（cad.ir.v1 契约 JSON 对象）。"
+
+    output_dir = _mfg_home() / "output" / session_id
+    if not output_dir.is_dir():
+        return f"❌ 会话 {session_id} 不存在或无输出目录。"
+
+    from vermes_cli.cadir.cad_ir_contract import CADIRCompiler, ir_to_build123d
+    from vermes_cli.cadir.tools import _HERE, _run_engine
+
+    cc = CADIRCompiler()
+    result = cc.compile_with_errors(contract)
+    if not result.success:
+        return "❌ 契约编译失败，不执行构建：\n" + result.summary()
+
+    script = ir_to_build123d(result.ir)
+    script_path = output_dir / "generated_model.py"
+    script_path.write_text(script, encoding="utf-8")
+    try:
+        shutil.copy2(_HERE / "spur_gear.py", output_dir / "spur_gear.py")
+    except Exception:
+        pass
+
+    stdout, _ = _run_engine([str(script_path)], cwd=output_dir, timeout=args.get("timeout") or 300)
+    out_step = output_dir / "output.step"
+    out_stl = output_dir / "output.stl"
+    if not out_step.is_file():
+        return "❌ build123d 构建失败（未产出 output.step）：\n" + stdout.strip()[-2000:]
+
+    # 对齐 mfgcad 会话命名（model.step / model.stl），覆盖原文件
+    model_step = output_dir / "model.step"
+    model_stl = output_dir / "model.stl"
+    out_step.replace(model_step)
+    if out_stl.is_file():
+        out_stl.replace(model_stl)
+
+    # 更新 session.json（step/stl 路径 + 契约原文 + 后端标记）
+    sess_file = _mfg_home() / "sessions" / session_id / "session.json"
+    try:
+        sd = json.loads(sess_file.read_text(encoding="utf-8"))
+        sd["step_path"] = str(model_step)
+        sd["stl_path"] = str(model_stl)
+        sd["contract"] = contract
+        sd["backend"] = "cadir_contract"
+        sd["ts"] = int(time.time())
+        sess_file.write_text(json.dumps(sd, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        return f"⚠️ 重建成功但 session.json 更新失败: {e}\n模型已生成：{model_step}"
+
+    return (
+        f"✅ 契约重建完成：\n  STEP：{model_step}\n  STL：{model_stl}\n"
+        f"  特征数：{len(result.ir.get('features', []))}"
+    )
 
 
 async def _handle_mfg_rebuild_parametric(args: dict, **kw: Any) -> str:
