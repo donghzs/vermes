@@ -6,6 +6,7 @@ Usage: pyinstaller vermes-gui.spec
 
 import sys
 import os
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
@@ -205,7 +206,13 @@ elif sys.platform == 'darwin':
 
 # 能力网关/清单（P0-2/3/4：chat.py 与 doctor.py 依赖 vermes_cli.capabilities，
 # 显式收录避免重打 DMG 后 ImportError）
-hiddenimports.extend(collect_submodules('vermes_cli.capabilities'))
+# 容错：collect 失败不硬崩构建（对齐 vermes-backend.spec:370-375 的 fail-open 写法）
+try:
+    _caps_sub = collect_submodules('vermes_cli.capabilities')
+    hiddenimports.extend(_caps_sub)
+    print(f"[Vermes GUI] collect_submodules(vermes_cli.capabilities) → {_caps_sub}")
+except Exception as _e:
+    print(f"[Vermes GUI] collect_submodules(vermes_cli.capabilities) SKIP: {_e}")
 
 a = Analysis(
     ['vermes_cli/gui_app.py'],
