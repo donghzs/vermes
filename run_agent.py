@@ -4072,7 +4072,27 @@ class AIAgent:
         the agent has a chance to recover.
         """
         if not _is_multimodal_tool_result(result):
-            return result
+            # 治本 (P0-1)：非字符串工具结果（如 present_files / execute_code 返回的
+            # {"preview": ..., "artifacts": [...]} 信封）一旦作为 role=tool 的 content
+            # 进入会话历史，会导致下次 API 调用 400
+            # ("messages[N]: content should be a string or a list")，整轮中断、SSE 事件丢失。
+            # 约定：信封带 "preview" 字段时，历史里用 preview 文本（与 SSE 预览一致，
+            # 模型看到人类可读摘要而非裸 JSON）；否则 json.dumps 兜底，确保 content 永远是 str。
+            if isinstance(result, str):
+                return result
+            if isinstance(result, dict):
+                preview = result.get("preview")
+                if isinstance(preview, str):
+                    return preview
+                try:
+                    return json.dumps(result, ensure_ascii=False, default=str)
+                except Exception:
+                    return str(result)
+            # 其它非字符串（list 等）→ 兜底序列化，避免 400
+            try:
+                return json.dumps(result, ensure_ascii=False, default=str)
+            except Exception:
+                return str(result)
 
         content = result.get("content") or []
         if not self._content_has_image_parts(content):

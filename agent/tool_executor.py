@@ -165,6 +165,24 @@ def _build_tool_artifacts(tool_name: str, result: Any, args: dict = None) -> lis
                     "source": a.get("source") or tool_name,
                     "mime": a.get("mime") or _guess_mime(a["path"]),
                 })
+    # execute_code 把 sandbox 内 write_file/patch 产生的文件编码进结果 JSON 的
+    # "artifacts" 字段（见 tools/code_execution_tool.py）。这里解析出来，
+    # 让 execute_code 生成的产物也能推送到前端面板 (P0-2)。
+    if tool_name == "execute_code" and isinstance(result, str):
+        try:
+            _data = json.loads(result)
+            _arts = _data.get("artifacts") if isinstance(_data, dict) else None
+            if isinstance(_arts, list):
+                for a in _arts:
+                    if isinstance(a, dict) and a.get("path"):
+                        artifacts.append({
+                            "path": a["path"],
+                            "title": a.get("title") or a["path"].split("/")[-1],
+                            "source": a.get("source") or "execute_code",
+                            "mime": a.get("mime") or _guess_mime(a["path"]),
+                        })
+        except Exception:
+            pass
     return artifacts
 
 

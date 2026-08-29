@@ -538,11 +538,17 @@ def _rpc_server_loop(
 
                 # Log for observability
                 args_preview = str(tool_args)[:80]
-                tool_call_log.append({
+                _log_entry = {
                     "tool": tool_name,
                     "args_preview": args_preview,
                     "duration": round(call_duration, 2),
-                })
+                }
+                # P0-2: 记录 sandbox 内 write_file/patch 写入的文件路径，供
+                # execute_code 收集为产物推送到前端面板（内层 write_file 走
+                # handle_function_call，不经过外层 tool_executor，产物不会自动上报）。
+                if tool_name in ("write_file", "patch") and isinstance(tool_args, dict):
+                    _log_entry["path"] = tool_args.get("path")
+                tool_call_log.append(_log_entry)
 
                 conn.sendall((result + "\n").encode())
 
@@ -1390,12 +1396,26 @@ def execute_code(
         stdout_text = redact_sensitive_text(stdout_text)
         stderr_text = redact_sensitive_text(stderr_text)
 
+        # P0-2: 收集 sandbox 内 write_file/patch 写入的文件路径，作为产物推送到
+        # 前端面板（sandbox 内 write_file 走 handle_function_call，不经过外层
+        # tool_executor，所以产物不会自动上报；这里从 RPC 调用日志回收路径）。
+        _produced = []
+        for _e in tool_call_log:
+            if isinstance(_e, dict) and _e.get("tool") in ("write_file", "patch") and _e.get("path"):
+                _p = _e["path"]
+                if _p not in _produced:
+                    _produced.append(_p)
+
         # Build response
         result: Dict[str, Any] = {
             "status": status,
             "output": stdout_text,
             "tool_calls_made": tool_call_counter[0],
             "duration_seconds": duration,
+            "artifacts": [
+                {"path": _p, "title": os.path.basename(_p), "source": "execute_code"}
+                for _p in _produced
+            ],
         }
 
         if status == "timeout":
