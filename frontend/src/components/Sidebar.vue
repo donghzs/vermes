@@ -24,7 +24,8 @@ function goMobileConnect() { router.push('/settings?tab=channels') }
 function goStudio() { router.push('/studio') }
 function goScholarForge() { router.push('/scholarforge') }
 function go3DStudio() { router.push('/3d-studio') }
-function goSkillMarket() { router.push('/skill-market') }
+// P1-3：技能市场并入四态合一积木市场（旧 /skill-market 已重定向到 /bricks）
+function goBricks() { router.push('/bricks') }
 function goKanban() { router.push('/kanban') }
 function goWorkflows() { router.push('/workflows') }
 // goModuleStore 已移除（模块商店归入 Agent 管理→软件 tab）
@@ -578,9 +579,9 @@ async function handleImportFile(e) {
           <span class="text-base">🏭</span>
           <span class="sidebar-tooltip group-hover:opacity-100">3D 建模</span>
         </button>
-        <button @click="goSkillMarket()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/skill-market' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="技能市场">
-          <span class="text-base">🧩</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">技能市场</span>
+        <button @click="goBricks()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/bricks' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="积木市场（技能 / 工具 / 模块 / 软件）">
+          <span class="text-base">🧱</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">积木市场</span>
         </button>
         <button @click="goKanban()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/kanban' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="蜂群看板">
           <span class="text-base">🐝</span>

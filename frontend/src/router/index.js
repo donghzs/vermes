@@ -4,9 +4,8 @@ import Settings from '../components/Settings.vue'
 import StudioChat from '../components/StudioChat.vue'
 import ScholarForgePanel from '../components/ScholarForgePanel.vue'
 import ThreeDStudio from '../components/ThreeDStudio.vue'
-import ModuStore from '../components/ModuStore.vue'
 import SkillManager from '../components/SkillManager.vue'
-import SkillMarketPage from '../components/SkillMarketPage.vue'
+import BricksPage from '../components/BricksPage.vue'
 import KanbanBoard from '../components/KanbanBoard.vue'
 import WorkflowsPage from '../components/WorkflowsPage.vue'
 
@@ -16,11 +15,13 @@ const routes = [
   { path: '/studio', component: StudioChat },
   { path: '/scholarforge', component: ScholarForgePanel },
   { path: '/3d-studio', component: ThreeDStudio },
-  { path: '/module-store', component: ModuStore },
-  // G2 技能市场发现页：复用 SkillManager 的完整发现 tab（搜索/来源筛选/一键装），
-  // 默认打开 market 而非 installed
-  // 独立全屏版（高宽度利用率 + 中文映射 + 网格卡片），替代 SkillManager 紧凑布局
-  { path: '/skill-market', component: SkillMarketPage },
+  // P1-3：四态合一积木市场（skill/tool/module/software 统一入口）
+  { path: '/bricks', component: BricksPage },
+  // 旧路由保留重定向，避免外链 404。
+  // 说明：ModuStore/SkillMarketPage 是纯路由页，已退役；ToolSkillDrawer / SoftwareDiscover
+  // 是内嵌于 App.vue 的全局抽屉（非路由），不在本次重定向范围，仍独立可用。
+  { path: '/module-store', redirect: '/bricks' },
+  { path: '/skill-market', redirect: '/bricks' },
   // 蜂群协作看板：Vermes 任务图可视化（多 Agent 并行执行）
   { path: '/kanban', component: KanbanBoard },
   // A2 工作流编排：可视化 DAG 编辑器 + 触发器配置
