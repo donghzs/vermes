@@ -238,6 +238,7 @@ def _get_bundle_root() -> Optional[Path]:
 _BUILTIN_MODULES: Dict[str, str] = {
     "scholarforge": "vermes_cli/scholarforge",
     "mfgcad": "vermes_cli/mfgcad",
+    "cadir": "vermes_cli/cadir",
 }
 
 
@@ -296,6 +297,8 @@ def discover_builtin_modules() -> List[ModuleManifest]:
             manifests.append(_synth_scholarforge_manifest(pkg_dir))
         elif name == "mfgcad":
             manifests.append(_synth_mfgcad_manifest(pkg_dir))
+        elif name == "cadir":
+            manifests.append(_synth_cadir_manifest(pkg_dir))
     return manifests
 
 
@@ -321,6 +324,43 @@ def _synth_mfgcad_manifest(pkg_dir: Path) -> ModuleManifest:
         frontend_menu_title="",
         permissions=["llm_call", "file_read", "file_write"],
         vermes_min="2.1.0",
+        raw={},
+        module_root=pkg_dir,
+        builtin=True,
+    )
+
+
+def _synth_cadir_manifest(pkg_dir: Path) -> ModuleManifest:
+    """为内置 cadir（CAD-IR 契约建模）合成 manifest（无需 module.yaml）。
+
+    与 mfgcad 同类：无前端的 Agent 工具模块，后端入口即 tools.py
+    （register_tools 在其中），无 FastAPI blueprint、无前端路由。
+    3D 几何核验/构建（build123d/trimesh/numpy）走独立引擎 venv 子进程桥接，
+    不在宿主进程加载。契约编译器（cad_ir_contract.py）为纯 Python，进程内加载。
+    """
+    return ModuleManifest(
+        name="cadir",
+        display_name="CAD-IR 契约建模",
+        version="0.1.0",
+        description="CAD-IR 契约建模工具集（cad.ir.v1）：LLM 生成 JSON 契约→确定性编译→build123d→STEP，附 STEP/STL 几何独立核验",
+        author="Vermes Team",
+        homepage="https://github.com/donghzs/vermes-mod-cadir",
+        backend_entry="tools.py",
+        tools_entry="tools.py",
+        frontend_entry=None,
+        frontend_route=None,
+        frontend_icon="📐",
+        frontend_menu_title="",
+        permissions=["subprocess", "filesystem_write", "file_read"],
+        provides_tools=[
+            "cadir_compile",
+            "cadir_build",
+            "cadir_verify_step",
+            "cadir_verify_stl",
+        ],
+        keywords=["CAD", "契约", "IR", "cad.ir.v1"],
+        repository="donghzs/vermes-mod-cadir",
+        vermes_min="2.3.9",
         raw={},
         module_root=pkg_dir,
         builtin=True,

@@ -223,28 +223,36 @@ class BrickRegistry:
                 bundled_catalog_path, default_catalog_path,
                 get_catalog_modules, is_module_installed,
             )
+            try:
+                from agent.module_loader import is_builtin_module
+            except Exception:  # noqa: BLE001
+                is_builtin_module = lambda _n: False  # noqa: E731
             modules_dir = default_catalog_path().parent   # ~/.vermes/modules/
             modules = get_catalog_modules(str(bundled_catalog_path()))
             for m in modules:
                 try:
-                    installed = is_module_installed(m.name)
+                    # 内置模块（bundle 直接加载，如 scholarforge/mfgcad/cadir）视为已装：
+                    # 代码已编译进宿主、启动即注册工具，不依赖 ~/.vermes/modules/<name>/。
+                    is_builtin = is_builtin_module(m.name)
+                    installed = is_builtin or is_module_installed(m.name)
                     out.append(BrickEntry(
                         id=f"module:{m.name}",
                         type="module",
                         name=m.display_name or m.name,
                         description=m.description or "",
                         install_state="installed" if installed else "available",
-                        source="github-release" if m.repository else "official",
+                        source="bundled" if is_builtin else ("github-release" if m.repository else "official"),
                         version=m.latest or None,
                         sha256=m.code_sha256 or None,
                         size_bytes=m.size_code or None,
                         requires=[],
                         provides_tools=list(m.provides_tools or []),
-                        entry_point=str(modules_dir / m.name) if installed else None,
+                        entry_point=str(modules_dir / m.name) if is_module_installed(m.name) else None,
                         extra={"keywords": list(m.keywords or []),
                                "repository": m.repository,
                                "homepage": m.homepage,
-                               "recommended": m.recommended},
+                               "recommended": m.recommended,
+                               "builtin": is_builtin},
                     ))
                 except Exception as exc:  # noqa: BLE001
                     logger.debug("module %s parse skipped: %s", m.name, exc)
