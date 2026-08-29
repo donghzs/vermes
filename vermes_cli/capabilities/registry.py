@@ -372,22 +372,66 @@ class BrickRegistry:
         try:
             from vermes_cli.capabilities.manifest import generate_capability_manifest
             m = generate_capability_manifest(refresh=refresh)
+
+            # 元素形态不一致（已核实 manifest.py）：
+            #   curated / mainstream → dict 列表；pinned → **provider id 字符串列表**(L269)。
+            # 原实现对 str 调 .get() 会抛 AttributeError，被 except 静默吞掉，
+            # 导致 pinned 整组丢失（实测 providers 只有 54 = curated 29 + mainstream 25）。
+            by_id: Dict[str, Dict[str, Any]] = {}
+            for grp in ("curated", "mainstream"):
+                for c in (m.get(grp) or []):
+                    if isinstance(c, dict) and c.get("id"):
+                        by_id[c["id"]] = c
+
+            _resolver: Optional[Dict[str, List[str]]] = None
+            seen: set = set()
+
+            def _cap_keys(raw) -> List[str]:
+                # capabilities 可能是 dict（{tools:true,...}）或 list（能力键列表）
+                if isinstance(raw, dict):
+                    return list(raw.keys())
+                if isinstance(raw, list):
+                    return list(raw)
+                return []
+
             for grp in ("curated", "mainstream", "pinned"):
                 for c in (m.get(grp) or []):
-                    caps = c.get("capabilities") or {}
-                    # manifest 的 capabilities 可能是 dict（{tools:true,...}）或 list（能力键列表）
-                    cap_keys = (
-                        list(caps.keys()) if isinstance(caps, dict)
-                        else list(caps) if isinstance(caps, list)
-                        else []
-                    )
+                    if isinstance(c, str):
+                        pid = c
+                        src = by_id.get(pid) or {}
+                        caps_raw = src.get("capabilities")
+                        if caps_raw is None:
+                            # pinned 里可能有 curated/mainstream 未覆盖的 id：
+                            # 回退到全量 provider 索引（含 ollama/local/custom 的 fail-open 种子）
+                            if _resolver is None:
+                                try:
+                                    from vermes_cli.capabilities.manifest import (
+                                        build_provider_capability_index,
+                                    )
+                                    _resolver = build_provider_capability_index() or {}
+                                except Exception:  # noqa: BLE001
+                                    _resolver = {}
+                            caps_raw = _resolver.get(pid)
+                        model_count = src.get("models") or src.get("model_count")
+                        source_key = src.get("source_key")
+                    elif isinstance(c, dict):
+                        pid = c.get("id")
+                        caps_raw = c.get("capabilities")
+                        model_count = c.get("models")
+                        source_key = c.get("source_key")
+                    else:
+                        continue
+
+                    if not pid or pid in seen:
+                        continue   # 按 id 去重：同一 provider 可能同时出现在多组
+                    seen.add(pid)
                     providers.append({
-                        "id": c.get("id"),
+                        "id": pid,
                         "type": "provider",
-                        "name": c.get("display_name") or c.get("id"),
-                        "source_key": c.get("source_key"),
-                        "capabilities": cap_keys,
-                        "models": c.get("models"),
+                        "name": (by_id.get(pid) or {}).get("name") or pid,
+                        "source_key": source_key,
+                        "capabilities": _cap_keys(caps_raw),
+                        "models": model_count,
                     })
         except Exception as exc:  # noqa: BLE001
             logger.debug("capability_index provider merge skipped: %s", exc)
