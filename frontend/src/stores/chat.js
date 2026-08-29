@@ -234,6 +234,8 @@ export const useChatStore = defineStore('chat', () => {
   const sessionTodoInterrupted = ref({})      // sessionId → boolean
   const sessionShowTaskDrawer = ref({})       // sessionId → boolean
   const sessionShowTodoPanel = ref({})        // sessionId → boolean
+  // P0: 本回合新产生的产物 id 集合，用于无任务规划时自动聚合 delivery 消息
+  const sessionPendingDeliveryArtifacts = ref({}) // sessionId → Set<string>
 
   // ── 全局 UI 状态(跨会话共享,不需要分片)──
   const pendingApproval = ref(null)  // 工具审批请求
@@ -591,6 +593,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionTodoInterrupted.value = _d(sessionTodoInterrupted.value)
     sessionShowTaskDrawer.value = _d(sessionShowTaskDrawer.value)
     sessionShowTodoPanel.value = _d(sessionShowTodoPanel.value)
+    sessionPendingDeliveryArtifacts.value = _d(sessionPendingDeliveryArtifacts.value)
     await _deleteSession(sessions.value, messages.value, id, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
     if (currentSessionId.value === id) {
       if (sessions.value.length > 0) {
@@ -1133,7 +1136,13 @@ export const useChatStore = defineStore('chat', () => {
                     mime: a.mime || '',
                     source: a.source || data.name || 'tool',
                   }, sendSessionId)
-                  if (id) addedIds.push(id)
+                  if (id) {
+                    addedIds.push(id)
+                    // P0: 记录本回合新产物，供 onDone 无任务规划时聚合为 delivery 消息
+                    const pending = sessionPendingDeliveryArtifacts.value[sendSessionId] || {}
+                    pending[id] = true
+                    sessionPendingDeliveryArtifacts.value = { ...sessionPendingDeliveryArtifacts.value, [sendSessionId]: pending }
+                  }
                 })
               }
               // 仅当产物含可渲染交付物(md/html/docx/xlsx/csv/pdf/图片)时才自动展开面板并直接渲染内容,
@@ -1420,6 +1429,44 @@ export const useChatStore = defineStore('chat', () => {
           // 持久化助手回复(防止崩溃丢失)
           if (sendSessionId) {
             persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+          }
+          // P0: 无任务规划时，若本回合产生了新产物且尚未生成 delivery 消息，自动聚合一条 delivery 卡片
+          const pendingIds = sendSessionId ? sessionPendingDeliveryArtifacts.value[sendSessionId] : null
+          const hasDelivery = sendSessionId && messages.value.some(m => m.sessionId === sendSessionId && m.type === 'delivery')
+          if (sendSessionId && pendingIds && Object.keys(pendingIds).length > 0 && !hasDelivery) {
+            const va = window.__vermesArtifacts
+            const pendingArtifactList = (va?.artifacts?.value || [])
+              .filter(a => a.sessionId === sendSessionId && pendingIds[a.id])
+              .map(a => ({ id: a.id, path: a.path, title: a.title || a.path?.split('/').pop(), mime: a.mime || '', source: a.source || 'tool' }))
+            if (pendingArtifactList.length > 0) {
+              const lastAssistant = messages.value
+                .filter(m => m.sessionId === sendSessionId && m.role === 'assistant')
+                .slice(-1)[0]
+              const summaryText = lastAssistant?.content
+                ? lastAssistant.content.replace(/<[^>]*>/g, '').slice(0, 200)
+                : ''
+              messages.value.push({
+                id: uid(),
+                type: 'delivery',
+                role: 'assistant',
+                sessionId: sendSessionId,
+                timestamp: Date.now(),
+                delivery: {
+                  summary: { total: 0, completed: 0, in_progress: 0 },
+                  artifacts: pendingArtifactList,
+                  changesCount: 0,
+                  changes: [],
+                  summaryText,
+                  startTime: 0,
+                  endTime: Date.now(),
+                },
+              })
+              persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+              scheduleScroll()
+            }
+          }
+          if (sendSessionId) {
+            sessionPendingDeliveryArtifacts.value = { ...sessionPendingDeliveryArtifacts.value, [sendSessionId]: {} }
           }
           // nextTurnSnapshot: 当前轮结束后,应用 pending 模型切换
           _applyPendingModel(sendSessionId)

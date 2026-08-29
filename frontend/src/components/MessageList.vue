@@ -378,7 +378,7 @@ md.renderer.rules.link_open = function(tokens, idx, options, env, self) {
 
 // ── 裸文件路径自动链接化 �─
 // 匹配文本中的 /path/to/file.ext 或 path/to/file.ext（至少含一个 /）
-const ARTIFACT_PATH_RE = /(?:^|[\s(\[{"'\u3000`：:])((?:\.?\/)?(?:[\w\u4e00-\u9fff~-]+\/)*[\w\u4e00-\u9fff~.-]+\.(?:md|html|htm|json|csv|txt|log|py|js|ts|sh|yaml|yml|toml|ini|cfg|png|jpg|jpeg|gif|webp|svg|xlsx|xls|pdf|docx|pptx))(?=[\s)\]},"'\u3000`?!，。、；：]|$)/gi
+const ARTIFACT_PATH_RE = /(?:^|[\s(\[{"'\u3000`：:])((?:\.?\/)?(?:[\w\u4e00-\u9fff~-]+\/)*[\w\u4e00-\u9fff~.-]+\.(?:md|html|htm|json|csv|txt|log|py|js|ts|sh|yaml|yml|toml|ini|cfg|png|jpg|jpeg|gif|webp|svg|xlsx|xls|pdf|docx|pptx|step|stp|stl|obj|fcdoc|dxf|gcode|iges|3mf|gltf|glb|mp4|mov|avi|webm|mp3|wav|m4a|ogg))(?=[\s)\]},"'\u3000`?!，。、；：]|$)/gi
 
 // 后处理：在 sanitize 之后的 HTML 中把裸路径转为产物链接
 // 比 markdown-it 内联规则更安全（在 DOMPurify 之后操作）
@@ -539,7 +539,7 @@ function cleanUserContent(content) {
 
 // ── 链接点击拦截（pywebview/浏览器兼容） ──
 // ── 产物文件扩展名 ──
-const ARTIFACT_EXTS = ['md', 'html', 'htm', 'json', 'csv', 'txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'docx', 'pdf', 'pptx', 'xlsx', 'doc', 'xls', 'ppt', 'step', 'stp', 'stl', 'obj', 'fcdoc', 'dxf', 'gcode', 'iges', '3mf', 'gltf']
+const ARTIFACT_EXTS = ['md', 'html', 'htm', 'json', 'csv', 'txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'docx', 'pdf', 'pptx', 'xlsx', 'doc', 'xls', 'ppt', 'step', 'stp', 'stl', 'obj', 'fcdoc', 'dxf', 'gcode', 'iges', '3mf', 'gltf', 'glb', 'mp4', 'mov', 'avi', 'webm', 'mp3', 'wav', 'm4a', 'ogg']
 const ARTIFACT_EXTS_SET = new Set(ARTIFACT_EXTS)
 
 // 判断链接是否为产物文件（本地路径 + 已知扩展名）
@@ -1049,6 +1049,24 @@ function streamElapsed(startTime) {
                 </div>
               </template>
             </template>
+          </div>
+          <!-- 普通 assistant 消息的产物卡片区：让最终交付产物在消息流中以卡片网格显化，而不是只藏在工具折叠区 -->
+          <div v-if="msg.role === 'assistant' && msg.type !== 'delivery' && messageArtifacts(msg).length > 0" class="mt-3">
+            <div class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">
+              <span>📦</span>
+              <span>本消息产物 ({{ messageArtifacts(msg).length }})</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button v-for="a in messageArtifacts(msg)" :key="a.path + ':card'"
+                      @click.stop="openArtifactInPanel(a)"
+                      class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 transition shadow-sm cursor-pointer group"
+                      :title="a.path">
+                <span class="text-sm">{{ fileIconFor(a.path) }}</span>
+                <span class="truncate max-w-[180px] font-medium">{{ a.title }}</span>
+                <span v-if="a.size" class="text-[10px] text-gray-400 dark:text-gray-500">{{ formatFileSize(a.size) }}</span>
+                <span class="text-gray-300 dark:text-gray-600 group-hover:text-green-400 transition">›</span>
+              </button>
+            </div>
           </div>
           <div class="flex items-center gap-2 mt-1"
                :class="msg.role === 'user' ? 'justify-end' : ''">

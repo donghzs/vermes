@@ -24,6 +24,7 @@ function addArtifact(item, sid) {
   const rec = {
     id, title: item.title || item.path?.split('/').pop() || '未知文件',
     path: item.path, mime: item.mime || '', ts: Date.now(), source: 'agent',
+    sessionId: cur,
     _content: item.content || null,
   }
   if (cur === _curSession()) {
@@ -728,6 +729,13 @@ function openArtifactById(id) {
 
           <!-- 产物列表 -->
           <div v-else-if="activeFunc?.id === 'artifacts'" class="px-3 py-3">
+            <div v-if="chat.currentSession" class="mb-2 px-2 py-1 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">
+              <div class="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                <span class="font-medium text-gray-500 dark:text-gray-400">当前会话</span>
+                <span class="mx-1">·</span>
+                <span>{{ chat.currentSession.name || '未命名会话' }}</span>
+              </div>
+            </div>
             <div v-if="artifacts.length === 0" class="flex flex-col items-center justify-center text-gray-400 py-12"><div class="text-3xl mb-2">📄</div><div class="text-xs">暂无产物</div></div>
             <div v-else class="space-y-0.5">
               <div v-for="a in artifacts" :key="a.id" class="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition" @click="openArtifactTab(a)">

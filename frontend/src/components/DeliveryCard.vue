@@ -8,7 +8,7 @@
       <span v-if="summary.cancelled > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400">{{ summary.cancelled }} 步取消</span>
       <span v-if="summary.in_progress > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">{{ summary.in_progress }} 步进行中</span>
       <span class="text-xs text-gray-500 dark:text-gray-400 ml-auto">
-        完成 {{ summary.completed }}/{{ summary.total }} 步
+        <template v-if="summary.total > 0">完成 {{ summary.completed }}/{{ summary.total }} 步</template>
         <span v-if="duration" class="ml-1">· 耗时 {{ duration }}</span>
       </span>
     </div>
@@ -127,6 +127,9 @@ function iconFor(a) {
   if (['xlsx', 'xls', 'csv'].includes(ext)) return '📊'
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return '🖼️'
   if (['py', 'js', 'ts', 'sh'].includes(ext)) return '🐍'
+  if (['step', 'stp', 'stl', 'obj', 'fcdoc', 'dxf', 'gcode', 'iges', '3mf', 'gltf', 'glb'].includes(ext)) return '🧊'
+  if (['mp4', 'mov', 'avi', 'webm'].includes(ext)) return '🎬'
+  if (['mp3', 'wav', 'm4a', 'ogg'].includes(ext)) return '🔊'
   return '📄'
 }
 
