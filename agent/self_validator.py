@@ -808,6 +808,17 @@ class SelfValidator:
         self._stats["total_checks"] += 1
         args = args if isinstance(args, Mapping) else {}
 
+        # P1-5: 工具可能返回结构化 dict（如 present_files 的 {ok, preview, artifacts} 信封）。
+        # 验证器契约要求 result: str，dict 会让 DefaultStrategy/CheatDetector 里的 .strip() 崩溃
+        # （被下方 except 捕获为 WARNING，fail-open 但不该出现）。入口兜底序列化为 JSON——
+        # 与 run_agent._tool_result_content_for_active_model 的 dict→str 处理一致，且不影响
+        # tool_executor._build_tool_artifacts 用原始 dict 提取 artifacts 推 SSE。
+        if not isinstance(result, str):
+            try:
+                result = json.dumps(result, ensure_ascii=False)
+            except (TypeError, ValueError):
+                result = str(result)
+
         try:
             strategy = self.get_strategy(tool_name)
             verify_result = strategy.verify(
