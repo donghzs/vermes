@@ -123,8 +123,18 @@ def _delegate_install(entry: BrickEntry) -> Dict[str, Any]:
 
     if entry.type == "module":
         from agent.module_catalog import install_module_code   # 已含 sha256 + safe_extract
+        # P1-4：装完必须热重载，否则代码包落盘了但工具没进 registry —— 不算「装完即用」。
+        # 与 modules_market.install 同一入口（install_module_code → reload_module_tools）。
+        from agent.module_loader import reload_module_tools
         path = install_module_code(raw)
-        return {"ok": True, "message": f"模块已安装到 {path}", "path": str(path)}
+        reload = reload_module_tools(raw)
+        return {
+            "ok": bool(reload.get("ok", False)),
+            "message": f"模块已安装到 {path}"
+                       + ("，工具已热重载" if reload.get("ok") else "，但热重载未成功"),
+            "path": str(path),
+            "reload": reload,
+        }
 
     if entry.type == "skill":
         from vermes_cli.skills_hub import do_install
@@ -188,6 +198,84 @@ def _delegate_uninstall(entry: BrickEntry) -> Dict[str, Any]:
     return {"ok": False, "message": f"不支持卸载的类型: {entry.type}"}
 
 
+# ---------------------------------------------------------------------------
+# P1-4 装后探测：确认「对话中真的可用」，而不只是「出现在注册表里」
+# ---------------------------------------------------------------------------
+def _probe_brick(entry: BrickEntry) -> Dict[str, Any]:
+    """按类型做真实可用性探测。
+
+    - tool：进程内常驻，恒可用（注册校验仅作信息展示）。
+    - module：`provides_tools` 里有多少真的注册进 `tools/registry`。
+    - skill：SKILL.md 是否出现在某个 skills 目录下。
+    - software：adapter 是否注册了工具；本体未就绪时给 `backend_hint` 指引
+      （两步安装的第二步不由 Vermes 代管，只能引导）。
+    """
+    _, raw = _split_id(entry.id)
+    declared = list(entry.provides_tools or [])
+    registered: List[str] = []
+    backend_ready: Optional[bool] = None
+    backend_hint = ""
+
+    try:
+        from tools.registry import registry as TOOL_REGISTRY
+
+        if entry.type == "tool":
+            registered = [raw] if TOOL_REGISTRY.get_entry(raw) else []
+
+        elif entry.type == "module":
+            # 代码包装完 + 热重载后，工具才会在 registry 里；逐个核对而非只看目录存在。
+            registered = [t for t in declared if TOOL_REGISTRY.get_entry(t)]
+            if not registered and declared:
+                # 自愈：模块已安装但当前进程尚未加载（如刚启动还没走到 register_modules）
+                # 时，直接观测会得到假阴性。主动热重载一次再判——与 tools/registry.py:478
+                # 「工具未注册则懒重载」的安全网思路一致。
+                try:
+                    from agent.module_catalog import is_module_installed
+                    from agent.module_loader import reload_module_tools
+                    if is_module_installed(raw):
+                        reload_module_tools(raw)
+                        registered = [t for t in declared if TOOL_REGISTRY.get_entry(t)]
+                        if not registered:
+                            backend_hint = (
+                                f"模块已安装，但工具未能在当前进程加载；"
+                                f"请重启应用或执行 reload_module_tools('{raw}')"
+                            )
+                except Exception as exc:  # noqa: BLE001
+                    _log.debug("module lazy reload during probe failed: %s", exc)
+
+        elif entry.type == "skill":
+            from agent.skill_utils import get_all_skills_dirs
+            hit = any((d / raw / "SKILL.md").exists()
+                      for d in get_all_skills_dirs() if d.is_dir())
+            registered = [raw] if hit else []
+
+        elif entry.type == "software":
+            from vermes_cli.adapters.bootstrap import discover_l2_adapters
+            n = (discover_l2_adapters() or {}).get(raw, 0)
+            registered = [raw] if n > 0 else []
+            backend_ready = n > 0
+            if n <= 0:
+                req = "、".join(entry.requires or [])
+                backend_hint = (
+                    f"adapter 已装，但本体未就绪：请先安装 {raw}"
+                    + (f"（依赖：{req}）" if req else "")
+                )
+    except Exception as exc:  # noqa: BLE001 - 探测失败降级为「未确认可用」，不阻断
+        _log.debug("probe failed for %s: %s", entry.id, exc)
+
+    available = True if entry.type == "tool" else bool(registered)
+    return {
+        "in_registry": True,
+        "install_state": entry.install_state,
+        "provides_tools": len(declared),
+        "tools_registered": len(registered),
+        "tools_registered_names": registered[:10],
+        "available": available,
+        "backend_ready": backend_ready,
+        "backend_hint": backend_hint,
+    }
+
+
 async def install_brick(request: Request, brick_id: str):
     _check_origin(request)
     reg = get_brick_registry()
@@ -201,14 +289,19 @@ async def install_brick(request: Request, brick_id: str):
         _log.warning("brick install failed: %s: %s", brick_id, exc)
         res = {"ok": False, "message": f"安装失败: {exc}"}
 
-    # 装后 probe：清缓存重新发现，确认它真的进注册表 / 变 installed（P1-4 的「装完即用」）
+    # 装后 probe（P1-4）：清缓存重新发现，再按类型做真实可用性探测。
     reg.invalidate_cache()
     after = _find(reg, brick_id)
     res["id"] = brick_id
-    res["probe"] = {
-        "in_registry": after is not None,
-        "install_state": after.install_state if after else None,
-        "provides_tools": len(after.provides_tools) if after else 0,
+    res["probe"] = _probe_brick(after) if after is not None else {
+        "in_registry": False,
+        "install_state": None,
+        "provides_tools": 0,
+        "tools_registered": 0,
+        "tools_registered_names": [],
+        "available": False,
+        "backend_ready": None,
+        "backend_hint": "",
     }
     if res.get("ok"):
         # overlay 记录：解决 tool/software 重启清空（P1-1 overlay 持久化的落点）

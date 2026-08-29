@@ -121,14 +121,34 @@ const filtered = computed(() => {
   })
 })
 
+// P1-4：装完即用的三态反馈 —— 可用 / 本体未就绪（给指引）/ 未探测到工具。
+// 不谎报成功：probe 说没注册工具，就如实告诉用户，并给下一步动作。
+function reportProbe(probe, brick) {
+  if (!probe) return
+  if (probe.available) {
+    const n = probe.tools_registered
+    toast.success(n > 0 ? `✅ 对话中已可用（${n} 个工具已注册）` : '✅ 对话中已可用')
+    return
+  }
+  if (probe.backend_hint) {
+    // software 两步安装的第二步（本体）不由 Vermes 代管，只能引导；停留久一点让用户读完
+    toast.warning(probe.backend_hint, 8000)
+    return
+  }
+  toast.warning(
+    `已安装，但未探测到已注册工具${brick.type === 'module' ? '（热重载可能失败）' : ''}` +
+      '，可点「🔄 刷新」重试或重启应用',
+    6000,
+  )
+}
+
 async function onInstall(brick) {
   busyId.value = brick.id
   try {
     const r = await api.post(`/v1/bricks/${encodeURIComponent(brick.id)}/install`, {})
     if (r?.ok) {
       toast.success(r.message || `已安装 ${brick.name}`)
-      // P1-4 闭环：装完即刻告知是否真的进了注册表（对话中可用）
-      if (r.probe?.in_registry) toast.success('✅ 对话中已可用')
+      reportProbe(r.probe, brick)
     } else {
       toast.error(r?.message || '安装失败')
     }
