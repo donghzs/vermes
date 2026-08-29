@@ -181,7 +181,7 @@ async def _handle_cadir_build(args: dict, **kw: Any) -> str:
             f"\n几何核验：solids={v.get('solids')}，size={v.get('size')}，"
             f"volume={v.get('volume_mm3')}mm³"
         )
-    return (
+    preview = (
         "✅ CAD-IR 构建完成：\n"
         f"  STEP：{step_path}\n"
         f"  STL：{stl_path}（预览网格，tolerance=0.005）\n"
@@ -189,6 +189,16 @@ async def _handle_cadir_build(args: dict, **kw: Any) -> str:
         f"  特征数：{len(result.ir.get('features', []))}{metrics}\n"
         "💡 可用 cadir_verify_step 带期望值做严格核验。"
     )
+    # 结构化产物推送（与 present_files 同机制）：artifacts 经 tool_executor
+    # _build_tool_artifacts 读 result["artifacts"] 直接灌入 tool_end 事件，
+    # 不依赖 preview 文本正则提取 / 截断长度，截断免疫。
+    return {
+        "preview": preview,
+        "artifacts": [
+            {"path": str(step_path), "title": "output.step", "source": "cadir_build"},
+            {"path": str(stl_path), "title": "output.stl", "source": "cadir_build"},
+        ],
+    }
 
 
 # ── 工具 3：STEP 几何核验（引擎 venv）───────────────────────────────────────
