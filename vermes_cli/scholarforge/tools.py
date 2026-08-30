@@ -2570,10 +2570,14 @@ SCHOLARFORGE_APPLY_TEMPLATE_SCHEMA = {
 
 async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
     """综述矩阵"""
-    topic = args.get("topic", "")
+    topic = (args.get("topic", "") or "").strip()
     project_id = resolve_project_id(args)
-    tag = args.get("tag", "")
+    tag = (args.get("tag", "") or "").strip()
     limit = args.get("limit", 30)
+
+    # P4-3 T1 输入守卫：topic 与 tag 至少提供一个，否则无法生成矩阵
+    if not topic and not tag:
+        return "❌ 综述矩阵需要 topic 或 tag 至少一个作为检索条件，请补充后重试。"
 
     try:
         from vermes_cli.scholarforge.literature_cards import literature_matrix
