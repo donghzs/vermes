@@ -16,6 +16,7 @@ from agent.module_catalog import (
     build_keyword_index,
     build_tool_index,
     catalog_modules,
+    check_module_install_conflicts,
     download_file,
     find_module_for_tool,
     is_module_installed,
@@ -268,3 +269,133 @@ def test_is_builtin_module():
     assert is_builtin_module("scholarforge")
     assert is_builtin_module("mfgcad")
     assert not is_builtin_module("nonexistent")
+
+
+# ── P4-2 治理字段（rating / dependencies / vermes_min）──────────
+class TestP4GovernanceFields:
+    def test_catalog_module_parses_rating_and_dependencies(self):
+        """catalog.json 的 rating/dependencies/vermes_min 须被解析进 CatalogModule。"""
+        cat = {
+            "modules": [
+                {
+                    "name": "mfgcad",
+                    "display_name": "MFGCAD",
+                    "latest": "0.2.0",
+                    "vermes_min": "2.3.0",
+                    "rating": 4.5,
+                    "dependencies": ["cadir", "scholarforge"],
+                    "code_sha256": "abc",
+                }
+            ]
+        }
+        mods = catalog_modules(cat)
+        assert len(mods) == 1
+        m = mods[0]
+        assert m.rating == 4.5
+        assert m.dependencies == ["cadir", "scholarforge"]
+        assert m.vermes_min == "2.3.0"
+
+    def test_catalog_module_missing_governance_fields_default(self):
+        """缺失治理字段不阻断解析（向后兼容旧 catalog）。"""
+        cat = {"modules": [{"name": "x", "display_name": "X", "latest": "1.0.0"}]}
+        m = catalog_modules(cat)[0]
+        assert m.rating is None
+        assert m.dependencies == []
+        assert m.vermes_min == "0.0.0"
+
+    def test_brick_entry_carries_governance_fields(self):
+        """BrickEntry 新增 rating/dependencies/vermes_min 字段且默认值兼容。"""
+        from vermes_cli.capabilities.registry import BrickEntry
+        b = BrickEntry(id="module:mfgcad", type="module", name="MFGCAD")
+        assert b.rating is None
+        assert b.dependencies == []
+        assert b.vermes_min is None
+        # to_dict / asdict 兼容（旧 bricks.json 反序列化不破）
+        d = b.to_dict()
+        assert d["rating"] is None
+        assert d["dependencies"] == []
+
+    def test_discover_modules_wires_requires_from_catalog_dependencies(self, monkeypatch):
+        """_discover_modules 须用 catalog.dependencies 替硬编码 requires=[]。"""
+        from vermes_cli.capabilities.registry import BrickRegistry, BrickEntry
+        fake = CatalogModule(
+            name="mfgcad", display_name="MFGCAD", latest="0.2.0",
+            vermes_min="2.3.0", rating=4.2, dependencies=["cadir"],
+            provides_tools=["mfg_text_to_cad"],
+        )
+        monkeypatch.setattr(
+            "agent.module_catalog.get_catalog_modules", lambda *_a, **_k: [fake]
+        )
+        monkeypatch.setattr(
+            "agent.module_catalog.is_module_installed", lambda _n: True
+        )
+        # is_builtin_module 可能真实调用；用 safe 的 monkeypatch 防止误判
+        try:
+            from agent.module_loader import is_builtin_module
+            monkeypatch.setattr(
+                "agent.module_loader.is_builtin_module", lambda _n: True
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        reg = BrickRegistry()
+        entries = [b for b in reg.discover() if b.id == "module:mfgcad"]
+        assert entries, "module:mfgcad 应被 discover"
+        b = entries[0]
+        # 关键：requires 来自 catalog.dependencies，不再是 []
+        assert b.requires == ["cadir"]
+        assert b.dependencies == ["cadir"]
+        assert b.rating == 4.2
+        assert b.vermes_min == "2.3.0"
+
+
+# ── P4-2 装前冲突检测（check_module_install_conflicts）──────────
+class TestP4InstallConflicts:
+    def _mods(self):
+        return [
+            CatalogModule(name="cadir", display_name="CAD", latest="1.0.0", vermes_min="2.3.0"),
+            CatalogModule(name="orphan", display_name="ORPH", latest="1.0.0"),
+        ]
+
+    def test_no_conflict_when_deps_satisfied(self):
+        target = CatalogModule(
+            name="mfgcad", display_name="M", latest="0.2.0",
+            vermes_min="2.3.0", dependencies=["cadir"],
+        )
+        assert check_module_install_conflicts(target, self._mods(), "2.4.0") == []
+
+    def test_missing_dependency_rejected(self):
+        target = CatalogModule(
+            name="mfgcad", display_name="M", latest="0.2.0",
+            dependencies=["nonexistent"],
+        )
+        c = check_module_install_conflicts(target, self._mods(), "2.4.0")
+        assert any("依赖缺失" in x for x in c)
+
+    def test_vermes_min_too_high_rejected(self):
+        target = CatalogModule(name="mfgcad", display_name="M", latest="0.2.0", vermes_min="9.9.9")
+        c = check_module_install_conflicts(target, self._mods(), "2.4.0")
+        assert any("版本不兼容" in x for x in c)
+
+    def test_vermes_min_equal_ok(self):
+        target = CatalogModule(name="mfgcad", display_name="M", latest="0.2.0", vermes_min="2.4.0")
+        assert check_module_install_conflicts(target, self._mods(), "2.4.0") == []
+
+    def test_version_regression_rejected(self):
+        target = CatalogModule(name="mfgcad", display_name="M", latest="0.2.0")
+        c = check_module_install_conflicts(
+            target, self._mods(), "2.4.0", installed_version="0.3.0",
+        )
+        assert any("版本倒退" in x for x in c)
+
+    def test_installed_higher_than_latest_is_regression(self):
+        target = CatalogModule(name="mfgcad", display_name="M", latest="0.2.0")
+        c = check_module_install_conflicts(
+            target, self._mods(), "2.4.0", installed_version="0.2.0",
+        )
+        assert any("版本倒退" in x for x in c)
+
+    def test_no_regression_when_installed_lower(self):
+        target = CatalogModule(name="mfgcad", display_name="M", latest="0.2.0")
+        assert check_module_install_conflicts(
+            target, self._mods(), "2.4.0", installed_version="0.1.0",
+        ) == []

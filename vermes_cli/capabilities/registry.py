@@ -53,6 +53,10 @@ class BrickEntry:
     size_bytes: Optional[int] = None
     requires: List[str] = field(default_factory=list)
     provides_tools: List[str] = field(default_factory=list)
+    # --- P4-2 治理字段（聚合自 catalog / 审核流；缺失即默认 None/[]）---
+    rating: Optional[float] = None          # 社区/审核评分（0.0~5.0）
+    dependencies: List[str] = field(default_factory=list)  # 依赖的其他 brick 名
+    vermes_min: Optional[str] = None        # 要求的最低 Vermes 版本（装前校验用）
     entry_point: Optional[str] = None    # SKILL.md 路径 / module 目录 / cli 二进制
     installed_at: Optional[float] = None
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -250,8 +254,13 @@ class BrickRegistry:
                         version=m.latest or None,
                         sha256=m.code_sha256 or None,
                         size_bytes=m.size_code or None,
-                        requires=[],
+                        # P4-2：requires 不再硬编码 []，改从 catalog.dependencies 带入
+                        # （装前冲突检测依据；缺失即空列表，向后兼容）。
+                        requires=list(m.dependencies or []),
                         provides_tools=list(m.provides_tools or []),
+                        rating=m.rating,
+                        dependencies=list(m.dependencies or []),
+                        vermes_min=m.vermes_min or None,
                         entry_point=str(modules_dir / m.name) if is_module_installed(m.name) else None,
                         extra={"keywords": list(m.keywords or []),
                                "repository": m.repository,

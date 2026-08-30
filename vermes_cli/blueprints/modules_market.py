@@ -134,8 +134,11 @@ def register_to(app) -> None:
             load_catalog,
             catalog_modules,
             install_module_code,
+            check_module_install_conflicts,
+            installed_module_version,
         )
         from agent.module_loader import reload_module_tools, get_modules_dir
+        from vermes_cli import __version__ as _vermes_version
 
         mods = catalog_modules(load_catalog(_resolve_catalog_url(None)))
         target = next((m for m in mods if m.name == body.id), None)
@@ -143,6 +146,17 @@ def register_to(app) -> None:
             raise HTTPException(status_code=404, detail=f"catalog 中无模块: {body.id}")
 
         modules_dir = get_modules_dir()
+        # P4-2 装前冲突检测：依赖缺失 / vermes_min 不兼容 / 版本倒退
+        installed_ver = installed_module_version(body.id, modules_dir=modules_dir)
+        conflicts = check_module_install_conflicts(
+            target, mods, _vermes_version, installed_version=installed_ver,
+        )
+        if conflicts:
+            raise HTTPException(
+                status_code=409,
+                detail={"error": "安装冲突", "conflicts": conflicts},
+            )
+
         try:
             installed_dir = install_module_code(
                 body.id, modules=mods, modules_dir=modules_dir,

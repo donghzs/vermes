@@ -74,6 +74,9 @@ class CatalogModule:
     homepage: str = ""
     description: str = ""
     recommended: bool = False
+    # --- P4-2 治理字段（catalog.json 可选；缺失即默认，不阻断解析）---
+    rating: Optional[float] = None          # 社区/审核评分（0.0~5.0），由审核流/社区给
+    dependencies: List[str] = field(default_factory=list)  # 依赖的其他 brick 名（装前冲突检测用）
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +256,9 @@ def catalog_modules(catalog: Dict[str, Any]) -> List[CatalogModule]:
             homepage=entry.get("homepage", ""),
             description=entry.get("description", ""),
             recommended=bool(entry.get("recommended", False)),
+            # P4-2 治理字段（缺失即默认，不阻断解析）
+            rating=entry.get("rating"),
+            dependencies=list(entry.get("dependencies", []) or []),
         ))
     return out
 
@@ -264,6 +270,68 @@ def build_tool_index(modules: List[CatalogModule]) -> Dict[str, str]:
         for t in m.provides_tools:
             idx[t] = m.name
     return idx
+
+
+def _semver_tuple(v: Optional[str]) -> Tuple[int, ...]:
+    """'2.3.0' -> (2, 3, 0)；非数字段记 0，None 记 (-1,) 便于比较。"""
+    if not v:
+        return (-1,)
+    parts: List[int] = []
+    for seg in str(v).split("."):
+        try:
+            parts.append(int(seg))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
+
+def check_module_install_conflicts(
+    target: CatalogModule,
+    mods: List[CatalogModule],
+    current_version: str,
+    installed_version: Optional[str] = None,
+) -> List[str]:
+    """装前冲突检测（P4-2 batch1）。
+
+    返回冲突信息列表；空列表 = 通过。检测三类：
+      1. dependencies 每个 brick 须存在于 catalog（缺失即无法满足依赖）；
+      2. vermes_min 须 <= 当前 Vermes 版本（过低即宿主不兼容）；
+      3. 版本倒退：若已装版本 >= 目标 latest，安装即降级，拒绝。
+
+    fail-open：解析异常不阻断安装（仅记录），由调用方决定是否放行。
+    """
+    conflicts: List[str] = []
+    catalog_names = {m.name for m in mods}
+
+    # 1. 依赖存在性
+    for dep in (target.dependencies or []):
+        if dep not in catalog_names:
+            conflicts.append(
+                f"依赖缺失：{target.name} 依赖 '{dep}'，但 catalog 中无此 brick"
+            )
+
+    # 2. vermes_min 比对当前版本
+    try:
+        if _semver_tuple(target.vermes_min) > _semver_tuple(current_version):
+            conflicts.append(
+                f"版本不兼容：{target.name} 要求 Vermes >= {target.vermes_min}，"
+                f"当前为 {current_version}"
+            )
+    except Exception:  # noqa: BLE001 - 版本解析异常不致命
+        pass
+
+    # 3. 版本倒退
+    if installed_version and target.latest:
+        try:
+            if _semver_tuple(installed_version) >= _semver_tuple(target.latest):
+                conflicts.append(
+                    f"版本倒退：{target.name} 已装 {installed_version} >= catalog "
+                    f"latest {target.latest}，安装即降级"
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
+    return conflicts
 
 
 def build_keyword_index(modules: List[CatalogModule]) -> Dict[str, List[str]]:
@@ -411,6 +479,21 @@ def is_module_installed(name: str, modules_dir: Optional[Path] = None) -> bool:
     """模块是否已安装到 ~/.vermes/modules/<name>/（存在 module.yaml 即视为已装）。"""
     d = Path(modules_dir) if modules_dir else _modules_dir()
     return (d / name / "module.yaml").exists()
+
+
+def installed_module_version(name: str, modules_dir: Optional[Path] = None) -> Optional[str]:
+    """读已装模块的 module.yaml `version:`；未装 / 解析失败返 None。"""
+    d = Path(modules_dir) if modules_dir else _modules_dir()
+    yf = d / name / "module.yaml"
+    if not yf.exists():
+        return None
+    try:
+        import yaml
+        data = yaml.safe_load(yf.read_text(encoding="utf-8")) or {}
+        v = data.get("version")
+        return str(v) if v else None
+    except Exception:  # noqa: BLE001 - 坏文件不致命
+        return None
 
 
 def install_module_code(name: str, modules: Optional[List[CatalogModule]] = None,
