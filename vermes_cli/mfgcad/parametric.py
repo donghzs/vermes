@@ -288,7 +288,7 @@ def extract_contract_parameters(contract: dict) -> dict:
     for feat in features:
         if not isinstance(feat, dict):
             continue
-        feat_id = feat.get("id", "")
+        feat_id = feat.get("id") or ""
         raw_params = feat.get("parameters")
         if not isinstance(raw_params, dict):
             continue
@@ -297,7 +297,11 @@ def extract_contract_parameters(contract: dict) -> dict:
                 continue  # 只抽数值，跳过字符串/布尔/嵌套
             unit = infer_unit(name, val)
             rng = suggest_range(val, unit)
-            params[name] = {
+            # feature.id 做命名空间：同一契约多个 feature 共享参数名（如都含
+            # thickness_mm）时，键形如 "base.thickness_mm" / "lip.thickness_mm"，
+            # 各自独立成滑块、写回互不污染（前端 patchContract 按同名键寻址）。
+            key = f"{feat_id}.{name}" if feat_id else name
+            params[key] = {
                 "value": float(val),
                 "unit": unit,
                 "label": label_for(name),

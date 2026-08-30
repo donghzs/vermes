@@ -420,10 +420,14 @@ async function rebuild() {
       const parsed = JSON.parse(contractText.value)
       const patchContract = (features, changed) => {
         for (const feat of features) {
+          const fid = feat?.id
           const p = feat?.parameters
           if (!p || typeof p !== 'object') continue
           for (const k of Object.keys(p)) {
-            if (k in changed) p[k] = changed[k]
+            // 与后端 extract_contract_parameters 的命名空间键对齐：
+            // "feat_id.name" 写回对应 feature 的参数，跨 feature 同名互不污染
+            const key = fid ? `${fid}.${k}` : k
+            if (key in changed) p[k] = changed[key]
           }
         }
       }
