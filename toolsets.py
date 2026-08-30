@@ -242,23 +242,6 @@ TOOLSETS = {
         "includes": []
     },
 
-    "cadir": {
-        "description": (
-            "CAD-IR 契约建模工具集（cadir / cad.ir.v1）。LLM 生成 JSON 契约 → "
-            "确定性编译 → build123d → STEP/STL，附独立几何核验（verify_step / "
-            "verify_stl）。用于：以结构化特征契约表达零件（如『底板 100x60x10mm』），"
-            "输出 STEP + STL 路径供产物面板 3D 轻预览。cadir_build 成功时通过结构化 "
-            "artifacts 推送产物（与 present_files 同机制），不依赖预览文本正则提取。"
-        ),
-        "tools": [
-            "cadir_compile",
-            "cadir_build",
-            "cadir_verify_step",
-            "cadir_verify_stl",
-        ],
-        "includes": []
-    },
-
     "browser": {
         "description": "Browser automation for web interaction (navigate, click, type, scroll, iframes, hold-click) with web search for finding URLs",
         "tools": [

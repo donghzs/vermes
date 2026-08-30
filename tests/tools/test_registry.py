@@ -544,3 +544,54 @@ class TestThreadSafety:
         toolsets = result_holder["value"]
         assert "gated" in toolsets
         assert toolsets["gated"]["available"] is True
+
+
+class TestPluginToolsetAutoResolution:
+    """P3-0 回归：插件 toolset 经钩子自动点亮，不依赖静态 TOOLSETS 字典。
+
+    锁定不变量：任意 brick 的 ``register_tools`` 只要 ``registry.register(
+    toolset=<brick>)``，前端 toolset 即自动可见——无需在 ``toolsets.py`` 的
+    静态 ``TOOLSETS`` 里手加条目。这正是删除 ``toolsets.py`` 中冗余静态
+    ``cadir`` 条目（ed617cfa45 绕 bug 补丁）安全性的命门。
+    """
+
+    def test_plugin_toolset_resolves_without_static_entry(self):
+        from tools.registry import registry
+        from toolsets import TOOLSETS, get_toolset_names, resolve_toolset
+
+        # 合成 brick 名：刻意不在静态 TOOLSETS 里，模拟「新装上的 GitHub brick」
+        ts = "p3_plugin_toolset_regression"
+        names = [f"{ts}_compile", f"{ts}_build", f"{ts}_verify", f"{ts}_export"]
+        assert ts not in TOOLSETS, "合成 toolset 不应出现在静态 TOOLSETS（测试自污染）"
+
+        for n in names:
+            registry.register(
+                name=n, toolset=ts, schema=_make_schema(n), handler=_dummy_handler
+            )
+        try:
+            # 经插件钩子解析（非静态字典）→ 证明单一真相源是 tools.registry
+            assert set(resolve_toolset(ts)) == set(names)
+            assert ts in get_toolset_names()
+        finally:
+            for n in names:
+                registry.deregister(n)
+
+    def test_static_and_plugin_toolset_merge_is_idempotent(self):
+        from tools.registry import registry
+        from toolsets import get_toolset
+
+        ts = "p3_plugin_toolset_regression"
+        names = [f"{ts}_compile", f"{ts}_build"]
+        for n in names:
+            registry.register(
+                name=n, toolset=ts, schema=_make_schema(n), handler=_dummy_handler
+            )
+        try:
+            resolved = get_toolset(ts)
+            assert resolved is not None
+            assert set(resolved["tools"]) == set(names)
+            # 删静态项后走插件钩子；这与静态条目并存时不重复、不遗漏
+            assert resolved["includes"] == []
+        finally:
+            for n in names:
+                registry.deregister(n)
