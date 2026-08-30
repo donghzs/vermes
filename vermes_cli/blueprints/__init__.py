@@ -24,6 +24,7 @@ from . import mcp_catalog
 from . import credential_lifecycle
 from . import bricks  # P1-2: 四态合一注册表 API（GET/POST /api/v1/bricks）
 from . import invoke  # P3-2/P3-3: 统一能力调用端点（POST /api/invoke 等 4 个）
+from . import benchmark  # P4-4 T2: benchmark 可视化大盘端点
 
 __all__ = [
     "quota_bp", "wechat_bp", "models_bp",
@@ -32,5 +33,5 @@ __all__ = [
     "cron_jobs", "workflows", "update", "skills_tools",
     "analytics", "status", "gateway_channels", "profiles",
     "oauth", "storage", "artifacts", "modules_market", "mcp_catalog", "credential_lifecycle",
-    "bricks", "invoke",
+    "bricks", "invoke", "benchmark",
 ]
