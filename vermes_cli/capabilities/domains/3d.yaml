@@ -1,0 +1,16 @@
+# P3-4 D7：3D 行业领域声明（首例，验证「加行业不改码」）。
+# 新增一个行业领域只需复制本文件、改 domain/bricks/caps，不碰任何代码。
+#
+# domain : 领域标识（驱动 BrickRegistry.domain 打标 + GET /api/v1/bricks?domain= 过滤）
+# bricks : 属于该领域的 module brick 名（cadir/mfgcad 已内置）
+# caps   : 工具名 → 所需模型能力维度（外置原 module_service.CAP_REQUIRED_DIMS，
+#          驱动 model_capable 灰显；维度取值见 capabilities/manifest.py 五维）
+domain: 3d
+bricks:
+  - cadir
+  - mfgcad
+caps:
+  cadir_build: [tools]
+  cadir_compile: [tools]
+  cadir_verify_step: [tools]
+  cadir_verify_stl: [tools]

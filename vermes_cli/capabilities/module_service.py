@@ -21,14 +21,26 @@ from vermes_cli.capabilities import manifest as cap_manifest
 from vermes_cli import runtime_provider
 
 
-# --- cap → 必需 capability 维度（首版硬编码；后续可进 domains yaml，D5）---
+# --- cap → 必需 capability 维度 ---
+# P3-4 D7 起优先读 domains/*.yaml（见 vermes_cli/capabilities/domains.py），
+# 实现「加行业不改码」；yaml 缺失时回退本硬编码兜底（fail-open）。
 # 键 = 工具名（cap 标识）；值 = 该 cap 要求当前模型具备的 capability tag 集合。
-CAP_REQUIRED_DIMS: Dict[str, set] = {
+_CAP_REQUIRED_DIMS_FALLBACK: Dict[str, set] = {
     "cadir_build": {"tools"},
     "cadir_compile": {"tools"},
     "cadir_verify_step": {"tools"},
     "cadir_verify_stl": {"tools"},
 }
+
+
+def _required_dims(tool_name: str) -> set:
+    """返回某 cap（工具名）所需的模型能力维度集合（优先 yaml，回退硬编码）。"""
+    from vermes_cli.capabilities.domains import load_domain_cap_dims
+
+    dims = load_domain_cap_dims().get(tool_name)
+    if dims:
+        return set(dims)
+    return _CAP_REQUIRED_DIMS_FALLBACK.get(tool_name, set())
 
 
 def _resolve_tool(cap: str) -> Optional[str]:
@@ -52,7 +64,7 @@ def model_capable(tool_name: str, provider: Optional[str] = None) -> Dict[str, A
     返回 ``{ok, required, missing, provider, note?}``。
     fail-open：provider 未知（不在能力索引 / ``"auto"``）时 ``ok=True``，无法判定则不拦截。
     """
-    required = sorted(CAP_REQUIRED_DIMS.get(tool_name, set()))
+    required = sorted(_required_dims(tool_name))
     if not required:
         return {"ok": True, "required": [], "missing": [], "provider": provider or ""}
     pid = (provider or runtime_provider.resolve_requested_provider() or "").strip().lower()

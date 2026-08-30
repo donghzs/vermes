@@ -219,6 +219,10 @@ class BrickRegistry:
     def _discover_modules(self) -> List[BrickEntry]:
         out: List[BrickEntry] = []
         try:
+            from vermes_cli.capabilities.domains import domain_for_brick
+        except Exception:  # noqa: BLE001
+            domain_for_brick = lambda _n: None  # fail-open：domains 加载器不可用时不打标
+        try:
             from agent.module_catalog import (
                 bundled_catalog_path, default_catalog_path,
                 get_catalog_modules, is_module_installed,
@@ -240,6 +244,7 @@ class BrickRegistry:
                         type="module",
                         name=m.display_name or m.name,
                         description=m.description or "",
+                        domain=domain_for_brick(m.name),
                         install_state="installed" if installed else "available",
                         source="bundled" if is_builtin else ("github-release" if m.repository else "official"),
                         version=m.latest or None,
