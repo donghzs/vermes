@@ -626,6 +626,23 @@ TOOLSETS = {
 }
 
 
+def _plugin_toolset_brick_description(name: str) -> Optional[str]:
+    """回退取插件 toolset 的展示描述：优先读 brick 元数据（module.yaml description）。
+
+    消除 P3-0 删静态 TOOLSETS 后的「Plugin toolset: {name}」占位退化（验收项 #27）。
+    brick 不可用时返回 None，调用方保留占位；全程 fail-open 不阻断其他源。
+    """
+    try:
+        from vermes_cli.capabilities.registry import get_brick_registry
+        for b in get_brick_registry().discover():
+            if b.id == f"module:{name}" or b.name == name:
+                if b.description:
+                    return b.description
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def get_toolset(name: str) -> Optional[Dict[str, Any]]:
     """
     Get a toolset definition by name.
@@ -669,6 +686,12 @@ def get_toolset(name: str) -> Optional[Dict[str, Any]]:
         alias = reverse_aliases.get(name)
         if alias:
             description = f"MCP server '{alias}' tools"
+        else:
+            # 插件 brick（module:*）优先读 brick 元数据描述，消除 P3-0 删静态
+            # TOOLSETS 后的「Plugin toolset: {name}」占位退化（验收项 #27）。
+            brick_desc = _plugin_toolset_brick_description(name)
+            if brick_desc:
+                description = brick_desc
 
     return {
         "description": description,

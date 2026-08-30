@@ -595,3 +595,48 @@ class TestPluginToolsetAutoResolution:
         finally:
             for n in names:
                 registry.deregister(n)
+
+
+class TestPluginToolsetBrickDescription:
+    """P3-4 验收项 #27：插件 toolset 的 description 须读 brick 元数据，
+    消除 P3-0 删静态 TOOLSETS 后的「Plugin toolset: {name}」占位退化。"""
+
+    def test_plugin_toolset_uses_brick_description(self):
+        from tools.registry import registry
+        from toolsets import TOOLSETS, get_toolset
+        from vermes_cli.capabilities.registry import BrickEntry, get_brick_registry
+
+        ts = "p3_brick_desc_synth"
+        names = [f"{ts}_build", f"{ts}_compile"]
+        assert ts not in TOOLSETS, "合成 toolset 不应出现在静态 TOOLSETS（测试自污染）"
+        for n in names:
+            registry.register(
+                name=n, toolset=ts, schema=_make_schema(n), handler=_dummy_handler
+            )
+
+        # brick 元数据描述（module.yaml description 的真相源，类比 cadir 中文文案）
+        fake_brick = BrickEntry(
+            id=f"module:{ts}",
+            type="module",
+            name=ts,
+            description="P3 合成 brick 中文描述（cad.ir.v1 类比，验证占位消除）",
+        )
+
+        class _FakeBrickRegistry:
+            def discover(self, refresh=False):
+                return [fake_brick]
+
+        try:
+            # patch 后 get_toolset 走插件回退分支，应读 brick 描述而非占位
+            with patch(
+                "vermes_cli.capabilities.registry.get_brick_registry",
+                return_value=_FakeBrickRegistry(),
+            ):
+                info = get_toolset(ts)
+            assert info is not None
+            assert info["description"] == fake_brick.description
+            assert not info["description"].startswith("Plugin toolset:")
+            assert set(info["tools"]) == set(names)
+        finally:
+            for n in names:
+                registry.deregister(n)
