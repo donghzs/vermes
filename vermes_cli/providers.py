@@ -239,6 +239,61 @@ class ProviderDef:
     source: str = ""                      # "models.dev", "Vermes", "user-config"
 
 
+# -- ModelBackend (P3-1) ------------------------------------------------------
+# Thin facade composing a ProviderDef for the model承接口.  Deliberately does
+# NOT introduce a registry: transport registration lives in
+# ``agent.transports`` (register_transport + module self-registration) and
+# provider identity in this module's ProviderDef — see module docstring
+# "No parallel registries".  ModelBackend only *reads* that existing state,
+# giving P3-2/P3-3 (model switch UI + model_capable) one import target.
+
+@dataclass
+class ModelBackend:
+    """Unified view of a (provider, transport) for model-capability code.
+
+    Composes already-data-driven pieces instead of duplicating them:
+      · ``transport``    ← ProviderDef.transport (this module, single source)
+      · ``api_mode``     ← TRANSPORT_TO_API_MODE (this module)
+      · ``probe_models`` ← vermes_cli.models.probe_api_models (deferred import)
+    """
+
+    provider: ProviderDef
+
+    @property
+    def transport(self) -> str:
+        return self.provider.transport
+
+    @property
+    def api_mode(self) -> Optional[str]:
+        return TRANSPORT_TO_API_MODE.get(self.provider.transport)
+
+    def probe_models(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        timeout: float = 5.0,
+    ) -> Dict[str, Any]:
+        """Probe available models for this backend.
+
+        Delegates to the existing ``probe_api_models`` (api_mode-aware); the
+        import is deferred to keep this module's import graph light.
+        """
+        from vermes_cli.models import probe_api_models
+
+        return probe_api_models(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            api_mode=self.api_mode,
+        )
+
+    @classmethod
+    def for_id(cls, provider_id: str) -> "Optional[ModelBackend]":
+        """Build a backend from a provider id/alias (None if unknown)."""
+        pdef = get_provider(provider_id)
+        return cls(pdef) if pdef is not None else None
+
+
 # -- Aliases ------------------------------------------------------------------
 # Maps human-friendly / legacy names to canonical provider IDs.
 # Uses models.dev IDs where possible.
