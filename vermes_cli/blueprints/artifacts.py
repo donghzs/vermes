@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, HTMLResponse, Response, JSONResponse
 import base64
+import json
 
 
 def _allowed_roots():
@@ -159,6 +160,60 @@ def _check_origin(request: Request):
     # 无 origin（Electron 内部请求）或 localhost 来源 → 放行
 
 
+def _apply_docx_paragraphs(path, paragraphs):
+    """P4-4 T1：把编辑后的段落写回 docx（python-docx 已随环境存在）。
+
+    按段落 index 回填，保结构（空段/非编辑段不动）。仅处理正文段落，表格不在 v1 范围。
+    """
+    from docx import Document
+    doc = Document(str(path))
+    text_by_index = {int(p['i']): p.get('text', '') for p in paragraphs if 'i' in p}
+    updated = 0
+    for i, para in enumerate(doc.paragraphs):
+        if i in text_by_index and para.text != text_by_index[i]:
+            para.text = text_by_index[i]
+            updated += 1
+    doc.save(str(path))
+    return updated
+
+
+def _regenerate_pdf_from_md(path, md):
+    """P4-4 T1：用 pandoc 从 markdown 重生成 pdf（pdf 不编辑回存，只重生成）。
+
+    PDF 引擎选择：优先 weasyprint（纯 Python，可随 .venv 打包，无需 LaTeX 全家桶）；
+    否则回退 pandoc 默认引擎（LaTeX，需 pdflatex 等）。二者皆缺则报清晰错误。
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    pandoc = shutil.which('pandoc')
+    if not pandoc:
+        raise RuntimeError('pandoc 未安装，无法重生成 pdf（请 brew install pandoc 或 apt install pandoc）')
+
+    engine_args = []
+    # weasyprint 优先：轻量、可打包进 .venv；需其 Python 模块可正常 import
+    if shutil.which('weasyprint'):
+        try:
+            import weasyprint  # noqa: F401
+            engine_args = ['--pdf-engine=weasyprint']
+        except Exception:
+            pass
+
+    with tempfile.NamedTemporaryFile('w', suffix='.md', delete=False, encoding='utf-8') as f:
+        f.write(md or '')
+        md_path = f.name
+    try:
+        proc = subprocess.run(
+            [pandoc, '-f', 'markdown', '-t', 'pdf', *engine_args, '-o', str(path), md_path],
+            capture_output=True, text=True, timeout=120,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f'pandoc 重生成失败: {proc.stderr[:300]}')
+    finally:
+        os.unlink(md_path)
+
+
 def register_to(app):
     @app.get('/api/v1/workspace/tree')
     async def workspace_tree(path: str = '', request: Request = None):
@@ -192,6 +247,41 @@ def register_to(app):
         except PermissionError:
             raise HTTPException(status_code=403, detail="无权限读取该目录")
         return {'items': items, 'current': str(safe.relative_to(Path.cwd().resolve())) if str(safe).startswith(str(Path.cwd().resolve())) else str(safe)}
+
+    @app.get('/api/v1/artifacts/{path:path}/editable')
+    async def editable_units(path: str, request: Request):
+        """P4-4 T1 协同编辑：返回可编辑单元。
+        - docx：python-docx 提取段落列表 [{i, text}]（含空段，保结构）
+        - pdf：若同目录存在同名 .md 源，返回 {regenerable:true, source_md}
+        - xlsx：前端用 SheetJS 就地管理，返回 {managed:'frontend'}
+        """
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
+        if not safe_path.exists():
+            raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
+        ext = safe_path.suffix.lower()
+        if ext == '.docx':
+            try:
+                from docx import Document
+            except ImportError:
+                return JSONResponse({'type': 'docx', 'error': 'python-docx 未安装'}, status_code=501)
+            try:
+                doc = Document(str(safe_path))
+                paragraphs = [{'i': i, 'text': p.text} for i, p in enumerate(doc.paragraphs)]
+                return JSONResponse({'type': 'docx', 'paragraphs': paragraphs})
+            except Exception as e:
+                return JSONResponse({'type': 'docx', 'error': f'解析失败: {e}'}, status_code=422)
+        if ext == '.pdf':
+            md_src = safe_path.with_suffix('.md')
+            if md_src.exists():
+                try:
+                    return JSONResponse({'type': 'pdf', 'regenerable': True, 'source_md': md_src.read_text(encoding='utf-8')})
+                except Exception as e:
+                    return JSONResponse({'type': 'pdf', 'regenerable': True, 'error': f'读取 md 源失败: {e}'}, status_code=422)
+            return JSONResponse({'type': 'pdf', 'regenerable': False, 'reason': '未找到同名 .md 源，无法重生成'})
+        if ext == '.xlsx':
+            return JSONResponse({'type': 'xlsx', 'managed': 'frontend'})
+        return JSONResponse({'type': 'unsupported', 'reason': f'不支持的可编辑类型: {ext}'}, status_code=415)
 
     @app.get('/api/v1/artifacts/{path:path}/resolve')
     async def resolve_artifact(path: str, request: Request):
@@ -297,9 +387,30 @@ def register_to(app):
         if len(body) > _MAX_FILE_SIZE:
             raise HTTPException(status_code=413, detail=f"内容过大（{len(body) // 1024 // 1024}MB），上限 50MB")
 
+        ctype = request.headers.get('Content-Type', '') or ''
+        # P4-4 T1：docx/pdf 走结构化 JSON 回存；其余（md/code/xlsx 字节）保持原文本/二进制写回
+        if 'application/json' in ctype:
+            try:
+                payload = json.loads(body.decode('utf-8'))
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"JSON 解析失败: {e}")
+            etype = payload.get('type')
+            try:
+                if etype == 'docx':
+                    n = _apply_docx_paragraphs(safe_path, payload.get('paragraphs', []))
+                    return {'ok': True, 'type': 'docx', 'updated': n, 'path': str(safe_path)}
+                if etype == 'pdf':
+                    _regenerate_pdf_from_md(safe_path, payload.get('md', ''))
+                    return {'ok': True, 'type': 'pdf', 'path': str(safe_path), 'size': safe_path.stat().st_size}
+            except RuntimeError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"结构化回存失败: {e}")
+            raise HTTPException(status_code=400, detail=f"不支持的结构化回存类型: {etype}")
+
+        # 文本类以 UTF-8 写回；二进制（如 xlsx 被前端 SheetJS 重生成后回存）按字节写回
         try:
             safe_path.parent.mkdir(parents=True, exist_ok=True)
-            # 文本类以 UTF-8 写回；二进制（如图片被误命中）按字节写回
             try:
                 safe_path.write_text(body.decode('utf-8'), encoding='utf-8')
             except UnicodeDecodeError:
