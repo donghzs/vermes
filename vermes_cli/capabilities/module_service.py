@@ -70,6 +70,36 @@ def model_capable(tool_name: str, provider: Optional[str] = None) -> Dict[str, A
     return {"ok": not missing, "required": required, "missing": missing, "provider": pid}
 
 
+def get_capable(cap: str, provider: Optional[str] = None) -> Dict[str, Any]:
+    """查询当前模型是否满足某 cap 的维度要求（供前端灰显，P3-3）。
+
+    复用 ``model_capable``；先 cap → 工具名解析（灰显按 cap 维度判定）。
+    返回 ``{cap, ok, satisfied, missing_dims, required_dims, provider, reason}``。
+    fail-open：cap 无匹配工具（brick 未装）时 ``satisfied=True``（无法判定则不灰显）。
+    """
+    tool_name = _resolve_tool(cap)
+    if not tool_name:
+        return {
+            "cap": cap,
+            "ok": True,
+            "satisfied": True,
+            "missing_dims": [],
+            "required_dims": [],
+            "provider": provider or "",
+            "reason": "no_tool_for_cap_fail_open",
+        }
+    chk = model_capable(tool_name, provider)
+    return {
+        "cap": cap,
+        "ok": chk["ok"],
+        "satisfied": chk["ok"],
+        "missing_dims": chk["missing"],
+        "required_dims": chk["required"],
+        "provider": chk["provider"],
+        "reason": chk.get("note") or ("ok" if chk["ok"] else "missing_dims"),
+    }
+
+
 def invoke(
     cap: str,
     payload: Optional[Dict[str, Any]] = None,

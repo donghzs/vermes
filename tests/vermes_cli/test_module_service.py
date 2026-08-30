@@ -122,8 +122,36 @@ def test_unknown_provider_fail_open(patched, monkeypatch):
 def test_invoke_router_registers_routes():
     paths = {r.path for r in invoke_router.routes}
     assert "/api/invoke" in paths
+    assert "/api/invoke/capable" in paths
     assert "/api/model-change" in paths
     assert "/api/model-change/stream" in paths
+
+
+def test_get_capable_satisfied(patched):
+    out = module_service.get_capable("cadir_build")
+    assert out["cap"] == "cadir_build"
+    assert out["satisfied"] is True
+    assert out["missing_dims"] == []
+    assert out["required_dims"] == ["tools"]
+
+
+def test_get_capable_not_satisfied(patched, monkeypatch):
+    monkeypatch.setattr(
+        cap_manifest, "build_provider_capability_index", lambda: {"anthropic": ["vision"]}
+    )
+    monkeypatch.setattr(
+        runtime_provider, "resolve_requested_provider", lambda requested=None: "anthropic"
+    )
+    out = module_service.get_capable("cadir_build")
+    assert out["satisfied"] is False
+    assert out["missing_dims"] == ["tools"]
+
+
+def test_get_capable_unknown_cap_fail_open(patched, monkeypatch):
+    monkeypatch.setattr(discovery, "route_toolset", lambda cap: [])
+    out = module_service.get_capable("nonexistent_cap")
+    assert out["satisfied"] is True  # 无匹配工具 → fail-open 不灰显
+    assert out["reason"] == "no_tool_for_cap_fail_open"
 
 
 def test_broadcast_model_change_pubsub():

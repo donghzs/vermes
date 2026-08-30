@@ -37,6 +37,12 @@ def post_invoke(req: InvokeRequest):
     return module_service.invoke(req.cap, payload=req.payload, session_id=req.session_id)
 
 
+@router.get("/api/invoke/capable")
+def get_capable(cap: str, provider: Optional[str] = None):
+    """查询当前模型是否满足某 cap 维度要求（P3-3 灰显用；复用 model_capable）。"""
+    return module_service.get_capable(cap, provider)
+
+
 @router.post("/api/model-change")
 def post_model_change(req: ModelChangeRequest):
     """广播模型切换事件（vermes-model-change）；前端经 /api/model-change/stream 订阅。"""
