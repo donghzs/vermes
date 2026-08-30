@@ -6,7 +6,8 @@
 //
 // 请求体: { cap, payload: { args, tier?, provider? }, session_id? }
 // 响应:   { cap, tool, result }  |  { error }  |  { capability_check: 'not_satisfied', missing }
-// 端点无 auth（桌面本地运行），仅带 Content-Type。
+// 端点已在 web_server.py _PUBLIC_API_PATHS 中开放（桌面本地模式信任边界，与
+// /api/chat/completions 同源）——裸 fetch 不带 session token 是有意为之，勿再加 auth 假设。
 export async function invokeCap(cap, payload = {}, sessionId = null) {
   const body = { cap, payload: payload || {}, session_id: sessionId }
   const resp = await fetch('/api/invoke', {

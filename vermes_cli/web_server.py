@@ -471,6 +471,16 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/v1/artifacts",
     # 工作目录文件树浏览（文件 tab）
     "/api/v1/workspace",
+    # P3-3 能力调用（桌面本地模式信任边界，与 /api/chat/completions / /api/mfgcad 同源设计）
+    # 注意：前端 invoke.js / capability.ts 用裸 fetch / EventSource（浏览器限制 EventSource
+    # 无法带自定义 header），故这些端点必须 public，否则 auth_middleware 返回 401 会让
+    # 「能力徽标灰显 / 徽标点击 invoke / 模型切换跨 tab 广播」三件事在桌面端全部失效。
+    # 执行端点与读端点一并开放：invoke 本质是 cap 级工具调度，与已 public 的
+    # /api/chat/completions（agent 任意调工具）同风险等级。
+    "/api/invoke",
+    "/api/invoke/capable",
+    "/api/model-change",
+    "/api/model-change/stream",
 })
 
 
