@@ -32,6 +32,13 @@
       <span v-else class="text-xs text-gray-600">· 能力待收录</span>
     </div>
 
+    <!-- 能力调用状态（P3-3：徽标点击 invoke 结果/错误） -->
+    <div
+      v-if="capStatus"
+      class="text-xs mb-2 font-mono break-all"
+      :class="capStatus.type === 'err' ? 'text-red-400' : capStatus.type === 'ok' ? 'text-green-400' : 'text-gray-400'"
+    >{{ capStatus.msg }}</div>
+
     <!-- 元信息：域 / 工具数 / 体积 / 依赖 -->
     <div class="flex flex-wrap items-center gap-3 text-xs text-gray-500 mb-4">
       <span v-if="brick.domain">🏷 {{ brick.domain }}</span>
@@ -72,7 +79,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { invokeCap, capNeedsPayload } from '@/services/invoke'
+import { capSatisfied, trackCap, startCapabilityWatch } from '@/stores/capability'
 
 const props = defineProps({
   brick: { type: Object, required: true },
@@ -108,5 +117,42 @@ const sizeLabel = computed(() => {
   if (!n) return ''
   if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + 'MB'
   return Math.round(n / 1024) + 'KB'
+})
+
+// --- P3-3：能力徽标点击调 invoke + 灰显 ---
+const capStatus = ref(null)
+const capInvoking = ref(false)
+
+function capChipClass(c) {
+  if (!capSatisfied(c)) return 'text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-600 opacity-40 cursor-not-allowed'
+  return 'text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300 cursor-pointer hover:bg-gray-600 transition'
+}
+function capChipTitle(c) {
+  if (!capSatisfied(c)) return '当前模型不满足该能力所需维度，已灰显'
+  if (capNeedsPayload(c)) return '该能力需要参数，请在对应 brick 面板中操作'
+  return '点击运行该能力'
+}
+async function onCapClick(c) {
+  if (!capSatisfied(c)) return
+  if (capNeedsPayload(c)) {
+    capStatus.value = { type: 'info', msg: '该能力需要参数，请在对应 brick 面板中操作' }
+    return
+  }
+  capInvoking.value = true
+  capStatus.value = { type: 'info', msg: `运行中：${c}…` }
+  try {
+    const out = await invokeCap(c)
+    const shown = out && out.result != null ? out.result : out
+    capStatus.value = { type: 'ok', msg: `${c} → ${JSON.stringify(shown)}` }
+  } catch (e) {
+    capStatus.value = { type: 'err', msg: e.message || String(e) }
+  } finally {
+    capInvoking.value = false
+  }
+}
+
+onMounted(() => {
+  startCapabilityWatch()
+  for (const c of caps.value) trackCap(c)
 })
 </script>
