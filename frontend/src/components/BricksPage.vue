@@ -1,134 +1,83 @@
 <template>
-  <div class="h-full flex flex-col bg-gray-900 text-white">
+  <div class="h-full flex flex-col bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
     <!-- 顶部 -->
-    <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between flex-wrap gap-3">
+    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-wrap gap-3">
       <div class="flex items-center gap-3">
         <span class="text-2xl">🧱</span>
         <h1 class="text-xl font-bold">积木市场</h1>
         <span class="text-sm text-gray-400">
-          {{ loading ? '加载中…' : `${filtered.length} / ${total} 个` }}
+          {{ loading ? '加载中…' : `${activeList.length} 个可安装` }}
         </span>
       </div>
       <button
-        @click="load(true)"
+        @click="loadAll(true)"
         :disabled="loading"
-        class="px-3 py-1.5 text-sm rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition"
+        class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition"
       >
         {{ loading ? '刷新中…' : '🔄 刷新' }}
       </button>
     </div>
 
-    <!-- P4-1 待审核 tab -->
-    <div class="px-6 py-3 border-b border-gray-800 flex items-center gap-2">
-      <button
-        @click="switchView('market')"
-        class="px-3 py-1 text-sm rounded-full transition"
-        :class="view === 'market'
-          ? 'bg-blue-600 text-white'
-          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'"
-      >🧱 积木市场</button>
-      <button
-        @click="switchView('pending')"
-        class="px-3 py-1 text-sm rounded-full transition relative"
-        :class="view === 'pending'
-          ? 'bg-amber-600 text-white'
-          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'"
-      >⏳ 待审核
-        <span v-if="pendingCount > 0" class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-red-500 text-white">{{ pendingCount }}</span>
-      </button>
-    </div>
-
-    <!-- 过滤器：类型 / 关键词 / 仅已装（仅市场视图）-->
-    <div v-if="view === 'market'" class="px-6 py-3 border-b border-gray-800 flex flex-wrap items-center gap-2">
+    <!-- 类型筛选 + 搜索 -->
+    <div class="px-6 py-3 border-b border-gray-200 dark:border-gray-800 flex flex-wrap items-center gap-2">
       <button
         v-for="t in TYPE_FILTERS"
         :key="t.key"
         @click="typeFilter = t.key"
         class="px-3 py-1 text-xs rounded-full transition"
         :class="typeFilter === t.key
-          ? 'bg-blue-600 text-white'
-          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'"
+          ? 'bg-emerald-600 text-white'
+          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
       >{{ t.label }}</button>
 
-      <span class="w-px h-5 bg-gray-700 mx-1"></span>
+      <span class="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></span>
+
+      <!-- 技能市场渠道筛选（仅技能类型时显示） -->
+      <template v-if="typeFilter === 'skill'">
+        <button
+          v-for="s in SOURCE_FILTERS"
+          :key="s.id"
+          @click="skillSource = s.id; searchSkills()"
+          class="px-2.5 py-1 text-xs rounded-full transition"
+          :class="skillSource === s.id
+            ? 'bg-blue-600 text-white'
+            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'"
+        >{{ s.label }}</button>
+      </template>
+
+      <span class="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></span>
 
       <input
         v-model="query"
-        placeholder="搜索名称 / id / 描述…"
-        class="px-3 py-1 text-sm rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 w-64"
+        @keyup.enter="searchSkills"
+        :placeholder="typeFilter === 'skill' ? '搜索技能名称…' : '搜索名称 / 描述…'"
+        class="px-3 py-1 text-sm rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-emerald-500 w-64"
       />
-      <label class="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer select-none">
-        <input type="checkbox" v-model="installedOnly" class="accent-blue-500" /> 仅已装
-      </label>
     </div>
 
     <!-- 内容 -->
     <div class="flex-1 overflow-y-auto p-6">
-      <div v-if="loading && bricks.length === 0" class="text-center text-gray-400 py-12">
+      <div v-if="loading && activeList.length === 0" class="text-center text-gray-400 py-12">
         加载中…
       </div>
 
       <div v-else-if="error" class="text-center text-gray-400 py-12">
         <p class="text-lg">⚠️ {{ error }}</p>
-        <p class="text-sm mt-2">后端 bricks 端点未就绪时，需重新打包 DMG 才生效（工程约束 #1）</p>
       </div>
 
-      <div v-else-if="view === 'market' && filtered.length === 0" class="text-center text-gray-400 py-12">
-        <p class="text-lg">🧱 无匹配的积木</p>
-        <p class="text-sm mt-2">换个筛选条件或关键词试试</p>
+      <div v-else-if="activeList.length === 0" class="text-center text-gray-400 py-12">
+        <p class="text-lg">🧱 暂无可安装的积木</p>
+        <p class="text-sm mt-2">换个筛选或搜索关键词试试</p>
       </div>
 
-      <div v-else-if="view === 'market'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <BrickCard
-          v-for="b in filtered"
-          :key="b.id"
-          :brick="b"
-          :busy="busyId === b.id"
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <MarketCard
+          v-for="item in activeList"
+          :key="item._key"
+          :item="item"
+          :busy="busyId === item._key"
           @install="onInstall"
-          @uninstall="onUninstall"
         />
-      </div>
-
-      <!-- P4-1 待审核列表 -->
-      <div v-else-if="view === 'pending'" class="space-y-3">
-        <div v-if="pendingLoading" class="text-center text-gray-400 py-12">加载中…</div>
-        <div v-else-if="pendingReviews.length === 0" class="text-center text-gray-400 py-12">
-          <p class="text-lg">✅ 暂无待审核的 brick</p>
-          <p class="text-sm mt-2">开发者提交的 brick 会出现在这里，由你审核上架</p>
-        </div>
-        <div
-          v-for="rev in pendingReviews"
-          :key="rev.brick_id"
-          class="bg-gray-800 border border-gray-700 rounded-xl p-4"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <h3 class="text-base font-semibold truncate">{{ rev.brick_id }}</h3>
-              <p class="text-xs text-gray-400 mt-0.5">
-                提交者：{{ rev.submitted_by || '未知' }} ·
-                {{ rev.submitted_at ? new Date(rev.submitted_at * 1000).toLocaleString() : '' }}
-              </p>
-              <div v-if="rev.metadata && Object.keys(rev.metadata).length" class="mt-2 text-xs text-gray-300 space-y-0.5">
-                <p v-if="rev.metadata.version">版本：{{ rev.metadata.version }}</p>
-                <p v-if="rev.metadata.vermes_min">要求 Vermes ≥ {{ rev.metadata.vermes_min }}</p>
-                <p v-if="rev.metadata.dependencies && rev.metadata.dependencies.length">依赖：{{ rev.metadata.dependencies.join(', ') }}</p>
-                <p v-if="rev.metadata.description" class="line-clamp-2">描述：{{ rev.metadata.description }}</p>
-              </div>
-            </div>
-            <div class="flex gap-2 shrink-0">
-              <button
-                @click="onApprove(rev)"
-                :disabled="busyReview === rev.brick_id"
-                class="px-3 py-1.5 text-sm rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 transition"
-              >✅ 通过</button>
-              <button
-                @click="onReject(rev)"
-                :disabled="busyReview === rev.brick_id"
-                class="px-3 py-1.5 text-sm rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 transition"
-              >⛔ 拒绝</button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -138,156 +87,189 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../services/api'
 import { toast } from '../utils/toast'
-import BrickCard from './BrickCard.vue'
+import MarketCard from './MarketCard.vue'
 
-// P1-3：四态合一入口。旧 /module-store、/skill-market 已重定向到本页。
+// ── 类型筛选 ──
 const TYPE_FILTERS = [
   { key: '', label: '全部' },
   { key: 'skill', label: '🧩 技能' },
-  { key: 'tool', label: '🛠 工具' },
   { key: 'module', label: '📦 模块' },
   { key: 'software', label: '🖥 软件' },
 ]
 
-const bricks = ref([])
-const total = ref(0)
+// ── 技能市场渠道来源 ──
+const SOURCE_FILTERS = [
+  { id: 'all', label: '全部' },
+  { id: 'official', label: '官方' },
+  { id: 'clawhub', label: 'QClaw' },
+  { id: 'github', label: 'GitHub' },
+  { id: 'skillhub', label: 'Skillhub' },
+  { id: 'lobehub', label: 'LobeHub' },
+]
+
+const typeFilter = ref('')
+const skillSource = ref('all')
+const query = ref('')
 const loading = ref(false)
 const error = ref('')
-const query = ref('')
-const typeFilter = ref('')
-const installedOnly = ref(false)
 const busyId = ref('')
 
-// P4-1 待审核视图
-const view = ref('market')
-const pendingReviews = ref([])
-const pendingLoading = ref(false)
-const busyReview = ref('')
-const pendingCount = computed(() => pendingReviews.value.length)
+// ── 三个市场的数据 ──
+const skillMarketItems = ref([])    // 技能市场搜索结果
+const skillMarketTotal = ref(0)
+const moduleItems = ref([])          // 模块商店 catalog
+const softwareItems = ref([])        // 软件发现推荐
 
-async function load(refresh = false) {
-  loading.value = true
-  error.value = ''
-  try {
-    // api.get 经 services/api.js 的 request() 自动带 session token（桌面/在线两种模式）
-    const data = await api.get('/v1/bricks' + (refresh ? '?refresh=true' : ''))
-    bricks.value = data.bricks || []
-    total.value = data.total ?? bricks.value.length
-  } catch (e) {
-    error.value = '积木列表加载失败：' + (e?.message || e)
-  } finally {
-    loading.value = false
-  }
-}
-
-async function loadPending() {
-  pendingLoading.value = true
-  try {
-    const data = await api.get('/v1/bricks/reviews?status=submitted')
-    pendingReviews.value = data.reviews || []
-  } catch (e) {
-    toast.error('待审核列表加载失败：' + (e?.message || e))
-    pendingReviews.value = []
-  } finally {
-    pendingLoading.value = false
-  }
-}
-
-function switchView(v) {
-  view.value = v
-  if (v === 'pending') loadPending()
-}
-
-async function onApprove(rev) {
-  busyReview.value = rev.brick_id
-  try {
-    const r = await api.post(`/v1/bricks/${encodeURIComponent(rev.brick_id)}/review`, { decision: 'approve', reviewer: 'admin' })
-    if (r?.ok) toast.success(`✅ 已通过 ${rev.brick_id}`)
-    else toast.error(r?.message || '审核失败')
-    await loadPending()
-  } catch (e) {
-    toast.error('审核请求失败：' + (e?.message || e))
-  } finally {
-    busyReview.value = ''
-  }
-}
-
-async function onReject(rev) {
-  busyReview.value = rev.brick_id
-  try {
-    const r = await api.post(`/v1/bricks/${encodeURIComponent(rev.brick_id)}/review`, { decision: 'reject', note: '审核未通过' })
-    if (r?.ok) toast.success(`⛔ 已拒绝 ${rev.brick_id}`)
-    else toast.error(r?.message || '审核失败')
-    await loadPending()
-  } catch (e) {
-    toast.error('审核请求失败：' + (e?.message || e))
-  } finally {
-    busyReview.value = ''
-  }
-}
-
-const filtered = computed(() => {
+// 合并展示列表（根据当前类型筛选）
+const activeList = computed(() => {
   const q = query.value.trim().toLowerCase()
-  return bricks.value.filter((b) => {
-    if (typeFilter.value && b.type !== typeFilter.value) return false
-    if (installedOnly.value && b.install_state !== 'installed') return false
-    if (q && !`${b.id} ${b.name} ${b.description || ''}`.toLowerCase().includes(q)) return false
+  const filterFn = (item) => {
+    if (q && !`${item.name || ''} ${item.description || ''} ${item._key || ''}`.toLowerCase().includes(q)) return false
     return true
-  })
+  }
+
+  if (typeFilter.value === 'skill') return skillMarketItems.value.filter(filterFn)
+  if (typeFilter.value === 'module') return moduleItems.value.filter(filterFn)
+  if (typeFilter.value === 'software') return softwareItems.value.filter(filterFn)
+
+  // 全部 = 三个市场合并
+  return [
+    ...skillMarketItems.value,
+    ...moduleItems.value,
+    ...softwareItems.value,
+  ].filter(filterFn)
 })
 
-// P1-4：装完即用的三态反馈 —— 可用 / 本体未就绪（给指引）/ 未探测到工具。
-// 不谎报成功：probe 说没注册工具，就如实告诉用户，并给下一步动作。
-function reportProbe(probe, brick) {
-  if (!probe) return
-  if (probe.available) {
-    const n = probe.tools_registered
-    toast.success(n > 0 ? `✅ 对话中已可用（${n} 个工具已注册）` : '✅ 对话中已可用')
-    return
-  }
-  if (probe.backend_hint) {
-    // software 两步安装的第二步（本体）不由 Vermes 代管，只能引导；停留久一点让用户读完
-    toast.warning(probe.backend_hint, 8000)
-    return
-  }
-  toast.warning(
-    `已安装，但未探测到已注册工具${brick.type === 'module' ? '（热重载可能失败）' : ''}` +
-      '，可点「🔄 刷新」重试或重启应用',
-    6000,
-  )
+// ── 加载三个市场 ──
+async function loadAll(refresh = false) {
+  loading.value = true
+  error.value = ''
+  const tasks = [loadSkills(refresh), loadModules(), loadSoftware()]
+  await Promise.allSettled(tasks)
+  loading.value = false
 }
 
-async function onInstall(brick) {
-  busyId.value = brick.id
+async function loadSkills(refresh = false) {
   try {
-    const r = await api.post(`/v1/bricks/${encodeURIComponent(brick.id)}/install`, {})
-    if (r?.ok) {
-      toast.success(r.message || `已安装 ${brick.name}`)
-      reportProbe(r.probe, brick)
+    const params = new URLSearchParams()
+    if (query.value) params.set('q', query.value)
+    if (skillSource.value !== 'all') params.set('source', skillSource.value)
+    params.set('limit', '50')
+    const data = await api.get(`/skills/market?${params}`)
+    const items = (data.items || data.results || []).map(s => ({
+      _key: `skill:${s.name}`,
+      _type: 'skill',
+      name: s.display_name || s.name,
+      id: s.name,
+      description: s.description || s.summary || '',
+      version: s.version || '',
+      source: s.source || '',
+      trust: s.trust_level || s.trust || '',
+      install_state: s.installed ? 'installed' : 'available',
+      size_label: s.size_label || '',
+      raw: s,
+    }))
+    skillMarketItems.value = items
+    skillMarketTotal.value = data.total || items.length
+  } catch (e) {
+    console.error('技能市场加载失败', e)
+  }
+}
+
+function searchSkills() {
+  loadSkills()
+}
+
+async function loadModules() {
+  try {
+    const data = await api.get('/v1/modules/market')
+    const items = (data.modules || data.catalog || []).map(m => ({
+      _key: `module:${m.name}`,
+      _type: 'module',
+      name: m.display_name || m.name,
+      id: m.name,
+      description: m.description || '',
+      version: m.version || '',
+      source: 'catalog',
+      install_state: m.installed ? 'installed' : 'available',
+      recommended: m.recommended || false,
+      tools_count: m.tools_count || (m.provides_tools || []).length,
+      size_label: m.size_code ? Math.round(m.size_code / 1024) + 'KB' : '',
+      raw: m,
+    }))
+    moduleItems.value = items
+  } catch (e) {
+    console.error('模块商店加载失败', e)
+  }
+}
+
+async function loadSoftware() {
+  try {
+    const data = await api.get('/adapters/installed')
+    const installed = (data.adapters || []).map(a => ({
+      _key: `software:${a.name}`,
+      _type: 'software',
+      name: a.display_name || a.name,
+      id: a.name,
+      description: a.description || '',
+      version: a.version || '',
+      source: 'adapter',
+      install_state: 'installed',
+      tools_count: a.tools_count || 0,
+      raw: a,
+    }))
+
+    // 也加载推荐
+    let recommended = []
+    try {
+      const rec = await api.get('/adapters/recommend')
+      recommended = (rec.recommendations || rec.items || []).map(r => ({
+        _key: `software-rec:${r.name || r.id}`,
+        _type: 'software',
+        name: r.display_name || r.name,
+        id: r.name || r.id,
+        description: r.description || r.reason || '',
+        version: '',
+        source: 'recommended',
+        install_state: 'available',
+        raw: r,
+      }))
+    } catch {}
+
+    // 合并去重（已安装优先）
+    const installedIds = new Set(installed.map(i => i.id))
+    softwareItems.value = [...installed, ...recommended.filter(r => !installedIds.has(r.id))]
+  } catch (e) {
+    console.error('软件发现加载失败', e)
+  }
+}
+
+// ── 安装 ──
+async function onInstall(item) {
+  busyId.value = item._key
+  try {
+    let r
+    if (item._type === 'skill') {
+      r = await api.post('/skills/install', { name: item.id })
+    } else if (item._type === 'module') {
+      r = await api.post('/v1/modules/market/install', { name: item.id })
+    } else if (item._type === 'software') {
+      toast.info('软件适配器请通过 Agent 管理 → 软件 tab 安装')
+      busyId.value = ''
+      return
+    }
+    if (r?.ok !== false) {
+      toast.success(r?.message || `已安装 ${item.name}`)
+      await loadAll(true)
     } else {
       toast.error(r?.message || '安装失败')
     }
-    await load(true)
   } catch (e) {
-    toast.error('安装请求失败：' + (e?.message || e))
+    toast.error('安装失败：' + (e?.message || e))
   } finally {
     busyId.value = ''
   }
 }
 
-async function onUninstall(brick) {
-  busyId.value = brick.id
-  try {
-    const r = await api.post(`/v1/bricks/${encodeURIComponent(brick.id)}/uninstall`, {})
-    if (r?.ok) toast.success(r.message || `已卸载 ${brick.name}`)
-    else toast.error(r?.message || '卸载失败')
-    await load(true)
-  } catch (e) {
-    toast.error('卸载请求失败：' + (e?.message || e))
-  } finally {
-    busyId.value = ''
-  }
-}
-
-onMounted(() => load())
+onMounted(() => loadAll())
 </script>
