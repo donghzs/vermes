@@ -424,10 +424,11 @@ async function rebuild() {
           const p = feat?.parameters
           if (!p || typeof p !== 'object') continue
           for (const k of Object.keys(p)) {
-            // 与后端 extract_contract_parameters 的命名空间键对齐：
-            // "feat_id.name" 写回对应 feature 的参数，跨 feature 同名互不污染
-            const key = fid ? `${fid}.${k}` : k
-            if (key in changed) p[k] = changed[key]
+            // 与后端 extract_contract_parameters 的键对齐：
+            // 冲突时键 = "feat_id.name"，无冲突时键 = 裸 "name"（后端按重复次数决定）
+            const namespaced = fid ? `${fid}.${k}` : k
+            const hit = (namespaced in changed) ? namespaced : (k in changed) ? k : null
+            if (hit) p[k] = changed[hit]
           }
         }
       }

@@ -285,6 +285,17 @@ def extract_contract_parameters(contract: dict) -> dict:
     if not isinstance(features, list):
         return {}
     params: dict[str, dict] = {}
+    # 同名冲突检测：只有跨 feature 重复的参数名才需要 feature.id 命名空间；
+    # 单 feature 或全唯一名保持裸 name（plate.length_mm 这种前缀对单 feature 是噪声）。
+    name_counts: dict[str, int] = {}
+    for feat in features:
+        if not isinstance(feat, dict):
+            continue
+        raw = feat.get("parameters")
+        if isinstance(raw, dict):
+            for n in raw:
+                name_counts[n] = name_counts.get(n, 0) + 1
+
     for feat in features:
         if not isinstance(feat, dict):
             continue
@@ -297,14 +308,23 @@ def extract_contract_parameters(contract: dict) -> dict:
                 continue  # 只抽数值，跳过字符串/布尔/嵌套
             unit = infer_unit(name, val)
             rng = suggest_range(val, unit)
-            # feature.id 做命名空间：同一契约多个 feature 共享参数名（如都含
-            # thickness_mm）时，键形如 "base.thickness_mm" / "lip.thickness_mm"，
-            # 各自独立成滑块、写回互不污染（前端 patchContract 按同名键寻址）。
-            key = f"{feat_id}.{name}" if feat_id else name
+            # 仅当该参数名跨 feature 重复时启用命名空间，避免单 feature 契约
+            # 出现啰嗦的 plate.length_mm；冲突时键形如 base.thickness_mm/lip.thickness_mm。
+            conflict = name_counts.get(name, 0) > 1
+            key = f"{feat_id}.{name}" if (conflict and feat_id) else name
+            label = label_for(name)
+            if conflict and feat_id:
+                # 带命名空间：label 括号内换成 key，让用户能区分同名参数
+                # （如「厚度 (base.thickness_mm)」vs「厚度 (lip.thickness_mm)」），
+                # 且括号内即契约 JSON 里的真实键路径，可在 contract tab 定位。
+                if "(" in label:
+                    label = label.rsplit("(", 1)[0].strip() + f" ({key})"
+                else:
+                    label = key
             params[key] = {
                 "value": float(val),
                 "unit": unit,
-                "label": label_for(name),
+                "label": label,
                 **rng,
             }
     return params
