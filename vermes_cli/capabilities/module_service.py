@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import queue
 from typing import Any, Dict, List, Optional
 
 from tools.registry import registry as tool_registry
@@ -120,3 +121,30 @@ def invoke(
     except Exception:
         result = {"raw": result_json}
     return {"cap": cap, "tool": tool_name, "result": result}
+
+
+# --- vermes-model-change 广播（D5 通知前端；P3-3 消费）---
+# 轻量 in-process pub-sub：前端 SSE 订阅，broadcast_model_change 推送事件。
+_model_change_subscribers: "set[queue.Queue]" = set()
+
+
+def subscribe_model_change() -> "queue.Queue":
+    """前端 SSE 订阅入口：返回队列，broadcast_model_change 向其推送事件。"""
+    q: "queue.Queue" = queue.Queue()
+    _model_change_subscribers.add(q)
+    return q
+
+
+def unsubscribe_model_change(q: "queue.Queue") -> None:
+    """前端断开 SSE 时移除订阅。"""
+    _model_change_subscribers.discard(q)
+
+
+def broadcast_model_change(model: str, provider: Optional[str] = None) -> None:
+    """推送模型切换事件（vermes-model-change）。"""
+    event = {"event": "vermes-model-change", "model": model, "provider": provider}
+    for q in list(_model_change_subscribers):
+        try:
+            q.put(event)
+        except Exception:
+            _model_change_subscribers.discard(q)

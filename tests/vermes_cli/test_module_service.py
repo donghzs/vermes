@@ -13,6 +13,7 @@ from vermes_cli.adapters import discovery
 from vermes_cli.adapters.discovery_registry import CAPABILITY_REGISTRY
 from vermes_cli.capabilities import manifest as cap_manifest
 from vermes_cli.capabilities import module_service
+from vermes_cli.blueprints.invoke import router as invoke_router
 from vermes_cli import runtime_provider
 from tools.registry import registry as tool_registry
 
@@ -116,3 +117,20 @@ def test_unknown_provider_fail_open(patched, monkeypatch):
     )
     chk = module_service.model_capable("cadir_build")
     assert chk["ok"] is True  # fail-open，未知 provider 不拦截
+
+
+def test_invoke_router_registers_routes():
+    paths = {r.path for r in invoke_router.routes}
+    assert "/api/invoke" in paths
+    assert "/api/model-change" in paths
+    assert "/api/model-change/stream" in paths
+
+
+def test_broadcast_model_change_pubsub():
+    q = module_service.subscribe_model_change()
+    try:
+        module_service.broadcast_model_change("gpt-4o", "openai")
+        event = q.get(timeout=1)
+        assert event == {"event": "vermes-model-change", "model": "gpt-4o", "provider": "openai"}
+    finally:
+        module_service.unsubscribe_model_change(q)
