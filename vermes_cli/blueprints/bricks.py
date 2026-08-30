@@ -28,6 +28,9 @@ from pydantic import BaseModel, Field
 from vermes_cli.capabilities.registry import (
     BRICK_TYPES, BrickEntry, get_brick_registry,
 )
+from vermes_cli.capabilities.brick_reviews import (
+    BrickReviewError, get_review_store,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -383,6 +386,133 @@ async def add_custom_brick(request: Request, payload: CustomBrickRequest):
 
 
 # ---------------------------------------------------------------------------
+# P4-1 发砖审核：submit / review（状态机见 brick_reviews.py）
+# ---------------------------------------------------------------------------
+class SubmitBrickRequest(BaseModel):
+    """开发者发砖提交时携带的元数据提案（对齐 P4-2 治理字段）。"""
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    version: Optional[str] = None
+    vermes_min: Optional[str] = None
+    code_asset: Optional[str] = None
+    code_sha256: Optional[str] = None
+    dependencies: List[str] = Field(default_factory=list)
+    keywords: List[str] = Field(default_factory=list)
+    repository: Optional[str] = None
+    homepage: Optional[str] = None
+    submitted_by: Optional[str] = None
+
+
+class ReviewBrickRequest(BaseModel):
+    decision: str                      # approve | reject | start
+    reviewer: Optional[str] = None
+    note: str = ""
+
+
+def _validate_submission_ci(payload: SubmitBrickRequest) -> List[str]:
+    """提交时 CI 校验（auto_reject 触发源）。返回冲突列表；空=通过。
+
+    复用 module_catalog.check_module_install_conflicts，对开发者的元数据提案
+    跑依赖存在性 / vermes_min / 版本倒退三检；另加 sha256 格式校验。
+    """
+    from agent.module_catalog import (
+        CatalogModule, catalog_modules, load_catalog,
+        check_module_install_conflicts,
+    )
+    from vermes_cli import __version__ as _vermes_version
+
+    conflicts: List[str] = []
+    # sha256 格式（提供时必须 64 位 hex）
+    if payload.code_sha256:
+        import re
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", payload.code_sha256 or ""):
+            conflicts.append("code_sha256 格式非法（须 64 位 hex）")
+    # 依赖 / vermes_min / 版本：复用装前冲突检测（开发者元数据作为拟发布 CatalogModule）
+    try:
+        mods = catalog_modules(load_catalog(None))
+        synthetic = CatalogModule(
+            name="__submit_ci__",
+            display_name=payload.display_name or "__submit_ci__",
+            latest=payload.version or "0.0.0",
+            vermes_min=payload.vermes_min or "0.0.0",
+            dependencies=list(payload.dependencies or []),
+        )
+        conflicts.extend(
+            check_module_install_conflicts(synthetic, mods, _vermes_version)
+        )
+    except Exception as exc:  # noqa: BLE001 - 校验异常不致命，交人工
+        _log.warning("submit CI 校验跳过（catalog 不可用）: %s", exc)
+    return conflicts
+
+
+async def submit_brick(request: Request, brick_id: str, payload: SubmitBrickRequest):
+    """开发者提交 brick 进入审核流（submitted）。
+
+    CI 校验失败直接 auto_reject（不进人工队列）；否则落 submitted 状态。
+    """
+    _check_origin(request)
+    store = get_review_store()
+    meta = payload.model_dump(exclude={"submitted_by"}, exclude_none=True)
+    try:
+        rev = store.submit(brick_id, metadata=meta, submitted_by=payload.submitted_by)
+    except BrickReviewError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    # CI 校验 → auto_reject
+    ci_conflicts = _validate_submission_ci(payload)
+    if ci_conflicts:
+        store.auto_reject(brick_id, "；".join(ci_conflicts))
+        rev = store.get(brick_id)
+        return {
+            "ok": True,
+            "brick_id": brick_id,
+            "status": rev.status,
+            "auto_rejected": True,
+            "ci_conflicts": ci_conflicts,
+        }
+    return {"ok": True, "brick_id": brick_id, "status": rev.status, "auto_rejected": False}
+
+
+async def review_brick(request: Request, brick_id: str, payload: ReviewBrickRequest):
+    """人工审核决策：start(→in_review) / approve / reject。"""
+    _check_origin(request)
+    if payload.decision not in ("approve", "reject", "start"):
+        raise HTTPException(status_code=400, detail=f"非法决策: {payload.decision}")
+    store = get_review_store()
+    try:
+        if payload.decision == "start":
+            rev = store.begin_review(brick_id, reviewer=payload.reviewer)
+        else:
+            rev = store.review(
+                brick_id, decision=payload.decision,
+                reviewer=payload.reviewer, note=payload.note,
+            )
+    except BrickReviewError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "brick_id": brick_id, "status": rev.status, "review": rev.to_dict()}
+
+
+async def get_review_status(request: Request, brick_id: str):
+    """查询某 brick 的审核状态（前端待审核列表 / 详情用）。"""
+    _check_origin(request)
+    rev = get_review_store().get(brick_id)
+    if rev is None:
+        raise HTTPException(status_code=404, detail=f"无审核记录: {brick_id}")
+    return {"brick_id": brick_id, "status": rev.status, "review": rev.to_dict()}
+
+
+async def list_brick_reviews(request: Request, status: Optional[str] = None):
+    """审核记录列表（前端「待审核」tab：?status=submitted）。"""
+    _check_origin(request)
+    items = get_review_store().list(status=status)
+    return {
+        "reviews": [r.to_dict() for r in items],
+        "total": len(items),
+        "status_filter": status,
+    }
+
+
+# ---------------------------------------------------------------------------
 # POST /api/v1/bricks/refresh — 强制重新发现
 # ---------------------------------------------------------------------------
 async def refresh_bricks(request: Request):
@@ -402,9 +532,15 @@ def register_to(app) -> None:
     app.add_api_route("/api/v1/bricks/capabilities", bricks_capabilities, methods=["GET"])
     app.add_api_route("/api/v1/bricks/custom", add_custom_brick, methods=["POST"])
     app.add_api_route("/api/v1/bricks/refresh", refresh_bricks, methods=["POST"])
+    # P4-1 发砖审核：reviews 是静态子路径，必须在 /{brick_id} 之前注册
+    app.add_api_route("/api/v1/bricks/reviews", list_brick_reviews, methods=["GET"])
     app.add_api_route("/api/v1/bricks/{brick_id}", get_brick, methods=["GET"])
     app.add_api_route("/api/v1/bricks/{brick_id}/install", install_brick, methods=["POST"])
     app.add_api_route("/api/v1/bricks/{brick_id}/uninstall", uninstall_brick, methods=["POST"])
+    # P4-1 发砖审核（/ {brick_id}/{action} 与 install/uninstall 同级，不冲突）
+    app.add_api_route("/api/v1/bricks/{brick_id}/submit", submit_brick, methods=["POST"])
+    app.add_api_route("/api/v1/bricks/{brick_id}/review", review_brick, methods=["POST"])
+    app.add_api_route("/api/v1/bricks/{brick_id}/review", get_review_status, methods=["GET"])
 
 
 blueprint = None  # no APIRouter; uses register_to(app) pattern
