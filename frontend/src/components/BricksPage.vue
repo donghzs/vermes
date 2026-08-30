@@ -165,8 +165,12 @@ async function loadSkills(refresh = false) {
       version: s.version || '',
       source: s.source || '',
       trust: s.trust_level || s.trust || '',
+      trust_level: s.trust_level || '',
+      tags: s.tags || [],
+      repo: s.repo || '',
       install_state: s.installed ? 'installed' : 'available',
       size_label: s.size_label || '',
+      security_audits: s.extra?.security_audits || s.security_audits || null,
       raw: s,
     }))
     skillMarketItems.value = items
