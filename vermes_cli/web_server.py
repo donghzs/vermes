@@ -3289,9 +3289,21 @@ async def list_mfgcad_sessions():
                                 data["has_parameters"] = True
                                 data["_auto_params"] = {k: v for k, v in params.items()}
                                 data["_auto_source"] = str(pf)
+                                data["_params_source"] = "source"
                                 break
                         except Exception:
                             continue
+
+            # 契约会话：从 cad.ir.v1 契约派生参数（无需源码，contract 即真相源）
+            if not data.get("has_parameters") and isinstance(data.get("contract"), dict):
+                from vermes_cli.mfgcad.parametric import extract_contract_parameters
+                try:
+                    cparams = extract_contract_parameters(data["contract"])
+                    if cparams:
+                        data["has_parameters"] = True
+                        data["_params_source"] = "contract"
+                except Exception:
+                    pass
 
             # 把绝对路径转为前端可用的 URL
             def _to_url(abs_path):
@@ -3327,6 +3339,7 @@ async def list_mfgcad_sessions():
                 "qa": data.get("qa", {}),
                 "ts": data.get("ts", 0),
                 "has_parameters": data.get("has_parameters", False),
+                "params_source": data.get("_params_source", "source"),
                 "build123d_source": data.get("build123d_source"),
                 "contract": data.get("contract"),
             })
@@ -3393,7 +3406,12 @@ async def clear_mfgcad_sessions():
 
 @app.get("/api/mfgcad/sessions/{session_id}/parameters")
 async def get_mfgcad_parameters(session_id: str):
-    """返回会话的可调参数（供前端渲染滑块：value/min/max/step/unit）。"""
+    """返回会话的可调参数（供前端渲染滑块：value/min/max/step/unit）。
+
+    两条路径：
+      1. 参数化会话（build123d 源码落盘）→ extract_parameters 抽常量
+      2. 契约会话（cad.ir.v1，backend=cadir_contract）→ extract_contract_parameters 从 JSON 派生
+    """
     import re
     from fastapi.responses import JSONResponse
 
@@ -3405,9 +3423,11 @@ async def get_mfgcad_parameters(session_id: str):
         load_source,
         acquire_source,
         extract_parameters,
+        extract_contract_parameters,
     )
 
     params = load_parameters(session_id)
+    params_source = "source"
     if not params:
         # parameters.json 可能未生成（引擎未落源码）→ 退而从源码现抽
         src = load_source(session_id) or acquire_source(
@@ -3416,10 +3436,24 @@ async def get_mfgcad_parameters(session_id: str):
         if src:
             params = extract_parameters(src)
 
+    # 契约会话：从 session.json 里的 cad.ir.v1 契约派生参数（若源码路径无参）
+    if not params:
+        sess_file = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id / "session.json"
+        if sess_file.is_file():
+            try:
+                sd = json.loads(sess_file.read_text(encoding="utf-8"))
+                contract = sd.get("contract")
+                if isinstance(contract, dict):
+                    params = extract_contract_parameters(contract)
+                    params_source = "contract"
+            except Exception:
+                pass
+
     return JSONResponse({
         "session_id": session_id,
         "has_parameters": bool(params),
         "parameters": params,
+        "params_source": params_source,
     })
 
 

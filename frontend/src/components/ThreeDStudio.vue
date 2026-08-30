@@ -41,6 +41,7 @@ const modelBBox = ref(null) // {length_mm, width_mm, height_mm, volume_mm3}
 const paramsForSession = ref([])
 const paramValues = ref({})
 const paramInputs = ref({}) // 精确数值输入
+const paramsSource = ref('source') // source | contract
 const rebuilding = ref(false)
 const rebuildMsg = ref('')
 let rebuildTimer = null
@@ -199,14 +200,14 @@ function selectSession(s) {
   loadTimeline(s)
   aiHistory.value = []
   measureResult.value = null
-  // P2-4：会话带 cadir 契约原文则预填契约 tab
+  // P2-4：会话带 cadir 契约原文则预填契约 tab（但若可参数化，默认停 params 让用户直接拖）
   if (s?.contract) {
     contractText.value = JSON.stringify(s.contract, null, 2)
-    rightTab.value = 'contract'
   } else {
     contractText.value = ''
-    rightTab.value = paramsForSession.length ? 'params' : 'contract'
   }
+  // s.has_parameters 是后端 list 时同步算好的（契约会话已从 contract 派生）
+  rightTab.value = s?.has_parameters ? 'params' : 'contract'
 }
 
 // ── 删除会话 ──
@@ -279,12 +280,14 @@ async function loadParameters(s) {
   paramsForSession.value = []
   paramValues.value = {}
   paramInputs.value = {}
+  paramsSource.value = 'source'
   rebuildMsg.value = ''
   if (!s?.has_parameters) return
   try {
     const resp = await fetch(`/api/mfgcad/sessions/${s.session_id}/parameters`)
     if (!resp.ok) return
     const data = await resp.json()
+    paramsSource.value = data.params_source || 'source'
     const ps = data.parameters || {}
     const arr = Object.entries(ps).map(([name, p]) => ({
       name,
@@ -412,28 +415,58 @@ async function rebuild() {
   rebuilding.value = true
   rebuildMsg.value = '重建中…'
   try {
-    const resp = await fetch(`/api/mfgcad/sessions/${sid}/rebuild`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parameters: paramValues.value }),
-    })
-    const data = await resp.json()
-    rebuildMsg.value = data.message || '重建完成'
-    if (data.child_session && data.child_session.ok) {
-      // 记录参数变化摘要
-      const changes = []
-      for (const [k, v] of Object.entries(paramValues.value)) {
-        const orig = paramsForSession.value.find(p => p.name === k)
-        if (orig && Math.abs(orig.value - v) > 0.01) {
-          const label = orig.label || k
-          changes.push(`${label}: ${orig.value}→${typeof v === 'number' ? v.toFixed(1) : v}`)
+    // 契约会话：滑块改的是 cad.ir.v1 契约字段，patch 契约后走 rebuild_contract（零 agent 参与）
+    if (paramsSource.value === 'contract') {
+      const parsed = JSON.parse(contractText.value)
+      const patchContract = (features, changed) => {
+        for (const feat of features) {
+          const p = feat?.parameters
+          if (!p || typeof p !== 'object') continue
+          for (const k of Object.keys(p)) {
+            if (k in changed) p[k] = changed[k]
+          }
         }
       }
-      const summary = changes.length ? changes.join(', ') : '参数微调'
-      timeline.value.unshift({ ts: Date.now(), action: summary, detail: rebuildMsg.value })
+      patchContract(parsed.features || [], paramValues.value)
+      const resp = await fetch(`/api/mfgcad/sessions/${sid}/rebuild_contract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contract: parsed }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`)
+      rebuildMsg.value = data.message || '重建完成'
+      if (data.session) selectedSession.value = { ...selectedSession.value, ...data.session }
+      // 同步契约文本与选中会话
+      contractText.value = JSON.stringify(parsed, null, 2)
       await loadSessions()
-      const child = sessions.value.find(x => x.session_id === data.child_session.session_id)
-      if (child) selectSession(child)
+      const files = availableFiles.value
+      if (files.length) selectedFile.value = files.find(f => f.ext === 'stl') || files[0]
+    } else {
+      // 源码参数化会话：走 /rebuild 改 build123d 源码
+      const resp = await fetch(`/api/mfgcad/sessions/${sid}/rebuild`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parameters: paramValues.value }),
+      })
+      const data = await resp.json()
+      rebuildMsg.value = data.message || '重建完成'
+      if (data.child_session && data.child_session.ok) {
+        // 记录参数变化摘要
+        const changes = []
+        for (const [k, v] of Object.entries(paramValues.value)) {
+          const orig = paramsForSession.value.find(p => p.name === k)
+          if (orig && Math.abs(orig.value - v) > 0.01) {
+            const label = orig.label || k
+            changes.push(`${label}: ${orig.value}→${typeof v === 'number' ? v.toFixed(1) : v}`)
+          }
+        }
+        const summary = changes.length ? changes.join(', ') : '参数微调'
+        timeline.value.unshift({ ts: Date.now(), action: summary, detail: rebuildMsg.value })
+        await loadSessions()
+        const child = sessions.value.find(x => x.session_id === data.child_session.session_id)
+        if (child) selectSession(child)
+      }
     }
   } catch (e) {
     rebuildMsg.value = `重建失败: ${e.message}`

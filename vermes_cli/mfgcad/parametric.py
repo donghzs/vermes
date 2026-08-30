@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 __all__ = [
     "extract_parameters",
+    "extract_contract_parameters",
     "apply_parameters",
     "label_for",
     "infer_unit",
@@ -101,10 +102,25 @@ _PARAM_LABELS: dict[str, str] = {
 
 
 def label_for(name: str) -> str:
-    """返回参数的中英文双语标签。"""
+    """返回参数的中英文双语标签。
+
+    兼容两种命名风格：
+      - build123d 源码大写常量（LENGTH / THICKNESS）
+      - 契约 JSON 小写带单位后缀（length_mm / thickness_mm / angle_deg）
+    匹配前先去掉单位后缀再转大写查表。
+    """
     cn = _PARAM_LABELS.get(name)
     if cn:
         return f"{cn} ({name})"
+    # 契约风格：去 _mm/_deg/_pcs 等后缀 + 转大写后二次查表
+    norm = name.upper()
+    for suffix in ("_MM", "_DEG", "_PCS", "_M", "_CM"):
+        if norm.endswith(suffix):
+            norm = norm[: -len(suffix)]
+            break
+    cn2 = _PARAM_LABELS.get(norm)
+    if cn2:
+        return f"{cn2} ({name})"
     return name
 
 
@@ -247,6 +263,46 @@ def extract_parameters(source: str) -> dict:
             "label": label_for(name),
             **rng,
         }
+    return params
+
+
+# ──────────────────────────────────────────────────────────────
+# 3b. 从 CAD-IR 契约 JSON 抽参
+# ──────────────────────────────────────────────────────────────
+
+def extract_contract_parameters(contract: dict) -> dict:
+    """从 cad.ir.v1 契约 JSON 的 features[].parameters 抽取数值参数。
+
+    契约结构: {features: [{id, operation, parameters: {name: value}}]}
+    参数名通常带单位后缀（thickness_mm / diameter_mm / angle_deg），
+    复用 infer_unit / suggest_range / label_for 推断单位、范围、标签。
+
+    返回格式与 extract_parameters 一致: {name: {value, unit, min, max, step, label}}
+    """
+    if not isinstance(contract, dict):
+        return {}
+    features = contract.get("features")
+    if not isinstance(features, list):
+        return {}
+    params: dict[str, dict] = {}
+    for feat in features:
+        if not isinstance(feat, dict):
+            continue
+        feat_id = feat.get("id", "")
+        raw_params = feat.get("parameters")
+        if not isinstance(raw_params, dict):
+            continue
+        for name, val in raw_params.items():
+            if not isinstance(val, (int, float)) or isinstance(val, bool):
+                continue  # 只抽数值，跳过字符串/布尔/嵌套
+            unit = infer_unit(name, val)
+            rng = suggest_range(val, unit)
+            params[name] = {
+                "value": float(val),
+                "unit": unit,
+                "label": label_for(name),
+                **rng,
+            }
     return params
 
 
