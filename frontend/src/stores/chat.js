@@ -1652,6 +1652,14 @@ export const useChatStore = defineStore('chat', () => {
     currentProvider.value = provider
     try { localStorage.setItem('vermes-current-model', modelId) } catch(e) {}
     try { localStorage.setItem('vermes-current-provider', provider) } catch(e) {}
+    // P3-3：广播 vermes-model-change（P3-2 B），驱动能力灰显；失败不影响本地切换
+    try {
+      fetch('/api/model-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId, provider }),
+      })
+    } catch (e) { /* 广播失败静默 */ }
   }
 
   return {
