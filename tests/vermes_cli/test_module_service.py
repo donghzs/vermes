@@ -162,3 +162,35 @@ def test_broadcast_model_change_pubsub():
         assert event == {"event": "vermes-model-change", "model": "gpt-4o", "provider": "openai"}
     finally:
         module_service.unsubscribe_model_change(q)
+
+
+def test_resolve_tool_prefers_registry_exact_lookup(monkeypatch):
+    """锁住 P3-3 runtime bug 修复：module brick 工具（cadir_*）注册在 tools.registry
+    而非 CAPABILITY_REGISTRY，_resolve_tool 必须精确直查命中，而非依赖 route_toolset。"""
+    # 精确命中：mock get_entry 返回非 None，route_toolset 返回空（模拟 module brick 场景）
+    monkeypatch.setattr(discovery, "route_toolset", lambda cap: [])
+    monkeypatch.setattr(
+        tool_registry, "get_entry",
+        lambda name: SimpleNamespace(name=name) if name == "cadir_build" else None,
+    )
+    assert module_service._resolve_tool("cadir_build") == "cadir_build"
+    assert module_service._resolve_tool("nonexistent_cap") is None
+
+
+def test_resolve_tool_falls_back_to_route_toolset(monkeypatch):
+    """精确直查未命中时，仍回退 route_toolset 意图匹配（software adapter 路径）。"""
+    monkeypatch.setattr(tool_registry, "get_entry", lambda name: None)
+    ref = SimpleNamespace(
+        toolset="freecad_adapter", domain="3d", operation_mechanism="cli",
+        score=0.9, matched_keywords=[],
+    )
+    monkeypatch.setattr(discovery, "route_toolset", lambda cap: [ref])
+    monkeypatch.setattr(
+        discovery, "select_tool",
+        lambda tools, cap, ctx=None, llm_chooser=None: _allow_choice("freecad_cli_something"),
+    )
+    idx = SimpleNamespace(tools=[_ToolSummary("freecad_cli_something")])
+    monkeypatch.setattr(
+        module_service, "CAPABILITY_REGISTRY", SimpleNamespace(get=lambda ts: idx)
+    )
+    assert module_service._resolve_tool("建一个齿轮") == "freecad_cli_something"

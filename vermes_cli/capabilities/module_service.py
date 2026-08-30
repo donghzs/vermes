@@ -44,7 +44,16 @@ def _required_dims(tool_name: str) -> set:
 
 
 def _resolve_tool(cap: str) -> Optional[str]:
-    """cap → 工具名（复用 route_toolset + select_tool，按 score 遍历候选 toolset）。"""
+    """cap → 工具名。
+
+    优先精确工具名直查（module brick 工具如 cadir_*/mfg_*/scholarforge_* 注册在
+    ``tools.registry``，不经 SoftwareAdapter，route_toolset 读不到）；命中即返回。
+    未命中再回退 route_toolset + select_tool（意图模糊匹配，覆盖 software adapter）。
+    """
+    # 1) 精确工具名直查：module brick 工具（cadir/mfgcad/scholarforge）唯一入口
+    if tool_registry.get_entry(cap) is not None:
+        return cap
+    # 2) 意图模糊匹配：software adapter 工具（freecad/blender 等 cli-anything）
     refs = discovery.route_toolset(cap)
     if not refs:
         return None

@@ -29,6 +29,9 @@ for src, dst in [
     ('vermes_cli/adapters', 'vermes_cli/adapters'),
     ('vermes_cli/modules', 'vermes_cli/modules'),
     ('vermes_cli/proxy', 'vermes_cli/proxy'),
+    # P3-4 D7：domains/*.yaml 数据文件（collect_submodules 只收 .py 进 PYZ，
+    # 不收数据文件，必须显式 datas 打包，否则重打 DMG 后 domain_for_brick 读空目录）
+    ('vermes_cli/capabilities/domains', 'vermes_cli/capabilities/domains'),
     ('vermes_cli/experts_catalog.json', 'vermes_cli'),
     ('vermes_cli/__init__.py', 'vermes_cli'),
     ('vermes_cli/web_server.py', 'vermes_cli'),
