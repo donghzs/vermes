@@ -2984,6 +2984,7 @@ blueprints.oauth.register_to(app)
 blueprints.artifacts.register_to(app)
 blueprints.modules_market.register_to(app)  # Phase 3.2 市场后端中间层
 blueprints.capabilities.register_to(app)  # P0: 能力目录端点（GET /api/v1/capabilities）
+blueprints.invoke.register_to(app)  # P3-2: 统一能力调用端点（POST /api/invoke）
 
 # P1-2: 四态合一 brick 注册表 API（GET/POST /api/v1/bricks）
 try:

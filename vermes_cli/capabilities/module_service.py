@@ -1,0 +1,122 @@
+"""P3-2 顶层能力感知 invoke（L2 之上的能力分发层）。
+
+``invoke(cap, payload, session_id)`` 是统一能力调用入口：
+  · 解析 cap → 工具名（复用 L2a 路由 ``route_toolset`` + ``select_tool``，不重建路由）
+  · ``model_capable`` 单 if：当前模型 provider 的 capability tag 是否满足 cap 维度
+  · ``tier`` 单维决策：local 直调 ``tools.registry.dispatch``；remote 降级 seam
+  · 执行：复用 ``tools.registry.dispatch``（单一真相源，含信任闸门 / 未知工具提示）
+
+设计纪律：不重新实现路由，不新建机制，纯组合既有底座。
+"""
+from __future__ import annotations
+
+import json
+from typing import Any, Dict, List, Optional
+
+from tools.registry import registry as tool_registry
+from vermes_cli.adapters import discovery
+from vermes_cli.adapters.discovery_registry import CAPABILITY_REGISTRY
+from vermes_cli.capabilities import manifest as cap_manifest
+from vermes_cli import runtime_provider
+
+
+# --- cap → 必需 capability 维度（首版硬编码；后续可进 domains yaml，D5）---
+# 键 = 工具名（cap 标识）；值 = 该 cap 要求当前模型具备的 capability tag 集合。
+CAP_REQUIRED_DIMS: Dict[str, set] = {
+    "cadir_build": {"tools"},
+    "cadir_compile": {"tools"},
+    "cadir_verify_step": {"tools"},
+    "cadir_verify_stl": {"tools"},
+}
+
+
+def _resolve_tool(cap: str) -> Optional[str]:
+    """cap → 工具名（复用 route_toolset + select_tool，按 score 遍历候选 toolset）。"""
+    refs = discovery.route_toolset(cap)
+    if not refs:
+        return None
+    for ref in refs:
+        idx = CAPABILITY_REGISTRY.get(ref.toolset)
+        if idx is None or not idx.tools:
+            continue
+        choice = discovery.select_tool(idx.tools, cap)
+        if choice.decision == "allow_tool" and choice.tool is not None:
+            return choice.tool.name
+    return None
+
+
+def model_capable(tool_name: str, provider: Optional[str] = None) -> Dict[str, Any]:
+    """单 if 校验：当前模型 provider 是否满足 cap 维度要求。
+
+    返回 ``{ok, required, missing, provider, note?}``。
+    fail-open：provider 未知（不在能力索引 / ``"auto"``）时 ``ok=True``，无法判定则不拦截。
+    """
+    required = sorted(CAP_REQUIRED_DIMS.get(tool_name, set()))
+    if not required:
+        return {"ok": True, "required": [], "missing": [], "provider": provider or ""}
+    pid = (provider or runtime_provider.resolve_requested_provider() or "").strip().lower()
+    idx = cap_manifest.build_provider_capability_index()
+    if pid in ("", "auto") or pid not in idx:
+        return {
+            "ok": True,
+            "required": required,
+            "missing": [],
+            "provider": pid,
+            "note": "unknown_provider_fail_open",
+        }
+    caps = set(idx.get(pid, []))
+    missing = [c for c in required if c not in caps]
+    return {"ok": not missing, "required": required, "missing": missing, "provider": pid}
+
+
+def invoke(
+    cap: str,
+    payload: Optional[Dict[str, Any]] = None,
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """统一能力调用入口。
+
+    ``payload``: ``{"args": {...}, "tier": "local"|"remote", "provider": <可选>}``
+    返回结构化 dict（便于前端 / 测试消费），不抛出。
+    """
+    payload = payload or {}
+    args = payload.get("args") or {}
+    tier = payload.get("tier", "local")
+
+    tool_name = _resolve_tool(cap)
+    if not tool_name:
+        return {
+            "error": "no_tool_for_cap",
+            "cap": cap,
+            "hint": "无匹配工具，可能缺少对应可插拔模块（brick 未安装 / 未注册）",
+        }
+
+    # model_capable 单 if（D5）：不满足则仅提示、不执行
+    cap_check = model_capable(tool_name, payload.get("provider"))
+    if not cap_check["ok"]:
+        return {
+            "capability_check": "not_satisfied",
+            "cap": cap,
+            "tool": tool_name,
+            "required": cap_check["required"],
+            "missing": cap_check["missing"],
+            "provider": cap_check["provider"],
+        }
+
+    # tier 单维决策（D4）：remote 降级 seam，当前无远端服务，仅留结构
+    if tier == "remote":
+        return {
+            "tier": "remote",
+            "degraded": True,
+            "cap": cap,
+            "tool": tool_name,
+            "note": "remote backend unavailable; local-light degrade seam (no execution)",
+        }
+
+    # local：复用 registry.dispatch 单一真相源（含信任闸门 / 未知工具提示）
+    result_json = tool_registry.dispatch(tool_name, args, session_id=session_id)
+    try:
+        result = json.loads(result_json) if isinstance(result_json, str) else result_json
+    except Exception:
+        result = {"raw": result_json}
+    return {"cap": cap, "tool": tool_name, "result": result}
