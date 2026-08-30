@@ -230,6 +230,8 @@ hiddenimports = [
     'vermes_cli.scholarforge.storm_adapter', 'vermes_cli.scholarforge.cnki_fetcher',
     'vermes_cli.scholarforge.baidu_scholar_fetcher',
     'vermes_cli.scholarforge.search',
+    'vermes_cli.scholarforge.benchmark',
+    'vermes_cli.scholarforge.validation_coverage',
     'vermes_cli.scholarforge.export', 'vermes_cli.scholarforge.export.full',
     'vermes_cli.scholarforge.export.latex', 'vermes_cli.scholarforge.export.pdf_css',
     # CAD-IR 契约建模模块（P2-4 契约重建走普通 import，须进 PYZ 才可 import）
