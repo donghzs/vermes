@@ -593,6 +593,52 @@ def _prepare_api_messages(
                     _injections.append(_turn_recall)
             except Exception as e:
                 logger.debug("conversation_loop.py:  prepare api messages failed: %s", e)
+            # J2: @session:<id> 跨会话引用——用户在消息中写 @session:abc123
+            # 时自动拉取该会话的最近上下文并注入为 ephemeral context。
+            # 纯增量、fail-open：解析失败或 DB 不可用时静默跳过，不阻断对话。
+            try:
+                import re as _re
+                _user_text = msg.get("content", "")
+                if not isinstance(_user_text, str):
+                    _user_text = ""
+                _session_refs = _re.findall(r"@session:([A-Za-z0-9_\-]+)", _user_text)
+                if _session_refs:
+                    from vermes_state import SessionDB
+                    _db = SessionDB()
+                    from tools.session_search_tool import _shape_message
+                    for _ref in _session_refs[:3]:  # 最多 3 个引用，避免注入过长
+                        _resolved = _db.resolve_session_id(_ref)
+                        if not _resolved:
+                            _injections.append(
+                                f"<session_ref id={_ref}>\n"
+                                f"  ⚠️ 未找到匹配的会话（前缀: {_ref}）\n"
+                                f"</session_ref>"
+                            )
+                            continue
+                        _meta = _db.get_session(_resolved) or {}
+                        _title = _meta.get("title") or "无标题"
+                        _model = _meta.get("model") or "unknown"
+                        _started = _meta.get("started_at")
+                        # 拉取该会话最近 ~10 条消息作为上下文
+                        _all = _db.get_messages(_resolved)
+                        _recent = _all[-10:] if len(_all) > 10 else _all
+                        _msgs = [_shape_message(m) for m in _recent if m.get("role") in ("user", "assistant")]
+                        if _msgs:
+                            _lines = [
+                                f"<session_ref id={_resolved}>",
+                                f"  title: {_title}",
+                                f"  model: {_model}",
+                                f"  messages ({len(_msgs)}):",
+                            ]
+                            for _m in _msgs:
+                                _role = _m.get("role", "?")
+                                _content = str(_m.get("content", ""))[:500]
+                                _lines.append(f"    [{_role}] {_content}")
+                            _lines.append("</session_ref>")
+                            _injections.append("\n".join(_lines))
+                    _db.close()
+            except Exception as e:
+                logger.debug("conversation_loop.py: @session ref injection failed: %s", e)
             if _injections:
                 _base = api_msg.get("content", "")
                 if isinstance(_base, str):
