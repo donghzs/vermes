@@ -50,6 +50,7 @@ tests/sample_dataset.jsonl
 test_studio_*.py
 
 # ── Legacy / unused dirs (defensive: keep in case of re-creation) ──
+web/
 hermes-*/*
 browser-use/
 agent-browser/
