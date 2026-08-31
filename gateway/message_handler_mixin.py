@@ -979,6 +979,12 @@ class MessageHandlerMixin:
         if canonical == "reload-skills":
             return await self._handle_reload_skills_command(event)
 
+        if canonical == "emphasize":
+            return await self._handle_emphasize_command(event)
+
+        if canonical == "evolution":
+            return await self._handle_evolution_command(event)
+
         if canonical == "bundles":
             return await self._handle_bundles_command(event)
 

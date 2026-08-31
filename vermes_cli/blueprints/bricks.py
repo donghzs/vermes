@@ -116,6 +116,28 @@ async def get_brick(request: Request, brick_id: str):
 
 
 # ---------------------------------------------------------------------------
+# J3 强调：标记 brick 为优先呈现（纯 overlay 元数据，低风险，不弹审批）
+# ---------------------------------------------------------------------------
+async def set_brick_emphasis(request: Request, brick_id: str):
+    """POST /api/v1/bricks/{brick_id}/emphasis — 标记/取消「强调」。
+
+    body: {"emphasized": true|false}（缺省 true）。复用 BrickRegistry.set_emphasis，
+    走 _check_origin 纵深防御。强调是用户显式意图的元数据标记，不触发审批弹窗。
+    """
+    _check_origin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    on = bool(body.get("emphasized", True))
+    reg = get_brick_registry()
+    reg.set_emphasis(brick_id, on)
+    return {"ok": True, "id": brick_id, "emphasized": on}
+
+
+# ---------------------------------------------------------------------------
 # 安装 / 卸载：按 type 委派（不重写安装逻辑）
 # ---------------------------------------------------------------------------
 def _delegate_install(entry: BrickEntry) -> Dict[str, Any]:
@@ -537,6 +559,7 @@ def register_to(app) -> None:
     app.add_api_route("/api/v1/bricks/{brick_id}", get_brick, methods=["GET"])
     app.add_api_route("/api/v1/bricks/{brick_id}/install", install_brick, methods=["POST"])
     app.add_api_route("/api/v1/bricks/{brick_id}/uninstall", uninstall_brick, methods=["POST"])
+    app.add_api_route("/api/v1/bricks/{brick_id}/emphasis", set_brick_emphasis, methods=["POST"])
     # P4-1 发砖审核（/ {brick_id}/{action} 与 install/uninstall 同级，不冲突）
     app.add_api_route("/api/v1/bricks/{brick_id}/submit", submit_brick, methods=["POST"])
     app.add_api_route("/api/v1/bricks/{brick_id}/review", review_brick, methods=["POST"])

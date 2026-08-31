@@ -60,6 +60,8 @@ class BrickEntry:
     entry_point: Optional[str] = None    # SKILL.md 路径 / module 目录 / cli 二进制
     installed_at: Optional[float] = None
     extra: Dict[str, Any] = field(default_factory=dict)
+    # --- J3 强调标记（overlay 持久化，非源码/配置改写，用户显式意图）---
+    emphasized: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -177,6 +179,8 @@ class BrickRegistry:
                         e.install_state = ov["install_state"]
                     if ov.get("installed_at"):
                         e.installed_at = ov["installed_at"]
+                    if ov.get("emphasized"):
+                        e.emphasized = True
             entries.extend(self._custom_bricks)
             self._cache = list(entries)
             self._cache_ts = now
@@ -187,6 +191,29 @@ class BrickRegistry:
         with self._lock:
             self._cache = None
             self._cache_ts = 0.0
+
+    # ---- J3 强调（emphasize）：用户显式标记 brick 为优先呈现 ------------
+    def set_emphasis(self, brick_id: str, on: bool) -> None:
+        """标记/取消一个 brick 的「强调」状态。
+
+        纯 overlay 元数据，非源码/配置改写，可逆、低风险，不触发审批弹窗。
+        影响 discover() 产出的 BrickEntry.emphasized，进而可在能力自检
+        （M5）与前端 brick 列表中优先呈现。
+        """
+        ov = self._overlay.get(brick_id, {})
+        if on:
+            ov["emphasized"] = True
+        else:
+            ov.pop("emphasized", None)
+        self._overlay[brick_id] = ov
+        self.persist()
+        self.invalidate_cache()
+
+    def is_emphasized(self, brick_id: str) -> bool:
+        return bool(self._overlay.get(brick_id, {}).get("emphasized", False))
+
+    def emphasized_ids(self) -> List[str]:
+        return [k for k, v in self._overlay.items() if v.get("emphasized")]
 
     # ---- 四源适配器（只读，fail-open） -----------------------------------
     def _discover_tools(self) -> List[BrickEntry]:

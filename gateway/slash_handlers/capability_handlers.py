@@ -8,6 +8,58 @@ from gateway.slash_handlers._common import *  # noqa: F401,F403
 class CapabilityCommandsMixin:
     """Skills/MCP/approval/emergence command handlers."""
 
+    async def _handle_emphasize_command(self, event: MessageEvent) -> str:
+        """Handle /emphasize — 标记/取消一个 brick 为「强调」，使其在能力自检中优先呈现。
+
+        用法: /emphasize <skill|tool|module|software|provider> <名称> [on|off]
+        强调是纯元数据标记（非源码/配置改写），用户显式意图，低风险，不弹确认。
+        """
+        from vermes_cli.capabilities.registry import BrickRegistry, BRICK_TYPES
+
+        args = event.get_command_args().strip().split()
+        if len(args) < 2:
+            return "用法: /emphasize <skill|tool|module|software|provider> <名称> [on|off]"
+        kind, name = args[0].lower(), args[1]
+        on = True
+        if len(args) >= 3 and args[2].lower() in ("off", "no", "0", "false"):
+            on = False
+        if kind not in BRICK_TYPES:
+            return f"未知类型 {kind!r}，可选: {', '.join(BRICK_TYPES)}"
+        brick_id = f"{kind}:{name}"
+        try:
+            reg = BrickRegistry()
+            reg.set_emphasis(brick_id, on)
+        except Exception as exc:  # noqa: BLE001 - 标记失败只透出诊断
+            return f"⚠️ 强调失败: {exc}"
+        return f"✅ {brick_id} {'已强调' if on else '已取消强调'}（将在能力自检中优先呈现）"
+
+    async def _handle_evolution_command(self, event: MessageEvent) -> str:
+        """Handle /evolution — 在任意网关返回自进化飞轮健康快照（移动/终端可读）。
+
+        复用 M3 的 get_emergence_health()，渲染 compact 状态，无需打开桌面。
+        """
+        from agent.raw_event import get_emergence_health
+
+        try:
+            h = get_emergence_health()
+        except Exception as exc:  # noqa: BLE001 - 观测自身不应失败
+            return f"⚠️ 无法读取进化健康: {exc}"
+        if not isinstance(h, dict):
+            return "⚠️ 进化健康数据不可用"
+        stale = h.get("stale")
+        icon = "🟢" if not stale else "🔴"
+        state = "健康" if not stale else "异常"
+        lines = [
+            f"{icon} 自进化飞轮：{state}",
+            f"  最近成功: {h.get('last_ok') or '从未'}",
+            f"  陈旧时长: {h.get('stale_hours', 0)} h",
+            f"  累计失败: {h.get('total_failures', 0)}",
+        ]
+        fbs = h.get("failures_by_stage") or {}
+        if fbs:
+            lines.append("  各阶段失败: " + ", ".join(f"{k}×{v}" for k, v in fbs.items()))
+        return "\n".join(lines)
+
     async def _handle_reload_mcp_command(self, event: MessageEvent) -> Optional[str]:
         """Handle /reload-mcp — reconnect MCP servers and rebuild the cached agent.
 
