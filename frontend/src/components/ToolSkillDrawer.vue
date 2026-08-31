@@ -7,6 +7,7 @@ import MCPManager from './MCPManager.vue'
 import MemoryBrowser from './MemoryBrowser.vue'
 import SoftwareDiscover from './SoftwareDiscover.vue'
 import ExpertCatalog from './ExpertCatalog.vue'
+import TrendingMini from './TrendingMini.vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
 
@@ -17,6 +18,7 @@ const tabs = [
   { id: 'tools', label: '工具', icon: '🛠️' },
   { id: 'software', label: '软件', icon: '📦' },
   { id: 'experts', label: '专家', icon: '🎓' },
+  { id: 'trending', label: '热门', icon: '🔥' },
   { id: 'mcp', label: 'MCP', icon: '🔌' },
   { id: 'memory', label: '记忆', icon: '🧠' },
   { id: 'knowledge', label: '知识库', icon: '📚' },
@@ -141,6 +143,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 
           <!-- 专家：已装 skill 的用户友好封装 -->
           <ExpertCatalog v-else-if="tab === 'experts'" />
+
+          <!-- 热门榜：嵌入精简版 -->
+          <div v-else-if="tab === 'trending'" class="space-y-3">
+            <TrendingMini @open-full="() => { closePanel(); $router.push('/trending') }" />
+          </div>
 
           <!-- MCP：复用完整 MCPManager -->
           <MCPManager v-else-if="tab === 'mcp'" />

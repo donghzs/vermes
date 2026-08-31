@@ -6,6 +6,7 @@ import ScholarForgePanel from '../components/ScholarForgePanel.vue'
 import ThreeDStudio from '../components/ThreeDStudio.vue'
 import SkillManager from '../components/SkillManager.vue'
 import BricksPage from '../components/BricksPage.vue'
+import TrendingBoard from '../components/TrendingBoard.vue'
 import BenchmarkDashboard from '../components/BenchmarkDashboard.vue'
 import KanbanBoard from '../components/KanbanBoard.vue'
 import WorkflowsPage from '../components/WorkflowsPage.vue'
@@ -18,6 +19,8 @@ const routes = [
   { path: '/3d-studio', component: ThreeDStudio },
   // P1-3：四态合一积木市场（skill/tool/module/software 统一入口）
   { path: '/bricks', component: BricksPage },
+  // 热门榜：GitHub 日/周/月榜 + 腾讯开源
+  { path: '/trending', component: TrendingBoard },
   // P4-4 T2: benchmark 可视化大盘
   { path: '/benchmark', component: BenchmarkDashboard },
   // 旧路由保留重定向，避免外链 404。
