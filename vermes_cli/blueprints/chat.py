@@ -2350,6 +2350,91 @@ async def memory_status(session_id: str = ""):
         return {"active": False, "error": str(e)}
 
 
+async def memory_profile():
+    """G13/G10: Return aggregated user preference/decision profile.
+
+    Provides "我眼里的你" data: preferences, decisions, expertise areas,
+    derived from memory_fabric + decision_tracker. Read-only, fail-open.
+    """
+    try:
+        profile = {"preferences": [], "decisions": [], "expertise": [], "total_memories": 0}
+
+        # 1. Preferences from memory_fabric (lifecycle_tag='preference')
+        try:
+            from agent.memory_fabric import get_db_path, LIFECYCLE_TAGS
+            import sqlite3
+            db = get_db_path()
+            if db and db.exists():
+                conn = sqlite3.connect(str(db))
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                # Count total memories
+                c.execute("SELECT COUNT(*) as cnt FROM memories WHERE active=1")
+                profile["total_memories"] = c.fetchone()["cnt"] or 0
+                # Fetch preferences
+                c.execute("""
+                    SELECT fts_content, lifecycle_tag, created_at
+                    FROM memories
+                    WHERE active=1 AND lifecycle_tag='preference'
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                """)
+                for row in c.fetchall():
+                    profile["preferences"].append({
+                        "content": row["fts_content"][:200],
+                        "tag": row["lifecycle_tag"],
+                        "created_at": row["created_at"],
+                    })
+                # Expertise areas (lifecycle_tag='procedural' = skills learned)
+                c.execute("""
+                    SELECT fts_content, lifecycle_tag, created_at
+                    FROM memories
+                    WHERE active=1 AND lifecycle_tag='procedural'
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                """)
+                for row in c.fetchall():
+                    profile["expertise"].append({
+                        "content": row["fts_content"][:200],
+                        "tag": row["lifecycle_tag"],
+                        "created_at": row["created_at"],
+                    })
+                conn.close()
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug("memory_profile: fabric query failed: %s", e)
+
+        # 2. Decisions from decision_tracker
+        try:
+            from agent.decision_tracker import _get_db_path as _dec_db_path
+            import sqlite3 as sq2
+            dec_db = _dec_db_path()
+            if dec_db and dec_db.exists():
+                conn2 = sq2.connect(str(dec_db))
+                conn2.row_factory = sq2.Row
+                c2 = conn2.cursor()
+                c2.execute("""
+                    SELECT decision, context, status, timestamp
+                    FROM decisions
+                    WHERE status='active'
+                    ORDER BY timestamp DESC
+                    LIMIT 15
+                """)
+                for row in c2.fetchall():
+                    profile["decisions"].append({
+                        "decision": row["decision"][:200],
+                        "context": row["context"] or "",
+                        "status": row["status"],
+                        "timestamp": row["timestamp"],
+                    })
+                conn2.close()
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug("memory_profile: decisions query failed: %s", e)
+
+        return profile
+    except Exception as e:
+        return {"preferences": [], "decisions": [], "expertise": [], "total_memories": 0, "error": str(e)}
+
+
 async def delegate_status(task_id: str):
     """Return status of a background delegate task."""
     try:
@@ -3714,6 +3799,12 @@ def register_to(app):
         memory_status,
         methods=["GET"],
         name="memory_status",
+    )
+    app.add_api_route(
+        "/api/memory/profile",
+        memory_profile,
+        methods=["GET"],
+        name="memory_profile",
     )
     app.add_api_route(
         "/api/rag/documents",

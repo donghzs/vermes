@@ -26,6 +26,10 @@
           <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">改动预览（diff）</div>
           <pre class="text-xs font-mono bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all max-h-64 overflow-y-auto">{{ chat.pendingApproval.diff }}</pre>
         </div>
+        <!-- G7: 底线理由——为什么问你 -->
+        <div v-if="approvalReason" class="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/5 rounded-lg px-3 py-2">
+          💡 {{ approvalReason }}
+        </div>
       </div>
 
       <!-- Actions -->
@@ -61,7 +65,19 @@
 <script setup>
 import { computed } from 'vue'
 import { useChatStore } from '../stores/chat'
+import { personaApprovalReason } from '../utils/persona-copy'
 const chat = useChatStore()
+
+// G7: 为什么问你——底线理由
+const approvalReason = computed(() => {
+  const cat = chat.pendingApproval?.category || ''
+  if (cat === 'self_modify_rollback') return '这是撤销我之前的改写，确认一下要不要回退'
+  if (cat === 'source_modify') return personaApprovalReason('source_modify')
+  if (cat === 'high_risk') return personaApprovalReason('high_risk')
+  if (cat === 'skill_install') return personaApprovalReason('skill_install')
+  if (cat === 'config_change') return personaApprovalReason('config_change')
+  return ''
+})
 
 // 后端 approve_privileged_action 会带上这两个字段；命令审批不带，保持旧行为。
 const scopeOptions = computed(() => chat.pendingApproval?.scope_options || [])

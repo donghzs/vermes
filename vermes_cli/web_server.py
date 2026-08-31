@@ -424,6 +424,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # 进化系统状态（Sidebar 指示器 + 每日简报 + 成就 + DAG）
     "/api/evolution/status",
     "/api/memory/status",
+    "/api/memory/profile",
+    "/api/v1/capabilities/self-check",
     "/api/evolution/achievements",
     "/api/evolution/dag",
     # 进化系统自改写（EvolutionPanel 回滚/撤销/历史）

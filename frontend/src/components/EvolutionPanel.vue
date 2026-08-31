@@ -4,12 +4,14 @@ import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 import { useBackendConnectionStore } from '../stores/backendConnection'
 import { personaMiniStatus, personaTitles, personaLabels } from '../utils/persona-copy'
+import CapabilitySelfCheck from './CapabilitySelfCheck.vue'
+import MemoryProfile from './MemoryProfile.vue'
 const { confirm } = useConfirm()
 const backendConn = useBackendConnectionStore()
 
 const status = ref(null)
 const loading = ref(true)
-const expanded = ref(false)
+const expanded = ref(true) // G14: 默认展开，让用户看到「我擅长什么」和「我眼里的你」
 const achievements = ref([])
 const dagData = ref(null)
 const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详情
@@ -544,6 +546,14 @@ const smTypeLabel = (t) => {
     </div>
 
     <div v-if="expanded" class="evo-detail">
+      <!-- G13/G4: 我擅长什么 -->
+      <div class="evo-row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <CapabilitySelfCheck />
+      </div>
+      <!-- G13/G10: 我眼里的你 -->
+      <div class="evo-row" style="flex-direction:column;align-items:stretch;gap:8px;border-top:1px solid rgba(128,128,128,0.1);padding-top:8px">
+        <MemoryProfile />
+      </div>
       <div v-if="status.current_emotion" class="evo-row">
         <span class="evo-key">当前状态</span>
         <span class="evo-val">{{ status.current_emotion }}</span>

@@ -8,6 +8,7 @@ const { confirm } = useConfirm()
 import { loadMessagesFromIDB } from '../stores/chat-storage'
 import api from '../services/api'
 import EvolutionPanel from './EvolutionPanel.vue'
+import MemoryProfile from './MemoryProfile.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 
 // ExpertCatalog 已迁至 ToolSkillDrawer 专家 tab
@@ -125,6 +126,7 @@ const groupedSessions = computed(() => {
 // ── 重命名 ──
 const renamingId = ref(null)
 const renameInput = ref('')
+const showMemoryProfile = ref(false)
 const renameRef = ref(null)
 
 function startRename(s) {
@@ -591,7 +593,29 @@ async function handleImportFile(e) {
           <span class="text-base">🔀</span>
           <span class="sidebar-tooltip group-hover:opacity-100">工作流编排</span>
         </button>
+        <button @click="showMemoryProfile = true" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showMemoryProfile ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="我眼里的你——偏好、决定、手艺">
+          <span class="text-base">🤝</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">我懂你</span>
+        </button>
         </div>
+
+      <!-- G1/G10: 我眼里的你——模态弹窗 -->
+      <Teleport to="body">
+        <div v-if="showMemoryProfile" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" @click.self="showMemoryProfile = false">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-gray-600 max-h-[80vh] overflow-y-auto">
+            <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">🤝</span>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">我眼里的你</h3>
+              </div>
+              <button @click="showMemoryProfile = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg">✕</button>
+            </div>
+            <div class="px-5 py-4">
+              <MemoryProfile />
+            </div>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- MCP / 技能 / 工具 / 软件 / 专家 管理已统一迁至右侧大面板 ToolSkillDrawer -->
       <!-- 进化系统面板 -->
