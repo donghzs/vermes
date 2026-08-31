@@ -13,7 +13,8 @@
 export function personaMiniStatus(status, emergenceData, unreadCount, proposalCount) {
   const outcomes = status?.total_outcomes || 0
   const successRate = status?.success_rate || 0
-  const newClusters = emergenceData?.clusters?.filter(c => c.state === 'emerging')?.length || 0
+  // 有新涌现簇（clusters 是 {stage: count} 对象，不是数组）
+  const newClusters = emergenceData?.clusters?.emerging || 0
 
   // 有待审 → 优先提醒
   if (proposalCount > 0) {

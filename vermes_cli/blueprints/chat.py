@@ -2359,74 +2359,50 @@ async def memory_profile():
     try:
         profile = {"preferences": [], "decisions": [], "expertise": [], "total_memories": 0}
 
-        # 1. Preferences from memory_fabric (lifecycle_tag='preference')
+        # 1. Preferences + expertise + total from memory_fabric
+        #    复用公开 API list_memories()，不手写 SQL（避免列名漂移）。
+        #    memories 表真实列：id/source/layer/type/scope/pointer/fts_content/
+        #    updated_at/access_count/lifecycle_tag —— 无 active、无 created_at。
         try:
-            from agent.memory_fabric import get_db_path, LIFECYCLE_TAGS
-            import sqlite3
-            db = get_db_path()
-            if db and db.exists():
-                conn = sqlite3.connect(str(db))
-                conn.row_factory = sqlite3.Row
-                c = conn.cursor()
-                # Count total memories
-                c.execute("SELECT COUNT(*) as cnt FROM memories WHERE active=1")
-                profile["total_memories"] = c.fetchone()["cnt"] or 0
-                # Fetch preferences
-                c.execute("""
-                    SELECT fts_content, lifecycle_tag, created_at
-                    FROM memories
-                    WHERE active=1 AND lifecycle_tag='preference'
-                    ORDER BY created_at DESC
-                    LIMIT 20
-                """)
-                for row in c.fetchall():
+            from agent.memory_fabric import list_memories
+
+            # total = 全量记忆数（list_memories 不传过滤时 total 即全量）
+            total_res = list_memories(limit=1)
+            profile["total_memories"] = total_res.get("total", 0) if isinstance(total_res, dict) else 0
+
+            # preferences（lifecycle_tag='preference' = 用户硬约束）
+            pref_res = list_memories(lifecycle_tag="preference", limit=20)
+            if isinstance(pref_res, dict):
+                for m in pref_res.get("memories", []):
                     profile["preferences"].append({
-                        "content": row["fts_content"][:200],
-                        "tag": row["lifecycle_tag"],
-                        "created_at": row["created_at"],
+                        "content": (m.get("content_preview") or "")[:200],
+                        "tag": m.get("lifecycle_tag"),
+                        "updated_at": m.get("updated_at"),
                     })
-                # Expertise areas (lifecycle_tag='procedural' = skills learned)
-                c.execute("""
-                    SELECT fts_content, lifecycle_tag, created_at
-                    FROM memories
-                    WHERE active=1 AND lifecycle_tag='procedural'
-                    ORDER BY created_at DESC
-                    LIMIT 10
-                """)
-                for row in c.fetchall():
+
+            # expertise（lifecycle_tag='procedural' = 已学会的手艺/技能）
+            exp_res = list_memories(lifecycle_tag="procedural", limit=10)
+            if isinstance(exp_res, dict):
+                for m in exp_res.get("memories", []):
                     profile["expertise"].append({
-                        "content": row["fts_content"][:200],
-                        "tag": row["lifecycle_tag"],
-                        "created_at": row["created_at"],
+                        "content": (m.get("content_preview") or "")[:200],
+                        "tag": m.get("lifecycle_tag"),
+                        "updated_at": m.get("updated_at"),
                     })
-                conn.close()
         except Exception as e:
             import logging; logging.getLogger(__name__).debug("memory_profile: fabric query failed: %s", e)
 
         # 2. Decisions from decision_tracker
+        #    复用公开 API get_active_decisions()，不 import 私有 _get_db_path。
         try:
-            from agent.decision_tracker import _get_db_path as _dec_db_path
-            import sqlite3 as sq2
-            dec_db = _dec_db_path()
-            if dec_db and dec_db.exists():
-                conn2 = sq2.connect(str(dec_db))
-                conn2.row_factory = sq2.Row
-                c2 = conn2.cursor()
-                c2.execute("""
-                    SELECT decision, context, status, timestamp
-                    FROM decisions
-                    WHERE status='active'
-                    ORDER BY timestamp DESC
-                    LIMIT 15
-                """)
-                for row in c2.fetchall():
-                    profile["decisions"].append({
-                        "decision": row["decision"][:200],
-                        "context": row["context"] or "",
-                        "status": row["status"],
-                        "timestamp": row["timestamp"],
-                    })
-                conn2.close()
+            from agent.decision_tracker import get_active_decisions
+            for d in get_active_decisions(limit=15):
+                profile["decisions"].append({
+                    "decision": (d.get("decision") or "")[:200],
+                    "context": d.get("context") or "",
+                    "status": d.get("status") or "active",
+                    "timestamp": d.get("timestamp"),
+                })
         except Exception as e:
             import logging; logging.getLogger(__name__).debug("memory_profile: decisions query failed: %s", e)
 
@@ -2957,7 +2933,7 @@ async def emergence_status():
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=3000")
             c = conn.cursor()
-            c.execute("SELECT status, COUNT(*) as cnt FROM clusters GROUP BY status")
+            c.execute("SELECT lifecycle_stage, COUNT(*) as cnt FROM clusters GROUP BY lifecycle_stage")
             cluster_stats = {r[0]: r[1] for r in c.fetchall()}
             c.execute("SELECT COUNT(*) FROM raw_events")
             total_events = c.fetchone()[0]
