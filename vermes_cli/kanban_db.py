@@ -409,6 +409,7 @@ def read_board_metadata(board: Optional[str] = None) -> dict:
         "icon": "",
         "color": "",
         "default_workdir": None,
+        "git_remote": None,
         "created_at": None,
         "archived": False,
     }
@@ -436,6 +437,7 @@ def write_board_metadata(
     color: Optional[str] = None,
     archived: Optional[bool] = None,
     default_workdir: Optional[str] = None,
+    git_remote: Optional[str] = None,
 ) -> dict:
     """Create / update ``board.json`` for ``board``.
 
@@ -459,6 +461,8 @@ def write_board_metadata(
         meta["archived"] = bool(archived)
     if default_workdir is not None:
         meta["default_workdir"] = str(default_workdir) if default_workdir else None
+    if git_remote is not None:
+        meta["git_remote"] = str(git_remote) if git_remote else None
     if not meta.get("created_at"):
         meta["created_at"] = int(time.time())
     path = board_metadata_path(slug)
@@ -479,6 +483,7 @@ def create_board(
     icon: Optional[str] = None,
     color: Optional[str] = None,
     default_workdir: Optional[str] = None,
+    git_remote: Optional[str] = None,
 ) -> dict:
     """Create a new board directory + DB + metadata. Idempotent.
 
@@ -496,6 +501,7 @@ def create_board(
         icon=icon,
         color=color,
         default_workdir=default_workdir,
+        git_remote=git_remote,
     )
     # Touch the DB so list_boards() sees it immediately.
     init_db(board=normed)

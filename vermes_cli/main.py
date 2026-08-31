@@ -12368,6 +12368,9 @@ Examples:
     sessions_list.add_argument(
         "--limit", type=int, default=20, help="Max sessions to show"
     )
+    sessions_list.add_argument(
+        "--board", help="Filter to sessions bound to this board (J1 项目地图)"
+    )
 
     sessions_export = sessions_subparsers.add_parser(
         "export", help="Export sessions to a JSONL file"
@@ -12417,6 +12420,20 @@ Examples:
         "--limit", type=int, default=500, help="Max sessions to load (default: 500)"
     )
 
+    sessions_bind = sessions_subparsers.add_parser(
+        "bind", help="Associate a session with a Kanban board (J1 项目地图)"
+    )
+    sessions_bind.add_argument("session_id", help="Session ID to bind")
+    sessions_bind.add_argument(
+        "board",
+        nargs="?",
+        default=None,
+        help="Target board slug. Omit with --unset to clear the binding.",
+    )
+    sessions_bind.add_argument(
+        "--unset", action="store_true", help="Clear the session's board binding"
+    )
+
     def _confirm_prompt(prompt: str) -> bool:
         """Prompt for y/N confirmation, safe against non-TTY environments."""
         try:
@@ -12442,9 +12459,23 @@ Examples:
         _exclude = None if _source else ["tool"]
 
         if action == "list":
-            sessions = db.list_sessions_rich(
-                source=args.source, exclude_sources=_exclude, limit=args.limit
-            )
+            if getattr(args, "board", None):
+                sessions = db.list_sessions_by_board(args.board, limit=args.limit)
+                if not sessions:
+                    logger.info(f"No sessions bound to board '{args.board}'.")
+                    return
+                logger.info(f"{'Title':<32} {'Started':<13} {'Src':<6} {'ID'}")
+                logger.info("─" * 95)
+                for s in sessions:
+                    started = _relative_time(s.get("started_at"))
+                    title = (s.get("title") or "—")[:30]
+                    logger.info(
+                        f"{title:<32} {started:<13} {str(s.get('source', '')):<6} {s['id']}"
+                    )
+            else:
+                sessions = db.list_sessions_rich(
+                    source=args.source, exclude_sources=_exclude, limit=args.limit
+                )
             if not sessions:
                 logger.info("No sessions found.")
                 return
@@ -12583,6 +12614,34 @@ Examples:
             if db_path.exists():
                 size_mb = os.path.getsize(db_path) / (1024 * 1024)
                 logger.info(f"Database size: {size_mb:.1f} MB")
+
+        elif action == "bind":
+            resolved_session_id = db.resolve_session_id(args.session_id)
+            if not resolved_session_id:
+                logger.info(f"Session '{args.session_id}' not found.")
+                return
+            if args.unset:
+                if db.set_session_board(resolved_session_id, None):
+                    logger.info(f"Session '{resolved_session_id}' unbound from board.")
+                else:
+                    logger.info(f"Session '{args.session_id}' not found.")
+                return
+            board = (args.board or "").strip()
+            if not board:
+                logger.info("bind: a board slug is required (or pass --unset).")
+                return
+            from vermes_cli import kanban_db as _kb
+
+            if not _kb.board_exists(board):
+                logger.info(
+                    f"Board '{board}' does not exist. Create it first with "
+                    f"`vermes kanban create {board}`."
+                )
+                return
+            if db.set_session_board(resolved_session_id, board):
+                logger.info(f"Session '{resolved_session_id}' bound to board '{board}'.")
+            else:
+                logger.info(f"Session '{args.session_id}' not found.")
 
         else:
             sessions_parser.print_help()

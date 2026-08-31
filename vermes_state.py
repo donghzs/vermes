@@ -498,6 +498,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     display_name TEXT,
     session_key TEXT,
     origin_json TEXT,
+    -- J1 项目地图：该会话归属的 Kanban board slug（可空，历史行一律 NULL）。
+    -- 只需在 SCHEMA_SQL 声明即可——_reconcile_columns 会在下次启动时把该列
+    -- 自动 ALTER 进历史库（见该函数文档），所以这里不需要手写版本化迁移。
+    board_id TEXT,
     interaction_mode TEXT DEFAULT 'craft',
     FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
 );
@@ -994,6 +998,19 @@ class SessionDB:
         except sqlite3.OperationalError as exc:
             logger.debug("idx_messages_platform_msg_id create skipped: %s", exc)
 
+        # J1 项目地图：board_id 由 _reconcile_columns 补进历史库，因此这个索引
+        # 必须建在这里（reconcile 之后），写进 SCHEMA_SQL 会让历史库的首轮
+        # executescript 因列不存在而失败。用部分索引：历史行 board_id 全为
+        # NULL，且永远不会被按 board 查询，无需进索引。
+        try:
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_board_id "
+                "ON sessions(board_id, started_at DESC) "
+                "WHERE board_id IS NOT NULL"
+            )
+        except sqlite3.OperationalError as exc:
+            logger.debug("idx_sessions_board_id create skipped: %s", exc)
+
         # ── Schema version bookkeeping ─────────────────────────────────
         # Bump to current so future data migrations (if any) can gate on
         # version.  No version-gated column additions remain.
@@ -1160,6 +1177,7 @@ class SessionDB:
         display_name: str = None,
         session_key: str = None,
         origin_json: str = None,
+        board_id: str = None,
     ) -> None:
         """Shared INSERT OR IGNORE for session rows.
 
@@ -1174,8 +1192,9 @@ class SessionDB:
             conn.execute(
                 """INSERT OR IGNORE INTO sessions (id, source, user_id, model, model_config,
                    system_prompt, parent_session_id, started_at,
-                   chat_id, chat_type, thread_id, display_name, session_key, origin_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   chat_id, chat_type, thread_id, display_name, session_key, origin_json,
+                   board_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     session_id,
                     source,
@@ -1191,6 +1210,7 @@ class SessionDB:
                     display_name,
                     session_key,
                     origin_json,
+                    board_id,
                 ),
             )
         self._execute_write(_do)
@@ -1615,6 +1635,74 @@ class SessionDB:
             )
             row = cursor.fetchone()
         return dict(row) if row else None
+
+    # ── J1 项目地图：session ↔ board 双向链接 ───────────────────────────
+    #
+    # board（Kanban 项目板）是"项目"的单位；把 session 挂到 board 上，就能
+    # 按项目聚合历史会话 —— 这是"项目地图"的地基层。
+    #
+    # 设计取舍（纯增量 / fail-open）：
+    #   * sessions.board_id 可空。历史行一律 NULL，未绑定时所有既有查询
+    #     行为与改动前逐字节一致。
+    #   * 不做"按 cwd/git_remote 自动猜测归属"的隐式推断 —— 隐式绑定会在
+    #     用户无感知时改写数据，且一旦猜错很难回溯。绑定一律显式发生
+    #     （建会话时传 board_id，或事后 set_session_board）。
+    #   *  board 被删时不做级联清理：board_id 只是个软引用，读侧拿不到
+    #      board 就当"无归属"处理，不抛错。
+
+    def set_session_board(self, session_id: str, board_id: Optional[str]) -> bool:
+        """Bind a session to a Kanban board (or unbind with ``None``).
+
+        Returns True when a row was actually updated.
+        """
+        def _do(conn):
+            cur = conn.execute(
+                "UPDATE sessions SET board_id = ? WHERE id = ?",
+                (board_id, session_id),
+            )
+            return cur.rowcount > 0
+        try:
+            return bool(self._execute_write(_do))
+        except sqlite3.OperationalError as exc:
+            # Legacy DB where board_id hasn't been reconciled yet — non-fatal.
+            logger.debug("set_session_board skipped: %s", exc)
+            return False
+
+    def get_session_board(self, session_id: str) -> Optional[str]:
+        """Return the board slug a session belongs to, or None."""
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT board_id FROM sessions WHERE id = ?", (session_id,)
+                ).fetchone()
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_session_board skipped: %s", exc)
+            return None
+        if not row:
+            return None
+        return row["board_id"] if isinstance(row, sqlite3.Row) else row[0]
+
+    def list_sessions_by_board(
+        self, board_id: str, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """List sessions bound to ``board_id``, most recent first.
+
+        Returns an empty list for unknown boards or when the column is
+        unavailable (legacy DB) — never raises.
+        """
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT id, source, title, model, started_at, ended_at, "
+                    "end_reason, message_count, tool_call_count, board_id "
+                    "FROM sessions WHERE board_id = ? "
+                    "ORDER BY started_at DESC LIMIT ?",
+                    (board_id, max(1, int(limit))),
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("list_sessions_by_board skipped: %s", exc)
+            return []
+        return [dict(r) for r in rows]
 
     def resolve_session_id(self, session_id_or_prefix: str) -> Optional[str]:
         """Resolve an exact or uniquely prefixed session ID to the full ID.

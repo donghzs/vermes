@@ -29,6 +29,7 @@ from typing import Any, Optional
 
 from vermes_cli import kanban_db as kb
 from vermes_cli import kanban_swarm as ks
+from vermes_cli import research_swarm as rs
 from vermes_cli.profiles import get_active_profile_name, get_profile_dir, seed_profile_skills
 
 # ---------------------------------------------------------------------------
@@ -296,6 +297,15 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
     b_set_wd.add_argument("path", nargs="?", default=None,
                           help="Absolute path to use as default workdir. Omit to clear.")
 
+    # --- J1 项目地图：board 的项目元数据 ---
+    b_set_remote = boards_sub.add_parser(
+        "set-git-remote",
+        help="Set the git remote URL associated with a board (J1 project metadata)",
+    )
+    b_set_remote.add_argument("slug")
+    b_set_remote.add_argument("remote", nargs="?", default=None,
+                             help="Git remote URL. Omit to clear.")
+
     # --- create ---
     p_create = sub.add_parser("create", help="Create a new task")
     p_create.add_argument("title", help="Task title")
@@ -364,6 +374,42 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
     p_swarm.add_argument("--created-by", default=None, help="Creator/anchor profile")
     p_swarm.add_argument("--idempotency-key", default=None, help="Dedup key for the root card")
     p_swarm.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    # --- research (J4: AutoResearch 研究组预设) ---
+    p_research = sub.add_parser(
+        "research",
+        help="Create an AutoResearch swarm (scholarforge + literature_search preset)",
+    )
+    # nargs="?" so `--list-roles` works without a goal; _cmd_research_swarm
+    # validates that a goal is present whenever roles are actually created.
+    p_research.add_argument("goal", nargs="?", default=None,
+                            help="Research question / final deliverable")
+    p_research.add_argument(
+        "--profile",
+        default=None,
+        help="Profile assigned to the parallel specialist workers "
+             "(required unless --list-roles)",
+    )
+    p_research.add_argument("--verifier", default=None,
+                            help="Verifier profile (default: --profile)")
+    p_research.add_argument("--synthesizer", default=None,
+                            help="Synthesizer profile (default: --profile)")
+    p_research.add_argument(
+        "--role",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help="Restrict to specific preset roles (repeatable): "
+             + ", ".join(r.key for r in rs.DEFAULT_RESEARCH_ROLES)
+             + ". Omit to use all.",
+    )
+    p_research.add_argument("--list-roles", action="store_true",
+                            help="Print the preset research roles and exit")
+    p_research.add_argument("--tenant", default=None, help="Tenant namespace")
+    p_research.add_argument("--priority", type=int, default=0, help="Priority tiebreaker")
+    p_research.add_argument("--created-by", default=None, help="Creator/anchor profile")
+    p_research.add_argument("--idempotency-key", default=None, help="Dedup key for the root card")
+    p_research.add_argument("--json", action="store_true", help="Emit JSON output")
 
     # --- list ---
     p_list = sub.add_parser("list", aliases=["ls"], help="List tasks")
@@ -876,6 +922,7 @@ def kanban_command(args: argparse.Namespace) -> int:
         "init":     _cmd_init,
         "create":   _cmd_create,
         "swarm":    _cmd_swarm,
+        "research": _cmd_research_swarm,
         "list":     _cmd_list,
         "ls":       _cmd_list,
         "show":     _cmd_show,
@@ -969,6 +1016,8 @@ def _dispatch_boards(args: argparse.Namespace) -> int:
         return _cmd_boards_rename(args)
     if sub == "set-default-workdir":
         return _cmd_boards_set_default_workdir(args)
+    if sub == "set-git-remote":
+        return _cmd_boards_set_git_remote(args)
     logger.warning(f"kanban boards: unknown action {sub!r}")
     return 2
 
@@ -1133,6 +1182,25 @@ def _cmd_boards_set_default_workdir(args: argparse.Namespace) -> int:
         logger.info(f"Board {normed!r} default workdir set to {new_val!r}.")
     else:
         logger.info(f"Board {normed!r} default workdir cleared.")
+    return 0
+
+def _cmd_boards_set_git_remote(args: argparse.Namespace) -> int:
+    """J1: attach a git remote URL to a board (project identity metadata)."""
+    try:
+        normed = kb._normalize_board_slug(args.slug)
+    except ValueError as exc:
+        logger.warning(f"kanban boards set-git-remote: {exc}")
+        return 2
+    if not normed or not kb.board_exists(normed):
+        logger.info(f"kanban boards set-git-remote: board {args.slug!r} does not exist",
+              file=sys.stderr)
+        return 1
+    meta = kb.write_board_metadata(normed, git_remote=args.remote)
+    new_val = meta.get("git_remote")
+    if new_val:
+        logger.info(f"Board {normed!r} git remote set to {new_val!r}.")
+    else:
+        logger.info(f"Board {normed!r} git remote cleared.")
     return 0
 
 # ---------------------------------------------------------------------------
@@ -1329,6 +1397,70 @@ def _cmd_swarm(args: argparse.Namespace) -> int:
     else:
         logger.info(f"Swarm root: {created.root_id}")
         logger.info("Workers: " + ", ".join(created.worker_ids))
+        logger.info(f"Verifier: {created.verifier_id}")
+        logger.info(f"Synthesizer: {created.synthesizer_id}")
+    return 0
+
+def _cmd_research_swarm(args: argparse.Namespace) -> int:
+    """Create an AutoResearch research-group swarm (J4).
+
+    Thin CLI wrapper over :func:`research_swarm.create_research_swarm`: wires
+    the scholarforge + literature_search toolchain into a Kanban Swarm graph.
+    """
+    if getattr(args, "list_roles", False):
+        roles = rs.list_research_roles()
+        if getattr(args, "json", False):
+            logger.info(json.dumps(roles, indent=2, ensure_ascii=False))
+        else:
+            for role in roles:
+                logger.info(f"  {role['key']:<11} {role['title']}")
+                for tool in role["tools"]:
+                    logger.info(f"               - {tool}")
+        return 0
+
+    goal = (getattr(args, "goal", None) or "").strip()
+    if not goal:
+        logger.warning("kanban research: goal is required (or pass --list-roles)")
+        return 2
+    # --profile is not required at the argparse level so `--list-roles` works
+    # standalone; validate it here instead.
+    profile = (getattr(args, "profile", None) or "").strip()
+    if not profile:
+        logger.warning("kanban research: --profile is required")
+        return 2
+
+    selected = None
+    requested = getattr(args, "role", None) or []
+    if requested:
+        by_key = {r.key: r for r in rs.DEFAULT_RESEARCH_ROLES}
+        unknown = [k for k in requested if k not in by_key]
+        if unknown:
+            logger.warning(
+                "kanban research: unknown role(s): %s (known: %s)",
+                ", ".join(unknown),
+                ", ".join(sorted(by_key)),
+            )
+            return 2
+        selected = [by_key[k] for k in requested]
+
+    with kb.connect() as conn:
+        created = rs.create_research_swarm(
+            conn,
+            goal=goal,
+            profile=profile,
+            verifier_profile=getattr(args, "verifier", None),
+            synthesizer_profile=getattr(args, "synthesizer", None),
+            roles=selected,
+            tenant=args.tenant,
+            created_by=args.created_by or _profile_author(),
+            priority=args.priority,
+            idempotency_key=getattr(args, "idempotency_key", None),
+        )
+    if getattr(args, "json", False):
+        logger.info(json.dumps(created.as_dict(), indent=2, ensure_ascii=False))
+    else:
+        logger.info(f"Research swarm root: {created.root_id}")
+        logger.info("Specialists: " + ", ".join(created.worker_ids))
         logger.info(f"Verifier: {created.verifier_id}")
         logger.info(f"Synthesizer: {created.synthesizer_id}")
     return 0
