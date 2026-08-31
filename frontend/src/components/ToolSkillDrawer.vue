@@ -9,6 +9,7 @@ import SoftwareDiscover from './SoftwareDiscover.vue'
 import ExpertCatalog from './ExpertCatalog.vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
+import { useBrickEvents } from '../utils/brick-events'
 
 const { open, tab, closePanel, setTab } = useRightPanel()
 
@@ -51,6 +52,19 @@ async function toggleToolset(name, enabled) {
 // 切到「工具」标签或面板打开时按需加载工具集
 watch(tab, (t) => { if (t === 'tools') loadToolsets() })
 watch(open, (o) => { if (o && tab.value === 'tools' && toolsets.value.length === 0) loadToolsets() })
+
+// ── 动态刷新：订阅后端 brick 事件 ──
+const { onEvent } = useBrickEvents()
+// 工具注册/deregister → 重新加载工具集（仅当前在 tools tab 时）
+onEvent('tool.registered', () => { if (open.value && tab.value === 'tools') loadToolsets() })
+onEvent('tool.deregistered', () => { if (open.value && tab.value === 'tools') loadToolsets() })
+onEvent('mcp.changed', () => { if (open.value && tab.value === 'tools') loadToolsets() })
+// 技能/模块安装/卸载 → 通知子组件刷新（通过 key 重新 mount）
+const drawerKey = ref(0)
+onEvent('skill.installed', () => { drawerKey.value++ })
+onEvent('skill.uninstalled', () => { drawerKey.value++ })
+onEvent('module.installed', () => { drawerKey.value++ })
+onEvent('module.uninstalled', () => { drawerKey.value++ })
 
 function onKey(e) {
   if (e.key === 'Escape' && open.value) closePanel()

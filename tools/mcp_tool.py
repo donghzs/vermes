@@ -1410,6 +1410,12 @@ class MCPServerTask:
                     "Verify these changes are expected.",
                     self.name, "; ".join(changes),
                 )
+                # 广播事件：MCP 工具变更 → 前端 Agent 管理实时刷新
+                try:
+                    from vermes_cli.capabilities.brick_events import publish, EVENT_MCP_CHANGED
+                    publish(EVENT_MCP_CHANGED, {"server": self.name, "added": list(added), "removed": list(removed)})
+                except Exception:
+                    pass
             else:
                 logger.info(
                     "MCP server '%s': dynamically refreshed %d tool(s) (no changes)",

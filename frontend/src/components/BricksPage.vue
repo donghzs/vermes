@@ -199,6 +199,7 @@ import api from '../services/api'
 import { toast } from '../utils/toast'
 import { envHeaders } from '../utils/env'
 import MarketCard from './MarketCard.vue'
+import { useBrickEvents } from '../utils/brick-events'
 
 // ── 顶层 tab ──
 const topTab = ref('market')
@@ -480,4 +481,13 @@ function formatStars(n) {
 }
 
 onMounted(() => loadAll())
+
+// 动态刷新：安装/卸载后自动重新加载市场数据
+const { onEvent } = useBrickEvents()
+onEvent('skill.installed', () => loadAll(true))
+onEvent('skill.uninstalled', () => loadAll(true))
+onEvent('module.installed', () => loadAll(true))
+onEvent('module.uninstalled', () => loadAll(true))
+onEvent('tool.registered', () => loadAll(true))
+onEvent('tool.deregistered', () => loadAll(true))
 </script>

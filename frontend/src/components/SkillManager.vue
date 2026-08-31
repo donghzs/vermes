@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
+import { useBrickEvents } from '../utils/brick-events'
 
 // 外部可指定初始 tab（如独立发现页路由默认打开 market）
 const props = defineProps({
@@ -223,6 +224,13 @@ function marketNext() { if (marketPage.value < marketTotalPages.value) marketPag
 onMounted(() => {
   loadSkills()
 })
+
+// 动态刷新：技能安装/卸载后自动重新加载
+const { onEvent } = useBrickEvents()
+onEvent('skill.installed', () => loadSkills())
+onEvent('skill.uninstalled', () => loadSkills())
+onEvent('module.installed', () => loadSkills())
+onEvent('module.uninstalled', () => loadSkills())
 </script>
 
 <template>

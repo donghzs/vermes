@@ -624,6 +624,13 @@ def do_install(identifier: str, category: str = "", force: bool = False,
     c.print(f"[bold green]Installed:[/] {install_dir.relative_to(SKILLS_DIR)}")
     c.print(f"[dim]Files: {', '.join(bundle.files.keys())}[/]\n")
 
+    # 广播事件：技能已安装 → 前端 Agent 管理实时刷新
+    try:
+        from vermes_cli.capabilities.brick_events import publish, EVENT_SKILL_INSTALLED
+        publish(EVENT_SKILL_INSTALLED, {"name": bundle.name, "category": category})
+    except Exception:
+        pass
+
     if invalidate_cache:
         # Invalidate the skills prompt cache so the new skill appears immediately
         try:
@@ -967,6 +974,12 @@ def do_uninstall(name: str, console: Optional[Console] = None,
     success, msg = uninstall_skill(name)
     if success:
         c.print(f"[bold green]{msg}[/]\n")
+        # 广播事件：技能已卸载 → 前端 Agent 管理实时刷新
+        try:
+            from vermes_cli.capabilities.brick_events import publish, EVENT_SKILL_UNINSTALLED
+            publish(EVENT_SKILL_UNINSTALLED, {"name": name})
+        except Exception:
+            pass
         if invalidate_cache:
             try:
                 from agent.prompt_builder import clear_skills_system_prompt_cache

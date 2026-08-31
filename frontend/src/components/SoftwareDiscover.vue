@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
+import { useBrickEvents } from '../utils/brick-events'
 
 // ── 子 tab：已装 / 发现 ──
 const subTab = ref('installed')
@@ -100,6 +101,12 @@ function scoreLabel(score) {
 onMounted(() => {
   loadInstalled()
 })
+
+// 动态刷新：软件适配器安装/卸载后自动重新加载
+const { onEvent } = useBrickEvents()
+onEvent('tool.registered', () => loadInstalled())
+onEvent('tool.deregistered', () => loadInstalled())
+onEvent('mcp.changed', () => loadInstalled())
 </script>
 
 <template>

@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
+import { useBrickEvents } from '../utils/brick-events'
 const { confirm } = useConfirm()
 
 const servers = ref([])
@@ -95,6 +96,12 @@ async function toggleServer(srv) {
 onMounted(() => {
   loadServers()
 })
+
+// 动态刷新：MCP 工具变更后自动重新加载
+const { onEvent } = useBrickEvents()
+onEvent('mcp.changed', () => loadServers())
+onEvent('tool.registered', () => loadServers())
+onEvent('tool.deregistered', () => loadServers())
 </script>
 
 <template>

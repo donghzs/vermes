@@ -605,6 +605,13 @@ class ToolRegistry:
                 self._toolset_checks[toolset] = check_fn
             self._generation += 1
 
+        # 广播事件：工具已注册 → 前端 Agent 管理实时刷新
+        try:
+            from vermes_cli.capabilities.brick_events import publish, EVENT_TOOL_REGISTERED
+            publish(EVENT_TOOL_REGISTERED, {"name": name, "toolset": toolset})
+        except Exception:
+            pass
+
     def deregister(self, name: str) -> None:
         """Remove a tool from the registry.
 
@@ -630,6 +637,13 @@ class ToolRegistry:
                 }
             self._generation += 1
         logger.debug("Deregistered tool: %s", name)
+
+        # 广播事件：工具已注销 → 前端 Agent 管理实时刷新
+        try:
+            from vermes_cli.capabilities.brick_events import publish, EVENT_TOOL_DEREGISTERED
+            publish(EVENT_TOOL_DEREGISTERED, {"name": name, "toolset": entry.toolset})
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Schema retrieval

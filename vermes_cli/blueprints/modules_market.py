@@ -168,6 +168,12 @@ def register_to(app) -> None:
 
         # 热重载进 registry（与文件 watcher / apply_change 同一入口）
         reload = reload_module_tools(body.id)
+        # 广播事件：模块已安装 → 前端实时刷新
+        try:
+            from vermes_cli.capabilities.brick_events import publish, EVENT_MODULE_INSTALLED
+            publish(EVENT_MODULE_INSTALLED, {"name": body.id})
+        except Exception:
+            pass
         return {
             "ok": reload.get("ok", False),
             "installed_dir": str(installed_dir),
@@ -183,4 +189,10 @@ def register_to(app) -> None:
         res = uninstall_module(body.name)
         if not res.get("ok"):
             raise HTTPException(status_code=400, detail=res.get("error", "卸载失败"))
+        # 广播事件：模块已卸载 → 前端实时刷新
+        try:
+            from vermes_cli.capabilities.brick_events import publish, EVENT_MODULE_UNINSTALLED
+            publish(EVENT_MODULE_UNINSTALLED, {"name": body.name})
+        except Exception:
+            pass
         return res

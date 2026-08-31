@@ -487,6 +487,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # GitHub Trending + 腾讯开源（公开热门榜，无需登录）
     "/api/github/trending",
     "/api/trending/tencent",
+    # Brick 事件流（SSE，EventSource 无法带 header，须 public）
+    "/api/bricks/events",
 })
 
 
@@ -3000,6 +3002,10 @@ blueprints.oauth.register_to(app)
 blueprints.artifacts.register_to(app)
 blueprints.modules_market.register_to(app)  # Phase 3.2 市场后端中间层
 blueprints.capabilities.register_to(app)  # P0: 能力目录端点（GET /api/v1/capabilities）
+
+# Brick 事件 SSE 端点（动态刷新广播）
+from vermes_cli.capabilities import brick_events
+brick_events.register_to(app)
 blueprints.invoke.register_to(app)  # P3-2: 统一能力调用端点（POST /api/invoke）
 blueprints.benchmark.register_to(app)  # P4-4 T2: benchmark 可视化大盘端点
 
