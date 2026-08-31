@@ -64,11 +64,15 @@
 
     <!-- 操作 -->
     <div class="flex gap-2 mt-auto" v-if="!showConfirm">
-      <button
-        v-if="item.install_state === 'installed'"
-        disabled
-        class="flex-1 px-3 py-2 text-sm rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-center cursor-default"
-      >✅ 已安装</button>
+      <div v-if="item.install_state === 'installed'" class="flex gap-2">
+        <span class="flex-1 px-3 py-2 text-sm rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-center">✅ 已安装</span>
+        <button
+          @click="$emit('uninstall', item)"
+          :disabled="busy"
+          class="px-3 py-2 text-sm rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50 transition"
+          title="卸载"
+        >🗑</button>
+      </div>
       <button
         v-else-if="needsConfirm"
         @click="showConfirm = true"
@@ -96,7 +100,7 @@ const props = defineProps({
   item: { type: Object, required: true },
   busy: { type: Boolean, default: false },
 })
-const emit = defineEmits(['install'])
+const emit = defineEmits(['install', 'uninstall'])
 
 const showConfirm = ref(false)
 

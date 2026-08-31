@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
 _log = logging.getLogger(__name__)
@@ -458,47 +459,51 @@ async def tencent_opensource(q: str = "", limit: int = 25):
     """
     import httpx
 
-    orgs = ["Tencent", "TencentCloud", "TarsCloud", "Tencentyun", "TencentBlueKing"]
-    q_parts = []
+    orgs = ["Tencent", "TencentCloud", "TarsCloud", "TencentBlueKing"]
+    # GitHub Search API 不支持 OR 连接多个 org: 限定符，逐个查询合并取 Top N
+    per_org = max(limit // len(orgs) + 2, 5)
+    all_items = []
     for org in orgs:
-        q_parts.append(f"org:{org}")
-    org_query = " OR ".join(q_parts)
-    if q:
-        query = f"{q} ({org_query})"
-    else:
-        query = org_query
+        q = f"org:{org}" + (f" {q}" if q else "")
+        try:
+            resp = httpx.get(
+                "https://api.github.com/search/repositories",
+                params={"q": q, "sort": "stars", "order": "desc", "per_page": min(per_org, 30)},
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "Vermes/2.4"},
+                timeout=12.0,
+            )
+            if resp.status_code == 200:
+                for repo in resp.json().get("items", []):
+                    all_items.append({
+                        "name": repo.get("name", ""),
+                        "full_name": repo.get("full_name", ""),
+                        "description": repo.get("description") or "",
+                        "stars": repo.get("stargazers_count", 0),
+                        "language": repo.get("language") or "",
+                        "url": repo.get("html_url", ""),
+                        "topics": repo.get("topics", []),
+                        "forks": repo.get("forks_count", 0),
+                        "owner": repo.get("owner", {}).get("login", ""),
+                        "owner_avatar": repo.get("owner", {}).get("avatar_url", ""),
+                        "created_at": repo.get("created_at", ""),
+                        "pushed_at": repo.get("pushed_at", ""),
+                    })
+            else:
+                _log.warning("Tencent opensource: org %s returned %s", org, resp.status_code)
+        except Exception as exc:
+            _log.warning("Tencent opensource: org %s failed: %s", org, exc)
+            continue  # 单个 org 失败不中断
 
-    try:
-        resp = httpx.get(
-            "https://api.github.com/search/repositories",
-            params={"q": query, "sort": "stars", "order": "desc", "per_page": min(max(limit, 1), 50)},
-            headers={"Accept": "application/vnd.github+json", "User-Agent": "Vermes/2.4"},
-            timeout=15.0,
-        )
-        if resp.status_code != 200:
-            return {"items": [], "total": 0, "error": f"GitHub API {resp.status_code}"}
-        data = resp.json()
-    except Exception as exc:
-        _log.warning("Tencent opensource search failed: %s", exc)
-        return {"items": [], "total": 0, "error": str(exc)}
-
-    items = []
-    for repo in data.get("items", []):
-        items.append({
-            "name": repo.get("name", ""),
-            "full_name": repo.get("full_name", ""),
-            "description": repo.get("description") or "",
-            "stars": repo.get("stargazers_count", 0),
-            "language": repo.get("language") or "",
-            "url": repo.get("html_url", ""),
-            "topics": repo.get("topics", []),
-            "forks": repo.get("forks_count", 0),
-            "owner": repo.get("owner", {}).get("login", ""),
-            "owner_avatar": repo.get("owner", {}).get("avatar_url", ""),
-            "created_at": repo.get("created_at", ""),
-            "pushed_at": repo.get("pushed_at", ""),
-        })
-    return {"items": items, "total": len(items), "query": q}
+    # 去重 + 按 stars 排序 + 截取 limit
+    seen = set()
+    deduped = []
+    for it in all_items:
+        if it["full_name"] not in seen:
+            seen.add(it["full_name"])
+            deduped.append(it)
+    deduped.sort(key=lambda x: x["stars"], reverse=True)
+    items = deduped[:limit]
+    return {"items": items, "total": len(items)}
 
 
 async def market_install(body: SkillInstallRequest):
@@ -588,6 +593,24 @@ async def get_usage_recommend(kind: Optional[str] = None, limit: int = 4):
 
 # ── registration ───────────────────────────────────────────────
 
+class CreateSkillRequest(BaseModel):
+    name: str
+    content: str
+    category: str = ""
+
+
+async def create_skill_endpoint(body: CreateSkillRequest, request: Request = None):
+    """POST /api/skills/create — 用户自定义技能创建。
+
+    调 skill_manager_tool._create_skill 做安全扫描 + 写盘。
+    """
+    from tools.skill_manager_tool import _create_skill
+    result = _create_skill(body.name, body.content, body.category or None)
+    if result.get("success"):
+        return {"ok": True, "message": result["message"], "path": result.get("path", "")}
+    return {"ok": False, "message": result.get("error", "创建失败")}
+
+
 def register_to(app):
     """Register skills & tools routes on the FastAPI app."""
     app.add_api_route(
@@ -644,6 +667,9 @@ def register_to(app):
     )
     app.add_api_route(
         "/api/usage/recommend", get_usage_recommend, methods=["GET"], name="get_usage_recommend"
+    )
+    app.add_api_route(
+        "/api/skills/create", create_skill_endpoint, methods=["POST"], name="create_skill"
     )
 
 

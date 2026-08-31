@@ -102,6 +102,7 @@
               :item="item"
               :busy="busyId === item._key"
               @install="onInstall"
+              @uninstall="onUninstall"
             />
           </div>
         </div>
@@ -337,14 +338,15 @@ async function loadSoftware() {
     try {
       const rec = await api.get('/adapters/recommend')
       recommended = (rec.recommendations || rec.items || []).map(r => ({
-        _key: `software-rec:${r.name || r.id}`,
+        _key: `software-rec:${r.software || r.name || r.id}`,
         _type: 'software',
-        name: r.display_name || r.name,
-        id: r.name || r.id,
-        description: r.description || r.reason || '',
+        name: r.software || r.display_name || r.name,
+        id: r.software || r.name || r.id,
+        description: r.reason || r.description || '',
         version: '',
         source: 'recommended',
         install_state: 'available',
+        tools_count: 0,
         raw: r,
       }))
     } catch {}
@@ -364,9 +366,20 @@ async function onInstall(item) {
     if (item._type === 'skill') {
       r = await api.post('/skills/install', { name: item.id })
     } else if (item._type === 'module') {
-      r = await api.post('/v1/modules/market/install', { name: item.id })
+      r = await api.post('/v1/modules/market/install', { id: item.id })
     } else if (item._type === 'software') {
-      toast.info('软件适配器请通过 Agent 管理 → 软件 tab 安装')
+      const raw = item.raw || {}
+      r = await api.post('/adapters/install', {
+        software: raw.software || item.id,
+        adapter_install: raw.adapter_install || '',
+        backend_hint: raw.backend_hint || '',
+      })
+      if (r && (r.tools_registered !== undefined || r.ok !== false)) {
+        toast.success(r.message || `已安装 ${item.name}`)
+        await loadAll(true)
+      } else {
+        toast.error((r && r.error) || '安装失败')
+      }
       busyId.value = ''
       return
     }
@@ -378,6 +391,32 @@ async function onInstall(item) {
     }
   } catch (e) {
     toast.error('安装失败：' + (e?.message || e))
+  } finally {
+    busyId.value = ''
+  }
+}
+
+async function onUninstall(item) {
+  busyId.value = item._key
+  try {
+    let r
+    if (item._type === 'skill') {
+      r = await api.del(`/skills/${encodeURIComponent(item.id)}`)
+    } else if (item._type === 'module') {
+      r = await api.post('/v1/modules/market/uninstall', { name: item.id })
+    } else if (item._type === 'software') {
+      toast.info('软件适配器卸载请通过 Agent 管理 → 软件 tab 操作')
+      busyId.value = ''
+      return
+    }
+    if (r?.ok !== false) {
+      toast.success(r?.message || `已卸载 ${item.name}`)
+      await loadAll(true)
+    } else {
+      toast.error(r?.message || '卸载失败')
+    }
+  } catch (e) {
+    toast.error('卸载失败：' + (e?.message || e))
   } finally {
     busyId.value = ''
   }
