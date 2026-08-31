@@ -1,5 +1,0 @@
-[console_scripts]
-vermes = VERMES_cli.main:main
-vermes-acp = acp_adapter.entry:main
-vermes = VERMES_cli.main:main
-vermes-agent = run_agent:main

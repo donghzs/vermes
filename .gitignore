@@ -1,10 +1,12 @@
+# ── Python ──
 .DS_Store
-/venv/
-/_pycache/
 *.pyc*
 __pycache__/
+/venv/
 .venv/
-.vscode/
+.pytest_cache/
+
+# ── Env / Secrets ──
 .env
 .env.local
 .env.development.local
@@ -13,92 +15,84 @@ __pycache__/
 .env.development
 .env.test
 /export*
-__pycache__/model_tools.cpython-310.pyc
-__pycache__/web_tools.cpython-310.pyc
-logs/
-data/
-.pytest_cache/
-tmp/
-temp_vision_images/
-hermes-*/*
-examples/
-tests/quick_test_dataset.jsonl
-tests/sample_dataset.jsonl
-run_datagen_kimik2-thinking.sh
-run_datagen_megascience_glm4-6.sh
-run_datagen_sonnet.sh
-source-data/*
-run_datagen_megascience_glm4-6.sh
-data/*
-node_modules/
-browser-use/
-agent-browser/
-# Private keys
 *.ppk
 *.pem
 privvy*
-images/
-__pycache__/
-hermes_agent.egg-info/
-wandb/
-testlogs
-
-# CLI config (may contain sensitive SSH paths)
 cli-config.yaml
 
-# Skills Hub state (lives in ~/.hermes/skills/.hub/ at runtime, but just in case)
-skills/.hub/
+# ── Build artifacts ──
+build/
+dist/
+dist-electron/
+dist-modules/*.tar.gz
+*.dmg
+*.zip
+vermes-onefile.spec
+*.egg-info/
+hermes_agent.egg-info/
+
+# ── Frontend ──
+node_modules/
+frontend/dist/
+frontend/coverage/
+vermes_cli/web_dist.bak.v1/
+
+# ── Logs / Temp / Data ──
+logs/
+data/
+tmp/
+temp_vision_images/
+.release_notes.md
+
+# ── Test data ──
+tests/quick_test_dataset.jsonl
+tests/sample_dataset.jsonl
+test_studio_*.py
+
+# ── Legacy / unused dirs (defensive: keep in case of re-creation) ──
+hermes-*/*
+browser-use/
+agent-browser/
+mini-swe-agent/
+wandb/
+testlogs
+images/
 ignored/
+examples/
+source-data/
+models-dev-upstream/
 .worktrees/
 environments/benchmarks/evals/
+docs/superpowers/
 
-# Web UI build output
-
-# Web UI assets — synced from @nous-research/ui at build time via
-# `npm run sync-assets` (see web/package.json).
-web/public/fonts/
-web/public/ds-assets/
-
-# Release script temp files
-.release_notes.md
-mini-swe-agent/
-
-# Nix
+# ── Nix ──
 .direnv/
 .nix-stamps/
 result
+
+# ── Legacy run scripts (no longer in repo) ──
+run_datagen_kimik2-thinking.sh
+run_datagen_megascience_glm4-6.sh
+run_datagen_sonnet.sh
+
+# ── Old web/ assets (synced at build time, not source) ──
+web/public/fonts/
+web/public/ds-assets/
+
+# ── Skills Hub state ──
+skills/.hub/
+
+# ── Reports / Archive (sensitive info risk) ──
+archive/
 website/static/api/skills-index.json
-models-dev-upstream/
+
+# ── Legacy Hermes paths (renamed to vermes_cli/) ──
 hermes_cli/tui_dist/*
 hermes_cli/scripts/
-docs/superpowers/*
-# PyInstaller build artifacts
-build/
-dist/Vermes.app/
-dist/Vermes/
-frontend/coverage/
 
-# Local release binaries (not committed)
-*.dmg
-*.zip
-dist/
-frontend/dist/
-vermes-onefile.spec
-
-# Old reports and build artifacts (sensitive info risk)
-archive/
-dist-electron/
-# Studio 测试文件 - 含真实 API Key，禁止提交
-test_studio_*.py
-UNKNOWN.egg-info/
-vermes.egg-info/
-
-# 前端构建备份产物 (非源码, 含构建 JS, 不进版本库)
-vermes_cli/web_dist.bak.v1/
-
-# mfgcad 制造业 text-to-CAD 模块
-# 引擎（MAC）已外置为按需安装层，位于 ~/.vermes/engines/mac/（仓库外，无需忽略）。
-# 以下仅覆盖框架层（仓库内）的运行时产物。
+# ── mfgcad runtime artifacts ──
 vermes_cli/mfgcad/**/*.bak_gate*
 vermes_cli/mfgcad/**/__pycache__/
-dist-modules/*.tar.gz
+
+# ── IDE ──
+.vscode/
