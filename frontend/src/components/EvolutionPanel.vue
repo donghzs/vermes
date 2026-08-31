@@ -1,11 +1,29 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 import { useBackendConnectionStore } from '../stores/backendConnection'
 import { personaMiniStatus, personaTitles, personaLabels } from '../utils/persona-copy'
 import CapabilitySelfCheck from './CapabilitySelfCheck.vue'
 import MemoryProfile from './MemoryProfile.vue'
+
+// G13/成长页: fullPage=true 时在 /growth 全宽页渲染（无 mini 指示器、无收起、全宽布局）
+// jumpOnClick=true 时（侧栏）：只渲染 mini 指示器一行 + 角标，点击跳 /growth 而非在侧栏内展开
+const props = defineProps({
+  fullPage: { type: Boolean, default: false },
+  jumpOnClick: { type: Boolean, default: false },
+})
+
+const router = useRouter()
+
+function onMiniClick() {
+  if (props.jumpOnClick) {
+    router.push('/growth')
+  } else {
+    collapsed.value = false
+  }
+}
 const { confirm } = useConfirm()
 const backendConn = useBackendConnectionStore()
 
@@ -14,7 +32,7 @@ const loading = ref(true)
 const expanded = ref(true) // G14: 默认展开，让用户看到「我擅长什么」和「我眼里的你」
 const achievements = ref([])
 const dagData = ref(null)
-const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详情
+const collapsed = ref(!props.fullPage) // fullPage 下直接完整面板，无折叠态
 const emergenceData = ref(null)
 const skillsData = ref(null)
 const graphData = ref(null)        // 学习成长图谱（技能+记忆节点+边+时间线）
@@ -454,8 +472,8 @@ const smTypeLabel = (t) => {
 </script>
 
 <template>
-  <!-- 微型指示器模式（默认）：仅一行小字 -->
-  <div v-if="!loading && status?.active && collapsed" class="evolution-mini" @click="collapsed = false">
+  <!-- 微型指示器模式（默认）：仅一行小字。fullPage 下不渲染 mini 态 -->
+  <div v-if="!props.fullPage && !loading && status?.active && collapsed" class="evolution-mini" @click="onMiniClick">
     <span class="evo-mini-icon">{{ miniStatus.icon }}</span>
     <span class="evo-mini-text">{{ miniStatus.text }}</span>
     <!-- L1 的角标：面板折叠时唯一的「有事发生」信号。没有它，自动调整
@@ -463,15 +481,15 @@ const smTypeLabel = (t) => {
     <span v-if="miniStatus.badge > 0" class="evo-mini-badge" :class="miniStatus.badgeKind === 'pending' ? 'evo-mini-badge--pending' : ''" :title="miniStatus.badgeKind === 'pending' ? `${miniStatus.badge} 件事想跟你确认` : `${miniStatus.badge} 个新理解`">{{ miniStatus.badge }}</span>
     <span class="evo-mini-expand">▶</span>
   </div>
-  <!-- 完整面板模式（点击展开） -->
-  <div v-if="!loading && status?.active && !collapsed" class="evolution-panel">
-    <div class="evo-header" @click="expanded = !expanded">
+  <!-- 完整面板模式（点击展开）。jumpOnClick 下（侧栏 mini 态）永不渲染完整面板 -->
+  <div v-if="!props.jumpOnClick && !loading && status?.active && (!collapsed || props.fullPage)" class="evolution-panel" :class="{ 'evolution-panel--full': props.fullPage }">
+    <div class="evo-header" @click="props.fullPage ? null : (expanded = !expanded)">
       <span class="evo-icon">🧠</span>
       <span class="evo-title">{{ personaTitles.evolution }}</span>
       <!-- A.4.5: 后端离线时内联"重连中…"，替代红色 toast 刷屏 -->
       <span v-if="backendOffline" class="text-xs text-amber-400/80 ml-1">· 重连中…</span>
-      <span class="evo-expand">{{ expanded ? '▼' : '▶' }}</span>
-      <span class="evo-collapse" @click.stop="collapsed = true">收起</span>
+      <span v-if="!props.fullPage" class="evo-expand">{{ expanded ? '▼' : '▶' }}</span>
+      <span v-if="!props.fullPage" class="evo-collapse" @click.stop="collapsed = true">收起</span>
     </div>
     <div class="evo-grid">
       <div class="evo-card">
@@ -826,6 +844,14 @@ const smTypeLabel = (t) => {
   border-radius: 0.75rem;
   background: rgba(34, 197, 94, 0.03);
   border: 1px solid rgba(34, 197, 94, 0.15);
+}
+/* G13/成长页：全宽渲染，去侧栏式窄框约束 */
+.evolution-panel--full {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
 }
 .dark .evolution-panel {
   background: rgba(34, 197, 94, 0.05);

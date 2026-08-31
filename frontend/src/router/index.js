@@ -9,6 +9,7 @@ import BricksPage from '../components/BricksPage.vue'
 import BenchmarkDashboard from '../components/BenchmarkDashboard.vue'
 import KanbanBoard from '../components/KanbanBoard.vue'
 import WorkflowsPage from '../components/WorkflowsPage.vue'
+import GrowthPage from '../components/GrowthPage.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -29,6 +30,8 @@ const routes = [
   { path: '/kanban', component: KanbanBoard },
   // A2 工作流编排：可视化 DAG 编辑器 + 触发器配置
   { path: '/workflows', component: WorkflowsPage },
+  // G13：成长页 —— 成长/能力自检/我懂你 全宽呈现（原侧栏底部 EvolutionPanel + modal 提级）
+  { path: '/growth', component: GrowthPage },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/
