@@ -617,3 +617,39 @@ def promote_best_variant(processor_id: str, db_path: str = "") -> Dict[str, Any]
     decision["reason"] = "no variant beats active by Δ"
     return decision
 
+
+
+def list_active_variants_summary() -> List[Dict[str, Any]]:
+    """List all processors that currently have an active variant.
+
+    P4-D: Used by evolution_manager.build_evolution_prompt() to inject
+    active variant info into the system prompt, closing the loop between
+    variant evolution and prompt injection.
+    """
+    base = _get_user_dir() / "processors"
+    if not base.exists():
+        return []
+    summaries = []
+    for proc_dir in base.iterdir():
+        if not proc_dir.is_dir():
+            continue
+        registry_path = proc_dir / "registry.json"
+        if not registry_path.exists():
+            continue
+        try:
+            import json as _json
+            reg = _json.loads(registry_path.read_text(encoding="utf-8"))
+            active_hash = reg.get("active_hash", "")
+            if active_hash:
+                variants = reg.get("variants", [])
+                active_v = next((v for v in variants if v.get("hash") == active_hash), {})
+                summaries.append({
+                    "processor_id": proc_dir.name,
+                    "active_hash": active_hash[:16],
+                    "n_variants": len(variants),
+                    "score": active_v.get("score", 0.0),
+                    "n_samples": active_v.get("n_samples", 0),
+                })
+        except Exception:
+            continue
+    return summaries

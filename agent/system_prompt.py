@@ -536,6 +536,19 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     except Exception as e:
         logger.debug("system_prompt.py: build system prompt parts failed: %s", e)
 
+    # M5: 能力意识→任务路由自检引导
+    # 让 agent 在接受任务前先自检：是否有对应能力/技能/工具
+    _m5_self_check = (
+        "<capability_self_check>\n"
+        "在接受任务前，先自检：\n"
+        "1. 当前有哪些已安装的技能/工具/模块可能匹配这个任务？\n"
+        "2. 是否有 pending 技能可以激活来提升完成质量？\n"
+        "3. 如果缺少能力，先说明缺口再尝试，不要裸跑失败。\n"
+        "4. 优先复用已有能力（技能/工具/模块），而不是从零开始。\n"
+        "</capability_self_check>"
+    )
+    volatile_parts.append(_m5_self_check)
+
     # ── Extracted skills: active skills + pending for user confirmation ──
     try:
         from agent.skill_extractor import get_active_skills_prompt, get_pending_skills_prompt

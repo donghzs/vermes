@@ -1144,6 +1144,25 @@ def run_conversation(
                 agent._continuity_context = _sections["continuity_context"]
         except Exception as e:
             logger.debug("conversation_loop.py: run conversation failed: %s", e)
+
+    # M4: 长会话经验/能力再注入 — 每 20 轮重新注入 evolution/recall/capability
+    # 首轮已注入，此处覆盖长会话中后期（turn > 20）的自我意识持久性
+    elif agent._user_turn_count > 1 and agent._user_turn_count % 20 == 0:
+        try:
+            from agent.continuity_facade import load_continuity_context
+            _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
+            _ctx = load_continuity_context(_turn_msg)
+            _sections = _ctx.to_prompt_sections()
+            if "evolution_context" in _sections:
+                agent._evolution_context = _sections["evolution_context"]
+            if "recall_context" in _sections:
+                agent._recall_context = _sections["recall_context"]
+            logger.info("[M4] 长会话再注入: turn=%d, evolution=%d chars, recall=%d chars",
+                        agent._user_turn_count,
+                        len(_sections.get("evolution_context", "")),
+                        len(_sections.get("recall_context", "")))
+        except Exception as e:
+            logger.error("[M4] 长会话再注入失败 turn=%d: %s", agent._user_turn_count, e, exc_info=True)
     if agent._memory_manager:
         try:
             _turn_msg = original_user_message if isinstance(original_user_message, str) else ""

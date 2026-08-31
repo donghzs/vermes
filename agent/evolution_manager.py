@@ -1272,6 +1272,15 @@ def build_evolution_prompt() -> str:
         if status.get("anti_patterns_count", 0) > 0:
             parts.append(f"反模式: {status['anti_patterns_count']} 条")
 
+        # P4-D: 注入 active variant 信息，环闭合于提示注入
+        try:
+            from agent.variant_store import list_active_variants_summary
+            _variants = list_active_variants_summary()
+            if _variants:
+                parts.append(f"活跃变体: {len(_variants)} 个")
+        except Exception:
+            pass  # variant 信息不可用不阻断进化上下文
+
         # 注入每日签到简报
         briefing = build_daily_briefing()
         if briefing:
