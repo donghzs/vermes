@@ -33,6 +33,7 @@ import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import { flushStorageWrites } from './chat-storage'
 import { getChatTransport } from '../services/chat-transport'
 import { useBackendConnectionStore } from './backendConnection'
+import { personaChangeNotify } from '../utils/persona-copy'
 
 // 常量
 const SESSIONS_KEY = 'vermes-sessions'
@@ -1058,6 +1059,29 @@ export const useChatStore = defineStore('chat', () => {
             }, 8000)
           }
           scheduleScroll()
+        },
+        onChange: (change) => {
+          // G13: 飞轮每次转都轻诉「我在学/我长了/我守了边界」
+          // 后端 change_ledger 记录后经 SSE 推到此，前端转为人格化轻提示
+          try {
+            const notify = personaChangeNotify(change)
+            const changeEvent = {
+              id: uid(),
+              type: 'change',
+              message: `${notify.emoji} ${notify.text}`,
+              timestamp: Date.now(),
+            }
+            evolutionEvents.value.push(changeEvent)
+            if (evolutionEvents.value.length > 5) {
+              evolutionEvents.value = evolutionEvents.value.slice(-5)
+            }
+            // 6 秒后自动移除（比成就短，保持对话流畅）
+            setTimeout(() => {
+              const idx = evolutionEvents.value.findIndex(e => e.id === changeEvent.id)
+              if (idx !== -1) evolutionEvents.value.splice(idx, 1)
+            }, 6000)
+            scheduleScroll()
+          } catch (e) { /* fail-open: 不阻断对话流 */ }
         },
         onApprovalRequest: (approvalData) => {
           // 工具审批请求:弹出审批对话框

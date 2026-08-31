@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 import { useBackendConnectionStore } from '../stores/backendConnection'
+import { personaMiniStatus, personaTitles, personaLabels } from '../utils/persona-copy'
 const { confirm } = useConfirm()
 const backendConn = useBackendConnectionStore()
 
@@ -405,6 +406,8 @@ const richnessTierColor = (tier) => {
   return map[tier] || 'text-gray-400'
 }
 
+const miniStatus = computed(() => personaMiniStatus(status.value, emergenceData.value, unreadCount.value, proposals.value.length))
+
 const healthStatus = computed(() => {
   const h = emergenceData.value?.health
   if (!h) return null
@@ -451,19 +454,18 @@ const smTypeLabel = (t) => {
 <template>
   <!-- 微型指示器模式（默认）：仅一行小字 -->
   <div v-if="!loading && status?.active && collapsed" class="evolution-mini" @click="collapsed = false">
-    <span class="evo-mini-icon">🧠</span>
-    <span class="evo-mini-text">{{ status.total_outcomes || 0 }} 次 · 成功 {{ status.success_rate || 0 }}% · 接地 {{ status.verified_rate || 0 }}%</span>
+    <span class="evo-mini-icon">{{ miniStatus.icon }}</span>
+    <span class="evo-mini-text">{{ miniStatus.text }}</span>
     <!-- L1 的角标：面板折叠时唯一的「有事发生」信号。没有它，自动调整
          就只存在于日志里，用户永远不会主动去看。 -->
-    <span v-if="unreadCount > 0" class="evo-mini-badge" :title="`${unreadCount} 项自动调整待查看`">{{ unreadCount }}</span>
-    <span v-else-if="proposals.length" class="evo-mini-badge evo-mini-badge--pending" :title="`${proposals.length} 条提案待审`">{{ proposals.length }}</span>
+    <span v-if="miniStatus.badge > 0" class="evo-mini-badge" :class="miniStatus.badgeKind === 'pending' ? 'evo-mini-badge--pending' : ''" :title="miniStatus.badgeKind === 'pending' ? `${miniStatus.badge} 件事想跟你确认` : `${miniStatus.badge} 个新理解`">{{ miniStatus.badge }}</span>
     <span class="evo-mini-expand">▶</span>
   </div>
   <!-- 完整面板模式（点击展开） -->
   <div v-if="!loading && status?.active && !collapsed" class="evolution-panel">
     <div class="evo-header" @click="expanded = !expanded">
       <span class="evo-icon">🧠</span>
-      <span class="evo-title">进化系统</span>
+      <span class="evo-title">{{ personaTitles.evolution }}</span>
       <!-- A.4.5: 后端离线时内联"重连中…"，替代红色 toast 刷屏 -->
       <span v-if="backendOffline" class="text-xs text-amber-400/80 ml-1">· 重连中…</span>
       <span class="evo-expand">{{ expanded ? '▼' : '▶' }}</span>
@@ -472,20 +474,20 @@ const smTypeLabel = (t) => {
     <div class="evo-grid">
       <div class="evo-card">
         <div class="evo-value">{{ status.total_outcomes || 0 }}</div>
-        <div class="evo-label">工具调用</div>
+        <div class="evo-label">{{ personaLabels.total_outcomes }}</div>
       </div>
       <div class="evo-card">
         <div class="evo-value" :class="successRateColor">
           {{ status.success_rate || 0 }}%
         </div>
-        <div class="evo-label">成功率</div>
+        <div class="evo-label">{{ personaLabels.success_rate }}</div>
       </div>
       <!-- P4: 接地率（verified_rate）——跨会话持久化的统一验证信号占比 -->
       <div class="evo-card">
         <div class="evo-value" :class="verifiedRateColor">
           {{ status.verified_rate || 0 }}%
         </div>
-        <div class="evo-label">接地率</div>
+        <div class="evo-label">{{ personaLabels.verified_rate }}</div>
       </div>
     </div>
     <div class="evo-progress">
