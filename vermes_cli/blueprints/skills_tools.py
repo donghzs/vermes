@@ -393,6 +393,114 @@ async def market_trending():
     return {"items": items, "total": len(items), "trending": True}
 
 
+async def github_trending(since: str = "daily", language: str = "", limit: int = 25):
+    """GET /api/github/trending — GitHub 热门榜（日/周/月）。
+
+    用 GitHub Search API 模拟 trending：按 created/pushed 时间窗口 + stars 排序。
+    since: daily(24h) / weekly(7d) / monthly(30d)
+    language: 可选语言过滤（python/javascript/go/rust/...）
+    """
+    import httpx
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    if since == "weekly":
+        since_date = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    elif since == "monthly":
+        since_date = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    else:  # daily
+        since_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    q_parts = [f"stars:>50", f"pushed:>={since_date}"]
+    if language:
+        q_parts.append(f"language:{language}")
+    q = " ".join(q_parts)
+
+    try:
+        resp = httpx.get(
+            "https://api.github.com/search/repositories",
+            params={"q": q, "sort": "stars", "order": "desc", "per_page": min(max(limit, 1), 50)},
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "Vermes/2.4"},
+            timeout=15.0,
+        )
+        if resp.status_code != 200:
+            return {"items": [], "total": 0, "since": since, "error": f"GitHub API {resp.status_code}"}
+        data = resp.json()
+    except Exception as exc:
+        _log.warning("GitHub trending failed: %s", exc)
+        return {"items": [], "total": 0, "since": since, "error": str(exc)}
+
+    items = []
+    for repo in data.get("items", []):
+        items.append({
+            "name": repo.get("name", ""),
+            "full_name": repo.get("full_name", ""),
+            "description": repo.get("description") or "",
+            "stars": repo.get("stargazers_count", 0),
+            "language": repo.get("language") or "",
+            "url": repo.get("html_url", ""),
+            "topics": repo.get("topics", []),
+            "forks": repo.get("forks_count", 0),
+            "open_issues": repo.get("open_issues_count", 0),
+            "owner": repo.get("owner", {}).get("login", ""),
+            "owner_avatar": repo.get("owner", {}).get("avatar_url", ""),
+            "created_at": repo.get("created_at", ""),
+            "pushed_at": repo.get("pushed_at", ""),
+        })
+    return {"items": items, "total": len(items), "since": since, "language": language}
+
+
+async def tencent_opensource(q: str = "", limit: int = 25):
+    """GET /api/trending/tencent — 腾讯开源热门项目。
+
+    搜索 GitHub orgs: Tencent / TencentCloud / TarsCloud / Tencentyun 等
+    按 stars 排序，支持关键词过滤。
+    """
+    import httpx
+
+    orgs = ["Tencent", "TencentCloud", "TarsCloud", "Tencentyun", "TencentBlueKing"]
+    q_parts = []
+    for org in orgs:
+        q_parts.append(f"org:{org}")
+    org_query = " OR ".join(q_parts)
+    if q:
+        query = f"{q} ({org_query})"
+    else:
+        query = org_query
+
+    try:
+        resp = httpx.get(
+            "https://api.github.com/search/repositories",
+            params={"q": query, "sort": "stars", "order": "desc", "per_page": min(max(limit, 1), 50)},
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "Vermes/2.4"},
+            timeout=15.0,
+        )
+        if resp.status_code != 200:
+            return {"items": [], "total": 0, "error": f"GitHub API {resp.status_code}"}
+        data = resp.json()
+    except Exception as exc:
+        _log.warning("Tencent opensource search failed: %s", exc)
+        return {"items": [], "total": 0, "error": str(exc)}
+
+    items = []
+    for repo in data.get("items", []):
+        items.append({
+            "name": repo.get("name", ""),
+            "full_name": repo.get("full_name", ""),
+            "description": repo.get("description") or "",
+            "stars": repo.get("stargazers_count", 0),
+            "language": repo.get("language") or "",
+            "url": repo.get("html_url", ""),
+            "topics": repo.get("topics", []),
+            "forks": repo.get("forks_count", 0),
+            "owner": repo.get("owner", {}).get("login", ""),
+            "owner_avatar": repo.get("owner", {}).get("avatar_url", ""),
+            "created_at": repo.get("created_at", ""),
+            "pushed_at": repo.get("pushed_at", ""),
+        })
+    return {"items": items, "total": len(items), "query": q}
+
+
 async def market_install(body: SkillInstallRequest):
     """Install a skill non-interactively (quarantine + scan + install)."""
     from vermes_cli.skills_hub import do_install
@@ -502,6 +610,12 @@ def register_to(app):
     )
     app.add_api_route(
         "/api/skills/market/trending", market_trending, methods=["GET"], name="market_trending"
+    )
+    app.add_api_route(
+        "/api/github/trending", github_trending, methods=["GET"], name="github_trending"
+    )
+    app.add_api_route(
+        "/api/trending/tencent", tencent_opensource, methods=["GET"], name="tencent_opensource"
     )
     app.add_api_route(
         "/api/experts", get_experts, methods=["GET"], name="get_experts"

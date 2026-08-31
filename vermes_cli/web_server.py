@@ -484,6 +484,9 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/v1/benchmark/runs",
     "/api/v1/benchmark/tasks",
     "/api/v1/benchmark/run",
+    # GitHub Trending + 腾讯开源（公开热门榜，无需登录）
+    "/api/github/trending",
+    "/api/trending/tencent",
 })
 
 
