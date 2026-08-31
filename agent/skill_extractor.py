@@ -97,6 +97,10 @@ def should_auto_adopt(
     低置信度的技能自动上线会污染行为，所以门槛按两个客观量判定，
     且两者都要满足。
 
+    M1 自适应：高频技能（近7天≥20次）门槛降低到 0.8/5，
+    低频技能维持 0.9/10。阈值由 skill 自身 usage 数据动态计算，
+    不是从 config 硬读——飞轮越用越聪明。
+
     Returns ``(adopt, reason)``；reason 无论采纳与否都给，用于通知文案。
     """
     cfg = cfg or load_skill_adopt_config()
@@ -104,8 +108,21 @@ def should_auto_adopt(
         return False, "自动采纳已关闭（memory.skillAdopt.enabled=false）"
     rate = float(skill.success_rate or 0.0)
     uses = int(skill.usage_count or 0)
+
+    # M1 自适应门槛：根据技能自身使用频率动态调整
+    adaptive = cfg.get("adaptive", {})
+    high_freq_threshold = int(adaptive.get("high_freq_uses", 20))
+    high_freq_rate = float(adaptive.get("high_freq_min_rate", 0.8))
+    high_freq_min_uses = int(adaptive.get("high_freq_min_usage", 5))
+
     min_rate = float(cfg["min_success_rate"])
     min_uses = int(cfg["min_usage"])
+
+    # 高频技能（近7天使用≥20次）：门槛降低
+    if uses >= high_freq_threshold:
+        min_rate = high_freq_rate
+        min_uses = high_freq_min_uses
+
     if rate < min_rate:
         return False, f"成功率 {rate:.0%} < {min_rate:.0%}，留待人工确认"
     if uses < min_uses:

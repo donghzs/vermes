@@ -19,15 +19,71 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # ── Health check: detect silent emergence chain failure ─────────────────────
-# If _maybe_trigger_clustering hasn't successfully completed in >24h,
-# log a WARN so the user knows the self-evolution system went silent.
+# If _maybe_trigger_clustering hasn't successfully completed in >6h,
+# log an ERROR so the user knows the self-evolution system went silent.
+# M3 fail-loud: was 24h WARN, now 6h ERROR — silent failure is a bug, not a warning.
 _LAST_EMERGENCE_OK: Optional[datetime] = None
-_EMERGENCE_STALE_THRESHOLD = timedelta(hours=24)
+_EMERGENCE_STALE_THRESHOLD = timedelta(hours=6)
+
+# ── M3: Emergence failure tracking (fail-loud, not fail-open) ───────────────
+# Each flywheel stage failure is recorded here for observability.
+# The chain still fail-opens (never blocks the user's tool result),
+# but failures are now visible via get_emergence_health() and /api/v1/evolution/health.
+_EMERGENCE_FAILURES: List[Dict[str, Any]] = []  # in-memory ring buffer
+_EMERGENCE_FAILURES_MAX = 50  # keep last 50 failures
+
+
+def _record_emergence_failure(stage: str, error: Exception) -> None:
+    """Record a flywheel stage failure for observability (fail-loud).
+
+    Does NOT raise or block — the chain still fail-opens.
+    But the failure is now visible instead of silently swallowed.
+    """
+    try:
+        _EMERGENCE_FAILURES.append({
+            "stage": stage,
+            "error": str(error)[:300],
+            "timestamp": datetime.now().isoformat(),
+        })
+        if len(_EMERGENCE_FAILURES) > _EMERGENCE_FAILURES_MAX:
+            _EMERGENCE_FAILURES.pop(0)
+    except Exception:
+        pass  # never let the observer itself fail-loud → fail-silent
+
+
+def get_emergence_health() -> Dict[str, Any]:
+    """Return flywheel health status for observability.
+
+    M3 fail-loud: lets the system (and frontend) see which stages
+    are healthy vs failing, instead of guessing from silence.
+    """
+    stages = ["clustering", "lifecycle", "emergence", "skill_extraction",
+              "skill_lifecycle", "variant_evolution"]
+    recent_failures = _EMERGENCE_FAILURES[-10:]
+    failures_by_stage: Dict[str, int] = {}
+    for f in _EMERGENCE_FAILURES:
+        s = f["stage"]
+        failures_by_stage[s] = failures_by_stage.get(s, 0) + 1
+    stale = False
+    stale_hours = 0.0
+    if _LAST_EMERGENCE_OK is not None:
+        delta = datetime.now() - _LAST_EMERGENCE_OK
+        stale_hours = round(delta.total_seconds() / 3600, 1)
+        stale = delta > _EMERGENCE_STALE_THRESHOLD
+    return {
+        "stages": stages,
+        "last_ok": _LAST_EMERGENCE_OK.isoformat() if _LAST_EMERGENCE_OK else None,
+        "stale": stale,
+        "stale_hours": stale_hours,
+        "total_failures": len(_EMERGENCE_FAILURES),
+        "failures_by_stage": failures_by_stage,
+        "recent_failures": recent_failures,
+    }
 
 
 # ── Data Class ───────────────────────────────────────────────────────────────
@@ -292,12 +348,12 @@ def record_raw_event(
     # ── Health check: is the emergence chain alive? ──
     # If _maybe_trigger_clustering hasn't completed successfully in >24h,
     # something is silently broken (import error, DB schema drift, etc.).
-    # WARN the user so they can investigate.
+    # M3 fail-loud: was WARN, now ERROR — silence is a bug.
     global _LAST_EMERGENCE_OK
     if _LAST_EMERGENCE_OK is not None:
         stale_for = datetime.now() - _LAST_EMERGENCE_OK
         if stale_for > _EMERGENCE_STALE_THRESHOLD:
-            logger.warning(
+            logger.error(
                 "Emergence chain has been silent for %.1f hours — "
                 "self-evolution may be broken (check clustering/emergence imports)",
                 stale_for.total_seconds() / 3600,
@@ -437,8 +493,9 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                         lc_stats.get("transitioned", 0),
                         lc_stats.get("stayed", 0),
                     )
-                except Exception:
-                    logger.debug("Lifecycle evaluation skipped", exc_info=True)
+                except Exception as _lc_err:
+                    _record_emergence_failure("lifecycle", _lc_err)
+                    logger.error("Lifecycle evaluation failed: %s", _lc_err, exc_info=True)
 
                 # ── Emergence evaluation: does the system need new capabilities? ──
                 # This is the涌现 trigger — not hardcoded, driven by accumulated
@@ -593,8 +650,9 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                                 daemon=True,
                                 name=f"cap-activate-{d.capability_name}",
                             ).start()
-                except Exception:
-                    logger.info("Emergence cycle skipped", exc_info=True)
+                except Exception as _emerg_err:
+                    _record_emergence_failure("emergence", _emerg_err)
+                    logger.error("Emergence cycle failed: %s", _emerg_err, exc_info=True)
 
                 # ── Skill extraction: are there repetitive patterns to extract? ──
                 try:
@@ -602,8 +660,9 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                     new_skills = extract_skills(db_path)
                     if new_skills:
                         logger.info("Skills extracted: %d", len(new_skills))
-                except Exception:
-                    logger.info("Skill extraction skipped", exc_info=True)
+                except Exception as _sk_err:
+                    _record_emergence_failure("skill_extraction", _sk_err)
+                    logger.error("Skill extraction failed: %s", _sk_err, exc_info=True)
 
                 # ── H4.3 评测闭环：提取后评估 active 技能生命周期（fail-open）──
                 try:
@@ -614,8 +673,9 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                             "Skill lifecycle eval: evaluated=%d demoted=%d promoted=%d reactivated=%d",
                             _life["evaluated"], _life["demoted"], _life["promoted"], _life["reactivated"],
                         )
-                except Exception:
-                    logger.info("Skill lifecycle eval skipped", exc_info=True)
+                except Exception as _sle_err:
+                    _record_emergence_failure("skill_lifecycle", _sle_err)
+                    logger.error("Skill lifecycle eval failed: %s", _sle_err, exc_info=True)
 
                 # ── P4-E: 变体进化闭环（GRPO 式组内相对排序 + 治理收口晋升）──
                 # outcome 已在 P4-A 写入 raw_events.variant_hash；此处按 should_rank
@@ -627,10 +687,12 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                     _acted = [r for r in _ve if r.get("ranked")]
                     if _acted:
                         logger.info("Variant evolution: %d processor(s) ranked", len(_acted))
-                except Exception:
-                    logger.debug("Variant evolution skipped", exc_info=True)
-    except Exception:
-        logger.info("Clustering trigger skipped", exc_info=True)
+                except Exception as _ve_err:
+                    _record_emergence_failure("variant_evolution", _ve_err)
+                    logger.error("Variant evolution failed: %s", _ve_err, exc_info=True)
+    except Exception as _cl_err:
+        _record_emergence_failure("clustering", _cl_err)
+        logger.error("Clustering trigger failed: %s", _cl_err, exc_info=True)
 
 
 # ── Retention ────────────────────────────────────────────────────────────────

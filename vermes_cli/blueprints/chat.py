@@ -1682,6 +1682,15 @@ async def chat_completions(req: ChatRequest, request: Request):
                 agent.evolution_event_callback = evolution_event_handler
                 agent.reasoning_callback = reasoning_handler
 
+                # M1 T5: 注册变更通知 SSE 回调
+                try:
+                    from agent.change_ledger import set_change_callback
+                    def change_event_handler(change: dict):
+                        _safe_put({"type": "change", **change})
+                    set_change_callback(change_event_handler)
+                except Exception:
+                    _log.debug("[Stream] change_ledger callback not registered", exc_info=True)
+
                 def plan_event_handler(event_type: str, data: dict):
                     """Route plan events (step_update, tool_call, plan_completed) to SSE."""
                     # 幂等去重：若 _detect_and_emit_plan 已发射 plan_created，跳过重复
@@ -2209,6 +2218,19 @@ async def evolution_status():
         return status
     except Exception as e:
         return {"active": False, "error": str(e)}
+
+
+async def evolution_health():
+    """M3 fail-loud: Return flywheel health status for observability.
+
+    Lets the frontend (and the user) see which flywheel stages are healthy
+    vs failing, instead of guessing from silence.
+    """
+    try:
+        from agent.raw_event import get_emergence_health
+        return get_emergence_health()
+    except Exception as e:
+        return {"stages": [], "error": str(e), "stale": True}
 
 
 async def evolution_achievements(limit: int = 10):
@@ -3541,6 +3563,12 @@ def register_to(app):
         evolution_status,
         methods=["GET"],
         name="evolution_status",
+    )
+    app.add_api_route(
+        "/api/evolution/health",
+        evolution_health,
+        methods=["GET"],
+        name="evolution_health",
     )
     app.add_api_route(
         "/api/evolution/achievements",

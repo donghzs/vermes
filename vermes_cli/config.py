@@ -1303,6 +1303,20 @@ DEFAULT_CONFIG = {
             "outdated": 0.6,               # outdated flag >= this -> auto demote
             "cluster_min_interval": 60,    # floor for cluster avg_interval (seconds)
             "merge_cleanup": 0.7,          # cleanup_merged: duplicate >= this + source=skill -> delete
+            # M2 自适应阈值：系统根据自身 outcome 数据调整阈值
+            # 理论上 contradiction/scope_creep 也可自动处置，但风险高暂留人工
+            "contradiction": 0.85,        # contradiction flag >= this -> auto demote (保守高阈值)
+            "scope_creep": 0.85,          # scope_creep flag >= this -> auto demote
+            # 自适应参数
+            "adaptive": {
+                "enabled": True,
+                "feedback_window_days": 30,  # 回溯30天计算准确率
+                "high_accuracy_threshold": 0.95,  # 准确率>0.95→放宽阈值0.05
+                "low_accuracy_threshold": 0.8,   # 准确率<0.8→收紧阈值0.05
+                "adjustment_step": 0.05,
+                "min_duplicate": 0.5,   # 阈值下限
+                "max_duplicate": 0.9,   # 阈值上限
+            },
         },
 
         # 2026-08-04 retro: old thresholds (0.9/0.85) mismatched R2 actual
@@ -1324,6 +1338,12 @@ DEFAULT_CONFIG = {
             "min_success_rate": 0.9,   # adopt only at ≥ this success rate
             "min_usage": 10,           # …and only after this many uses
             "retract_window_h": 24,    # how long the panel offers "撤回"
+            # M1 自适应门槛：高频技能降低门槛快速采纳，飞轮越用越聪明
+            "adaptive": {
+                "high_freq_uses": 20,       # 近7天使用≥20次视为高频
+                "high_freq_min_rate": 0.8,  # 高频技能成功率门槛降至0.8
+                "high_freq_min_usage": 5,   # 高频技能使用次数门槛降至5
+            },
         },
     },
 

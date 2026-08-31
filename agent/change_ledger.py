@@ -26,9 +26,30 @@ import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# ── M1 T5: SSE 通知回调 ──
+# record_change 成功后调用，用于推 SSE 事件到前端。
+# set_change_callback() 注册回调；不注册则无副作用（向后兼容）。
+_change_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+
+
+def set_change_callback(cb: Callable[[Dict[str, Any]], None]) -> None:
+    """Register a callback invoked after each successful record_change."""
+    global _change_callback
+    _change_callback = cb
+
+
+def _notify_change(change: Dict[str, Any]) -> None:
+    """Invoke the SSE callback if registered. Fail-open: never raises."""
+    if _change_callback is None:
+        return
+    try:
+        _change_callback(change)
+    except Exception:
+        logger.debug("[ChangeLedger] SSE callback failed", exc_info=True)
 
 # ── 分层 ──
 TIER_L0 = "L0"
@@ -146,7 +167,17 @@ def record_change(*, kind: str, tier: str, title: str, summary: str = "",
              now, read_at),
         )
         conn.commit()
-        return cur.lastrowid
+        row_id = cur.lastrowid
+        # M1 T5: 通知 SSE 回调（如果已注册）
+        _notify_change({
+            "id": row_id,
+            "kind": kind,
+            "tier": tier,
+            "title": title,
+            "summary": summary,
+            "created": now,
+        })
+        return row_id
     except Exception as e:
         logger.warning("[ChangeLedger] record_change failed (%s): %s", title, e)
         return None

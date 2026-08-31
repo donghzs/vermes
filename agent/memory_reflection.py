@@ -11,7 +11,7 @@ import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from vermes_constants import get_vermes_home
 
@@ -1358,6 +1358,102 @@ def _load_auto_resolve_config():
     return defaults
 
 
+# M2 自适应阈值：根据 auto_resolve 历史准确率调整阈值
+def _compute_adaptive_thresholds(base_thresholds: Dict[str, Any]) -> Dict[str, Any]:
+    """M2 飞轮自转核心：根据 auto_resolve 的历史效果自动调整阈值。
+
+    逻辑：
+    - 回溯 feedback_window_days 天的 auto_resolve 记录
+    - 准确率 = 1 - restore_rate（用户 restore 了说明自动处置错误）
+    - 准确率 > high_accuracy_threshold → 阈值降低 adjustment_step（放宽）
+    - 准确率 < low_accuracy_threshold → 阈值升高 adjustment_step（收紧）
+    - 阈值在 [min_duplicate, max_duplicate] 范围内
+    - 系统运行越久，阈值越贴合实际表现
+    """
+    try:
+        adaptive_cfg = base_thresholds.get("adaptive", {})
+        if not adaptive_cfg.get("enabled", False):
+            return base_thresholds
+
+        window_days = int(adaptive_cfg.get("feedback_window_days", 30))
+        high_acc = float(adaptive_cfg.get("high_accuracy_threshold", 0.95))
+        low_acc = float(adaptive_cfg.get("low_accuracy_threshold", 0.8))
+        step = float(adaptive_cfg.get("adjustment_step", 0.05))
+        min_dup = float(adaptive_cfg.get("min_duplicate", 0.5))
+        max_dup = float(adaptive_cfg.get("max_duplicate", 0.9))
+
+        # 从 memory_flags 表查询最近 window_days 天的 auto-resolved flags
+        from agent.memory_fabric import _get_index_db as _get_mem_db
+        from pathlib import Path as _Path
+
+        db_path = _get_mem_db()
+        if isinstance(db_path, _Path):
+            db_path = str(db_path)
+
+        import sqlite3 as _sqlite3
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+
+        cutoff = (_dt.now(_tz.utc) - _td(days=window_days)).isoformat()
+        conn = _sqlite3.connect(db_path, timeout=5)
+        try:
+            # 查 auto-resolved flags 中后来被 restore 的比例
+            total_auto = conn.execute(
+                "SELECT COUNT(*) FROM memory_flags "
+                "WHERE resolution='demote' AND resolved_at >= ?",
+                (cutoff,),
+            ).fetchone()[0]
+            restored = conn.execute(
+                "SELECT COUNT(*) FROM memory_flags "
+                "WHERE resolution='demote' AND resolved_at >= ? "
+                "AND status = 'open'",  # restored flags 会被重新打开
+                (cutoff,),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        if total_auto < 10:
+            # 样本不足，维持默认阈值
+            return base_thresholds
+
+        accuracy = 1.0 - (restored / total_auto)
+        adjusted = dict(base_thresholds)
+
+        if accuracy > high_acc:
+            # 准确率高 → 放宽门槛（阈值降低）
+            new_dup = max(min_dup, base_thresholds["duplicate"] - step)
+            new_out = max(0.4, base_thresholds["outdated"] - step)
+            adjusted["duplicate"] = new_dup
+            adjusted["outdated"] = new_out
+            logger.info(
+                "[Reflection] M2 自适应：准确率 %.1f%% > %.0f%% → 阈值放宽 dup %.2f→%.2f out %.2f→%.2f",
+                accuracy * 100, high_acc * 100,
+                base_thresholds["duplicate"], new_dup,
+                base_thresholds["outdated"], new_out,
+            )
+        elif accuracy < low_acc:
+            # 准确率低 → 收紧门槛（阈值升高）
+            new_dup = min(max_dup, base_thresholds["duplicate"] + step)
+            new_out = min(0.8, base_thresholds["outdated"] + step)
+            adjusted["duplicate"] = new_dup
+            adjusted["outdated"] = new_out
+            logger.info(
+                "[Reflection] M2 自适应：准确率 %.1f%% < %.0f%% → 阈值收紧 dup %.2f→%.2f out %.2f→%.2f",
+                accuracy * 100, low_acc * 100,
+                base_thresholds["duplicate"], new_dup,
+                base_thresholds["outdated"], new_out,
+            )
+        else:
+            logger.debug(
+                "[Reflection] M2 自适应：准确率 %.1f%% 在正常范围，阈值不变",
+                accuracy * 100,
+            )
+
+        return adjusted
+    except Exception:
+        logger.debug("[Reflection] M2 自适应阈值计算失败，使用基础阈值", exc_info=True)
+        return base_thresholds
+
+
 def auto_resolve_eligible_flags() -> int:
     """自动降级高置信度 flags：涌现闭环，复用 resolve_flag(P3-⑩)。
 
@@ -1372,7 +1468,7 @@ def auto_resolve_eligible_flags() -> int:
     """
     from agent.memory_fabric import _get_index_db as _get_mem_db
 
-    thresholds = _load_auto_resolve_config()
+    thresholds = _compute_adaptive_thresholds(_load_auto_resolve_config())
     dup_threshold = thresholds["duplicate"]
     out_threshold = thresholds["outdated"]
 
