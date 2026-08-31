@@ -449,4 +449,20 @@ def get_capability_report_prompt() -> str:
             lines.append(f"     emergence signals: {cap.emergence_signals}")
     lines.append("</capability_status>")
 
+    # ---- J3→M5 闭环：将用户「强调」的 brick 注入能力自检 -------------------
+    # 让被用户显式标记优先级的能力，在接任务前被 Agent 优先考量，而不是
+    # 只存不生效。纯增量、fail-open：brick 层不可用时不影响现有 capability 自检。
+    try:
+        from vermes_cli.capabilities.registry import get_brick_registry
+        _emphasized = get_brick_registry().emphasized_ids()
+        if _emphasized:
+            lines.append("")
+            lines.append("<user_emphasized>")
+            lines.append("  以下能力被用户显式标记为「优先」，接任务时应优先考虑 / 优先调用：")
+            for _bid in _emphasized:
+                lines.append(f"  - {_bid}")
+            lines.append("</user_emphasized>")
+    except Exception:  # noqa: BLE001 — fail-open，brick 层异常不阻断 system prompt 生成
+        logger.debug("user_emphasized 段注入跳过：BrickRegistry 暂不可用")
+
     return "\n".join(lines)
