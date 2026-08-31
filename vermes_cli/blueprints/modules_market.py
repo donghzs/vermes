@@ -50,7 +50,9 @@ def _resolve_catalog_url(catalog_url: Optional[str]) -> str:
     """
     if not catalog_url:
         # 默认指向打包内置 catalog（若有）；否则返回空 → 上层报空 catalog。
-        return ""
+        from agent.module_catalog import bundled_catalog_path
+        bundled = bundled_catalog_path()
+        return str(bundled) if bundled and bundled.exists() else ""
     if catalog_url.startswith(("http://", "https://")):
         parsed = urlparse(catalog_url)
         if parsed.hostname not in _TRUSTED_CATALOG_HOSTS:
