@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -239,6 +240,11 @@ def post_task_reflect(
             "memory_aware_executor: post_task_reflect wrote %d memories, session=%s",
             extracted, session_id[:8] if session_id else "?",
         )
+        # P2: 懒写日记（提取到新记忆后尝试写当日日记，同日只写一次）
+        try:
+            write_daily_diary()
+        except Exception as e:
+            logger.debug("memory_aware_executor: write_daily_diary failed: %s", e)
 
     return {"extracted": extracted}
 
@@ -255,3 +261,136 @@ def reset_session_state():
     global _recently_recalled_ids, _last_session_id
     _recently_recalled_ids = set()
     _last_session_id = None
+
+
+# ── P2: 零 LLM 日记写入（纯聚合下游消费层）─────────────────────────
+_DIARY_DIR: Optional[Path] = None  # lazy cache
+_DIARY_WRITTEN_TODAY: Optional[str] = None  # "YYYY-MM-DD" 或 None，防同日重复写
+
+
+def _diary_dir() -> Path:
+    global _DIARY_DIR
+    if _DIARY_DIR is None:
+        _DIARY_DIR = Path.home() / ".vermes" / "diary"
+        _DIARY_DIR.mkdir(parents=True, exist_ok=True)
+    return _DIARY_DIR
+
+
+def write_daily_diary() -> Optional[str]:
+    """聚合今日记忆管理层结果 → 人读日记文件。零 LLM，纯聚合。
+
+    聚合数据源（六路）：
+    1. 今日 post_task_reflect 新写 preference/decision
+    2. change_ledger memory_learned 事件
+    3. memory_reflection 新标 flags
+    4. memory_reflection 已解决 flags
+    5. auto_resolve 降级统计
+    6. curator 最近运行摘要（如有）
+
+    Returns:
+        日记文件路径，或 None（无内容可写 / 写入失败）
+    """
+    from datetime import date
+
+    global _DIARY_WRITTEN_TODAY
+
+    today = date.today().isoformat()
+
+    # 防同日重复写（内容追加模式，只写一次）
+    if _DIARY_WRITTEN_TODAY == today:
+        return None
+
+    sections: List[str] = [f"# {today} 成长日记"]
+
+    # ── 1. post_task_reflect 新写 preference/decision ──
+    try:
+        from agent.memory_fabric import list_memories as _lm
+        prefs = _lm(source="task_reflection", lifecycle_tag="preference", limit=10)
+        decs = _lm(source="task_reflection", lifecycle_tag="decision", limit=10)
+        learned_items: List[str] = []
+        if isinstance(prefs, dict) and prefs.get("memories"):
+            for m in prefs["memories"]:
+                learned_items.append(f"  • 💬 偏好: {(m.get('fts_content') or m.get('content_preview') or '')[:100]}")
+        if isinstance(decs, dict) and decs.get("memories"):
+            for m in decs["memories"]:
+                learned_items.append(f"  • 📌 决策: {(m.get('fts_content') or m.get('content_preview') or '')[:100]}")
+        if learned_items:
+            sections.append("## 🌱 今天我学到的")
+            sections.extend(learned_items)
+    except Exception as e:
+        logger.debug("write_daily_diary: task_reflection read failed: %s", e)
+
+    # ── 2. change_ledger memory_learned 事件 ──
+    try:
+        from agent.change_ledger import list_changes
+        changes = list_changes(kind="memory_learned", limit=10)
+        if changes:
+            items = [f"  • {c.get('title', '')}" for c in changes[:10]]
+            # 去重（可能和上面 preference/decision 重叠）
+            items = [it for it in items if it not in sections]
+            if items:
+                sections.append("## 📡 感知到的变化")
+                sections.extend(items)
+    except Exception as e:
+        logger.debug("write_daily_diary: change_ledger read failed: %s", e)
+
+    # ── 3-4. memory_reflection flags ──
+    try:
+        from agent.memory_reflection import get_open_flags, get_resolved_flags, count_resolved_flags
+        open_f = get_open_flags(limit=10)
+        resolved_count = count_resolved_flags()
+        flag_items: List[str] = []
+        if open_f:
+            by_type: Dict[str, int] = {}
+            for f in open_f:
+                ft = f.get("flag_type", "unknown")
+                by_type[ft] = by_type.get(ft, 0) + 1
+            flag_items.append(f"  • 标记 {len(open_f)} 条: " + ", ".join(f"{k}×{v}" for k, v in by_type.items()))
+        if resolved_count:
+            flag_items.append(f"  • 已解决 {resolved_count} 条")
+        if flag_items:
+            sections.append("## 🏷️ 记忆质量检查")
+            sections.extend(flag_items)
+    except Exception as e:
+        logger.debug("write_daily_diary: reflection flags read failed: %s", e)
+
+    # ── 5. auto_resolve 降级 ──
+    try:
+        from agent.memory_reflection import auto_resolve_eligible_flags
+        # 不实际执行 auto_resolve（那由 reflection 自己跑），只读取统计
+        # 改为从 resolved_flags 筛 resolution='auto_demote' 的
+        from agent.memory_reflection import get_resolved_flags as _grf
+        resolved = _grf(limit=20)
+        demotes = [r for r in resolved if r.get("resolution") == "auto_demote"]
+        if demotes:
+            sections.append("## 🔧 自动降级")
+            sections.append(f"  • 降级 {len(demotes)} 条为 ephemeral（技能来源重复/过时）")
+    except Exception as e:
+        logger.debug("write_daily_diary: auto_resolve read failed: %s", e)
+
+    # ── 6. curator 最近运行 ──
+    try:
+        from agent.curator import load_state as _curator_state
+        state = _curator_state()
+        last_run = state.get("last_run")
+        if last_run:
+            sections.append("## 🗄️ 记忆生命周期")
+            sections.append(f"  • 上次整理: {last_run}")
+    except Exception as e:
+        logger.debug("write_daily_diary: curator state read failed: %s", e)
+
+    # 只有标题无内容 → 不写文件
+    if len(sections) <= 1:
+        return None
+
+    content = "\n".join(sections) + "\n"
+    diary_path = _diary_dir() / f"{today}.md"
+
+    try:
+        diary_path.write_text(content, encoding="utf-8")
+        _DIARY_WRITTEN_TODAY = today
+        logger.info("write_daily_diary: wrote %s (%d bytes)", diary_path, len(content))
+        return str(diary_path)
+    except Exception as e:
+        logger.debug("write_daily_diary: file write failed: %s", e)
+        return None
