@@ -350,6 +350,43 @@ async def stop_generation(request: Request):
     return {"ok": True, "stream_id": stream_id}
 
 
+async def steer_agent(request: Request):
+    """Inject a mid-turn user guidance into the running agent (no interrupt).
+
+    Frontend calls this when the user types while the agent is busy.
+    The text is stashed via agent.steer() and the model sees it appended
+    to the next tool result — direction change without stopping.
+    """
+    from vermes_cli.web_server import _require_token
+    from vermes_cli.blueprints.agent_cache import _agent_cache
+
+    _require_token(request)
+    body = await request.json()
+    session_id = body.get("session_id", "")
+    text = body.get("text", "").strip()
+    if not text:
+        return {"ok": False, "message": "text required"}
+
+    # Find the agent for this session (iterate cache, match by session_id suffix)
+    agent = None
+    with _agent_cache._lock:
+        for key, a in _agent_cache._cache.items():
+            # cache key format: "provider:model:session_id"
+            if key.endswith(f":{session_id}") or (not session_id and a is not None):
+                agent = a
+                break
+
+    if agent is None:
+        return {"ok": False, "message": "no active agent for this session"}
+
+    accepted = agent.steer(text)
+    if accepted:
+        _log.info(f"[Steer] Injected guidance for session {session_id}: {text[:60]}...")
+        return {"ok": True, "session_id": session_id}
+    else:
+        return {"ok": False, "message": "steer rejected (empty text?)"}
+
+
 async def get_logs(
     file: str = "agent",
     lines: int = 100,
@@ -432,6 +469,12 @@ def register_to(app):
         stop_generation,
         methods=["POST"],
         name="stop_generation",
+    )
+    app.add_api_route(
+        "/api/steer",
+        steer_agent,
+        methods=["POST"],
+        name="steer_agent",
     )
     app.add_api_route(
         "/api/logs",

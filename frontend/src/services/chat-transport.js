@@ -234,6 +234,21 @@ export class SSETransport extends ChatTransport {
     } catch {}
   }
 
+  async steer(sessionId, text) {
+    // Inject mid-turn guidance without interrupting the agent.
+    try {
+      const resp = await fetch(`${this._baseUrl}/api/steer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, text }),
+      })
+      const data = await resp.json()
+      return data.ok === true
+    } catch {
+      return false
+    }
+  }
+
   isStreaming(sessionId) {
     return this._controllers.has(sessionId)
   }
@@ -297,6 +312,12 @@ export class WebSocketTransport extends ChatTransport {
   async stop(sessionId) {
     if (this._ws?.readyState === WebSocket.OPEN) {
       this._ws.send(JSON.stringify({ type: 'stop', session_id: sessionId }))
+    }
+  }
+
+  async steer(sessionId, text) {
+    if (this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({ type: 'steer', session_id: sessionId, text }))
     }
   }
 

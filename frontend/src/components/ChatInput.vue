@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onUnmounted, computed, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
+import { getChatTransport } from '../services/chat-transport'
 import { toast } from '../utils/toast'
 
 const chat = useChatStore()
@@ -193,9 +194,27 @@ function insertFileRef(path) {
 
 // ── 发送 ──
 async function send() {
-  // P2: 发送进行中（chat.loading 由 ChatView.onSend / chat.sendMessage 置位）直接 return，
-  // 覆盖 Enter 键与按钮点击之间的竞态窗口（与 chat.js 会话级发送锁互补）。
-  if (chat.loading) return
+  // 中途引导模式：Agent 正在执行时输入文本 → 发送 steer 而非阻止
+  if (chat.loading) {
+    const steerText = inputText.value.trim()
+    if (steerText) {
+      const sid = chat.currentSessionId
+      if (sid) {
+        const transport = getChatTransport()
+        if (transport?.steer) {
+          const ok = await transport.steer(sid, steerText)
+          if (ok) {
+            inputText.value = ''
+            if (inputRef.value) inputRef.value.style.height = 'auto'
+            toast.info('🧭 已引导: ' + steerText.slice(0, 30) + (steerText.length > 30 ? '...' : ''))
+          } else {
+            toast.warning('引导失败，Agent 可能已结束')
+          }
+        }
+      }
+    }
+    return
+  }
   const input = inputText.value.trim()
   const files = [...uploadedFiles.value]
   if (!input && files.length === 0) return
@@ -276,10 +295,10 @@ defineExpose({ inputText, uploadedFiles, inputRef })
         <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.searchEnabled ? '联网搜索 · 已开启' : '联网搜索 · 已关闭' }}</span>
       </div>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
-        :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"
+        :placeholder="chat.loading ? '输入引导信息，按 Enter 注入…' : (isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…')" rows="1"
         @input="onInputCheckFileRef" @paste="onPaste"
         class="flex-1 rounded-xl px-4 py-3 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-400 dark:focus:border-green-500 resize-none overflow-y-auto placeholder-gray-400 dark:placeholder-gray-500"
-        :class="isEmptySession() ? 'border-2 border-green-300 dark:border-green-600' : 'border border-gray-300 dark:border-gray-500'">
+        :class="chat.loading ? 'border-2 border-amber-300 dark:border-amber-600' : (isEmptySession() ? 'border-2 border-green-300 dark:border-green-600' : 'border border-gray-300 dark:border-gray-500')">
       </textarea>
       <!-- @file 引用提示 -->
       <div v-if="showFileHint" class="absolute bottom-full mb-2 left-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg py-1 min-w-[240px] z-50">
@@ -293,7 +312,8 @@ defineExpose({ inputText, uploadedFiles, inputRef })
           </div>
         </button>
       </div>
-      <button v-if="chat.loading" @click="chat.stopGeneration()" class="px-3 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition" title="停止生成">⏹</button>
+      <button v-if="chat.loading && !inputText.trim()" @click="chat.stopGeneration()" class="px-3 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition" title="停止生成">⏹</button>
+      <button v-if="chat.loading && inputText.trim()" @click="send()" class="px-3 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm transition" title="引导方向">🧭</button>
       <button @click="send()" :disabled="(!inputText.trim() && uploadedFiles.length===0) || chat.loading" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
     </div>
   </div>

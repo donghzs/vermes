@@ -454,6 +454,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/delegate/status/{task_id}",
     # 停止生成（前端 SSE 中断）
     "/api/stop-generation",
+    # 中途引导（不中断，注入下一工具结果）
+    "/api/steer",
     # 会话管理（前端切换/删除会话）
     "/api/sessions",
     # 缓存性能指标
