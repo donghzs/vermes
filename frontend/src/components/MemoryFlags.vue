@@ -58,7 +58,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="store.flags.length > 0 || (showResolved && store.resolvedFlags.length > 0)"
+  <!-- open flag > 0：完整面板（需要用户拍板，正当打扰） -->
+  <div v-if="store.flags.length > 0"
        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm mb-3 overflow-hidden">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-750 border-b border-gray-200 dark:border-gray-700">
@@ -73,10 +74,10 @@ onMounted(() => {
         </button>
       </div>
       <div class="flex items-center gap-2">
-        <button v-if="store.resolvedFlags.length > 0"
+        <button v-if="store.resolvedTotal > 0"
                 @click="showResolved = !showResolved"
                 class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-          已解决 {{ store.resolvedFlags.length }} ▾
+          已解决 {{ store.resolvedTotal }} ▾
         </button>
         <button @click="store.flags = []"
                 class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm">✕</button>
@@ -111,6 +112,44 @@ onMounted(() => {
     <!-- Resolved flags (collapsible) -->
     <div v-if="showResolved && store.resolvedFlags.length > 0"
          class="border-t border-gray-200 dark:border-gray-700">
+      <div class="px-4 py-2 text-xs bg-gray-50 dark:bg-gray-750 text-gray-500 dark:text-gray-400">
+        已解决的记忆问题（可恢复）
+      </div>
+      <div class="max-h-56 overflow-y-auto py-1">
+        <div v-for="f in store.resolvedFlags" :key="'r-'+f.id"
+             class="px-4 py-2 text-xs border-b border-gray-100 dark:border-gray-700 last:border-0">
+          <div class="flex items-start gap-2">
+            <span class="mt-0.5 flex-shrink-0 opacity-50">🚩</span>
+            <div class="flex-1 min-w-0">
+              <span class="font-medium opacity-60" :class="typeColor[f.flag_type] || 'text-gray-400'">
+                {{ flagTypeNames[f.flag_type] || f.flag_type }}
+              </span>
+              <span class="text-gray-400 ml-1">#{{ f.memory_id }}</span>
+              <span class="text-xs text-gray-400 ml-1">→ {{ resolutionLabels[f.resolution] || f.resolution }}</span>
+              <p class="text-gray-500 dark:text-gray-400 mt-0.5 break-words opacity-70">{{ f.evidence }}</p>
+            </div>
+          </div>
+          <div class="flex gap-1.5 mt-1.5">
+            <button @click="store.restoreFlag(f.id)"
+                    class="text-[10px] px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-900 text-green-600 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-800 transition-colors">
+              ↩ 恢复
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- open flag = 0：轻量只读角标（不打扰，点开才看已解决详情） -->
+  <div v-else-if="store.resolvedTotal > 0"
+       class="mb-3">
+    <button @click="showResolved = !showResolved"
+            class="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+      <span>✅ 已自动处理 {{ store.resolvedTotal }} 条记忆问题</span>
+      <span class="transition-transform" :class="showResolved ? 'rotate-180' : ''">▾</span>
+    </button>
+    <div v-if="showResolved && store.resolvedFlags.length > 0"
+         class="mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
       <div class="px-4 py-2 text-xs bg-gray-50 dark:bg-gray-750 text-gray-500 dark:text-gray-400">
         已解决的记忆问题（可恢复）
       </div>

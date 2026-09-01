@@ -3513,8 +3513,8 @@ async def restore_flag_endpoint(request: Request):
 async def list_resolved_flags_endpoint(request: Request):
     """List resolved memory flags for the 'resolved' view."""
     try:
-        from agent.memory_reflection import get_resolved_flags
-        return {"ok": True, "flags": get_resolved_flags()}
+        from agent.memory_reflection import get_resolved_flags, count_resolved_flags
+        return {"ok": True, "flags": get_resolved_flags(), "total": count_resolved_flags()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

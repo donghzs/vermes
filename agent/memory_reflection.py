@@ -1307,6 +1307,26 @@ def get_resolved_flags(limit: int = 200) -> List[Dict]:
         conn.close()
 
 
+def count_resolved_flags() -> int:
+    """获取 resolved 状态的 flag 真实总数（供前端「已解决」角标展示）。
+
+    与 get_resolved_flags(limit=200) 不同：后者硬截断 200 条用于详情视图，
+    本函数返回完整总数，避免 UI 把「已解决 200」当成真实数量（误导）。
+    """
+    from agent.memory_fabric import _get_index_db as _get_mem_db, _init_db as _fab_init
+
+    db_path = _get_mem_db()  # Path
+    _fab_init(db_path)  # 确保表存在
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM memory_flags WHERE status = 'resolved'"
+        ).fetchone()
+        return int(row[0]) if row else 0
+    finally:
+        conn.close()
+
+
 # ── 行动环闭合：自动降级 ──────────────────────────────────────────────
 
 def _load_auto_resolve_config():

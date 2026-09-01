@@ -13,6 +13,7 @@ import { showToast } from '../utils/toast'
 export const useMemoryFlagsStore = defineStore('memoryFlags', () => {
   const flags = ref([])
   const resolvedFlags = ref([])
+  const resolvedTotal = ref(0)
   const loading = ref(false)
   const resolvedLoading = ref(false)
 
@@ -38,11 +39,15 @@ export const useMemoryFlagsStore = defineStore('memoryFlags', () => {
       const data = await api.getResolvedFlags()
       if (data && data.ok) {
         resolvedFlags.value = data.flags || []
+        // 真实总数：后端 count_resolved_flags()（不再用截断后的 flags.length）
+        resolvedTotal.value = (typeof data.total === 'number') ? data.total : resolvedFlags.value.length
       } else {
         resolvedFlags.value = []
+        resolvedTotal.value = 0
       }
     } catch (e) {
       resolvedFlags.value = []
+      resolvedTotal.value = 0
     } finally {
       resolvedLoading.value = false
     }
@@ -60,6 +65,7 @@ export const useMemoryFlagsStore = defineStore('memoryFlags', () => {
           removed.resolution = resolution
           removed.resolved_at = new Date().toISOString()
           resolvedFlags.value.unshift(removed)
+          resolvedTotal.value += 1
         }
         const labels = { demote: '已降级', merge: '已合并标记', false_positive: '已标记误报' }
         showToast(labels[resolution] || '已标记解决 ✓')
@@ -85,6 +91,7 @@ export const useMemoryFlagsStore = defineStore('memoryFlags', () => {
           restored.resolution = null
           restored.resolved_at = null
           flags.value.unshift(restored)
+          resolvedTotal.value = Math.max(0, resolvedTotal.value - 1)
         }
         showToast('已恢复 ✓')
         return true
@@ -97,5 +104,5 @@ export const useMemoryFlagsStore = defineStore('memoryFlags', () => {
     }
   }
 
-  return { flags, resolvedFlags, loading, resolvedLoading, fetchFlags, fetchResolved, resolveFlag, restoreFlag }
+  return { flags, resolvedFlags, resolvedTotal, loading, resolvedLoading, fetchFlags, fetchResolved, resolveFlag, restoreFlag }
 })
