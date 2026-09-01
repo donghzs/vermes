@@ -42,6 +42,7 @@ def log(msg):
 def make_tar(dest_path: str):
     log("打包源码（排除 node_modules/dist/__pycache__/._*）...")
     exclude_dirs = {'.git', 'node_modules', 'dist', 'dist-electron', 'build',
+                    'dist-modules',
                     '__pycache__', '.mypy_cache', '.pytest_cache', '.venv',
                     'UNKNOWN.egg-info', 'VERMES_agent.egg-info', 'vermes.egg-info',
                     'downloads', 'website', 'archive', '.github'}
@@ -222,7 +223,7 @@ def main():
         # 4. 回传 exe 到 Mac
         log("回传 exe 到 Mac /tmp/winupload/ ...")
         os.makedirs('/tmp/winupload', exist_ok=True)
-        local_exe = '/tmp/winupload/Vermes-Setup-2.4.5.exe'
+        local_exe = '/tmp/winupload/Vermes-Setup-2.4.6.exe'
         # 先找 Windows 上的 exe 名
         ps3 = f"""
         $exe = Get-ChildItem (Join-Path $Root 'dist-electron\\Vermes Setup*.exe') | Sort-Object LastWriteTime | Select-Object -First 1
@@ -261,7 +262,7 @@ class _RecvHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get('Content-Length', 0))
         data = self.rfile.read(length)
-        with open('/tmp/winupload/Vermes-Setup-2.4.5.exe', 'wb') as f:
+        with open('/tmp/winupload/Vermes-Setup-2.4.6.exe', 'wb') as f:
             f.write(data)
         self.send_response(200)
         self.end_headers()
