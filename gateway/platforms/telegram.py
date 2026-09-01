@@ -904,7 +904,11 @@ class TelegramAdapter(BasePlatformAdapter):
         try:
             await self._app.updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=False,
+                # Drop updates queued during the outage: replaying a burst of
+                # stale updates on reconnect can each trigger a session create
+                # while the agent is still recovering, producing empty sessions
+                # (#3173).  Matches the initial-start behavior (drop=True).
+                drop_pending_updates=True,
                 error_callback=self._polling_error_callback_ref,
             )
             logger.info(

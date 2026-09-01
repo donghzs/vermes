@@ -140,6 +140,11 @@ async def test_reconnect_success_resets_error_count():
 
     assert adapter._polling_network_error_count == 0
 
+    # Regression guard for #3173: reconnect must drop pending updates (not
+    # replay a burst of stale updates that each create empty sessions).
+    mock_updater.start_polling.assert_called_once()
+    assert mock_updater.start_polling.call_args.kwargs.get("drop_pending_updates") is True
+
     # Clean up the heartbeat-probe task scheduled after a successful reconnect.
     pending = [t for t in adapter._background_tasks if not t.done()]
     for t in pending:
