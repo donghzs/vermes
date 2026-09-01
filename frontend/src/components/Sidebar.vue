@@ -592,14 +592,7 @@ async function handleImportFile(e) {
           <span class="sidebar-tooltip group-hover:opacity-100">工作流编排</span>
         </button>
         <button @click="goGrowth()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/growth' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="我的成长——成长轨迹 / 能力自检 / 我眼里的你">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2 L12 22" />
-            <path d="M12 8 C9 8 6 6 6 3 C9 3 12 5 12 8" />
-            <path d="M12 8 C15 8 18 6 18 3 C15 3 12 5 12 8" />
-            <path d="M12 14 C9 14 6 12 6 9 C9 9 12 11 12 14" />
-            <path d="M12 14 C15 14 18 12 18 9 C15 9 12 11 12 14" />
-            <path d="M12 22 L8 22 M12 22 L16 22" />
-          </svg>
+          <span class="text-base leading-none">🌱</span>
           <span class="sidebar-tooltip group-hover:opacity-100">成长</span>
         </button>
         </div>
