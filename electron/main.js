@@ -37,7 +37,9 @@ function getBackendExe() {
 function getBackendArgs() {
   if (app.isPackaged) {
     // PyInstaller 可执行文件是 vermes_cli.main CLI 入口，需 dashboard 子命令启动 web 后端
-    return ['dashboard', '--port', String(BACKEND_PORT)];
+    // --no-open：后端不要再 webbrowser.open() 弹系统浏览器；UI 由 Electron 自己 loadURL 展示。
+    // 否则桌面应用启动时会额外弹出默认浏览器，误导用户到浏览器而非桌面窗口。
+    return ['dashboard', '--port', String(BACKEND_PORT), '--no-open'];
   }
   // 开发模式：用 uvicorn
   return ['-m', 'uvicorn', 'vermes_cli.web_server:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT), '--log-level', 'warning'];
