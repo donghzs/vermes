@@ -836,14 +836,10 @@ function streamElapsed(startTime) {
           v-if="msg.type === 'delivery'"
           :summary="msg.delivery?.summary || {}"
           :artifacts="msg.delivery?.artifacts || []"
-          :changes="msg.delivery?.changesCount ? Array(msg.delivery.changesCount).fill({}) : []"
-          :summary-text="msg.delivery?.summaryText || ''"
           :start-time="msg.delivery?.startTime || 0"
           :end-time="msg.delivery?.endTime || 0"
           @open-artifact="openDeliveryArtifact"
           @show-all-artifacts="openRightPanel('artifacts')"
-          @show-all-changes="openRightPanel('artifacts'); setArtifactTab('changes')"
-          @send-next-action="sendNextAction"
           class="w-full"
         />
         <template v-else>

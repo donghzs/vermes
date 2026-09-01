@@ -823,6 +823,73 @@ def _extract_artifact_paths(preview: str, max_paths: int = 5):
     return paths
 
 
+# ── 交付物过滤：只保留最终交付物，排除 agent 内核/中间产物/无效短路径 ──
+_AGENT_INTERNAL_DIRS = frozenset({
+    "agent", "tools", "vermes_cli", "vermes_state", "vermes_constants",
+    "cron", "modules", "gateway", "blueprints", "capabilities",
+})
+_DELIVERABLE_EXTENSIONS = frozenset({
+    "md", "html", "htm", "json", "csv", "txt", "yaml", "yml", "toml", "ini", "cfg",
+    "png", "jpg", "jpeg", "gif", "webp", "svg",
+    "docx", "pdf", "pptx", "xlsx", "doc", "xls", "ppt",
+    "step", "stp", "stl", "obj", "fcdoc", "dxf", "gcode", "iges", "3mf", "gltf", "glb",
+    "py", "js", "ts", "sh", "java", "go", "rs", "c", "cpp", "h", "rb", "php",
+    "vue", "css", "scss", "less", "sql", "xml",
+    "mp4", "mov", "avi", "webm", "mp3", "wav", "m4a", "ogg",
+})
+
+
+def _is_deliverable_artifact(path: str) -> bool:
+    """判断一个产物路径是否是用户关心的最终交付物。
+
+    排除:
+    - 路径长度 < 4（无效短路径/拆字残片）
+    - agent 内核目录下的文件（agent/*.py, tools/*.py 等）
+    - 无文件扩展名或扩展名不在交付物白名单
+    - 隐藏文件/临时文件（以 . 或 _ 开头，或 /tmp/ 开头且非用户指定）
+    """
+    if not path or len(path) < 4:
+        return False
+    # 排除 agent 内核文件
+    parts = Path(path).parts
+    for p in parts:
+        if p in _AGENT_INTERNAL_DIRS:
+            # 允许在用户目录下的同名文件夹（如 ~/Projects/agent/ 是用户项目）
+            # 但如果是相对路径 agent/xxx.py 或 vermes_cli/xxx.py 则排除
+            if not path.startswith("/"):
+                return False
+            break
+    # 排除隐藏/临时文件
+    fname = Path(path).name
+    if fname.startswith(".") or fname.startswith("_"):
+        if not path.startswith("/"):  # 用户 Home 下 .xxx 是配置，允许
+            return False
+    if path.startswith("/tmp/") and "vermes" not in path.lower():
+        return False
+    # 必须有交付物扩展名
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    if ext not in _DELIVERABLE_EXTENSIONS:
+        return False
+    return True
+
+
+def _filter_delivery_artifacts(artifacts: list) -> list:
+    """过滤产物列表，只保留最终交付物（去重 + 有效性）。"""
+    seen = set()
+    out = []
+    for a in artifacts:
+        if not isinstance(a, dict):
+            continue
+        p = a.get("path", "")
+        if not _is_deliverable_artifact(p):
+            continue
+        if p in seen:
+            continue
+        seen.add(p)
+        out.append(a)
+    return out
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # G1b 增量 (b-1)：工作流调度接管执行（MVP 纯 B1，默认关闭，验证链路用）
 #
@@ -1591,11 +1658,12 @@ async def chat_completions(req: ChatRequest, request: Request):
                         # 任务全部完成 → 发 delivery + 庆祝事件（additive，旧前端忽略）
                         _s = todo_data.get("summary", {})
                         if should_emit_delivery(_s):
-                            # E1: 结构化 delivery 事件 — 后端携带产物/变更/统计
+                            # E1: 结构化 delivery 事件 — 只携带最终交付物（排除 agent 内核/中间产物）
+                            _final_artifacts = _filter_delivery_artifacts(_session_artifacts)
                             _delivery = {
                                 "type": "delivery",
                                 "summary": _s,
-                                "artifacts": _session_artifacts[-20:],  # 最近20个产物
+                                "artifacts": _final_artifacts[-20:],  # 只保留最终交付物
                                 "changes_count": len(_session_changes),
                                 "changes": _session_changes[-20:],     # 最近20个变更
                             }

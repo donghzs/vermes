@@ -20,10 +20,15 @@ const _curSession = () => (window.__vermes_current_session_id || 'default')
 
 function addArtifact(item, sid) {
   const cur = sid || _curSession()
-  const id = item.id || (item.path + ':' + Date.now())
+  const path = item.path || ''
+  // 防御性过滤：路径太短（拆字残片）或无文件扩展名且非图片的，不注册为产物
+  if (path.length < 4) return null
+  const fname = path.split('/').pop() || ''
+  const ext = fname.includes('.') ? fname.split('.').pop().toLowerCase() : ''
+  if (!ext) return null  // 无扩展名 = 不是交付物
+  const id = item.id || (path + ':' + Date.now())
   const rec = {
-    id, title: item.title || item.path?.split('/').pop() || '未知文件',
-    path: item.path, mime: item.mime || '', ts: Date.now(), source: 'agent',
+    id, title: item.title || fname, path, mime: item.mime || '', ts: Date.now(), source: 'agent',
     sessionId: cur,
     _content: item.content || null,
   }

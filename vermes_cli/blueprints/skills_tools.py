@@ -363,34 +363,57 @@ class _CaptureConsole:
 
 
 async def market_search(q: str = "", source: str = "all", limit: int = 24):
-    """Search the skills hub (official / clawhub / github / lobehub / ...)."""
-    from tools.skills_hub import (
-        GitHubAuth, create_source_router, unified_search, _skill_meta_to_dict,
-    )
-    try:
-        auth = GitHubAuth()
-        sources = create_source_router(auth)
-        results = unified_search(
-            q or "", sources,
-            source_filter=source or "all",
-            limit=max(1, min(int(limit), 100)),
+    """Search the skills hub (official / clawhub / github / lobehub / ...).
+
+    unified_search is synchronous (ThreadPoolExecutor internally) but runs
+    ~30s worst-case.  Must offload to thread to avoid blocking the event loop
+    which would hang ALL concurrent API requests (积木市场卡死后端根因).
+    """
+    import asyncio
+
+    def _sync_search():
+        from tools.skills_hub import (
+            GitHubAuth, create_source_router, unified_search, _skill_meta_to_dict,
         )
+        try:
+            auth = GitHubAuth()
+            sources = create_source_router(auth)
+            results = unified_search(
+                q or "", sources,
+                source_filter=source or "all",
+                limit=max(1, min(int(limit), 100)),
+            )
+        except Exception as exc:
+            _log.warning("Skills market search failed: %s", exc)
+            return []
+        return [_skill_meta_to_dict(r) for r in results]
+
+    try:
+        items = await asyncio.to_thread(_sync_search)
     except Exception as exc:
-        _log.warning("Skills market search failed: %s", exc)
+        _log.warning("Skills market search thread failed: %s", exc)
         return {"items": [], "total": 0, "error": str(exc)}
-    items = [_skill_meta_to_dict(r) for r in results]
     return {"items": items, "total": len(items), "query": q, "source": source}
 
 
 async def market_trending():
     """Get trending skill repositories from GitHub (sorted by stars)."""
-    from tools.skills_hub import search_trending_skills, _skill_meta_to_dict
+    import asyncio
+
+    def _sync_trending():
+        from tools.skills_hub import search_trending_skills, _skill_meta_to_dict
+        try:
+            results = search_trending_skills(limit=20)
+        except Exception as exc:
+            _log.warning("Skills market trending failed: %s", exc)
+            return []
+        return [_skill_meta_to_dict(r) for r in results]
+
     try:
-        results = search_trending_skills(limit=20)
+        items = await asyncio.to_thread(_sync_trending)
     except Exception as exc:
-        _log.warning("Skills market trending failed: %s", exc)
+        _log.warning("Skills market trending thread failed: %s", exc)
         return {"items": [], "total": 0, "error": str(exc)}
-    items = [_skill_meta_to_dict(r) for r in results]
     return {"items": items, "total": len(items), "trending": True}
 
 

@@ -1211,16 +1211,11 @@ export const useChatStore = defineStore('chat', () => {
           sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [sendSessionId]: acts }
         },
         onDelivery: (data) => {
-          // E1: 后端结构化 delivery 事件 — 直接用后端携带的 artifacts/changes/summary
+          // E1: 后端结构化 delivery 事件 — 只保留最终交付物（后端已过滤）
           const summary = data?.summary || {}
           const backendArtifacts = data?.artifacts || []
-          const backendChangesCount = data?.changes_count || 0
           const curItems = sessionTodoItems.value[sendSessionId] || []
           const startTime = curItems[0]?.started_at ? curItems[0].started_at * 1000 : 0
-          // 后端 artifacts 直接用，不需再从前端全局列表猜
-          const summaryText = _lastAssistantText(messages.value, sendSessionId)
-          // 但必须复用全局产物注册表 id，否则 DeliveryCard 点击调用 openArtifactById
-          // 时在全局 artifacts 里找不到（旧 id 体系 self-made），只能降级到产物列表。
           const _va = window.__vermesArtifacts
           const deliveryArtifacts = backendArtifacts.map((a) => {
             // 优先复用全局表里已存在的同 path 产物 id（tool_end 自动打开路径可能已注册）
@@ -1254,9 +1249,6 @@ export const useChatStore = defineStore('chat', () => {
             delivery: {
               summary,
               artifacts: deliveryArtifacts,
-              changesCount: backendChangesCount,
-              changes: data?.changes || [],
-              summaryText,
               startTime,
               endTime: Date.now(),
             },
@@ -1288,16 +1280,13 @@ export const useChatStore = defineStore('chat', () => {
           const summary = data?.summary || {}
           const curItems = sessionTodoItems.value[sendSessionId] || []
           const startTime = curItems[0]?.started_at ? curItems[0].started_at * 1000 : 0
-          const summaryText = _lastAssistantText(messages.value, sendSessionId)
-          // 从全局产物/变更列表取当前会话的数据
+          // 从全局产物列表取当前会话的数据（过滤掉非交付物）
           const va = window.__vermesArtifacts
-          const vc = window.__vermesChanges
           const sessionArtifacts = (va?.artifacts?.value || []).filter(a => a.sessionId === sendSessionId)
-          const sessionChanges = (vc?.changes?.value || []).filter(c => c.sessionId === sendSessionId)
           // F2 修复：onDelivery 是 delivery 消息的唯一 owner（后端结构化数据更可靠）。
           // onTaskComplete 只在 onDelivery 未触发（旧后端兼容）时补一条 delivery 消息。
           const hasDelivery = messages.value.some(m => m.sessionId === sendSessionId && m.type === 'delivery')
-          if (!hasDelivery && (sessionArtifacts.length > 0 || sessionChanges.length > 0 || summaryText)) {
+          if (!hasDelivery && sessionArtifacts.length > 0) {
             const existIdx = messages.value.findIndex(m => m.sessionId === sendSessionId && m.type === 'delivery')
             if (existIdx >= 0) messages.value.splice(existIdx, 1)
             messages.value.push({
@@ -1309,9 +1298,6 @@ export const useChatStore = defineStore('chat', () => {
               delivery: {
                 summary,
                 artifacts: sessionArtifacts.map(a => ({ id: a.id, path: a.path, title: a.title || a.path?.split('/').pop() })),
-                changesCount: sessionChanges.length,
-                changes: sessionChanges.map(c => ({ path: c.path, action: c.action })),
-                summaryText,
                 startTime,
                 endTime: Date.now(),
               },
@@ -1469,7 +1455,6 @@ export const useChatStore = defineStore('chat', () => {
               .filter(a => a.sessionId === sendSessionId && pendingIds.has(a.id))
               .map(a => ({ id: a.id, path: a.path, title: a.title || a.path?.split('/').pop(), mime: a.mime || '', source: a.source || 'tool' }))
             if (pendingArtifactList.length > 0) {
-              const summaryText = _lastAssistantText(messages.value, sendSessionId)
               // 每回合更新：先删旧 delivery 再 push 新（与 onDelivery 语义一致）
               const existIdx = messages.value.findIndex(m => m.sessionId === sendSessionId && m.type === 'delivery')
               if (existIdx >= 0) messages.value.splice(existIdx, 1)
@@ -1482,9 +1467,6 @@ export const useChatStore = defineStore('chat', () => {
                 delivery: {
                   summary: { total: 0, completed: 0, in_progress: 0 },
                   artifacts: pendingArtifactList,
-                  changesCount: 0,
-                  changes: [],
-                  summaryText,
                   startTime: 0,
                   endTime: Date.now(),
                 },
