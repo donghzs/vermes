@@ -24,9 +24,8 @@ _TASK_MEMORY_BUDGET_CHARS = 1200   # ~300 tokens
 _TASK_MEMORY_INCREMENTAL_CHARS = 600  # ~150 tokens (turn > 1)
 _PER_SECTION_MAX = 3               # 每层最多召回条数
 
-# ── 召回去重（同 session 内不重复召回同一条记忆）──
-_recently_recalled_ids: set = set()
-_last_session_id: Optional[str] = None
+# ── 召回去重（per-session，避免多 agent 并发时跨 session 污染）──
+_session_recall_state: Dict[str, set] = {}   # session_id → set of recalled memory ids
 
 
 def pre_task_recall(
@@ -47,12 +46,11 @@ def pre_task_recall(
     Returns:
         <task_memory> 块文本，空字符串表示无相关记忆。
     """
-    global _recently_recalled_ids, _last_session_id
-
-    # Session 切换 → 重置去重
-    if session_id and session_id != _last_session_id:
-        _recently_recalled_ids = set()
-        _last_session_id = session_id
+    # 取当前 session 的去重集合（per-session 隔离）
+    if session_id:
+        recalled = _session_recall_state.setdefault(session_id, set())
+    else:
+        recalled = set()  # 无 session_id 时无去重（单次调用场景）
 
     if not user_message or not user_message.strip():
         return ""
@@ -76,8 +74,8 @@ def pre_task_recall(
             limit=_PER_SECTION_MAX,
             scope=scope or None,
         )
-        # 去重
-        decisions = [d for d in decisions if d.get("id") not in _recently_recalled_ids]
+        # 去重（per-session）
+        decisions = [d for d in decisions if d.get("id") not in recalled]
         if decisions:
             section = "## 你的决策与偏好\n"
             for d in decisions:
@@ -85,7 +83,7 @@ def pre_task_recall(
                 if total_chars + len(section) + len(line) > budget:
                     break
                 section += line
-                _recently_recalled_ids.add(d.get("id"))
+                recalled.add(d.get("id"))
             if len(section) > len("## 你的决策与偏好\n"):
                 blocks.append(section)
                 total_chars += len(section)
@@ -101,7 +99,7 @@ def pre_task_recall(
                 limit=_PER_SECTION_MAX,
                 scope=scope or None,
             )
-            skills = [s for s in skills if s.get("id") not in _recently_recalled_ids]
+            skills = [s for s in skills if s.get("id") not in recalled]
             if skills:
                 section = "## 相关技能与习惯\n"
                 for s in skills:
@@ -109,7 +107,7 @@ def pre_task_recall(
                     if total_chars + len(section) + len(line) > budget:
                         break
                     section += line
-                    _recently_recalled_ids.add(s.get("id"))
+                    recalled.add(s.get("id"))
                 if len(section) > len("## 相关技能与习惯\n"):
                     blocks.append(section)
                     total_chars += len(section)
@@ -124,7 +122,7 @@ def pre_task_recall(
             limit=_PER_SECTION_MAX,
             scope=scope or None,
         )
-        episodes = [e for e in episodes if e.get("id") not in _recently_recalled_ids]
+        episodes = [e for e in episodes if e.get("id") not in recalled]
         if episodes:
             section = "## 上次做类似任务\n"
             for e in episodes:
@@ -132,7 +130,7 @@ def pre_task_recall(
                 if total_chars + len(section) + len(line) > budget:
                     break
                 section += line
-                _recently_recalled_ids.add(e.get("id"))
+                recalled.add(e.get("id"))
             if len(section) > len("## 上次做类似任务\n"):
                 blocks.append(section)
                 total_chars += len(section)
@@ -256,11 +254,12 @@ def _split_sentences(text: str) -> List[str]:
     return [p.strip() for p in parts if p.strip() and len(p.strip()) > 5]
 
 
-def reset_session_state():
-    """重置会话级去重状态（测试用 / session 切换时调用）。"""
-    global _recently_recalled_ids, _last_session_id
-    _recently_recalled_ids = set()
-    _last_session_id = None
+def reset_session_state(session_id: str = ""):
+    """重置指定会话的去重状态（session 删除/切换时调用）。"""
+    if session_id and session_id in _session_recall_state:
+        del _session_recall_state[session_id]
+    elif not session_id:
+        _session_recall_state.clear()  # 全清（测试用）
 
 
 # ── P2: 零 LLM 日记写入（纯聚合下游消费层）─────────────────────────
