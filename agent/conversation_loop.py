@@ -833,6 +833,20 @@ def _build_conversation_result(
         except Exception:
             pass  # Background review is best-effort
 
+    # P0: 记忆主动参与执行 — 任务完成后从助手回复提取决策/偏好写入 L1
+    if final_response and not interrupted:
+        try:
+            from agent.memory_aware_executor import post_task_reflect
+            _scope = getattr(agent, "platform", "") or ""
+            post_task_reflect(
+                original_user_message if isinstance(original_user_message, str) else "",
+                final_response,
+                session_id=agent.session_id or "",
+                scope=_scope,
+            )
+        except Exception as e:
+            logger.debug("memory_aware_executor post_task_reflect failed: %s", e)
+
     # Note: Memory provider on_session_end() + shutdown_all() are NOT
     # called here - run_conversation() is called once per user message in
     # multi-turn sessions. Shutting down after every turn would kill the
@@ -1215,6 +1229,23 @@ def run_conversation(
             agent._memory_manager.on_turn_start(agent._user_turn_count, _turn_msg)
         except Exception as e:
             logger.debug("conversation_loop.py: run conversation failed: %s", e)
+
+    # P0: 记忆主动参与执行 — 每轮 turn 前从 L1-L4 主动召回相关记忆
+    # 注入 agent._task_memory_context，由 system_prompt.py + memory_budget.py 自动纳入预算
+    try:
+        from agent.memory_aware_executor import pre_task_recall
+        _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
+        _scope = getattr(agent, "platform", "") or ""
+        _task_mem = pre_task_recall(
+            _turn_msg,
+            turn=agent._user_turn_count,
+            session_id=agent.session_id or "",
+            scope=_scope,
+        )
+        if _task_mem:
+            agent._task_memory_context = _task_mem
+    except Exception as e:
+        logger.debug("memory_aware_executor pre_task_recall failed: %s", e)
 
     # External memory provider: prefetch once before the tool loop.
     # Reuse the cached result on every iteration to avoid re-calling

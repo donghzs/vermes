@@ -3634,6 +3634,69 @@ async def plan_snapshot(session_id: str):
     }
 
 
+# ── P1: 成长日记 API ──────────────────────────────────────────────────
+async def diary_today():
+    """GET /api/diary/today — 返回今天的成长日记（零 LLM，纯聚合）。"""
+    from datetime import date
+    from pathlib import Path
+
+    try:
+        home = Path.home() / ".vermes"
+        diary_path = home / "diary" / f"{date.today().isoformat()}.md"
+        if diary_path.exists():
+            return {"date": date.today().isoformat(), "content": diary_path.read_text(encoding="utf-8")}
+        else:
+            # 无日记时从 memory_fabric 取当天新写 preference/decision + change_ledger
+            sections = []
+            try:
+                from agent.memory_fabric import list_memories
+                prefs = list_memories(lifecycle_tag="preference", limit=5)
+                decs = list_memories(lifecycle_tag="decision", limit=5)
+                if isinstance(prefs, dict) and prefs.get("memories"):
+                    sections.append("## 💬 你的偏好")
+                    for m in prefs["memories"][:5]:
+                        sections.append(f"  • {(m.get('content_preview') or '')[:100]}")
+                if isinstance(decs, dict) and decs.get("memories"):
+                    sections.append("## 📋 你的决策")
+                    for m in decs["memories"][:5]:
+                        sections.append(f"  • {(m.get('content_preview') or '')[:100]}")
+            except Exception:
+                pass
+            try:
+                from agent.change_ledger import list_changes
+                changes = list_changes(limit=5, kind="memory_learned")
+                if changes:
+                    sections.append("## 🌱 今天学到的")
+                    for c in changes[:5]:
+                        sections.append(f"  • {c.get('title', '')}")
+            except Exception:
+                pass
+            if not sections:
+                return {"date": date.today().isoformat(), "content": "*今天还没什么特别的*"}
+            return {"date": date.today().isoformat(), "content": "\n".join(sections)}
+    except Exception as e:
+        return {"date": date.today().isoformat(), "content": f"*加载失败: {e}*"}
+
+
+async def diary_list(days: int = 7):
+    """GET /api/diary/list?days=7 — 最近 N 天的日记列表。"""
+    from datetime import date, timedelta
+    from pathlib import Path
+
+    try:
+        home = Path.home() / ".vermes"
+        diary_dir = home / "diary"
+        result = []
+        for i in range(days):
+            d = date.today() - timedelta(days=i)
+            p = diary_dir / f"{d.isoformat()}.md"
+            if p.exists():
+                result.append({"date": d.isoformat(), "preview": p.read_text(encoding="utf-8")[:200]})
+        return {"days": days, "entries": result}
+    except Exception as e:
+        return {"days": days, "entries": [], "error": str(e)}
+
+
 # ── Bug #6 结构层：前端打开产物后回告，跨轮次消除「要打开吗」反问 ──
 # session_id -> set of 已自动在右侧面板打开并渲染的产物路径
 _opened_artifacts: dict = {}
@@ -3975,6 +4038,19 @@ def register_to(app):
         plan_snapshot,
         methods=["GET"],
         name="plan_snapshot",
+    )
+    # P1: 成长日记
+    app.add_api_route(
+        "/api/diary/today",
+        diary_today,
+        methods=["GET"],
+        name="diary_today",
+    )
+    app.add_api_route(
+        "/api/diary/list",
+        diary_list,
+        methods=["GET"],
+        name="diary_list",
     )
 
     # Pre-create default agent at startup for persistence

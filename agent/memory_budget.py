@@ -37,6 +37,7 @@ _TOTAL_BUDGET_CHARS = 8000  # ~2000 tokens
 # Block is identified by the attribute name on the agent object
 _BLOCK_PRIORITIES: Dict[str, int] = {
     "_recall_context": 1,        # highest — most relevant to current turn
+    "_task_memory_context": 1,   # same priority — per-turn active recall (memory_aware_executor)
     "_handoff_context": 2,       # essential for session continuity
     "_evolution_context": 3,     # learned experience
     "_decisions_context": 4,     # standing decisions (injected by system_prompt)
@@ -46,6 +47,7 @@ _BLOCK_PRIORITIES: Dict[str, int] = {
 # Per-block soft cap (chars) — blocks should not exceed this individually
 _BLOCK_SOFT_CAPS: Dict[str, int] = {
     "_recall_context": 3000,
+    "_task_memory_context": 1200,  # ~300 tokens (memory_aware_executor)
     "_handoff_context": 2000,
     "_evolution_context": 1500,
     "_decisions_context": 1200,

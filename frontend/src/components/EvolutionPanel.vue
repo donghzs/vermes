@@ -40,11 +40,23 @@ const selfModifyHistory = ref([])
 const changes = ref([])          // T5 变更流水（L1 通知）
 const unreadCount = ref(0)
 const proposals = ref([])        // 双闸门没过 / 幅度过大 → 待人工审
+const diaryContent = ref('')      // P1: 今天学到了什么（成长日记）
 let _backendDownToastShown = false
 let _roundInProgress = false // 防雪崩：上一轮未完成不发起下一轮
 
 // A.4.5: 后端已知离线时，面板内联展示"重连中…"而非红色 toast 刷屏
 const backendOffline = computed(() => backendConn.isOffline)
+
+// P1: 成长日记内容 → 安全 HTML（支持 Markdown 标题/列表）
+const diaryHtml = computed(() => {
+  if (!diaryContent.value) return ''
+  return diaryContent.value
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/## (.*)/g, '<strong class="text-emerald-400">$1</strong>')
+    .replace(/  • (.*)/g, '<span class="evo-diary-item">• $1</span>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>')
+})
 
 // 统一 fetch 带超时：3s 后 abort，避免后端卡住时前端无限等待
 function _fetchWithTimeout(url, opts = {}, ms = 3000) {
@@ -189,6 +201,18 @@ async function fetchChanges() {
     unreadCount.value = data.unread || 0
   } catch (e) {
     _fail('变更记录', fetchChanges, e.message)
+  }
+}
+
+// P1: 成长日记
+async function fetchDiary() {
+  try {
+    const r = await _fetchWithTimeout('/api/diary/today')
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const data = await r.json()
+    diaryContent.value = data.content || ''
+  } catch (e) {
+    diaryContent.value = '' // fail-open：无日记不影响面板
   }
 }
 
@@ -365,6 +389,7 @@ async function _refreshAll() {
       fetchSelfModifyHistory(),
       fetchChanges(),
       fetchProposals(),
+      fetchDiary(),
     ])
   } finally {
     _roundInProgress = false
@@ -561,6 +586,14 @@ const smTypeLabel = (t) => {
         <button class="evo-btn-confirm" @click="applyProposal(p)">应用</button>
         <button class="evo-btn-reject" @click="rejectProposal(p)">拒绝</button>
       </div>
+    </div>
+
+    <!-- ── P1: 今天学了什么（成长日记）────────────────────── -->
+    <div v-if="diaryContent" class="evo-changes evo-diary">
+      <div class="evo-changes-head">
+        <span class="evo-key">🌱 今天我学到了</span>
+      </div>
+      <div class="evo-diary-content" v-html="diaryHtml"></div>
     </div>
 
     <div v-if="expanded" class="evo-detail">
@@ -1476,5 +1509,18 @@ const smTypeLabel = (t) => {
 .dark .evo-proposals .evo-change-card {
   background: rgba(59, 130, 246, 0.1);
   border-left-color: rgba(59, 130, 246, 0.5);
+}
+/* P1: 成长日记 */
+.evo-diary-content {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text-secondary, #6b7280);
+  padding: 0.25rem 0;
+}
+.dark .evo-diary-content { color: var(--text-secondary, #9ca3af); }
+.evo-diary-item {
+  display: block;
+  padding-left: 0.5rem;
+  margin: 0.125rem 0;
 }
 </style>

@@ -126,6 +126,7 @@ export function personaChangeNotify(change) {
     capability_activated: { emoji: '✨', text: `我激活了${title}能力` },
     source_modify: { emoji: '✏️', text: `我改了自己的${title}` },
     rollback: { emoji: '↩️', text: `我把${title}回滚了` },
+    memory_learned: { emoji: '🌱', text: `${title}${summary ? '：' + summary : ''}` },
   }
   return templates[kind] || { emoji: '📝', text: `${title}${summary ? '：' + summary : ''}` }
 }

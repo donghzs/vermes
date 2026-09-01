@@ -489,6 +489,9 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # Cross-session continuity: cluster evolution briefing
     _continuity_block = getattr(agent, "_continuity_context", None)
 
+    # Per-turn active memory recall: memory_aware_executor pre_task_recall
+    _task_memory_block = getattr(agent, "_task_memory_context", None)
+
     # Decision tracking: standing decisions from past sessions
     _decisions_block = ""
     try:
@@ -500,6 +503,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # Phase 5: Apply unified memory budget across all memory injections
     _memory_blocks = {
         "_recall_context": _recall_block or "",
+        "_task_memory_context": _task_memory_block or "",
         "_handoff_context": _handoff_block or "",
         "_evolution_context": _evolution_block or "",
         "_decisions_context": _decisions_block or "",
