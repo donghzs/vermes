@@ -335,9 +335,7 @@ async def shutdown_server():
 async def stop_generation(request: Request):
     """Stop a running stream. Frontend calls this when user clicks stop."""
     from vermes_cli.blueprints.state import _active_streams
-    from vermes_cli.web_server import _require_token
 
-    _require_token(request)
     body = await request.json()
     stream_id = body.get("stream_id")
     if not stream_id:
@@ -357,10 +355,8 @@ async def steer_agent(request: Request):
     The text is stashed via agent.steer() and the model sees it appended
     to the next tool result — direction change without stopping.
     """
-    from vermes_cli.web_server import _require_token
     from vermes_cli.blueprints.agent_cache import _agent_cache
 
-    _require_token(request)
     body = await request.json()
     session_id = body.get("session_id", "")
     text = body.get("text", "").strip()
