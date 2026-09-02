@@ -111,6 +111,33 @@ class TestGroundClaim(unittest.TestCase):
         # 无 LLM 精排 → 粗排结果仍产出，best 非空
         self.assertIsNotNone(r["best"])
 
+    def test_single_candidate_not_forced_to_1_0(self):
+        """单候选修复回归：检索只返回一篇无关文献时，不得被判 1.0（supported）。
+
+        守护本实现引入的语义校正——citation_matcher.llm_rerank 对单候选硬编码
+        返回 1.0（为「引用编号→唯一论文」设计），开放式溯源须改用真实
+        score_relevance 打分，否则假阳性。
+        """
+        from vermes_cli.scholarforge.grounded_citation import ground_claim
+
+        # 主张谈「深度学习」，候选却是一篇完全无关的「古代陶器考古」论文
+        pool = [_p("Ancient Pottery Archaeology in Bronze Age",
+                   authors=["X"], year="2010", venue="Archaeology",
+                   abstract="ceramic fragments and excavation sites")]
+
+        async def search_fn(keyword, limit=8):
+            for p in pool:
+                yield p
+
+        # 无 LLM：直接走单候选 score_relevance 路径（非 llm_rerank 的 1.0 捷径）
+        r = self._run(ground_claim(
+            "深度学习模型的训练需要大量计算资源",
+            search_fn=search_fn, llm_call_fn=None,
+        ))
+        self.assertEqual(r["verdict"], "unsupported")
+        # 关键断言：分数必须远低于 1.0（若退回 llm_rerank 捷径会 = 1.0）
+        self.assertLess(r["best"]["score"], 0.5)
+
 
 class TestGroundClaimsAndReport(unittest.TestCase):
     def test_batch_skips_empty_and_reports(self):
