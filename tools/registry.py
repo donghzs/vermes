@@ -113,6 +113,7 @@ _NETWORK_SPECS = {
     'image_generate',                          # image_generation_tool
     'video_generate',                          # video_generation_tool
     'literature_search',                       # literature_search_tool
+    'grounded_citation',                       # grounded_citation_tool
     'x_search',                                # x_search_tool
     'yb_query_group_info', 'yb_query_group_members',          # yuanbao 读
     'yb_search_sticker', 'yb_send_dm', 'yb_send_sticker',     # yuanbao 写
