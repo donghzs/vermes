@@ -11,6 +11,7 @@ runs at a time if multiple processes overlap.
 import asyncio
 import concurrent.futures
 import contextvars
+import hashlib
 import json
 import logging
 import os
@@ -86,6 +87,95 @@ def _resolve_cron_enabled_toolsets(job: dict, cfg: dict) -> list[str] | None:
             exc,
         )
         return None
+
+
+# ── Cron monitor-mode helpers（④）─────────────────────────────
+# monitor_mode 作业：跑前对「目标状态」取 hash，无变化直接短路跳过 LLM。
+# 目标状态由 _resolve_monitor_target 统一解析成可 hash 的字符串（URL 内容 /
+# 文件内容 / 命令输出 / 原始 prompt）。hash 与跨轮笔记存 SQLite（vermes_state）。
+
+_MONITOR_TARGET_KINDS = ("url", "file", "cmd", "text")
+
+
+def _resolve_monitor_target(job: dict) -> str:
+    """Resolve a monitor job's target into a hashable string snapshot.
+
+    ``monitor_target`` accepts either a bare string (treated as text) or a
+    dict of the form ``{"type": "url"|"file"|"cmd"|"text", "value": "..."}``.
+
+    Returns the normalized snapshot string. Any resolution failure falls
+    back to the job prompt so a broken target never silently disables the
+    job (the caller treats exceptions as non-fatal and runs the LLM anyway).
+    """
+    target = job.get("monitor_target")
+    if not target:
+        return str(job.get("prompt") or "")
+
+    if isinstance(target, str):
+        return target
+
+    if isinstance(target, dict):
+        kind = str(target.get("type") or "text").strip().lower()
+        value = target.get("value")
+        if value is None:
+            return str(job.get("prompt") or "")
+        value_str = str(value)
+        if kind == "url":
+            import urllib.request
+            with urllib.request.urlopen(value_str, timeout=20) as resp:
+                _body = resp.read(256 * 1024)  # cap at 256 KiB
+                return f"url:{value_str}\n{_body.decode('utf-8', 'ignore')}"
+        if kind == "file":
+            p = Path(value_str).expanduser()
+            if p.is_file():
+                return f"file:{value_str}\n{p.read_text(encoding='utf-8', errors='ignore')}"
+            return f"file:{value_str}:MISSING"
+        if kind == "cmd":
+            try:
+                _out = subprocess.run(
+                    value_str, shell=True, capture_output=True, timeout=30,
+                    text=True, errors="ignore",
+                )
+                return f"cmd:{value_str}\n{_out.stdout}\n{_out.stderr}"
+            except Exception as exc:
+                return f"cmd:{value_str}:ERROR:{exc}"
+        # "text" (default) → literal string
+        return value_str
+
+    # Unknown type → best-effort stringify
+    return str(target)
+
+
+def _compute_monitor_hash(target: str) -> str:
+    """Normalize + sha256 a resolved target snapshot to a 16-char hex digest."""
+    _norm = (target or "").strip()
+    return hashlib.sha256(_norm.encode("utf-8", "ignore")).hexdigest()[:16]
+
+
+def _get_monitor_hash(job_id: str):
+    """Best-effort read of the last stored monitor hash (None on any failure)."""
+    try:
+        from vermes_state import SessionDB
+        _db = SessionDB()
+        try:
+            return _db.get_cron_monitor_hash(job_id)
+        finally:
+            _db.close()
+    except Exception:
+        return None
+
+
+def _store_monitor_hash(job_id: str, h: str) -> None:
+    """Best-effort write of the monitor hash (never fatal)."""
+    try:
+        from vermes_state import SessionDB
+        _db = SessionDB()
+        try:
+            _db.set_cron_monitor_hash(job_id, h)
+        finally:
+            _db.close()
+    except Exception:
+        pass
 
 # Valid delivery platforms — used to validate user-supplied platform names
 # in cron delivery targets, preventing env var enumeration via crafted names.
@@ -1592,6 +1682,34 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
                 job_id, _mcp_exc,
             )
 
+        # ── monitor-mode 短路：目标状态无变化则跳过 LLM，省 token ──
+        # 仅在 monitor_mode 作业上生效；其余作业（含 no_agent）不受影响。
+        # 先解析目标状态并算 hash，与前次 hash 相同则直接 return（不跑 LLM、
+        # 不写 notepad——状态未变无可记）。任一步骤异常均非致命：降级为正常跑。
+        if job.get("monitor_mode"):
+            try:
+                _monitor_target = _resolve_monitor_target(job)
+                _monitor_hash = _compute_monitor_hash(_monitor_target)
+                _prev_hash = _get_monitor_hash(job_id)
+                if _prev_hash is not None and _prev_hash == _monitor_hash:
+                    logger.info(
+                        "Job '%s': monitor target unchanged (hash match) — skipping LLM run",
+                        job_id,
+                    )
+                    _unchanged_doc = (
+                        f"# Cron Job: {job_name}\n\n"
+                        f"**Job ID:** {job_id}\n"
+                        f"**Run Time:** {_vermes_now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                        f"monitor-mode: target unchanged — LLM run skipped.\n"
+                    )
+                    return True, _unchanged_doc, SILENT_MARKER, None
+                _store_monitor_hash(job_id, _monitor_hash)
+            except Exception as _h_exc:
+                logger.warning(
+                    "Job '%s': monitor hash check failed (non-fatal): %s",
+                    job_id, _h_exc,
+                )
+
         agent = AIAgent(
             model=model,
             api_key=runtime.get("api_key"),
@@ -1619,7 +1737,10 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
             # Without a workdir, keep cwd context discovery disabled.
             skip_context_files=not bool(_job_workdir),
             load_soul_identity=True,
-            skip_memory=True,  # Cron system prompts would corrupt user representations
+            # monitor_mode：监控类作业需加载用户记忆（理解关注点/通知目标），
+            # 且由上方 hash 短路决定是否需要真正调用 LLM。其余 cron 作业缺省
+            # monitor_mode=False → skip_memory=True，与现状一致，零回归。
+            skip_memory=not bool(job.get("monitor_mode")),
             platform="cron",
             session_id=_cron_session_id,
             session_db=_session_db,

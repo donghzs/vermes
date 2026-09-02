@@ -525,6 +525,8 @@ def create_job(
     profile: Optional[str] = None,
     no_agent: bool = False,
     workflow: Optional[str] = None,
+    monitor_mode: bool = False,
+    monitor_target: Optional[Union[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Create a new cron job.
@@ -574,6 +576,13 @@ def create_job(
                 and deliver its stdout directly. Empty stdout = silent (no
                 delivery). Requires ``script`` to be set. Ideal for classic
                 watchdogs and periodic alerts that don't need LLM reasoning.
+        monitor_mode: When True, the job runs as a monitor: it loads user memory
+                (``skip_memory=False``) and short-circuits the LLM when the
+                monitored target state is unchanged since the last run.
+                See cron-monitor-mode-spec.md (④).
+        monitor_target: What to monitor — a bare string (treated as literal
+                text) or ``{"type": "url"|"file"|"cmd"|"text", "value": ...}``.
+                Only consulted when ``monitor_mode=True``.
 
     Returns:
         The created job dict
@@ -609,6 +618,8 @@ def create_job(
     normalized_workdir = _normalize_workdir(workdir)
     normalized_profile = _normalize_profile(profile)
     normalized_no_agent = bool(no_agent)
+    normalized_monitor_mode = bool(monitor_mode)
+    normalized_monitor_target = monitor_target or None
 
     # G6：工作流触发器 —— 存模板名，运行时复用已建 agent 跑工作流。
     normalized_workflow = str(workflow).strip() if isinstance(workflow, str) else None
@@ -674,6 +685,8 @@ def create_job(
         "workdir": normalized_workdir,
         "profile": normalized_profile,
         "workflow": normalized_workflow,
+        "monitor_mode": normalized_monitor_mode,
+        "monitor_target": normalized_monitor_target,
     }
 
     jobs = load_jobs()
@@ -762,6 +775,15 @@ def update_job(job_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]
                 updates["profile"] = None
             else:
                 updates["profile"] = _normalize_profile(_profile)
+
+        # Normalize monitor-mode fields if present (④). Coerce monitor_mode to
+        # a real bool; clear monitor_target on empty string / None / False.
+        if "monitor_mode" in updates:
+            updates["monitor_mode"] = bool(updates["monitor_mode"])
+        if "monitor_target" in updates:
+            _mt = updates["monitor_target"]
+            if _mt is None or _mt == "" or _mt is False:
+                updates["monitor_target"] = None
 
         updated = _apply_skill_fields({**job, **updates})
         schedule_changed = "schedule" in updates

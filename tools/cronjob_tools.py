@@ -327,6 +327,10 @@ def _format_job(job: Dict[str, Any]) -> Dict[str, Any]:
         result["profile"] = job["profile"]
     if job.get("workflow"):
         result["workflow"] = job["workflow"]
+    if job.get("monitor_mode"):
+        result["monitor_mode"] = True
+    if job.get("monitor_target"):
+        result["monitor_target"] = job["monitor_target"]
     return result
 
 
@@ -352,6 +356,8 @@ def cronjob(
     profile: Optional[str] = None,
     no_agent: Optional[bool] = None,
     workflow: Optional[str] = None,
+    monitor_mode: Optional[bool] = None,
+    monitor_target: Optional[Union[str, Dict[str, Any]]] = None,
     task_id: str = None,
 ) -> str:
     """Unified cron job management tool."""
@@ -423,6 +429,8 @@ def cronjob(
                 profile=_normalize_optional_job_value(profile),
                 no_agent=_no_agent,
                 workflow=_normalize_optional_job_value(workflow),
+                monitor_mode=bool(monitor_mode),
+                monitor_target=monitor_target or None,
             )
             return json.dumps(
                 {
@@ -574,6 +582,11 @@ def cronjob(
                             success=False,
                         )
                 updates["no_agent"] = target_no_agent
+            if monitor_mode is not None:
+                updates["monitor_mode"] = bool(monitor_mode)
+            if monitor_target is not None:
+                # Empty string clears the field.
+                updates["monitor_target"] = _normalize_optional_job_value(monitor_target) if isinstance(monitor_target, str) else (monitor_target or None)
             if workflow is not None:
                 # Empty string clears the field (falls back to prompt/skill mode).
                 _wf = _normalize_optional_job_value(workflow)
@@ -741,6 +754,28 @@ Important safety rule: cron-run sessions should not recursively schedule more cr
                     "`prompt` becomes optional context for the first step and is otherwise ignored. "
                     "Mutually exclusive with no_agent=True (a workflow needs an agent to run its steps). "
                     "On update, pass an empty string to clear and fall back to prompt/skill mode."
+                ),
+            },
+            "monitor_mode": {
+                "type": "boolean",
+                "default": False,
+                "description": (
+                    "Monitor mode (④): when True, the job loads user memory (instead of "
+                    "skip_memory=True) and short-circuits the LLM when the monitored target state "
+                    "is unchanged since the last run — no tokens spent on no-change ticks. "
+                    "Best for 'watch this URL/file/metric and notify me when it changes'. "
+                    "Pair with monitor_target."
+                ),
+            },
+            "monitor_target": {
+                "type": ["string", "object"],
+                "description": (
+                    "What to monitor (only consulted when monitor_mode=True). A bare string is "
+                    "treated as literal text. Or an object: "
+                    '{"type": "url"|"file"|"cmd"|"text", "value": "..."}. '
+                    "url = fetch the page body, file = read the file content, cmd = run a shell "
+                    "command and hash its output, text = literal string. The resolved snapshot is "
+                    "hashed; unchanged hash = skip LLM. On update, pass empty string to clear."
                 ),
             },
         },

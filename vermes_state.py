@@ -581,6 +581,27 @@ CREATE TABLE IF NOT EXISTS outbound_intent (
 );
 CREATE INDEX IF NOT EXISTS idx_outbound_intent_session ON outbound_intent(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_outbound_intent_status  ON outbound_intent(status);
+
+-- ── Cron monitor-mode 小状态（④ 落地：不污染 session 记忆）──
+-- monitor 任务跨轮持久两处状态：
+--   * cron_monitor_state — 上次目标状态 hash，用于「无变化直接短路跳过 LLM」
+--   * cron_notepad       — job 级小笔记（阈值/上次告警/通知偏好等），key-value
+-- 索引 idx_cron_notepad_job 引用 cron_notepad 表，统一放到 _init_schema 的
+-- _reconcile_columns() 之后建（与 idx_sessions_board_id 同区），避免历史库首轮
+-- executescript 时序问题。
+CREATE TABLE IF NOT EXISTS cron_monitor_state (
+    job_id          TEXT PRIMARY KEY,
+    target_hash     TEXT,
+    updated_at      REAL
+);
+
+CREATE TABLE IF NOT EXISTS cron_notepad (
+    job_id          TEXT NOT NULL,
+    note_key        TEXT NOT NULL,
+    note_value      TEXT,
+    updated_at      REAL,
+    PRIMARY KEY (job_id, note_key)
+);
 """
 
 # channel_sync_events 自清理配置。该表只是桌面控制台未读角标的实时投递
@@ -1010,6 +1031,17 @@ class SessionDB:
             )
         except sqlite3.OperationalError as exc:
             logger.debug("idx_sessions_board_id create skipped: %s", exc)
+
+        # Cron monitor-mode notepad 索引（④）。cron_notepad 表本身在 SCHEMA_SQL
+        # 声明（CREATE TABLE IF NOT EXISTS），但索引按本项目规矩统一建在
+        # _reconcile_columns() 之后，避免历史库首轮 executescript 时序问题。
+        try:
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cron_notepad_job "
+                "ON cron_notepad(job_id)"
+            )
+        except sqlite3.OperationalError as exc:
+            logger.debug("idx_cron_notepad_job create skipped: %s", exc)
 
         # ── Schema version bookkeeping ─────────────────────────────────
         # Bump to current so future data migrations (if any) can gate on
@@ -1681,6 +1713,66 @@ class SessionDB:
         if not row:
             return None
         return row["board_id"] if isinstance(row, sqlite3.Row) else row[0]
+
+    # ── Cron monitor-mode 小状态（④）─────────────────────────────
+    # monitor 任务的 job 级持久小状态：hash 短路 + 跨轮笔记。
+    # 与 ⑮ 文档记忆层划清边界（见 cron-monitor-mode-spec.md §7）：这里只存
+    # job 级瞬时小状态（快/小/结构化），agent/项目级阶段结论走 project_handoff。
+
+    def get_cron_monitor_hash(self, job_id: str) -> Optional[str]:
+        """Return the last stored monitor-target hash for a cron job, or None."""
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT target_hash FROM cron_monitor_state WHERE job_id = ?",
+                    (job_id,),
+                ).fetchone()
+            if row is None:
+                return None
+            return row["target_hash"] if isinstance(row, sqlite3.Row) else row[0]
+        except sqlite3.OperationalError as exc:
+            # Legacy DB where cron_monitor_state hasn't been created yet.
+            logger.debug("get_cron_monitor_hash skipped: %s", exc)
+            return None
+
+    def set_cron_monitor_hash(self, job_id: str, h: str) -> None:
+        """Persist the monitor-target hash for a cron job (upsert)."""
+        def _do(conn):
+            conn.execute(
+                "INSERT INTO cron_monitor_state (job_id, target_hash, updated_at) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(job_id) DO UPDATE SET "
+                "target_hash = excluded.target_hash, updated_at = excluded.updated_at",
+                (job_id, h, time.time()),
+            )
+        self._execute_write(_do)
+
+    def get_notepad(self, job_id: str, key: str) -> Optional[str]:
+        """Read a job-level note value from cron_notepad."""
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT note_value FROM cron_notepad WHERE job_id = ? AND note_key = ?",
+                    (job_id, key),
+                ).fetchone()
+            if row is None:
+                return None
+            return row["note_value"] if isinstance(row, sqlite3.Row) else row[0]
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_notepad skipped: %s", exc)
+            return None
+
+    def set_notepad(self, job_id: str, key: str, value: str) -> None:
+        """Write a job-level note value into cron_notepad (upsert)."""
+        def _do(conn):
+            conn.execute(
+                "INSERT INTO cron_notepad (job_id, note_key, note_value, updated_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(job_id, note_key) DO UPDATE SET "
+                "note_value = excluded.note_value, updated_at = excluded.updated_at",
+                (job_id, key, value, time.time()),
+            )
+        self._execute_write(_do)
 
     def list_sessions_by_board(
         self, board_id: str, limit: int = 50
