@@ -2176,6 +2176,46 @@ class SessionDB:
             )
         self._execute_write(_do)
 
+    def list_bot_room_members(self, room_id: str) -> List[Dict[str, Any]]:
+        """列出房间成员（LEFT JOIN agent_profiles 补齐 UI 展示字段）。
+
+        Phase 2 完整 @ 补全的**候选来源**：前端下拉需要 name / hue / avatar_seed
+        渲染头像与首字（T1 数据模型已为 UI 预留这三列，此处只读取、不新增列）。
+
+        无匹配 profile 的成员（如外部 human 成员）以 ``ref_id`` 兜底，
+        条目不丢失（LEFT JOIN 而非 INNER JOIN）。
+        """
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT m.member_type, m.ref_id, m.joined_at, "
+                    " p.name, p.hue, p.avatar_seed, p.description, "
+                    " p.provider, p.model, p.is_default "
+                    "FROM bot_room_members m "
+                    "LEFT JOIN agent_profiles p ON p.id = m.ref_id "
+                    "WHERE m.room_id = ? "
+                    "ORDER BY m.member_type DESC, m.joined_at ASC",
+                    (room_id,),
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("list_bot_room_members skipped: %s", exc)
+            return []
+        out = []
+        for r in rows:
+            ref = r[1]
+            out.append({
+                "member_type": r[0], "ref_id": ref, "joined_at": r[2],
+                # 无 profile 兜底：name 退化为 ref_id，hue=0（前端再按 id 哈希兜底）
+                "name": r[3] or ref,
+                "hue": int(r[4] or 0),
+                "avatar_seed": r[5] or ref,
+                "description": r[6] or "",
+                "provider": r[7] or "",
+                "model": r[8] or "",
+                "is_default": int(r[9] or 0),
+            })
+        return out
+
     def append_bot_room_message(self, room_id: str, author_type: str,
                                 author_ref: Optional[str], content: str,
                                 turn_session_id: Optional[str] = None) -> int:

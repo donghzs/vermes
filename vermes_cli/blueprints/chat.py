@@ -3159,6 +3159,33 @@ async def bot_room_members_add(request: Request, room_id: str):
         return {"ok": False, "error": str(e)}
 
 
+async def bot_room_members_list(request: Request, room_id: str):
+    """GET /api/bot/rooms/{room_id}/members
+
+    Phase 2 完整 @ 补全的**候选来源**：返回房间成员，含 UI 展示字段
+    （name / hue / avatar_seed / description，T1 已为头像预留，见
+    ``SessionDB.list_bot_room_members``）。
+
+    T4 只实现了 members 的 POST（添加成员）；本 GET 是净新增，与 POST
+    共用同一路径、以 methods 区分。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    # ⚠️ 空 id 校验（与其余 bot handler 同纪律）
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        db = _bot_room_db()
+        try:
+            members = db.list_bot_room_members(room_id)
+        finally:
+            db.close()
+        return {"ok": True, "room_id": room_id, "members": members}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def bot_room_message_send(request: Request, room_id: str):
     """POST /api/bot/rooms/{room_id}/messages  body: {"text": str}"""
     if not _bot_mode_enabled():
@@ -4149,6 +4176,12 @@ def register_to(app):
             bot_room_members_add,
             methods=["POST"],
             name="bot_room_members_add",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/members",
+            bot_room_members_list,
+            methods=["GET"],
+            name="bot_room_members_list",
         )
         app.add_api_route(
             "/api/bot/rooms/{room_id}/messages",

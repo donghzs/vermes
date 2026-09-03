@@ -14,6 +14,10 @@
 - T7：BOT_MODE_ENABLED 总开关短路在最外层——关闭时 register_to 内 bot 路由整体不注册
   （404）、处理器入口另有守卫（403「bot mode disabled」）；断言「零影响单聊」是真·零
   （不建 agent + 不广播 + 单聊路由 /api/chat/models 正常响应）。
+- Phase 2：GET /api/bot/rooms/{id}/members —— 完整 @ 补全的候选端点。
+  T4 只有 members POST；本 GET 净新增，与 POST 共用路径、以 methods 区分；
+  候选携带 T1 预留的 name/hue/avatar_seed 供前端渲染 SVG 头像与首字；
+  同受最外层开关键控（关闭时不注册，非绕过口）。
 
 测试隔离：SessionDB 重定向到临时库；AIAgent 用 FakeAgent 替换（不触网/不触 LLM）；
 _resolve_model_provider 用确定性映射；_agent_cache 每用例全新实例。
@@ -307,6 +311,9 @@ def run_off(env):
         client = _client()
         r = client.post("/api/bot/rooms", json={"id": "rx", "name": "x"})
         check("bot route disabled when flag off (403/404)", r.status_code in (403, 404), str(r.status_code))
+        # Phase 2 新增的 GET members 同受最外层开关键控（不能成为绕过口）
+        r = client.get("/api/bot/rooms/rx/members")
+        check("GET members disabled when flag off (403/404)", r.status_code in (403, 404), str(r.status_code))
         # 单聊路由独立于 bot 开关：始终注册、正常响应（此处返回 {"data":[]}）
         r2 = client.get("/api/chat/models")
         check("single-chat route unaffected (not bot-disabled)",
@@ -317,6 +324,57 @@ def run_off(env):
     finally:
         chat_bp._bot_mode_enabled = orig_flag
         run_agent.AIAgent = orig_agent
+    return results
+
+
+def run_members(env):
+    """Phase 2：GET /api/bot/rooms/{id}/members —— 完整 @ 补全的候选端点。
+
+    断言候选携带 UI 展示字段（name / hue / avatar_seed）。这三列是 T1 数据模型
+    为头像预留的（seed: researcher→hue=210、coder→hue=140），Phase 2 只是读取、
+    不新增列。hue 为 0/缺失时前端按 ref_id 哈希兜底，故此处断言的是「后端确实
+    把预留列透出」，前端兜底逻辑不在此覆盖。
+    """
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    db.create_bot_room("rm", "成员房")
+    for p in db.list_agent_profiles():
+        db.add_bot_room_member("rm", "agent", p["id"])
+    db.close()
+
+    r = client.get("/api/bot/rooms/rm/members")
+    check("GET members 200 + ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    members = r.json().get("members", [])
+    refs = {m["ref_id"] for m in members}
+    check("候选含 researcher/coder", refs >= {"researcher", "coder"}, str(refs)[:300])
+
+    by_ref = {m["ref_id"]: m for m in members}
+    rs = by_ref.get("researcher", {})
+    cd = by_ref.get("coder", {})
+    check("候选带 name（中文别名）", rs.get("name") == "研究助手", str(rs)[:200])
+    check("候选带 hue（头像色相 210）", rs.get("hue") == 210, str(rs)[:200])
+    check("候选带 avatar_seed", cd.get("avatar_seed") == "coder", str(cd)[:200])
+    check("候选 member_type=agent", all(m.get("member_type") == "agent" for m in members), str(members)[:300])
+
+    # 空 room_id 校验（与其余 bot handler 同纪律）：%20 → strip 后为空 → 400
+    r = client.get("/api/bot/rooms/%20/members")
+    check("空 room_id -> 400", r.status_code == 400, r.text[:200])
+
+    # 无 profile 的成员（如外部 human）不应丢条目：ref_id 兜底、不 JOIN 掉
+    db = vermes_state.SessionDB(env.db_path)
+    db.add_bot_room_member("rm", "human", "u-outsider")
+    db.close()
+    r = client.get("/api/bot/rooms/rm/members")
+    members2 = r.json().get("members", [])
+    hit = [m for m in members2 if m["ref_id"] == "u-outsider"]
+    check("无 profile 成员不丢失（LEFT JOIN 兜底）", len(hit) == 1, str(members2)[:300])
+    check("无 profile 成员 name 退化为 ref_id", hit and hit[0].get("name") == "u-outsider", str(hit)[:200])
     return results
 
 
@@ -357,6 +415,12 @@ def test_bot_mode_disabled_short_circuits(env):
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
 
+def test_room_members_endpoint(env):
+    results = run_members(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
 # ─────────────────────────── 独立运行入口 ───────────────────────────
 
 if __name__ == "__main__":
@@ -372,6 +436,7 @@ if __name__ == "__main__":
     all_results += run_g2(e)
     all_results += run_ws(e)
     all_results += run_off(e)
+    all_results += run_members(e)
 
     print("\n=== SUMMARY ===")
     fails = [n for n, c in all_results if not c]

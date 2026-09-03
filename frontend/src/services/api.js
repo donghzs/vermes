@@ -611,6 +611,9 @@ const api = {
   addBotRoomMember(roomId, refId, role = 'agent') {
     return this.post(`/bot/rooms/${encodeURIComponent(roomId)}/members`, { ref_id: refId, role })
   },
+  listBotRoomMembers(roomId) {
+    return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/members`)
+  },
   sendBotRoomMessage(roomId, text) {
     return this.post(`/bot/rooms/${encodeURIComponent(roomId)}/messages`, { text })
   },

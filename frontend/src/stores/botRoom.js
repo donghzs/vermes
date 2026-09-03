@@ -7,14 +7,54 @@ export const useBotRoomStore = defineStore('botRoom', {
     rooms: [],            // [{id, title, channel, created_at, updated_at}]
     currentRoomId: null,  // 当前打开的房间 id
     timeline: [],         // [{id, author_type, author_ref, content, created_at, turn_session_id}]
+    members: [],          // Phase 2：房间成员（@ 补全候选来源）
     loadingRooms: false,
     loadingTimeline: false,
+    loadingMembers: false,
     sending: false,
     error: '',
     botModeDisabled: false,  // BOT_MODE_ENABLED 关闭 → 优雅降级（T7）
   }),
   getters: {
     currentRoom: (s) => s.rooms.find(r => r.id === s.currentRoomId) || null,
+
+    // Phase 2 @ 补全候选：仅 agent 成员可被 @（human 成员不属于应答主体）。
+    // 在此预处理展示字段，让组件保持纯渲染：
+    //  - insert：实际写入文本的词元。后端 ROOM_MENTION_RE
+    //    （vermes_cli/botmode/core.py，对齐 ① A2A _HANDLE_RE）**遇空白截断**，
+    //    故含空格的 name 无法被完整匹配 → 退化为 ref_id（id 恒无空格）。
+    //  - hue：优先用 T1 预留的 profile.hue（seed: researcher=210 / coder=140）；
+    //    为 0 或缺失时按 ref_id 哈希兜底，保证每个 agent 颜色稳定且可区分。
+    //  - initial：头像首字（中文取首字 / 英文取首字母）。
+    mentionCandidates: (s) => (s.members || [])
+      .filter(m => m.member_type === 'agent')
+      .map((m) => {
+        const name = m.name || m.ref_id || ''
+        const insert = /\s/.test(name) ? (m.ref_id || name) : name
+        let hue = Number(m.hue) || 0
+        if (!hue) {
+          let h = 0
+          for (const ch of String(m.ref_id || '')) h = (h * 31 + ch.charCodeAt(0)) % 360
+          hue = h
+        }
+        return { ...m, name, insert, hue, initial: String(name || '?').slice(0, 1) }
+      }),
+
+    // 头像色/首字查表：时间线按 author_ref 复用同一套视觉（补全与时间线一致）
+    memberByRef: (s) => {
+      const map = {}
+      for (const m of s.members || []) {
+        const name = m.name || m.ref_id || ''
+        let hue = Number(m.hue) || 0
+        if (!hue) {
+          let h = 0
+          for (const ch of String(m.ref_id || '')) h = (h * 31 + ch.charCodeAt(0)) % 360
+          hue = h
+        }
+        map[m.ref_id] = { name, hue, initial: String(name || '?').slice(0, 1), member_type: m.member_type }
+      }
+      return map
+    },
   },
   actions: {
     // 识别「Bot Mode 未启用」：开关关闭时路由未注册(404) 或处理器守卫(403 "bot mode disabled")
@@ -43,13 +83,30 @@ export const useBotRoomStore = defineStore('botRoom', {
       if (r && r.ok) {
         await this.loadRooms()
         this.currentRoomId = id
-        await this.loadTimeline(id)
+        // 新房间创建时后端已自动把 seed profile 入房 → 立即拉成员供 @ 补全
+        await Promise.all([this.loadTimeline(id), this.loadMembers(id)])
       }
       return r
     },
     async selectRoom(id) {
       this.currentRoomId = id
-      await this.loadTimeline(id)
+      await Promise.all([this.loadTimeline(id), this.loadMembers(id)])
+    },
+    // Phase 2：拉取房间成员（@ 补全候选）。失败静默——候选为空时
+    // 仅失去补全能力，不阻断消息发送（后端仍按全局 profile 解析 @mention）。
+    async loadMembers(id) {
+      const rid = id || this.currentRoomId
+      if (!rid) return
+      this.loadingMembers = true
+      try {
+        const r = await api.listBotRoomMembers(rid)
+        if (r && r.ok) this.members = r.members || []
+      } catch (e) {
+        if (this._isBotDisabled(e)) this.botModeDisabled = true
+      } finally {
+        this.loadingMembers = false
+      }
+      return this.members
     },
     async loadTimeline(id) {
       const rid = id || this.currentRoomId
@@ -78,8 +135,16 @@ export const useBotRoomStore = defineStore('botRoom', {
     async onRoomUpdate(msg) {
       if (!msg || msg.type !== 'room_update') return
       const topicRoom = (msg.topic || '').replace(/^room:/, '')
-      if (msg.event === 'room_created' || msg.event === 'member_change') {
+      if (msg.event === 'room_created') {
         await this.loadRooms()
+        return
+      }
+      if (msg.event === 'member_change') {
+        await this.loadRooms()
+        // 成员变更直接影响 @ 补全候选 → 当前房间同步刷新成员列表
+        if (topicRoom === this.currentRoomId) {
+          await this.loadMembers(this.currentRoomId)
+        }
         return
       }
       if (msg.event === 'room_message' && topicRoom === this.currentRoomId) {
