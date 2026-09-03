@@ -37,6 +37,16 @@ from harness.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# First-party provider names — always allowed alongside external providers.
+# These providers do NOT consume the single-external-provider slot.
+# Originally a hardcoded tuple in add_provider(); promoted to a module-level
+# constant so that adding new first-party providers (e.g. docmemory) only
+# requires changing one place. Each name here MUST also be registered in
+# agent_init.py as an always-on provider (parallel to RAGProvider).
+# ---------------------------------------------------------------------------
+_FIRST_PARTY_PROVIDER_NAMES = frozenset({"builtin", "rag", "docmemory"})
+
 
 # ---------------------------------------------------------------------------
 # Context fencing helpers
@@ -260,20 +270,24 @@ class MemoryManager:
     def add_provider(self, provider: MemoryProvider) -> None:
         """Register a memory provider.
 
-        Built-in providers (name ``"builtin"`` or ``"rag"``) are always
-        accepted. Exactly **one** non-builtin external provider is allowed —
-        a second external attempt is rejected with a warning. Treating the
-        RAG provider as builtin is what enables federated search (Slice 3):
-        the built-in RAG store coexists with the user's chosen external KB.
+        First-party providers (name in ``_FIRST_PARTY_PROVIDER_NAMES`` —
+        currently ``builtin``, ``rag``, ``docmemory``) are always accepted.
+        Exactly **one** external (non-first-party) provider is allowed — a
+        second external attempt is rejected with a warning. Treating RAG
+        and docmemory as first-party is what enables federated search (Slice 3):
+        the built-in stores coexist with the user's chosen external KB.
         """
-        # The built-in RAG provider ("rag") is internal, not an "external"
-        # plugin, so it must not consume the single-external-provider slot.
-        is_builtin = provider.name in ("builtin", "rag")
+        # First-party providers (rag, docmemory, …) are internal, not
+        # "external" plugins, so they must not consume the single-external slot.
+        is_builtin = provider.name in _FIRST_PARTY_PROVIDER_NAMES
 
         if not is_builtin:
             if self._has_external:
+                # 只把「非第一方」的 provider 报为占用槽位者——rag / docmemory
+                # 属第一方，不占槽，误报会让用户以为要卸载 RAG 才能装外部 KB。
                 existing = next(
-                    (p.name for p in self._providers if p.name != "builtin"), "unknown"
+                    (p.name for p in self._providers
+                     if p.name not in _FIRST_PARTY_PROVIDER_NAMES), "unknown"
                 )
                 logger.warning(
                     "Rejected memory provider '%s' — external provider '%s' is "

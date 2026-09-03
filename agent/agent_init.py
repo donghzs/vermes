@@ -1181,6 +1181,27 @@ def init_agent(
         except Exception as _rage:
             _ra().logger.debug("RAG provider init failed: %s", _rage)
 
+    # DocMemory provider — always on (⑮ 腿 C：文档记忆层，与 RAG 平级)
+    # 落盘 ~/.vermes/docs/<scope>/<slug>.md，免疫压缩/轮删；on_pre_compress
+    # 自动落「结论+依据+未完成项」；不消耗单外部 provider 槽位。
+    if not skip_memory:
+        try:
+            from agent.docmemory_provider import DocMemoryProvider
+            if agent._memory_manager is None:
+                from agent.memory_manager import MemoryManager as _MM
+                agent._memory_manager = _MM()
+            _docmem = DocMemoryProvider()
+            if _docmem.is_available():
+                agent._memory_manager.add_provider(_docmem)
+                _docmem.initialize(session_id=agent.session_id,
+                                   platform=platform or "cli",
+                                   VERMES_home=str(get_vermes_home()),
+                                   agent_context="primary")
+                _ra().logger.info("DocMemory provider activated (docs root=%s)",
+                                  str(get_vermes_home()) + "/docs")
+        except Exception as _dme:
+            _ra().logger.debug("DocMemory provider init failed: %s", _dme)
+
     # Unified memory base (Slice 3/4): wire the L4 federation hook so
     # ``memory_search`` / ``recall_hierarchical`` fan out across every active
     # provider (built-in RAG + any external KB), and seed the fabric index on
