@@ -3028,6 +3028,14 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
             verbose_logging=False,
             platform="web",
             enabled_toolsets=["Vermes-cli"],
+            # ⚠️ P1（T4 交叉审计）：session_id 绑定房间派生 key，而非让 agent 内部
+            # 生成随机 {timestamp}_{uuid}。否则 _agent_cache 是 LRU maxsize=20，房间一多
+            # 被淘汰重建后新 agent 拿到新随机 session_id，房间对话记忆（docmemory /
+            # handoff / memory recall 均靠 self.session_id 关联）就断了。
+            # 不污染单聊列表：bot 端点不调 _persist_web_turn_to_state_db，且 web 模式
+            # agent._session_db=None（agent_init.py:1036 由入参决定，此处未传），agent
+            # 运行时零 create_session 调用；单聊列表 session.py:33 还排除 source='web'。
+            session_id=session_key,
         )
         _agent_cache.put(_cache_key, agent)
     except Exception as e:

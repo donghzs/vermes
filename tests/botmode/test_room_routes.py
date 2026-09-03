@@ -1,0 +1,259 @@
+"""③ Bot Mode P1 · T4/T5 端到端路由测试（固化自 /tmp/verify_botmode_t4.py）。
+
+覆盖：
+- 全链路：建房间 → @mention → 派生 session → 时间线 → 重启还原
+- 空 id 校验：room_id / name / ref_id / text 入口 400（T4 交叉审计必做）
+- G4 派生 key 格式（room:{norm}:agent:{id}，完整 key 供缓存清理精确匹配）
+- G2 异构缓存 key 一致（T5）：profile 的 provider/model 流入 _cache_key，
+  @研究助手(deepseek) 与 @编码助手(agnes) 不会命中同一缓存 agent
+- P1（T4 审计）：AIAgent 构造传入 session_id=room_key，保住房间记忆连续性；
+  且该房间 key 不污染单聊 sessions 表（web 模式 agent._session_db=None +
+  bot 端点不调 _persist_web_turn_to_state_db + 单聊列表排除 source='web'）
+
+测试隔离：SessionDB 重定向到临时库；AIAgent 用 FakeAgent 替换（不触网/不触 LLM）；
+_resolve_model_provider 用确定性映射；_agent_cache 每用例全新实例。
+
+可独立运行：python tests/botmode/test_room_routes.py
+"""
+
+import sys
+import tempfile
+import sqlite3
+from pathlib import Path
+
+sys.path.insert(0, "/Users/dongzusheng/Projects/vermes-electron")
+
+import vermes_state
+import vermes_cli.blueprints.chat as chat_bp
+import run_agent  # 用于替换 AIAgent
+from vermes_cli.blueprints import agent_cache as _agent_cache_mod
+import pytest
+
+
+# ─────────────────────────── 测试环境装配（pytest 与 __main__ 共用） ───────────────────────────
+
+def _install_fakes(env):
+    """把 SessionDB / 缓存 / AIAgent / provider 解析重定向到隔离环境。
+
+    env 需提供：db_path (Path)、captured (list)。
+    """
+    chat_bp.SessionDB = lambda: vermes_state.SessionDB(env.db_path)
+    chat_bp._agent_cache = _agent_cache_mod._AgentCache()
+
+    class _FakeAgent:
+        tools = ["dummy"]
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.session_id = kwargs.get("session_id")
+            env.captured.append(self)
+
+        def chat(self, msg):
+            return f"[fake-agent-reply] {msg[:20]}"
+
+    run_agent.AIAgent = _FakeAgent
+
+    def _fake_resolve(model, provider=None):
+        if provider == "deepseek":
+            return ("deepseek", "https://api.deepseek.com/v1", "k-dp", model)
+        if provider == "agnes":
+            return ("agnes", "https://api.anthropic.com/v1", "k-ag", model)
+        return ("agnes", "https://api.anthropic.com/v1", "k-ag", model or "agnes-2.0-flash")
+
+    chat_bp._resolve_model_provider = _fake_resolve
+
+
+def _client():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    chat_bp.register_to(app)
+    return TestClient(app)
+
+
+def _seed(db):
+    db.seed_default_profiles()  # 幂等：空库才插 researcher/coder
+
+
+# ─────────────────────────── 核心断言逻辑（pytest 与 __main__ 共用） ───────────────────────────
+
+def run_e2e(env):
+    """全链路 + 空 id 校验 + G4 + G2 钩子 + P1 session_id/不污染。返回 (passed, failed, messages)。"""
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    db.close()
+
+    r = client.post("/api/bot/rooms", json={"id": "r1", "name": "测试房"})
+    check("create room ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+
+    r = client.post("/api/bot/rooms", json={"id": "", "name": "x"})
+    check("empty room_id -> 400", r.status_code == 400, r.text[:200])
+
+    r = client.post("/api/bot/rooms", json={"id": "r2", "name": ""})
+    check("empty name -> 400", r.status_code == 400, r.text[:200])
+
+    r = client.post("/api/bot/rooms/r1/members", json={"ref_id": ""})
+    check("empty ref_id -> 400", r.status_code == 400, r.text[:200])
+
+    r = client.get("/api/bot/rooms")
+    rooms = r.json().get("rooms", [])
+    check("list rooms has r1", any(x["id"] == "r1" for x in rooms), str(rooms)[:200])
+
+    r = client.post("/api/bot/rooms/r1/messages", json={"text": "@研究助手 你好"})
+    check("send message ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:300])
+
+    r = client.get("/api/bot/rooms/r1/timeline")
+    tl = r.json().get("timeline", [])
+    check("timeline non-empty", len(tl) >= 1, str(tl)[:400])
+    check("timeline has user msg", any(t["author_type"] == "user" for t in tl))
+    check("timeline has agent reply", any(t["author_type"] == "agent" for t in tl), str(tl)[:400])
+
+    sess_ids = [t.get("turn_session_id") for t in tl]
+    check("G4 session_key format", any((s or "").startswith("room:r1:agent:") for s in sess_ids), str(sess_ids)[:200])
+    check("mention resolved researcher", any(s == "room:r1:agent:researcher" for s in sess_ids), str(sess_ids)[:200])
+
+    db2 = vermes_state.SessionDB(env.db_path)
+    tl2 = db2.get_bot_room_timeline("r1")
+    db2.close()
+    check("restart restores timeline", len(tl2) >= 1 and any(t["author_type"] == "user" for t in tl2), f"len={len(tl2)}")
+
+    conn = sqlite3.connect(str(env.db_path))
+    bad_ap = conn.execute("SELECT COUNT(*) FROM agent_profiles WHERE id=''").fetchone()[0]
+    bad_mb = conn.execute("SELECT COUNT(*) FROM bot_room_members WHERE ref_id=''").fetchone()[0]
+    bad_rm = conn.execute("SELECT COUNT(*) FROM bot_rooms WHERE id=''").fetchone()[0]
+    conn.close()
+    check("no empty-id pollution", bad_ap == 0 and bad_mb == 0 and bad_rm == 0, f"ap={bad_ap},mb={bad_mb},rm={bad_rm}")
+
+    r = client.post("/api/bot/rooms", json={"id": "r3", "name": "房3"})
+    dbx = vermes_state.SessionDB(env.db_path)
+    members = dbx._conn.execute("SELECT ref_id FROM bot_room_members WHERE room_id='r3'").fetchall()
+    dbx.close()
+    check("default partners auto-join (>=2)", len(members) >= 2, str(members)[:200])
+
+    keys = [f"{a.kwargs['provider']}:{a.kwargs['model']}:{a.session_id}" for a in env.captured]
+    check("agent cached under derived key (G2)", any(chat_bp._agent_cache.get(k) is not None for k in keys), str(keys)[:200])
+
+    # ── T5/P1：session_id 绑定房间派生 key + 不污染单聊 sessions 表 ──
+    check("AIAgent session_id == room key (P1)",
+          any(a.session_id == "room:r1:agent:researcher" for a in env.captured),
+          [a.session_id for a in env.captured])
+
+    db3 = vermes_state.SessionDB(env.db_path)
+    room_key = "room:r1:agent:researcher"
+    pol_all = db3.list_sessions_rich(limit=100000, offset=0)
+    pol_web_excl = db3.list_sessions_rich(limit=100000, offset=0, exclude_sources=["web"])
+    db3.close()
+    check("room key not in sessions list (no pollution)",
+          not any(s["id"] == room_key for s in pol_all) and not any(s["id"] == room_key for s in pol_web_excl),
+          [s["id"] for s in pol_all][:20])
+    conn = sqlite3.connect(str(env.db_path))
+    n = conn.execute("SELECT COUNT(*) FROM sessions WHERE id=?", (room_key,)).fetchone()[0]
+    conn.close()
+    check("sessions table has no room key (no pollution)", n == 0, f"污染：{room_key}")
+
+    return results
+
+
+def run_g2(env):
+    """T5 G2：异构 profile 的 provider/model 流入 _cache_key 与 AIAgent 构造。返回 results。"""
+    import asyncio
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    db.upsert_agent_profile({
+        "id": "pa", "name": "A助手", "provider": "deepseek", "model": "deepseek-chat",
+        "is_default": 0, "transport": "native", "toolsets": [], "skill_set": "", "system_prompt": "",
+    })
+    db.upsert_agent_profile({
+        "id": "pb", "name": "B助手", "provider": "agnes", "model": "agnes-2.0-flash",
+        "is_default": 0, "transport": "native", "toolsets": [], "skill_set": "", "system_prompt": "",
+    })
+    prof_a = db.get_agent_profile("pa")
+    prof_b = db.get_agent_profile("pb")
+    db.close()
+
+    loop = asyncio.new_event_loop()
+    key_a, key_b = "room:rX:agent:pa", "room:rX:agent:pb"
+    agent_a = loop.run_until_complete(chat_bp._bot_build_agent(key_a, prof_a))
+    agent_b = loop.run_until_complete(chat_bp._bot_build_agent(key_b, prof_b))
+    loop.close()
+
+    # 复算 _bot_build_agent 内部使用的完整缓存键（provider:model:session_key）
+    pa_prov, _, _, pa_model = chat_bp._resolve_room_agent_identity(prof_a)
+    pb_prov, _, _, pb_model = chat_bp._resolve_room_agent_identity(prof_b)
+    cache_key_a = f"{pa_prov}:{pa_model}:{key_a}"
+    cache_key_b = f"{pb_prov}:{pb_model}:{key_b}"
+
+    check("both agents built", agent_a is not None and agent_b is not None, f"a={agent_a},b={agent_b}")
+    check("cache keys differ by provider/model (G2)", cache_key_a != cache_key_b,
+          f"{cache_key_a} == {cache_key_b}")
+    cached_a = chat_bp._agent_cache.get(cache_key_a)
+    cached_b = chat_bp._agent_cache.get(cache_key_b)
+    check("both cached", cached_a is not None and cached_b is not None,
+          f"a={cache_key_a}->{cached_a}, b={cache_key_b}->{cached_b}")
+    check("heterogeneous NOT share cache (G2)", cached_a is not cached_b, "误共享同一缓存 agent")
+
+    check("agent_a provider=deepseek", agent_a.kwargs["provider"] == "deepseek")
+    check("agent_a model=deepseek-chat", agent_a.kwargs["model"] == "deepseek-chat")
+    check("agent_b provider=agnes", agent_b.kwargs["provider"] == "agnes")
+    check("agent_b model=agnes-2.0-flash", agent_b.kwargs["model"] == "agnes-2.0-flash")
+    check("agent_a session_id == key_a (P1)", agent_a.session_id == key_a)
+    check("agent_b session_id == key_b (P1)", agent_b.session_id == key_b)
+    return results
+
+
+# ─────────────────────────── pytest 入口 ───────────────────────────
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    e = type("E", (), {})()
+    e.db_path = tmp_path / "state.db"
+    e.captured = []
+    _install_fakes(e)
+    # monkeypatch 仅用于会话级清理语义；重定向已在 _install_fakes 完成
+    yield e
+
+
+def test_e2e_full_flow_and_empty_id(env):
+    results = run_e2e(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
+def test_g2_heterogeneous_cache_keys(env):
+    results = run_g2(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
+# ─────────────────────────── 独立运行入口 ───────────────────────────
+
+if __name__ == "__main__":
+    tmp = tempfile.mkdtemp(prefix="botmode_t5_")
+    e = type("E", (), {})()
+    e.db_path = Path(tmp) / "state.db"
+    e.captured = []
+    _install_fakes(e)
+
+    all_results = []
+    all_results += run_e2e(e)
+    all_results += run_g2(e)
+
+    print("\n=== SUMMARY ===")
+    fails = [n for n, c in all_results if not c]
+    for n, c in all_results:
+        print(("PASS" if c else "FAIL"), "-", n)
+    print(f"\n{len(all_results) - len(fails)}/{len(all_results)} passed" +
+          (f" | FAILED: {fails}" if fails else " | ALL PASS"))
+    raise SystemExit(1 if fails else 0)
