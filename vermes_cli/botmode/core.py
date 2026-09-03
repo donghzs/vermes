@@ -26,9 +26,14 @@ def _session_key_for_room(room_id: str, agent_profile_id: str) -> str:
     plan 原拟"建于 ``_session_key_for_source`` 之上"——但该方法是 gateway 层
     实例方法，Web 侧不可达；此处以纯字符串格式实现同等的命名空间隔离语义。
 
-    同时该 key **以 ``:{agent_profile_id}`` 结尾**，使
-    ``agent_cache.pop_for_session`` 的 ``endswith(f":{session_id}")`` 匹配天然成立
-    （plan §1 G4 兼容性，房间派生 session 同受缓存淘汰）。
+    缓存淘汰兼容性（plan §1 G4，交叉审计后精确化）：``agent_cache.pop_for_session``
+    以 ``endswith(f":{session_id}")`` 匹配。房间派生 session 注册进缓存时，其
+    ``session_id`` 参数**必须传完整房间 key**（即本函数返回值
+    ``room:{room_id}:agent:{agent_profile_id}``），这样 key 末尾的 ``:{session_id}``
+    才是完整房间 key，淘汰精准命中。
+    ⚠️ T4 清理逻辑**禁止误传** ``agent_profile_id`` 作 session_id——否则 ``coder``
+    vs ``decoder`` 这类「后缀包含」关系的 profile 会误删彼此缓存 session
+    （endswith 而非全等匹配）。
     """
     return f"room:{room_id}:agent:{agent_profile_id}"
 
