@@ -602,6 +602,21 @@ CREATE TABLE IF NOT EXISTS cron_notepad (
     updated_at      REAL,
     PRIMARY KEY (job_id, note_key)
 );
+
+-- ── A2A agent registry（① 落地：agent 寻址 + 路由表 + 生命周期）──
+-- 持久化 agent 标识（profile_id 主键）与心跳时间戳，供 @mention 路由
+-- 到活的 agent；已销毁 agent 会因 heartbeat 过期被 resolve 判为离线，
+-- 避免静默丢消息（§5 ① 第 5 步）。
+CREATE TABLE IF NOT EXISTS a2a_agents (
+    profile_id      TEXT PRIMARY KEY,
+    name            TEXT,
+    provider        TEXT,
+    model           TEXT,
+    transport       TEXT,
+    capabilities    TEXT,             -- JSON 数组字符串（能力标签）
+    registered_at   REAL,
+    last_heartbeat  REAL
+);
 """
 
 # channel_sync_events 自清理配置。该表只是桌面控制台未读角标的实时投递
@@ -1042,6 +1057,16 @@ class SessionDB:
             )
         except sqlite3.OperationalError as exc:
             logger.debug("idx_cron_notepad_job create skipped: %s", exc)
+
+        # A2A agent registry 索引（①）。a2a_agents 表在 SCHEMA_SQL 声明，
+        # 索引同样按项目规矩统一建在 _reconcile_columns() 之后。
+        try:
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_a2a_agents_name "
+                "ON a2a_agents(name)"
+            )
+        except sqlite3.OperationalError as exc:
+            logger.debug("idx_a2a_agents_name create skipped: %s", exc)
 
         # ── Schema version bookkeeping ─────────────────────────────────
         # Bump to current so future data migrations (if any) can gate on
@@ -1771,6 +1796,116 @@ class SessionDB:
                 "ON CONFLICT(job_id, note_key) DO UPDATE SET "
                 "note_value = excluded.note_value, updated_at = excluded.updated_at",
                 (job_id, key, value, time.time()),
+            )
+        self._execute_write(_do)
+
+    # ── A2A agent registry（①）─────────────────────────────
+    # 持久化 agent 标识（profile_id 主键）+ 心跳，供 @mention 路由到活 agent。
+    # 与 ⑮ docmemory 划清边界：这里只存 agent 寻址/路由元数据，不存对话内容。
+
+    def upsert_a2a_agent(self, handle: dict) -> None:
+        """注册/更新一个 A2A agent（upsert by profile_id）。"""
+        import json as _json
+        def _do(conn):
+            conn.execute(
+                "INSERT INTO a2a_agents "
+                "(profile_id, name, provider, model, transport, capabilities, "
+                " registered_at, last_heartbeat) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(profile_id) DO UPDATE SET "
+                "name = excluded.name, provider = excluded.provider, "
+                "model = excluded.model, transport = excluded.transport, "
+                "capabilities = excluded.capabilities, "
+                "last_heartbeat = excluded.last_heartbeat",
+                (
+                    handle.get("profile_id", ""),
+                    handle.get("name", ""),
+                    handle.get("provider", ""),
+                    handle.get("model", ""),
+                    handle.get("transport", "local"),
+                    _json.dumps(list(handle.get("capabilities", ())), ensure_ascii=False),
+                    handle.get("registered_at", time.time()),
+                    handle.get("last_heartbeat", time.time()),
+                ),
+            )
+        self._execute_write(_do)
+
+    def remove_a2a_agent(self, profile_id: str) -> None:
+        """下线一个 A2A agent。"""
+        def _do(conn):
+            conn.execute("DELETE FROM a2a_agents WHERE profile_id = ?", (profile_id,))
+        self._execute_write(_do)
+
+    def get_a2a_agent(self, profile_id: str) -> Optional[dict]:
+        """按 profile_id 查一个 A2A agent，无则 None。"""
+        import json as _json
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT profile_id, name, provider, model, transport, "
+                    "capabilities, registered_at, last_heartbeat "
+                    "FROM a2a_agents WHERE profile_id = ?", (profile_id,)
+                ).fetchone()
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_a2a_agent skipped: %s", exc)
+            return None
+        if row is None:
+            return None
+        caps = row["capabilities"] if isinstance(row, sqlite3.Row) else row[5]
+        try:
+            cap_list = _json.loads(caps or "[]")
+        except Exception:
+            cap_list = []
+        return {
+            "profile_id": row["profile_id"] if isinstance(row, sqlite3.Row) else row[0],
+            "name": row["name"] if isinstance(row, sqlite3.Row) else row[1],
+            "provider": row["provider"] if isinstance(row, sqlite3.Row) else row[2],
+            "model": row["model"] if isinstance(row, sqlite3.Row) else row[3],
+            "transport": row["transport"] if isinstance(row, sqlite3.Row) else row[4],
+            "capabilities": cap_list,
+            "registered_at": row["registered_at"] if isinstance(row, sqlite3.Row) else row[6],
+            "last_heartbeat": row["last_heartbeat"] if isinstance(row, sqlite3.Row) else row[7],
+        }
+
+    def get_a2a_agent_by_name(self, name: str) -> Optional[dict]:
+        """按 name 查一个 A2A agent（@name 路由用），无则 None。"""
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT profile_id FROM a2a_agents WHERE name = ? ORDER BY last_heartbeat DESC LIMIT 1",
+                    (name,),
+                ).fetchone()
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_a2a_agent_by_name skipped: %s", exc)
+            return None
+        if row is None:
+            return None
+        pid = row["profile_id"] if isinstance(row, sqlite3.Row) else row[0]
+        return self.get_a2a_agent(pid)
+
+    def list_a2a_agents(self) -> List[dict]:
+        """列出全部 A2A agent（按 last_heartbeat 降序）。"""
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT profile_id FROM a2a_agents ORDER BY last_heartbeat DESC"
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("list_a2a_agents skipped: %s", exc)
+            return []
+        result = []
+        for r in rows:
+            pid = r["profile_id"] if isinstance(r, sqlite3.Row) else r[0]
+            agent = self.get_a2a_agent(pid)
+            if agent:
+                result.append(agent)
+        return result
+
+    def heartbeat_a2a_agent(self, profile_id: str) -> None:
+        """刷新一个 A2A agent 的心跳时间戳（探活用）。"""
+        def _do(conn):
+            conn.execute(
+                "UPDATE a2a_agents SET last_heartbeat = ? WHERE profile_id = ?",
+                (time.time(), profile_id),
             )
         self._execute_write(_do)
 
