@@ -219,8 +219,8 @@ class DocMemoryProvider(MemoryProvider):
                     "properties": {
                         "scope": {"type": "string", "enum": ["project", "agent", "task"]},
                         "slug": {"type": "string", "description": "文档 slug（doc_list 获取）"},
+                        "title": {"type": "string", "description": "文档标题（可替代 slug，内部自动映射）"},
                     },
-                    "required": ["scope", "slug"],
                 },
             },
             {
@@ -297,8 +297,11 @@ class DocMemoryProvider(MemoryProvider):
     def _handle_read(self, args: Dict[str, Any]) -> str:
         scope = args.get("scope", "task")
         slug = args.get("slug", "")
+        # 支持按 title 直读：内部 _slugify 映射，消除「知道标题却读不了」的困惑
+        if not slug and args.get("title"):
+            slug = _slugify(args["title"])
         if scope not in _SCOPES or not slug:
-            return json.dumps({"error": "scope and slug are required"})
+            return json.dumps({"error": "scope 和 slug（或 title）至少给一个"}, ensure_ascii=False)
         path = self._docs_root / scope / f"{slug}.md"
         if not path.is_file():
             return json.dumps({"error": f"not found: {scope}/{slug}"})
@@ -464,7 +467,24 @@ class DocMemoryProvider(MemoryProvider):
         pass  # 无资源需清理
 
     def get_config_schema(self) -> list[dict[str, Any]]:
-        return []  # 无配置项 — always on
+        # 对齐 ⑨ 隐私硬化：提供独立开关，关掉 docmemory 不影响 RAG。
+        # 该开关在 agent_init.py 侧读取 memory.docmemory_enabled 决定是否注册。
+        #
+        # ⚠️ 本 schema 目前【无 UI 消费者】，仅供自文档化，勿误以为
+        # `VERMES memory setup` 会展示它：get_config_schema() 全仓三处调用点
+        # 都在 vermes_cli/memory_setup.py（:166 / :264 / :419），且只遍历
+        # plugins/memory/ 发现的外部 provider；docmemory 是第一方 provider，
+        # 不在该列表中，故既不会被展示、save_config() 也不会被调用。
+        # 真正的开关落点在 config.yaml → memory.docmemory_enabled
+        # （默认值声明见 vermes_cli/config.py 的 DEFAULT_CONFIG）。
+        return [
+            {
+                "key": "docmemory_enabled",
+                "description": "是否启用文档记忆层（自动落盘+召回）；关闭不影响 RAG/外部 KB",
+                "default": True,
+                "choices": [True, False],
+            },
+        ]
 
     def save_config(self, values: dict[str, Any], vermes_home: str) -> None:
         pass  # 无配置

@@ -1184,7 +1184,12 @@ def init_agent(
     # DocMemory provider — always on (⑮ 腿 C：文档记忆层，与 RAG 平级)
     # 落盘 ~/.vermes/docs/<scope>/<slug>.md，免疫压缩/轮删；on_pre_compress
     # 自动落「结论+依据+未完成项」；不消耗单外部 provider 槽位。
-    if not skip_memory:
+    # 独立开关 memory.docmemory_enabled（默认 True）——对齐 ⑨ 隐私硬化，
+    # 关掉 docmemory 不影响 RAG（与全局 skip_memory 区分）。
+    _docmem_enabled = True
+    if _agent_cfg and isinstance(_agent_cfg.get("memory"), dict):
+        _docmem_enabled = bool(_agent_cfg["memory"].get("docmemory_enabled", True))
+    if not skip_memory and _docmem_enabled:
         try:
             from agent.docmemory_provider import DocMemoryProvider
             if agent._memory_manager is None:

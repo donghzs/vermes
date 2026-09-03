@@ -110,6 +110,17 @@ class TestDocMemoryProvider(unittest.TestCase):
         })
         self.assertIn("error", json.loads(r))
 
+    def test_read_by_title(self):
+        self.provider.handle_tool_call("doc_write", {
+            "title": "Read By Title", "content": "## Body\nhello title",
+        })
+        r = self.provider.handle_tool_call("doc_read", {
+            "scope": "task", "title": "Read By Title",
+        })
+        data = json.loads(r)
+        self.assertIn("content", data)
+        self.assertIn("hello title", data["content"])
+
     # -- doc_list --
 
     def test_list_empty(self):

@@ -1286,6 +1286,11 @@ DEFAULT_CONFIG = {
         # "hindsight", "holographic", "retaindb", "byterover".
         # Only ONE external provider is allowed at a time.
         "provider": "",
+        # ⑮ 腿 C 文档记忆层（DocMemoryProvider，第一方 provider，与 RAG 平级
+        # always-on，不占上面的外部 provider 槽位）。关闭后停止落盘
+        # ~/.vermes/docs/ 并停止召回；不影响 RAG / 外部 KB。
+        # 注意：写 false（不带引号）——"false" 是非空字符串，会被视为启用。
+        "docmemory_enabled": True,
         # ── Auto-resolve thresholds for memory flags ──
         # Controls which high-confidence flags the reflection daemon
         # auto-resolves (demote) without human intervention.
