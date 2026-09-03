@@ -23,6 +23,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import asyncio
+import inspect
 import json
 import unittest
 from dataclasses import dataclass, field
@@ -214,11 +215,20 @@ class TestToolProductionLLMInjection(unittest.TestCase):
         return asyncio.run(coro)
 
     def test_handler_injects_real_call_llm(self):
-        from vermes_cli.scholarforge.tools import ANALYSIS_MODEL
+        # ② 弱断言根治：不取真实 ANALYSIS_MODEL（测试环境常为 None，
+        #   「None == None」让 model 断言毫无信息量）。改为 patch 成具体值，
+        #   这样断言才能证明「handler 读的是模块级 ANALYSIS_MODEL 常量」
+        #   ——若 handler 硬编码或漏传，断言立即失败（而非 None==None 假通过）。
+        _FAKE_ANALYSIS_MODEL = "test-analysis-model-sentinel"
 
         calls = []
 
-        async def spy_call_llm(prompt, temperature=0.2, model=None):
+        # ⚠️ 哨兵值（董董审计加固）：spy 的默认参数故意设为与「handler 应透传值」
+        # 不同的值（temperature=None / model="SENTINEL"）。若 handler 忘记显式透传，
+        # 断言会立刻失败，而不是「默认值恰好等于期望值」造成的假阳性。
+        # （原实现用 temperature=0.2 / model=None 作默认值，与期望值同值 →
+        #   「没透传」和「透传了」都过，断言形同虚设。）
+        async def spy_call_llm(prompt, temperature=None, model="SENTINEL"):
             calls.append({"prompt": prompt, "temperature": temperature, "model": model})
             # 关键词提取 prompt 含「提取/关键短语」→ 返回检索词；
             # 其余（精排打分）按既有测试约定返回 "idx: score"。
@@ -242,7 +252,10 @@ class TestToolProductionLLMInjection(unittest.TestCase):
         from vermes_cli.scholarforge import tools as tools_mod
 
         # 替换真实 _call_llm（不触网）+ 替换默认 search_papers（不触网）
+        # + 把 ANALYSIS_MODEL 换成具体值（让 model 断言有真实信息量）。
+        # 注：handler 在**函数内惰性 import** 该常量，故 patch 模块属性可被其读到。
         with patch.object(tools_mod, "_call_llm", spy_call_llm), \
+             patch.object(tools_mod, "ANALYSIS_MODEL", _FAKE_ANALYSIS_MODEL), \
              patch.object(search_mod, "search_papers", fake_search):
             from tools.grounded_citation_tool import _handle_grounded_citation
             out = self._run(_handle_grounded_citation({
@@ -256,15 +269,29 @@ class TestToolProductionLLMInjection(unittest.TestCase):
             len(calls), 1,
             "真实 _call_llm 应至少被调用一次（注② 注入路径须触达）",
         )
-        # ② 包装器默认 temperature 透传
+        # ② 包装器默认 temperature 透传。spy 的 temperature 默认是哨兵 None，
+        #    故此处的 0.2 **只能**来自 handler 显式透传——不再是「默认值恰好
+        #    等于期望值」的假阳性（董董审计观察：原实现两者同值，断言形同虚设）。
         self.assertTrue(
             all(c["temperature"] == 0.2 for c in calls),
-            "handler 的 _llm 必须以默认 temperature=0.2 透传",
+            f"handler 的 _llm 必须以默认 temperature=0.2 透传，实际：{calls}",
         )
-        # ③ 包装器 model 透传为 ANALYSIS_MODEL（注④ 记录的真实耦合常量）
+        # ③ 包装器 model 透传为 ANALYSIS_MODEL（注④ 记录的真实耦合常量）。
+        #    常量已 patch 为具体值，故断言不是 None==None 的弱断言。
         self.assertTrue(
-            all(c["model"] == ANALYSIS_MODEL for c in calls),
-            "model 必须透传为 ANALYSIS_MODEL（注④ 记录的真实耦合常量）",
+            all(c["model"] == _FAKE_ANALYSIS_MODEL for c in calls),
+            f"model 必须透传为 ANALYSIS_MODULE 常量值 {_FAKE_ANALYSIS_MODEL!r}，实际：{calls}",
+        )
+        # ⑤ 哨兵自检（防断言退化）：若将来有人把 spy 默认值改回 0.2 /
+        #    ANALYSIS_MODEL，②③ 会重新退化为恒真断言。此自检立刻暴露该退化。
+        _sig = inspect.signature(spy_call_llm)
+        self.assertIsNone(
+            _sig.parameters["temperature"].default,
+            "spy 默认 temperature 必须保持哨兵 None，否则②退化为恒真断言",
+        )
+        self.assertEqual(
+            _sig.parameters["model"].default, "SENTINEL",
+            "spy 默认 model 必须保持哨兵 'SENTINEL'，否则③退化为恒真断言",
         )
         # ④ 全链路跑通：报告 + 单条结果
         self.assertIn("report", data)
