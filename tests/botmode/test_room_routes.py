@@ -9,6 +9,8 @@
 - P1（T4 审计）：AIAgent 构造传入 session_id=room_key，保住房间记忆连续性；
   且该房间 key 不污染单聊 sessions 表（web 模式 agent._session_db=None +
   bot 端点不调 _persist_web_turn_to_state_db + 单聊列表排除 source='web'）
+- T6 G3 已决：room_update WS 契约（topic=room:{room_id} 房间级粒度 + type=room_update
+  与渠道未读分流 + event∈{room_message,room_created,member_change}，为 ⑭ Bot 实验室复用基础）
 
 测试隔离：SessionDB 重定向到临时库；AIAgent 用 FakeAgent 替换（不触网/不触 LLM）；
 _resolve_model_provider 用确定性映射；_agent_cache 每用例全新实例。
@@ -213,6 +215,69 @@ def run_g2(env):
     return results
 
 
+def run_ws(env):
+    """T6 G3 已决：room_update WS 契约（topic 粒度 + event 判别 + type 分流）。
+
+    捕获 _bot_broadcast_room_update 经 ⑪ WS（_channel_sync_broadcast）发出的 envelope，
+    断言与「room:{room_id} 粒度 + type=room_update + event∈{room_message,room_created,member_change}」
+    锁定契约一致。录制器须为 async（广播函数被 route 以 await 调用）。
+    """
+    import vermes_cli.web_server as _ws_mod
+    orig = _ws_mod._channel_sync_broadcast
+
+    async def _rec(payload):
+        env.broadcasts.append(payload)
+
+    _ws_mod._channel_sync_broadcast = _rec
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+    try:
+        client = _client()
+        db = vermes_state.SessionDB(env.db_path)
+        _seed(db)
+        db.close()
+
+        # ── room_created ──
+        env.broadcasts.clear()
+        r = client.post("/api/bot/rooms", json={"id": "rw1", "name": "WS房"})
+        check("create room ok (ws)", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+        created = [b for b in env.broadcasts if b.get("event") == "room_created"]
+        check("room_created emitted", len(created) == 1, str(env.broadcasts)[:300])
+        if created:
+            c = created[0]
+            check("envelope type=room_update", c.get("type") == "room_update", str(c))
+            check("topic=room:rw1 (房间级粒度)", c.get("topic") == "room:rw1", str(c))
+            check("room_created carries name", c.get("name") == "WS房", str(c))
+            check("room_created carries room_id", c.get("room_id") == "rw1", str(c))
+
+        # ── room_message ──
+        env.broadcasts.clear()
+        r = client.post("/api/bot/rooms/rw1/messages", json={"text": "@研究助手 你好"})
+        check("send message ok (ws)", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+        rmsgs = [b for b in env.broadcasts if b.get("event") == "room_message"]
+        check("room_message emitted (>=1: user + agent)", len(rmsgs) >= 1, str(env.broadcasts)[:400])
+        if rmsgs:
+            m0 = rmsgs[0]
+            check("room_message topic=room:rw1", m0.get("topic") == "room:rw1", str(m0))
+            check("room_message carries message dict", isinstance(m0.get("message"), dict), str(m0))
+            check("message has author_type", bool(m0["message"].get("author_type")), str(m0))
+
+        # ── member_change ──
+        env.broadcasts.clear()
+        r = client.post("/api/bot/rooms/rw1/members", json={"ref_id": "researcher"})
+        check("add member ok (ws)", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+        mc = [b for b in env.broadcasts if b.get("event") == "member_change"]
+        check("member_change emitted", len(mc) == 1, str(env.broadcasts)[:300])
+        if mc:
+            check("member_change topic=room:rw1", mc[0].get("topic") == "room:rw1", str(mc[0]))
+            check("member_change carries ref_id", mc[0].get("ref_id") == "researcher", str(mc[0]))
+    finally:
+        _ws_mod._channel_sync_broadcast = orig
+    return results
+
+
 # ─────────────────────────── pytest 入口 ───────────────────────────
 
 @pytest.fixture
@@ -220,6 +285,7 @@ def env(tmp_path, monkeypatch):
     e = type("E", (), {})()
     e.db_path = tmp_path / "state.db"
     e.captured = []
+    e.broadcasts = []
     _install_fakes(e)
     # monkeypatch 仅用于会话级清理语义；重定向已在 _install_fakes 完成
     yield e
@@ -237,6 +303,12 @@ def test_g2_heterogeneous_cache_keys(env):
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
 
+def test_ws_room_update_contract(env):
+    results = run_ws(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
 # ─────────────────────────── 独立运行入口 ───────────────────────────
 
 if __name__ == "__main__":
@@ -244,11 +316,13 @@ if __name__ == "__main__":
     e = type("E", (), {})()
     e.db_path = Path(tmp) / "state.db"
     e.captured = []
+    e.broadcasts = []
     _install_fakes(e)
 
     all_results = []
     all_results += run_e2e(e)
     all_results += run_g2(e)
+    all_results += run_ws(e)
 
     print("\n=== SUMMARY ===")
     fails = [n for n, c in all_results if not c]

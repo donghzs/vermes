@@ -3017,6 +3017,12 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
         _log.warning("[BotMode] no base_url for provider %s; skip agent", provider)
         return None
     try:
+        # ⚠️ P3 备忘（非阻塞 · 2026-09-03 董董审计）：session_key 含冒号
+        # （形如 room:r1:agent:researcher）。当前未传 save_trajectories（默认 False，
+        # 由 run_agent._session_json_enabled 门控），不会落地 session_{session_id}.json。
+        # 但若未来 Windows 端开启 save_trajectories=True，run_agent.py:1908 会写出
+        # 含冒号文件名（Windows 路径非法）。届时须先 _slugify 或将冒号替换为 '_'，
+        # 并在本 helper 入口做标注，避免静默失败。
         from run_agent import AIAgent
         agent = AIAgent(
             base_url=base_url,
@@ -3042,6 +3048,35 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
         _log.warning("[BotMode] agent build failed for %s: %s", session_key, e)
         return None
     return agent
+
+
+async def _bot_broadcast_room_update(room_id: str, event: str, **extra) -> None:
+    """经 ⑪ WS 信道（/api/ws/chat）向所有桌面 WS 客户端广播房间事件。
+
+    契约（G3 已决 · 2026-09-03 董董与 WorkBuddy 共定）：
+      - 复用单一 WS 连接 + ``_channel_sync_broadcast`` 全域 fan-out（与
+        ``channel_update`` 同信道，零新增连接）。
+      - ``type="room_update"`` 与渠道未读 ``channel_update`` 区分，前端按 type 分流。
+      - ``topic="room:{room_id}"`` **房间级粒度**（非消息级），前端按 topic 过滤订阅当前房间。
+      - ``event ∈ {room_message, room_created, member_change}`` 事件判别器。
+    该 envelope（type + topic 粒度 + event 判别）亦为 ⑭ Bot 实验室复用基础，
+    topic 可扩展为 ``lab:{id}``、event 可扩展为 ``agent_discovered`` 等。
+    """
+    try:
+        from vermes_cli.web_server import _channel_sync_broadcast
+    except Exception:
+        return
+    payload = {
+        "type": "room_update",
+        "topic": f"room:{room_id}",
+        "event": event,
+        "room_id": room_id,
+    }
+    payload.update(extra)
+    try:
+        await _channel_sync_broadcast(payload)
+    except Exception:
+        pass
 
 
 async def bot_rooms_create(request: Request):
@@ -3071,6 +3106,8 @@ async def bot_rooms_create(request: Request):
                 db.add_bot_room_member(room_id, "agent", p["id"])
         finally:
             db.close()
+        # 广播房间创建事件（其它桌面客户端即时刷新房间列表）
+        await _bot_broadcast_room_update(room_id, "room_created", name=name, title=name)
         return {"ok": True, "room_id": room_id}
     except Exception as e:
         _log.exception("[BotMode] create room failed")
@@ -3115,6 +3152,8 @@ async def bot_room_members_add(request: Request, room_id: str):
             db.add_bot_room_member(room_id, role, ref_id)
         finally:
             db.close()
+        # 广播成员变更事件（其它客户端即时刷新房间成员）
+        await _bot_broadcast_room_update(room_id, "member_change", ref_id=ref_id, role=role)
         return {"ok": True, "room_id": room_id, "ref_id": ref_id, "role": role}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -3150,6 +3189,11 @@ async def bot_room_message_send(request: Request, room_id: str):
             # 3) 写用户消息（turn_session_id 关联房间派生 key，供 G4 清理）
             db.append_bot_room_message(room_id, "user", None, text,
                                        turn_session_id=_session_key_for_room(norm, target_ids[0]) if target_ids else None)
+            # 广播用户消息（其它客户端即时看到）
+            await _bot_broadcast_room_update(
+                room_id, "room_message",
+                message={"author_type": "user", "author_ref": None, "content": text},
+            )
             # 4) 每个目标派生 session → 取/建 agent → 跑 → 写回复
             for agent_id in target_ids:
                 profile = db.get_agent_profile(agent_id)
@@ -3167,11 +3211,21 @@ async def bot_room_message_send(request: Request, room_id: str):
                 if reply:
                     db.append_bot_room_message(room_id, "agent", agent_id, reply,
                                                turn_session_id=session_key)
+                    # 广播 agent 回复（其它客户端即时看到）
+                    await _bot_broadcast_room_update(
+                        room_id, "room_message",
+                        message={"author_type": "agent", "author_ref": agent_id, "content": reply},
+                    )
                 else:
                     db.append_bot_room_message(
                         room_id, "system", None,
                         f"[@{profile.get('name', agent_id)} 未产生回复：agent 不可用]",
                         turn_session_id=session_key,
+                    )
+                    await _bot_broadcast_room_update(
+                        room_id, "room_message",
+                        message={"author_type": "system", "author_ref": None,
+                                  "content": f"[@{profile.get('name', agent_id)} 未产生回复：agent 不可用]"},
                     )
             timeline = db.get_bot_room_timeline(room_id)
         finally:

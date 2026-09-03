@@ -10,6 +10,7 @@ import BenchmarkDashboard from '../components/BenchmarkDashboard.vue'
 import KanbanBoard from '../components/KanbanBoard.vue'
 import WorkflowsPage from '../components/WorkflowsPage.vue'
 import GrowthPage from '../components/GrowthPage.vue'
+import BotRooms from '../components/BotRooms.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -32,6 +33,8 @@ const routes = [
   { path: '/workflows', component: WorkflowsPage },
   // G13：成长页 —— 成长/能力自检/我懂你 全宽呈现（原侧栏底部 EvolutionPanel + modal 提级）
   { path: '/growth', component: GrowthPage },
+  // ③ Bot Mode P1：桌面单房间多 Agent 群聊
+  { path: '/bot-rooms', component: BotRooms },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/

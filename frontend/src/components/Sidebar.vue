@@ -28,6 +28,8 @@ function goBricks() { router.push('/bricks') }
 function goKanban() { router.push('/kanban') }
 function goWorkflows() { router.push('/workflows') }
 function goGrowth() { router.push('/growth') }
+// ③ Bot Mode P1：桌面单房间多 Agent 群聊
+function goBotRooms() { router.push('/bot-rooms') }
 // goModuleStore 已移除（模块商店归入 Agent 管理→软件 tab）
 
 // 点击会话项：切换会话 + 如果不在聊天页则跳回
@@ -594,6 +596,10 @@ async function handleImportFile(e) {
         <button @click="goGrowth()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/growth' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="我的成长——成长轨迹 / 能力自检 / 我眼里的你">
           <span class="text-base leading-none">🌱</span>
           <span class="sidebar-tooltip group-hover:opacity-100">成长</span>
+        </button>
+        <button @click="goBotRooms()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/bot-rooms' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="群聊房间——单房间多 Agent 协作（@ 指定 Agent）">
+          <span class="text-base leading-none">💬</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">群聊房间</span>
         </button>
         </div>
 

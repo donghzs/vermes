@@ -604,6 +604,19 @@ const api = {
 
   // 设置 token（桌面模式用）
   setToken(t) { token.value = t },
+
+  // ── Bot 房间（③ Bot Mode P1 · 桌面单房间多 Agent 群聊） ──
+  listBotRooms() { return this.get('/bot/rooms') },
+  createBotRoom(id, name) { return this.post('/bot/rooms', { id, name }) },
+  addBotRoomMember(roomId, refId, role = 'agent') {
+    return this.post(`/bot/rooms/${encodeURIComponent(roomId)}/members`, { ref_id: refId, role })
+  },
+  sendBotRoomMessage(roomId, text) {
+    return this.post(`/bot/rooms/${encodeURIComponent(roomId)}/messages`, { text })
+  },
+  getBotRoomTimeline(roomId) {
+    return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/timeline`)
+  },
 }
 
 export default api

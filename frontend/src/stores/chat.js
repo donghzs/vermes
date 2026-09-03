@@ -857,6 +857,10 @@ export const useChatStore = defineStore('chat', () => {
                 .catch(() => {})
                 .finally(() => { _sessionListRefreshing = false })
             }
+          } else if (msg.type === 'room_update') {
+            // ③ Bot Mode P1：房间实时刷新复用同一 WS 信道。
+            // 转发给 BotRooms 页面（自定义事件解耦，避免 chat store 直接依赖 botRoom store）。
+            try { window.dispatchEvent(new CustomEvent('vermes:room_update', { detail: msg })) } catch (e) {}
           }
         } catch (e) {}
       }
