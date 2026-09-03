@@ -3207,6 +3207,30 @@ async def bot_room_message_send(request: Request, room_id: str):
             # 1) 规范化房间 id（⑫ 薄壳，P1 desktop 直通）
             norm = RoomIdNormalizer.normalize("desktop", room_id)
             # 2) 解析 @mention → 目标 profile 列表
+            #
+            # ⚠️ 候选池口径（董董审计观察，2026-09-04 记档）：
+            # 此处用**全局 profile 池**（db.list_agent_profiles），而前端 @ 补全
+            # 的下拉候选用的是**当前房间成员**（GET .../members，member_type=agent）。
+            # 两者口径不同 → 不在房间内的 profile，前端下拉不显示，但用户手输
+            # @它 时后端仍会派发。
+            #
+            # **这是有意选择，非疏漏**：房间成员是"谁该被默认唤起"，全局池是
+            # "谁能被显式点名"，后者更宽，方便临时召唤未入房的 agent。
+            #
+            # 当前两者**实际等价**，靠两个前提同时成立：
+            #   (a) P1 无创建 agent profile 的入口（只有 seed_default_profiles
+            #       幂等植入 researcher/coder；注意 `vermes profile` CLI 是
+            #       「多实例隔离 profile」，与本表同名不同物，别混淆）；
+            #   (b) bot_rooms_create 会把全部 seed profile 自动入房。
+            # 任一前提被打破（如 ⑭ Bot 实验室接入外部 agent 并注册 profile），
+            # 不一致即显形。
+            #
+            # 将来若要收紧为「房间内才能 @」：把本行换成按房间成员过滤
+            #   profiles = [p for p in db.list_agent_profiles()
+            #               if p["id"] in {m["ref_id"] for m in
+            #                   db.list_bot_room_members(room_id)
+            #                   if m["member_type"] == "agent"}]
+            # 并同步前端候选来源（届时两者才真正一致）。
             profiles = db.list_agent_profiles()
             target_ids = parse_room_mentions(text, profiles)
             if not target_ids:
