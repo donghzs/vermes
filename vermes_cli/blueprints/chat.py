@@ -35,6 +35,12 @@ from vermes_cli.blueprints.agent_cache import (
     stop_agent_session,
     clean_agent_for_session,
 )
+from vermes_state import SessionDB
+from vermes_cli.botmode import (
+    _session_key_for_room,
+    parse_room_mentions,
+    RoomIdNormalizer,
+)
 
 # ── Session plan state store (for SSE reconnect snapshot) ──────────
 # session_id → {"plan": dict|None, "todo_states": dict, "plan_emitted": bool}
@@ -2951,6 +2957,242 @@ async def changes_mark_read(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# ③ Bot Mode P1 · 房间路由（T4）
+#
+# 端点：POST/GET /api/bot/rooms
+#       POST /api/bot/rooms/{room_id}/members
+#       POST /api/bot/rooms/{room_id}/messages
+#       GET  /api/bot/rooms/{room_id}/timeline
+#
+# 审计纪律（董董 2026-09-03 交叉审计）：
+#  · 每个 handler 入口拦空 id/room_id/ref_id（防 upsert/create 空主键污染）。
+#  · 【G2】缓存 key 与 AIAgent 构造用**同一** provider/model 变量（钩子已留，
+#    T5 改为 profile 覆写，T4 不返工）。
+#  · 【G4】房间派生 session 的 session_id 必须是**完整**房间 key
+#    `room:{norm}:agent:{id}`，清理时误传 agent_id 会令 coder/decoder 这类
+#    后缀包含关系 profile 误删彼此缓存。
+# ──────────────────────────────────────────────────────────────────────────
+
+def _bot_mode_enabled() -> bool:
+    """③ Bot Mode 总开关；关闭即退，不影响单聊（plan §9 回滚）。"""
+    try:
+        _cfg = load_config()
+        return bool(_cfg.get("bot_mode", {}).get("enabled", True))
+    except Exception:
+        return True
+
+
+def _bot_room_db() -> "SessionDB":
+    """取得 Bot Mode 数据访问用的 SessionDB 实例（同全局状态库）。"""
+    return SessionDB()
+
+
+def _resolve_room_agent_identity(profile):
+    """返回 (provider, base_url, api_key, model)。
+
+    T4：profile 无 provider/model（默认 seed 未填）→ 用默认 ``agnes-2.0-flash``。
+    T5 钩子：profile 填了 provider/model 时改为 profile 覆写，实现异构。
+    关键：返回的 provider/model **同时**用于 ``_cache_key`` 与 AIAgent 构造，
+    保证 G2 缓存 key 一致（T4 不返工）。
+    """
+    if profile and profile.get("provider") and profile.get("model"):
+        return _resolve_model_provider(profile["model"], profile["provider"])
+    return _resolve_model_provider("agnes-2.0-flash", None)
+
+
+async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
+    """为某 profile 取/建 AIAgent（复用 ``_agent_cache``），fail-open。
+
+    返回 AIAgent 实例或 None（构建/取用失败）。
+    """
+    # 解析身份（T4 默认；T5 走 profile 覆写）
+    provider, base_url, api_key, model = _resolve_room_agent_identity(profile)
+    # ⚠️ G2：缓存 key 用与 AIAgent 构造**相同**的 provider/model
+    _cache_key = f"{provider}:{model}:{session_key}"
+    agent = _agent_cache.get(_cache_key)
+    if agent is not None:
+        return agent
+    if not base_url:
+        _log.warning("[BotMode] no base_url for provider %s; skip agent", provider)
+        return None
+    try:
+        from run_agent import AIAgent
+        agent = AIAgent(
+            base_url=base_url,
+            api_key=api_key,
+            provider=provider,
+            model=model,
+            max_iterations=1000,
+            quiet_mode=True,
+            verbose_logging=False,
+            platform="web",
+            enabled_toolsets=["Vermes-cli"],
+        )
+        _agent_cache.put(_cache_key, agent)
+    except Exception as e:
+        _log.warning("[BotMode] agent build failed for %s: %s", session_key, e)
+        return None
+    return agent
+
+
+async def bot_rooms_create(request: Request):
+    """POST /api/bot/rooms  body: {"id": str, "name": str, "channel": str?}"""
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    room_id = (body.get("id") or "").strip()
+    name = (body.get("name") or "").strip()
+    channel = (body.get("channel") or "desktop").strip()
+    # ⚠️ 空 id 校验（交叉审计补充必做项）
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    if not name:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "name required"})
+    try:
+        db = _bot_room_db()
+        try:
+            db.seed_default_profiles()  # 幂等：空库才插 researcher/coder
+            db.create_bot_room(room_id, name, channel)
+            # P1 阶段所有 seed profile 视为默认伙伴，自动入房
+            profiles = db.list_agent_profiles()
+            for p in profiles:
+                db.add_bot_room_member(room_id, "agent", p["id"])
+        finally:
+            db.close()
+        return {"ok": True, "room_id": room_id}
+    except Exception as e:
+        _log.exception("[BotMode] create room failed")
+        return {"ok": False, "error": str(e)}
+
+
+async def bot_rooms_list(request: Request):
+    """GET /api/bot/rooms"""
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    try:
+        db = _bot_room_db()
+        try:
+            rooms = db.list_bot_rooms()
+        finally:
+            db.close()
+        return {"ok": True, "rooms": rooms}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def bot_room_members_add(request: Request, room_id: str):
+    """POST /api/bot/rooms/{room_id}/members  body: {"ref_id": str, "role": str?}"""
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    # ⚠️ 空 id 校验
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    ref_id = (body.get("ref_id") or "").strip()
+    role = (body.get("role") or "agent").strip()
+    # ⚠️ 空 ref_id 校验（交叉审计：upsert 空主键污染）
+    if not ref_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "ref_id required"})
+    try:
+        db = _bot_room_db()
+        try:
+            db.add_bot_room_member(room_id, role, ref_id)
+        finally:
+            db.close()
+        return {"ok": True, "room_id": room_id, "ref_id": ref_id, "role": role}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def bot_room_message_send(request: Request, room_id: str):
+    """POST /api/bot/rooms/{room_id}/messages  body: {"text": str}"""
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    # ⚠️ 空 id 校验
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "text required"})
+    try:
+        db = _bot_room_db()
+        try:
+            # 1) 规范化房间 id（⑫ 薄壳，P1 desktop 直通）
+            norm = RoomIdNormalizer.normalize("desktop", room_id)
+            # 2) 解析 @mention → 目标 profile 列表
+            profiles = db.list_agent_profiles()
+            target_ids = parse_room_mentions(text, profiles)
+            if not target_ids:
+                # 空 → default agent（无则 fan-out 全员）
+                defaults = [p["id"] for p in profiles if p.get("is_default")]
+                target_ids = defaults or [p["id"] for p in profiles]
+            # 3) 写用户消息（turn_session_id 关联房间派生 key，供 G4 清理）
+            db.append_bot_room_message(room_id, "user", None, text,
+                                       turn_session_id=_session_key_for_room(norm, target_ids[0]) if target_ids else None)
+            # 4) 每个目标派生 session → 取/建 agent → 跑 → 写回复
+            for agent_id in target_ids:
+                profile = db.get_agent_profile(agent_id)
+                if not profile:
+                    continue
+                # ⚠️ G4：session_id 必须是**完整**房间 key（room:{norm}:agent:{id}）
+                session_key = _session_key_for_room(norm, agent_id)
+                agent = await _bot_build_agent(session_key, profile)
+                reply = None
+                if agent is not None:
+                    try:
+                        reply = await asyncio.to_thread(agent.chat, text)
+                    except Exception as e:
+                        _log.warning("[BotMode] agent run failed %s: %s", agent_id, e)
+                if reply:
+                    db.append_bot_room_message(room_id, "agent", agent_id, reply,
+                                               turn_session_id=session_key)
+                else:
+                    db.append_bot_room_message(
+                        room_id, "system", None,
+                        f"[@{profile.get('name', agent_id)} 未产生回复：agent 不可用]",
+                        turn_session_id=session_key,
+                    )
+            timeline = db.get_bot_room_timeline(room_id)
+        finally:
+            db.close()
+        return {"ok": True, "timeline": timeline}
+    except Exception as e:
+        _log.exception("[BotMode] send message failed")
+        return {"ok": False, "error": str(e)}
+
+
+async def bot_room_timeline_get(request: Request, room_id: str):
+    """GET /api/bot/rooms/{room_id}/timeline"""
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    # ⚠️ 空 id 校验
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        db = _bot_room_db()
+        try:
+            timeline = db.get_bot_room_timeline(room_id)
+        finally:
+            db.close()
+        return {"ok": True, "timeline": timeline}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def _build_config_diff(target_path: str, new_content: str) -> str:
     """Unified diff of new_content vs current config file (for approval UI)."""
     import difflib
@@ -3833,6 +4075,27 @@ def register_to(app):
         changes_mark_read,
         methods=["POST"],
         name="changes_mark_read",
+    )
+    # ── ③ Bot Mode P1 房间路由（T4） ──
+    app.add_api_route("/api/bot/rooms", bot_rooms_create, methods=["POST"], name="bot_rooms_create")
+    app.add_api_route("/api/bot/rooms", bot_rooms_list, methods=["GET"], name="bot_rooms_list")
+    app.add_api_route(
+        "/api/bot/rooms/{room_id}/members",
+        bot_room_members_add,
+        methods=["POST"],
+        name="bot_room_members_add",
+    )
+    app.add_api_route(
+        "/api/bot/rooms/{room_id}/messages",
+        bot_room_message_send,
+        methods=["POST"],
+        name="bot_room_message_send",
+    )
+    app.add_api_route(
+        "/api/bot/rooms/{room_id}/timeline",
+        bot_room_timeline_get,
+        methods=["GET"],
+        name="bot_room_timeline_get",
     )
     app.add_api_route(
         "/api/emergence/status",

@@ -556,6 +556,11 @@ DEFAULT_CONFIG = {
     "fallback_providers": [],
     "credential_pool_strategies": {},
     "toolsets": ["Vermes-cli"],
+    "bot_mode": {
+        # ③ Bot Mode P1 总开关。关闭即退，不影响单聊（plan §9 回滚）。
+        # 默认开启；如需在问题环境临时禁用，设为 false。
+        "enabled": True,
+    },
     "agent": {
         "max_turns": 90,
         # Inactivity timeout for gateway agent execution (seconds).
