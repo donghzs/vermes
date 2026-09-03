@@ -2518,6 +2518,12 @@ class AIAgent:
                 generate_and_store_handoff(messages, self.session_id or "")
             except Exception:
                 pass
+            # ⑮ 腿 B：通用长程任务自动发射（有阶段结论才落盘，fail-open）
+            try:
+                from agent.project_handoff import emit_generic_handoff_from_session
+                emit_generic_handoff_from_session(messages, self.session_id or "")
+            except Exception:
+                pass
             try:
                 from agent.cross_session_continuity import save_session_snapshot
                 from agent.memory_recall import _get_self_model_db
