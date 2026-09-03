@@ -561,6 +561,15 @@ DEFAULT_CONFIG = {
         # 默认开启；如需在问题环境临时禁用，设为 false。
         "enabled": True,
     },
+    "grounded_citation": {
+        # ② Grounded Citations 注③：自动溯源观察者 hook 总开关。
+        # 关闭（默认）→ 仅当 LLM 主动调用 grounded_citation 工具时溯源；
+        # 开启 → 每轮 LLM 产出最终响应后，经 post_llm_call 观察者 hook
+        # 自动抽取事实性主张并调用通用溯源层，结果写入日志/可观测（不回写响应、
+        # 不写入会话记忆——post_llm_call 为观察者 hook，返回值被丢弃）。
+        # 默认关闭：开启后每轮触发检索+LLM 精排，属增强能力非核心链路。
+        "auto": False,
+    },
     "agent": {
         "max_turns": 90,
         # Inactivity timeout for gateway agent execution (seconds).

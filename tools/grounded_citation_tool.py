@@ -72,6 +72,8 @@ async def _handle_grounded_citation(args: Dict[str, Any]) -> str:
             format_grounded_report,
         )
         # 显式注入 scholarforge 的 LLM 调用，使关键词提取 + 精排都走分析模型
+        # 注④：_call_llm/ANALYSIS_MODEL 是 scholarforge 私有函数，是「通用溯源层
+        # 真挪到 agent/」时的真实耦合点（plugins/grounded_citation_auto 同此依赖）。
         from vermes_cli.scholarforge.tools import _call_llm, ANALYSIS_MODEL
 
         async def _llm(prompt, **kw):

@@ -1,0 +1,6 @@
+name: grounded_citation_auto
+version: "1.0.0"
+description: "自动溯源观察者 hook（② Grounded Citations 注③）。每轮 LLM 产出最终响应后，经 post_llm_call 观察者 hook 自动抽取事实性主张并调用通用溯源层核验，结果写入日志/可观测。默认关闭（config grounded_citation.auto），开启后每轮触发检索+LLM 精排，属增强能力非核心链路。注：post_llm_call 为观察者 hook（返回值被丢弃，见 vermes_cli/plugins.py），故仅日志落点，不回写响应、不写入会话记忆。"
+author: donghzs
+hooks:
+  - post_llm_call

@@ -4,6 +4,15 @@
 从 scholarforge 学术引用管线抽出的通用层，供任意 agent 在产出事实性陈述时
 自动挂溯源锚点（claim → 真实来源 → 支撑判定），而非仅限 ScholarForge 论文写作。
 
+⚠️ 命名空间说明（注④，2026-09-03 审计结论）：本模块是**通用层**，语义上应归属
+``agent/``，但当前暂挂 ``vermes_cli/scholarforge/``（历史抽取位置）。未来真挪到
+``agent/`` 时须**连带** ``vermes_cli.scholarforge.tools._call_llm`` / ``ANALYSIS_MODEL``
+一起迁移——真实耦合点在 ``tools/grounded_citation_tool.py`` 与
+``plugins/grounded_citation_auto/__init__.py``（二者均 ``from vermes_cli.scholarforge.tools
+import _call_llm, ANALYSIS_MODEL``），而非本模块本身（本模块核心匹配层只依赖
+``citation_matcher`` + ``search``，``llm_call_fn`` 为注入式、默认 None 时跳过）。
+真挪推迟到 ⑭ Bot 实验室有真实外部消费者时一并做，避免「为挪而挪」的伪归位。
+
 复用（零从零成本）：
   - `citation_matcher.score_relevance`  粗排（0-1，标题/关键词字面重叠 + difflib）
   - `citation_matcher.llm_rerank`       LLM 精排（fail-open 兜底粗排）
