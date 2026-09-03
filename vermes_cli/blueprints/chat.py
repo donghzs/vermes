@@ -4138,27 +4138,30 @@ def register_to(app):
         methods=["POST"],
         name="changes_mark_read",
     )
-    # ── ③ Bot Mode P1 房间路由（T4） ──
-    app.add_api_route("/api/bot/rooms", bot_rooms_create, methods=["POST"], name="bot_rooms_create")
-    app.add_api_route("/api/bot/rooms", bot_rooms_list, methods=["GET"], name="bot_rooms_list")
-    app.add_api_route(
-        "/api/bot/rooms/{room_id}/members",
-        bot_room_members_add,
-        methods=["POST"],
-        name="bot_room_members_add",
-    )
-    app.add_api_route(
-        "/api/bot/rooms/{room_id}/messages",
-        bot_room_message_send,
-        methods=["POST"],
-        name="bot_room_message_send",
-    )
-    app.add_api_route(
-        "/api/bot/rooms/{room_id}/timeline",
-        bot_room_timeline_get,
-        methods=["GET"],
-        name="bot_room_timeline_get",
-    )
+    # ── ③ Bot Mode P1 房间路由（T4）；受 BOT_MODE_ENABLED 总开关门控（T7）──
+    # 关闭时连路由都不注册 → 完全不加载 bot 代码路径，零影响单聊（plan §9 回滚）。
+    # 处理器入口另有 _bot_mode_enabled() 守卫作纵深防御（运行时翻转开关亦返回 403）。
+    if _bot_mode_enabled():
+        app.add_api_route("/api/bot/rooms", bot_rooms_create, methods=["POST"], name="bot_rooms_create")
+        app.add_api_route("/api/bot/rooms", bot_rooms_list, methods=["GET"], name="bot_rooms_list")
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/members",
+            bot_room_members_add,
+            methods=["POST"],
+            name="bot_room_members_add",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/messages",
+            bot_room_message_send,
+            methods=["POST"],
+            name="bot_room_message_send",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/timeline",
+            bot_room_timeline_get,
+            methods=["GET"],
+            name="bot_room_timeline_get",
+        )
     app.add_api_route(
         "/api/emergence/status",
         emergence_status,

@@ -80,6 +80,13 @@ onUnmounted(() => {
 
 <template>
   <div class="flex h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <!-- 开关关闭：优雅降级（T7） -->
+    <div v-if="bot.botModeDisabled" class="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
+      <div class="text-4xl">💤</div>
+      <div class="text-lg font-semibold">Bot Mode 未启用</div>
+      <div class="text-sm text-gray-400 max-w-sm">当前配置已关闭 Bot Mode（bot_mode.enabled=false）。开启后此处可进行单房间多 Agent 协作；单聊功能不受影响。</div>
+    </div>
+    <template v-else>
     <!-- 左：房间列表 -->
     <aside class="w-64 shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col">
       <div class="p-3 border-b border-gray-200 dark:border-gray-700">
@@ -177,5 +184,6 @@ onUnmounted(() => {
         </div>
       </div>
     </main>
+    </template>
   </div>
 </template>

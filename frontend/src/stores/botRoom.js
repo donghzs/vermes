@@ -11,19 +11,26 @@ export const useBotRoomStore = defineStore('botRoom', {
     loadingTimeline: false,
     sending: false,
     error: '',
+    botModeDisabled: false,  // BOT_MODE_ENABLED 关闭 → 优雅降级（T7）
   }),
   getters: {
     currentRoom: (s) => s.rooms.find(r => r.id === s.currentRoomId) || null,
   },
   actions: {
+    // 识别「Bot Mode 未启用」：开关关闭时路由未注册(404) 或处理器守卫(403 "bot mode disabled")
+    _isBotDisabled(e) {
+      const m = (e && e.message) || ''
+      return m.includes('bot mode disabled') || m.startsWith('API 404')
+    },
     async loadRooms() {
       this.loadingRooms = true
       this.error = ''
       try {
         const r = await api.listBotRooms()
-        if (r && r.ok) this.rooms = r.rooms || []
+        if (r && r.ok) { this.rooms = r.rooms || []; this.botModeDisabled = false }
         else this.error = (r && r.error) || '加载房间失败'
       } catch (e) {
+        if (this._isBotDisabled(e)) this.botModeDisabled = true
         this.error = e.message || '加载房间失败'
       } finally {
         this.loadingRooms = false
@@ -31,6 +38,7 @@ export const useBotRoomStore = defineStore('botRoom', {
       return this.rooms
     },
     async createRoom(id, name) {
+      if (this.botModeDisabled) return { ok: false, error: 'bot mode disabled' }
       const r = await api.createBotRoom(id, name)
       if (r && r.ok) {
         await this.loadRooms()
@@ -55,6 +63,7 @@ export const useBotRoomStore = defineStore('botRoom', {
       }
     },
     async sendMessage(text) {
+      if (this.botModeDisabled) return
       if (!this.currentRoomId || !text || !text.trim()) return
       this.sending = true
       try {

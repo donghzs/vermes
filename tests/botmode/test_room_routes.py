@@ -11,6 +11,9 @@
   bot 端点不调 _persist_web_turn_to_state_db + 单聊列表排除 source='web'）
 - T6 G3 已决：room_update WS 契约（topic=room:{room_id} 房间级粒度 + type=room_update
   与渠道未读分流 + event∈{room_message,room_created,member_change}，为 ⑭ Bot 实验室复用基础）
+- T7：BOT_MODE_ENABLED 总开关短路在最外层——关闭时 register_to 内 bot 路由整体不注册
+  （404）、处理器入口另有守卫（403「bot mode disabled」）；断言「零影响单聊」是真·零
+  （不建 agent + 不广播 + 单聊路由 /api/chat/models 正常响应）。
 
 测试隔离：SessionDB 重定向到临时库；AIAgent 用 FakeAgent 替换（不触网/不触 LLM）；
 _resolve_model_provider 用确定性映射；_agent_cache 每用例全新实例。
@@ -278,6 +281,45 @@ def run_ws(env):
     return results
 
 
+def run_off(env):
+    """T7：BOT_MODE_ENABLED 关闭 → 完全不加载 bot 代码路径（路由不注册 + 不建 agent + 不广播），
+    且单聊路由不受影响。返回 results。
+
+    关闭时 register_to 内 bot 路由整体不注册 → /api/bot/* 404；处理器入口另有守卫返回 403。
+    双重验证「零影响单聊」是真·零（不只是不触发广播，而是 bot 代码路径根本不存在）。
+    """
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    orig_flag = chat_bp._bot_mode_enabled
+    orig_agent = run_agent.AIAgent
+    calls = []
+    class _ForbiddenAgent:
+        def __init__(self, *a, **k):
+            calls.append(1)
+    chat_bp._bot_mode_enabled = lambda: False
+    run_agent.AIAgent = _ForbiddenAgent
+    env.broadcasts.clear()
+    try:
+        # 关闭态重建 app：register_to 内 bot 路由不注册
+        client = _client()
+        r = client.post("/api/bot/rooms", json={"id": "rx", "name": "x"})
+        check("bot route disabled when flag off (403/404)", r.status_code in (403, 404), str(r.status_code))
+        # 单聊路由独立于 bot 开关：始终注册、正常响应（此处返回 {"data":[]}）
+        r2 = client.get("/api/chat/models")
+        check("single-chat route unaffected (not bot-disabled)",
+              r2.status_code != 404 and "bot mode disabled" not in (r2.text or ""),
+              str(r2.status_code))
+        check("no agent built when flag off", len(calls) == 0, f"calls={len(calls)}")
+        check("no broadcast when flag off", len(env.broadcasts) == 0, f"bcasts={len(env.broadcasts)}")
+    finally:
+        chat_bp._bot_mode_enabled = orig_flag
+        run_agent.AIAgent = orig_agent
+    return results
+
+
 # ─────────────────────────── pytest 入口 ───────────────────────────
 
 @pytest.fixture
@@ -309,6 +351,12 @@ def test_ws_room_update_contract(env):
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
 
+def test_bot_mode_disabled_short_circuits(env):
+    results = run_off(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
 # ─────────────────────────── 独立运行入口 ───────────────────────────
 
 if __name__ == "__main__":
@@ -323,6 +371,7 @@ if __name__ == "__main__":
     all_results += run_e2e(e)
     all_results += run_g2(e)
     all_results += run_ws(e)
+    all_results += run_off(e)
 
     print("\n=== SUMMARY ===")
     fails = [n for n, c in all_results if not c]
