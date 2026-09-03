@@ -617,6 +617,56 @@ CREATE TABLE IF NOT EXISTS a2a_agents (
     registered_at   REAL,
     last_heartbeat  REAL
 );
+
+-- ── Bot Mode（③ Phase 1：桌面单房间多 Agent 群聊）──
+-- agent_profiles 存"可登堂的伙伴"配置（含异构 provider/model/toolsets/
+-- system_prompt）；bot_rooms / bot_room_members / bot_room_messages 存房间
+-- 与时间线。skill_set 列仅作元数据/白名单，不进 agent 运行时（G1 已决：
+-- 技能运行时 = skills toolset，无 mount API）。
+CREATE TABLE IF NOT EXISTS agent_profiles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    system_prompt TEXT,
+    toolsets TEXT,
+    avatar_seed TEXT,
+    hue INTEGER DEFAULT 0,
+    is_default INTEGER DEFAULT 0,
+    provider TEXT,
+    model TEXT,
+    skill_set TEXT,
+    transport TEXT DEFAULT 'native',
+    transport_ref TEXT,
+    capability_tags TEXT,
+    created_at REAL
+);
+
+CREATE TABLE IF NOT EXISTS bot_rooms (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    channel TEXT DEFAULT 'desktop',
+    source_group_id TEXT,
+    created_at REAL,
+    updated_at REAL
+);
+
+CREATE TABLE IF NOT EXISTS bot_room_members (
+    room_id TEXT NOT NULL,
+    member_type TEXT NOT NULL,
+    ref_id TEXT NOT NULL,
+    joined_at REAL,
+    PRIMARY KEY (room_id, member_type, ref_id)
+);
+
+CREATE TABLE IF NOT EXISTS bot_room_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id TEXT NOT NULL,
+    author_type TEXT NOT NULL,
+    author_ref TEXT,
+    content TEXT,
+    created_at REAL,
+    turn_session_id TEXT
+);
 """
 
 # channel_sync_events 自清理配置。该表只是桌面控制台未读角标的实时投递
@@ -1067,6 +1117,24 @@ class SessionDB:
             )
         except sqlite3.OperationalError as exc:
             logger.debug("idx_a2a_agents_name create skipped: %s", exc)
+
+        # Bot Mode 索引（③ Phase 1）。4 张表在 SCHEMA_SQL 声明，索引按项目
+        # 规矩统一建在 _reconcile_columns() 之后，避免历史库首轮 executescript
+        # 时序问题（与 idx_a2a_agents_name 同区）。
+        try:
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bot_room_msg_room "
+                "ON bot_room_messages(room_id, created_at)"
+            )
+        except sqlite3.OperationalError as exc:
+            logger.debug("idx_bot_room_msg_room create skipped: %s", exc)
+        try:
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bot_rooms_channel "
+                "ON bot_rooms(channel, source_group_id)"
+            )
+        except sqlite3.OperationalError as exc:
+            logger.debug("idx_bot_rooms_channel create skipped: %s", exc)
 
         # ── Schema version bookkeeping ─────────────────────────────────
         # Bump to current so future data migrations (if any) can gate on
@@ -1908,6 +1976,246 @@ class SessionDB:
                 (time.time(), profile_id),
             )
         self._execute_write(_do)
+
+    # ── Bot Mode 数据访问（③ Phase 1：桌面单房间多 Agent 群聊）──
+    # agent_profiles 存"可登堂的伙伴"配置（含异构 provider/model/toolsets/
+    # system_prompt）；bot_rooms / bot_room_members / bot_room_messages 存
+    # 房间与会话时间线。skill_set 列仅作元数据/白名单，不进 agent 运行时
+    # （G1 已决：技能运行时 = skills toolset，无 mount API）。
+
+    def upsert_agent_profile(self, profile: dict) -> None:
+        """注册/更新一个 Bot Mode agent profile（upsert by id）。"""
+        import json as _json
+
+        def _norm_list(v):
+            if v is None:
+                return []
+            if isinstance(v, str):
+                try:
+                    return _json.loads(v)
+                except Exception:
+                    return [v] if v else []
+            if isinstance(v, (list, tuple)):
+                return list(v)
+            return []
+
+        def _do(conn):
+            conn.execute(
+                "INSERT INTO agent_profiles "
+                "(id, name, description, system_prompt, toolsets, avatar_seed, "
+                " hue, is_default, provider, model, skill_set, transport, "
+                " transport_ref, capability_tags, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "name = excluded.name, description = excluded.description, "
+                "system_prompt = excluded.system_prompt, "
+                "toolsets = excluded.toolsets, avatar_seed = excluded.avatar_seed, "
+                "hue = excluded.hue, is_default = excluded.is_default, "
+                "provider = excluded.provider, model = excluded.model, "
+                "skill_set = excluded.skill_set, transport = excluded.transport, "
+                "transport_ref = excluded.transport_ref, "
+                "capability_tags = excluded.capability_tags, "
+                "created_at = excluded.created_at",
+                (
+                    profile.get("id", ""),
+                    profile.get("name", ""),
+                    profile.get("description", ""),
+                    profile.get("system_prompt", ""),
+                    _json.dumps(_norm_list(profile.get("toolsets")), ensure_ascii=False),
+                    profile.get("avatar_seed", profile.get("id", "")),
+                    int(profile.get("hue", 0) or 0),
+                    int(profile.get("is_default", 0) or 0),
+                    profile.get("provider", "") or "",
+                    profile.get("model", "") or "",
+                    profile.get("skill_set", "") or "",
+                    profile.get("transport", "native") or "native",
+                    profile.get("transport_ref", "") or "",
+                    _json.dumps(_norm_list(profile.get("capability_tags")), ensure_ascii=False),
+                    profile.get("created_at", time.time()),
+                ),
+            )
+        self._execute_write(_do)
+
+    def get_agent_profile(self, profile_id: str) -> Optional[dict]:
+        """按 id 查一个 Bot Mode agent profile，无则 None。"""
+        import json as _json
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT id, name, description, system_prompt, toolsets, "
+                    "avatar_seed, hue, is_default, provider, model, skill_set, "
+                    "transport, transport_ref, capability_tags, created_at "
+                    "FROM agent_profiles WHERE id = ?", (profile_id,)
+                ).fetchone()
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_agent_profile skipped: %s", exc)
+            return None
+        if row is None:
+            return None
+        R = lambda i: row[i]
+        def _load(v, default):
+            try:
+                return _json.loads(v or default)
+            except Exception:
+                return []
+        return {
+            "id": R(0), "name": R(1), "description": R(2),
+            "system_prompt": R(3),
+            "toolsets": _load(R(4), "[]"),
+            "avatar_seed": R(5), "hue": R(6), "is_default": R(7),
+            "provider": R(8), "model": R(9), "skill_set": R(10),
+            "transport": R(11), "transport_ref": R(12),
+            "capability_tags": _load(R(13), "[]"),
+            "created_at": R(14),
+        }
+
+    def list_agent_profiles(self) -> List[dict]:
+        """列出全部 Bot Mode agent profile（默认 profile 在前）。"""
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT id FROM agent_profiles "
+                    "ORDER BY is_default DESC, created_at ASC"
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("list_agent_profiles skipped: %s", exc)
+            return []
+        result = []
+        for r in rows:
+            pid = r[0]
+            prof = self.get_agent_profile(pid)
+            if prof:
+                result.append(prof)
+        return result
+
+    def seed_default_profiles(self) -> None:
+        """幂等植入默认 agent profile（researcher / coder）。
+
+        仅在 agent_profiles 为空时插入，多次调用安全。房间创建端点会调用，
+        保证默认伙伴始终存在（房间创建时默认 agent 自动入房）。
+        """
+        try:
+            with self._lock:
+                cnt = self._conn.execute(
+                    "SELECT COUNT(*) AS c FROM agent_profiles"
+                ).fetchone()
+                _n = cnt[0] if isinstance(cnt, (tuple, list)) else cnt["c"]
+                if _n > 0:
+                    return
+        except sqlite3.OperationalError:
+            return
+        defaults = [
+            {
+                "id": "researcher", "name": "研究助手",
+                "description": "通用研究/检索/写作助手",
+                "capability_tags": ["search", "writing"],
+                "is_default": 1, "hue": 210, "avatar_seed": "researcher",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "", "transport": "native",
+                "transport_ref": "", "skill_set": "",
+            },
+            {
+                "id": "coder", "name": "编码助手",
+                "description": "代码编写/审查助手",
+                "capability_tags": ["code"],
+                "is_default": 0, "hue": 140, "avatar_seed": "coder",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "", "transport": "native",
+                "transport_ref": "", "skill_set": "",
+            },
+        ]
+        for d in defaults:
+            self.upsert_agent_profile(d)
+
+    def create_bot_room(self, room_id: str, title: str,
+                        channel: str = "desktop",
+                        source_group_id: Optional[str] = None) -> None:
+        """创建一个房间（幂等：已存在则忽略）。"""
+        def _do(conn):
+            conn.execute(
+                "INSERT OR IGNORE INTO bot_rooms "
+                "(id, title, channel, source_group_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (room_id, title, channel, source_group_id,
+                 time.time(), time.time()),
+            )
+        self._execute_write(_do)
+
+    def list_bot_rooms(self) -> List[Dict[str, Any]]:
+        """列出全部房间（按创建时间倒序）。"""
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT id, title, channel, source_group_id, "
+                    "created_at, updated_at FROM bot_rooms "
+                    "ORDER BY created_at DESC"
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("list_bot_rooms skipped: %s", exc)
+            return []
+        out = []
+        for r in rows:
+            out.append({
+                "id": r[0], "title": r[1], "channel": r[2],
+                "source_group_id": r[3], "created_at": r[4], "updated_at": r[5],
+            })
+        return out
+
+    def add_bot_room_member(self, room_id: str, member_type: str,
+                           ref_id: str) -> None:
+        """向房间添加一个成员（human / agent，幂等）。"""
+        def _do(conn):
+            conn.execute(
+                "INSERT OR IGNORE INTO bot_room_members "
+                "(room_id, member_type, ref_id, joined_at) VALUES (?, ?, ?, ?)",
+                (room_id, member_type, ref_id, time.time()),
+            )
+            conn.execute(
+                "UPDATE bot_rooms SET updated_at = ? WHERE id = ?",
+                (time.time(), room_id),
+            )
+        self._execute_write(_do)
+
+    def append_bot_room_message(self, room_id: str, author_type: str,
+                                author_ref: Optional[str], content: str,
+                                turn_session_id: Optional[str] = None) -> int:
+        """追加一条房间消息，返回其 row id。"""
+        def _do(conn):
+            cur = conn.execute(
+                "INSERT INTO bot_room_messages "
+                "(room_id, author_type, author_ref, content, created_at, "
+                " turn_session_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (room_id, author_type, author_ref, content,
+                 time.time(), turn_session_id),
+            )
+            conn.execute(
+                "UPDATE bot_rooms SET updated_at = ? WHERE id = ?",
+                (time.time(), room_id),
+            )
+            return cur.lastrowid
+        return self._execute_write(_do) or 0
+
+    def get_bot_room_timeline(self, room_id: str,
+                             limit: int = 200) -> List[Dict[str, Any]]:
+        """取房间时间线（按 id 升序，即时间顺序）。"""
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT id, author_type, author_ref, content, "
+                    "created_at, turn_session_id FROM bot_room_messages "
+                    "WHERE room_id = ? ORDER BY id ASC LIMIT ?",
+                    (room_id, limit),
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_bot_room_timeline skipped: %s", exc)
+            return []
+        out = []
+        for r in rows:
+            out.append({
+                "id": r[0], "author_type": r[1], "author_ref": r[2],
+                "content": r[3], "created_at": r[4], "turn_session_id": r[5],
+            })
+        return out
 
     def list_sessions_by_board(
         self, board_id: str, limit: int = 50
