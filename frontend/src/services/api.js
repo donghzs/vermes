@@ -520,6 +520,8 @@ const api = {
   mcpTestServer(name) {
     return this.post('/mcp/test', { name })
   },
+  // ⑤ MCP 指挥中心：per-tool 调用监控（只读观测）
+  mcpStats() { return this.get('/mcp/stats') },
 
   // ── Skills 管理 ──
   getSkills() { return this.get('/skills') },

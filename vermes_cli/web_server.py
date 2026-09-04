@@ -450,6 +450,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/mcp/servers",
     "/api/mcp/servers/{name}",
     "/api/mcp/test",
+    # ⑤ MCP 指挥中心：调用监控（只读统计；敏感度低于 servers 配置，后者已公开）
+    "/api/mcp/stats",
     # 后台子 Agent 状态查询
     "/api/delegate/status/{task_id}",
     # 停止生成（前端 SSE 中断）

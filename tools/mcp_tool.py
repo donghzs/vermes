@@ -2058,6 +2058,128 @@ def _reset_server_error(server_name: str) -> None:
     _server_breaker_opened_at.pop(server_name, None)
 
 # ---------------------------------------------------------------------------
+# ⑤ MCP 指挥中心：per-tool 调用监控
+# ---------------------------------------------------------------------------
+#
+# 与 ``SamplingHandler.metrics``（:894）的区别 —— 极易混淆，务必分清：
+#   * ``SamplingHandler.metrics`` = MCP server **反向调用宿主 LLM**
+#     （sampling/createMessage）的指标，仅开启 sampling 的 server 才有。
+#   * ``_MCP_CALL_STATS``（本段）= 宿主 **调用 MCP 工具**（tools/call）
+#     的指标，每条注册的 MCP 工具都有。路线图 ⑤ 缺的是后者。
+#
+# 设计取舍：
+#   * key = "server/tool" —— 与 MCPManager UI 的 server 维度天然对齐。
+#   * 独立锁 ``_mcp_call_stats_lock`` —— 刻意**不复用** ``_lock``（:2388）。
+#     ``_lock`` 保护 server/session 表，调用统计若与之嵌套，一旦将来有人
+#     反向持有（统计→server 表）即成死锁。统计是旁路，不该有能力阻塞主链路。
+#   * 容量上限 ``_MAX_TRACKED_MCP_TOOLS`` —— 防 server×tool 组合爆炸无限吃内存。
+#     超限后**静默丢弃新条目**，已有条目继续累加（fail-open 哲学，与全模块一致）。
+#   * 全程 fail-silent：统计出错绝不影响工具调用本身（``_record_mcp_call``
+#     内部 try/except + 调用点不依赖返回值）。
+_MCP_CALL_STATS: Dict[str, Dict[str, Any]] = {}
+_MAX_TRACKED_MCP_TOOLS = 500
+_mcp_call_stats_lock = threading.Lock()
+
+
+def _record_mcp_call(
+    server_name: str,
+    tool_name: str,
+    ok: bool,
+    duration_ms: float,
+    error: str = "",
+) -> None:
+    """Record one MCP tool invocation. Fail-silent by design.
+
+    ``ok=False`` counts as an error and captures ``error`` (truncated to 500
+    chars) as ``last_error``. Never raises — monitoring must not break the
+    call path it observes.
+    """
+    key = f"{server_name}/{tool_name}"
+    now = time.time()
+    try:
+        with _mcp_call_stats_lock:
+            s = _MCP_CALL_STATS.get(key)
+            if s is None:
+                if len(_MCP_CALL_STATS) >= _MAX_TRACKED_MCP_TOOLS:
+                    return  # 容量上限：丢弃新条目，已有条目继续统计
+                s = {
+                    "server": server_name,
+                    "tool": tool_name,
+                    "calls": 0,
+                    "errors": 0,
+                    "total_ms": 0.0,
+                    "max_ms": 0.0,
+                    "last_error": "",
+                    "last_error_at": 0.0,
+                    "last_ok_at": 0.0,
+                    "last_call_at": 0.0,
+                }
+                _MCP_CALL_STATS[key] = s
+            s["calls"] += 1
+            s["total_ms"] += duration_ms
+            if duration_ms > s["max_ms"]:
+                s["max_ms"] = duration_ms
+            s["last_call_at"] = now
+            if ok:
+                s["last_ok_at"] = now
+            else:
+                s["errors"] += 1
+                s["last_error"] = (error or "")[:500]
+                s["last_error_at"] = now
+    except Exception as exc:  # noqa: BLE001 - 统计是旁路，绝不影响调用链路
+        logger.debug("mcp call stats record failed: %s", exc)
+
+
+def _is_error_payload(result: Any) -> tuple:
+    """Return ``(is_error, error_text)`` for an MCP tool result string.
+
+    Non-JSON results (or non-str results) are treated as success — same
+    convention the circuit-breaker path already uses (non-JSON = success).
+
+    刻意的行为差异（勿"修正"回旧写法）：
+        旧的内联写法是 ``if "error" in parsed``。当 ``parsed`` 是 **list** 时，
+        这退化成成员判定 —— ``"error" in ["error"]`` 为真，于是返回 JSON 数组
+        且恰好含字符串 "error" 的工具结果会被误判成失败，进而误触发断路器。
+        本函数加严为 ``isinstance(parsed, dict)``，消除该误判。
+        影响面：仅上述边缘场景（MCP 工具返回 JSON 数组且含 "error" 元素），
+        修正方向是"少误判为失败"，对正常路径零影响。
+    """
+    try:
+        parsed = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return False, ""
+    if isinstance(parsed, dict) and "error" in parsed:
+        return True, str(parsed.get("error", ""))
+    return False, ""
+
+
+def get_mcp_call_stats() -> List[dict]:
+    """Snapshot of per-tool MCP call stats, richest-first (by ``calls`` desc).
+
+    Adds derived fields for the UI: ``avg_ms``, ``success_rate`` (0.0–1.0).
+    Consumed by ``GET /api/mcp/stats`` (⑤ MCP 指挥中心).
+    """
+    with _mcp_call_stats_lock:
+        snapshot = [dict(s) for s in _MCP_CALL_STATS.values()]
+    for s in snapshot:
+        calls = s.get("calls") or 0
+        s["avg_ms"] = round(s["total_ms"] / calls, 2) if calls else 0.0
+        s["max_ms"] = round(s.get("max_ms") or 0.0, 2)
+        s["total_ms"] = round(s.get("total_ms") or 0.0, 2)
+        s["success_rate"] = (
+            round((calls - (s.get("errors") or 0)) / calls, 4) if calls else 0.0
+        )
+    snapshot.sort(key=lambda d: (-d["calls"], d.get("server", ""), d.get("tool", "")))
+    return snapshot
+
+
+def reset_mcp_call_stats() -> None:
+    """Clear all collected call stats (used by tests and a future UI reset)."""
+    with _mcp_call_stats_lock:
+        _MCP_CALL_STATS.clear()
+
+
+# ---------------------------------------------------------------------------
 # Auth-failure detection helpers (Task 6 of MCP OAuth consolidation)
 # ---------------------------------------------------------------------------
 
@@ -2872,19 +2994,38 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
         def _call_once():
             return _run_on_mcp_loop(_call, timeout=tool_timeout)
 
+        # ── ⑤ 调用监控埋点 ────────────────────────────────────────────────
+        # started 在 _call_once() 之前取，因此耗时天然包含 auth/session 重试。
+        started = time.monotonic()
+
+        def _record(ok: bool, err: str = "") -> None:
+            """Record this invocation. Monitoring is a side-channel — it must
+            never influence the return value, so it is called *before* return
+            and swallows all errors internally."""
+            _record_mcp_call(
+                server_name, tool_name, ok,
+                (time.monotonic() - started) * 1000.0, err,
+            )
+
         try:
             result = _call_once()
             # Check if the MCP tool itself returned an error
-            try:
-                parsed = json.loads(result)
-                if "error" in parsed:
-                    _bump_server_error(server_name)
-                else:
-                    _reset_server_error(server_name)  # success — reset
-            except (json.JSONDecodeError, TypeError):
-                _reset_server_error(server_name)  # non-JSON = success
+            #
+            # 注：此处原为内联 json.loads + `"error" in parsed`。抽成
+            # _is_error_payload 时**刻意**加严为 isinstance(parsed, dict)：
+            # 原写法对 list 结果会做 `"error" in ["error"]` 这样的成员判定，
+            # 把含字符串 "error" 的 JSON 数组误判成工具失败（进而误触发断路器）。
+            # 新行为更严格且更正确，非 bug 兼容——见 _is_error_payload docstring。
+            is_err, err_text = _is_error_payload(result)
+            if is_err:
+                _bump_server_error(server_name)
+            else:
+                _reset_server_error(server_name)  # success — reset
+            _record(not is_err, err_text)
             return result
         except InterruptedError:
+            # 用户中断不是调用失败 —— 与断路器侧的处理保持一致（不 bump）
+            _record(True)
             return _interrupted_call_result()
         except Exception as exc:
             # Auth-specific recovery path: consult the manager, signal
@@ -2895,6 +3036,9 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
                 f"tools/call {tool_name}",
             )
             if recovered is not None:
+                # 重试成功仍可能是错误载荷（重试成功 ≠ 调用成功），按结果记
+                r_err, r_text = _is_error_payload(recovered)
+                _record(not r_err, r_text)
                 return recovered
 
             # Transport session expiry (#13383): same reconnect flow
@@ -2905,9 +3049,12 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
                 f"tools/call {tool_name}",
             )
             if recovered is not None:
+                r_err, r_text = _is_error_payload(recovered)
+                _record(not r_err, r_text)
                 return recovered
 
             _bump_server_error(server_name)
+            _record(False, f"{type(exc).__name__}: {_exc_str(exc)}")
             logger.error(
                 "MCP tool %s/%s call failed: %s",
                 server_name, tool_name, exc,

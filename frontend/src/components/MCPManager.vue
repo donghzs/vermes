@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
@@ -18,6 +18,13 @@ const newCommand = ref('')
 const newArgs = ref('')
 const newEnv = ref('')
 
+// ⑤ MCP 指挥中心：调用监控
+//
+// 后端返回的是 per-tool 粒度（"server/tool" 为 key），UI 按 server 聚合展示。
+// 统计是**进程内内存**，后端重启即清零 —— 所以"有 server 但无调用"是正常
+// 状态（尚未被调用），UI 必须按「暂无记录」而非「出错」来解释。
+const callStats = ref(null)
+
 async function loadServers() {
   loading.value = true
   try {
@@ -34,6 +41,47 @@ async function loadServers() {
   } finally {
     loading.value = false
   }
+}
+
+// fail-open：统计端点不可得（MCP 未启用 / 后端较旧）时静默降级，不阻塞主体
+async function loadCallStats() {
+  try {
+    callStats.value = await api.mcpStats()
+  } catch (e) {
+    callStats.value = null
+  }
+}
+
+function refreshAll() {
+  loadServers()
+  loadCallStats()
+}
+
+// per-tool → per-server 聚合（含派生字段 avg_ms / rate）
+const statsByServer = computed(() => {
+  const m = {}
+  for (const t of (callStats.value?.tools || [])) {
+    const s = m[t.server] || (m[t.server] = { calls: 0, errors: 0, total_ms: 0, max_ms: 0, tools: 0 })
+    s.calls += t.calls || 0
+    s.errors += t.errors || 0
+    s.total_ms += t.total_ms || 0
+    s.max_ms = Math.max(s.max_ms, t.max_ms || 0)
+    s.tools += 1
+  }
+  for (const s of Object.values(m)) {
+    s.avg_ms = s.calls ? Math.round(s.total_ms / s.calls) : 0
+    s.rate = s.calls ? Math.round((s.calls - s.errors) / s.calls * 100) : null
+  }
+  return m
+})
+
+const statsSummary = computed(() => callStats.value?.summary || null)
+const hasAnyCall = computed(() => (statsSummary.value?.calls || 0) > 0)
+
+function fmtMs(ms) {
+  if (ms === null || ms === undefined) return '—'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(1)}s`
 }
 
 async function addServer() {
@@ -94,14 +142,14 @@ async function toggleServer(srv) {
 }
 
 onMounted(() => {
-  loadServers()
+  refreshAll()
 })
 
 // 动态刷新：MCP 工具变更后自动重新加载
 const { onEvent } = useBrickEvents()
-onEvent('mcp.changed', () => loadServers())
-onEvent('tool.registered', () => loadServers())
-onEvent('tool.deregistered', () => loadServers())
+onEvent('mcp.changed', () => refreshAll())
+onEvent('tool.registered', () => refreshAll())
+onEvent('tool.deregistered', () => refreshAll())
 </script>
 
 <template>
@@ -113,10 +161,36 @@ onEvent('tool.deregistered', () => loadServers())
         <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">MCP 服务</h3>
         <span class="text-xs text-gray-400">({{ servers.length }} 个)</span>
       </div>
-      <button @click="showAddForm = !showAddForm"
-              class="text-xs px-2 py-1 rounded-lg bg-green-500 text-white hover:bg-green-600">
-        {{ showAddForm ? '取消' : '+ 添加' }}
-      </button>
+      <div class="flex items-center gap-1">
+        <button @click="refreshAll()" title="刷新列表与调用统计"
+                class="text-xs px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">
+          ⟳
+        </button>
+        <button @click="showAddForm = !showAddForm"
+                class="text-xs px-2 py-1 rounded-lg bg-green-500 text-white hover:bg-green-600">
+          {{ showAddForm ? '取消' : '+ 添加' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- ⑤ 调用监控总览 -->
+    <div v-if="hasAnyCall"
+         class="flex items-center gap-3 text-[10px] px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+      <span class="text-gray-500 dark:text-gray-400">
+        调用 <b class="text-gray-700 dark:text-gray-200">{{ statsSummary.calls }}</b>
+      </span>
+      <span class="text-gray-500 dark:text-gray-400">
+        失败 <b :class="statsSummary.errors ? 'text-red-500' : 'text-gray-700 dark:text-gray-200'">{{ statsSummary.errors }}</b>
+      </span>
+      <span class="text-gray-500 dark:text-gray-400">
+        成功率 <b :class="statsSummary.errors ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'">{{ Math.round(statsSummary.success_rate * 100) }}%</b>
+      </span>
+      <span class="ml-auto text-gray-400">{{ callStats.count }} 个工具有记录</span>
+    </div>
+    <!-- 有 server 但零调用属正常（尚未被调用），不是错误态 -->
+    <div v-else-if="callStats && callStats.count === 0 && servers.length"
+         class="text-[10px] px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-gray-400">
+      暂无调用记录 —— 统计为进程内内存，后端重启后清零
     </div>
 
     <!-- Add form -->
@@ -161,6 +235,22 @@ onEvent('tool.deregistered', () => loadServers())
           <button @click="removeServer(srv.name)"
                   class="text-xs text-gray-300 hover:text-red-500">🗑</button>
         </div>
+
+        <!-- ⑤ per-server 调用统计 -->
+        <div v-if="statsByServer[srv.name]"
+             class="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] text-gray-400">
+          <span>调用 <b class="text-gray-600 dark:text-gray-300">{{ statsByServer[srv.name].calls }}</b></span>
+          <span v-if="statsByServer[srv.name].errors"
+                class="text-red-400">失败 {{ statsByServer[srv.name].errors }}</span>
+          <span v-if="statsByServer[srv.name].rate !== null"
+                :class="statsByServer[srv.name].errors ? 'text-amber-500' : 'text-green-500'">
+            成功率 {{ statsByServer[srv.name].rate }}%
+          </span>
+          <span>均 {{ fmtMs(statsByServer[srv.name].avg_ms) }}</span>
+          <span>峰 {{ fmtMs(statsByServer[srv.name].max_ms) }}</span>
+          <span class="ml-auto">{{ statsByServer[srv.name].tools }} 个工具</span>
+        </div>
+
         <!-- Test result -->
         <div v-if="testResult[srv.name]" class="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700">
           <div v-if="testResult[srv.name].loading" class="text-[10px] text-gray-400 animate-pulse">测试中...</div>

@@ -3833,6 +3833,43 @@ async def mcp_set_enabled(name: str, request: Request):
         return {"error": str(e), "ok": False}
 
 
+async def mcp_call_stats():
+    """⑤ MCP 指挥中心：per-tool 调用监控（次数 / 耗时 / 成功率 / 最近错误）。
+
+    与 ``/api/mcp/servers`` 的分工：
+      * ``/api/mcp/servers`` = **配置了什么**（静态配置，含脱敏 env）
+      * 本端点               = **跑得怎么样**（运行时观测）
+
+    统计来自 ``tools.mcp_tool._MCP_CALL_STATS`` —— **进程内内存，刻意不持久化**：
+    重启即清零。监控是旁路，不该引入磁盘状态或成为启动依赖。前端空态需按
+    「零调用」而非「出错了」来解释（有 server 但 calls=0 属正常，尚未被调用）。
+
+    与 ``SamplingHandler.metrics`` 无关：那是 MCP server 反向调用宿主 LLM 的
+    指标（仅开启 sampling 的 server 有），本端点是宿主调用 MCP 工具的指标。
+    """
+    try:
+        from tools.mcp_tool import get_mcp_call_stats
+        stats = get_mcp_call_stats()
+        total_calls = sum(s.get("calls", 0) for s in stats)
+        total_errors = sum(s.get("errors", 0) for s in stats)
+        return {
+            "ok": True,
+            "tools": stats,
+            "count": len(stats),
+            "summary": {
+                "calls": total_calls,
+                "errors": total_errors,
+                "success_rate": (
+                    round((total_calls - total_errors) / total_calls, 4)
+                    if total_calls else 0.0
+                ),
+            },
+        }
+    except Exception as e:
+        # fail-open：MCP 未启用 / 模块导入失败 → 空统计，不 500
+        return {"ok": False, "error": str(e), "tools": [], "count": 0}
+
+
 async def approve_command(request: Request):
     """Handle tool approval/deny from frontend.
 
@@ -4369,6 +4406,13 @@ def register_to(app):
         mcp_set_enabled,
         methods=["POST"],
         name="mcp_set_enabled",
+    )
+    # ⑤ MCP 指挥中心：调用监控（只读观测，与 servers 的"配置了什么"互补）
+    app.add_api_route(
+        "/api/mcp/stats",
+        mcp_call_stats,
+        methods=["GET"],
+        name="mcp_call_stats",
     )
     app.add_api_route(
         "/api/approve",
