@@ -30,6 +30,8 @@ function goWorkflows() { router.push('/workflows') }
 function goGrowth() { router.push('/growth') }
 // ③ Bot Mode P1：桌面单房间多 Agent 群聊
 function goBotRooms() { router.push('/bot-rooms') }
+// ⑭ Bot 实验室：本地 agent 发现 + 远端热度榜（消费 /api/v1/bricks?type=agent，不复用积木市场）
+function goAgents() { router.push('/agents') }
 // goModuleStore 已移除（模块商店归入 Agent 管理→软件 tab）
 
 // 点击会话项：切换会话 + 如果不在聊天页则跳回
@@ -600,6 +602,10 @@ async function handleImportFile(e) {
         <button @click="goBotRooms()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/bot-rooms' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="群聊房间——单房间多 Agent 协作（@ 指定 Agent）">
           <span class="text-base leading-none">💬</span>
           <span class="sidebar-tooltip group-hover:opacity-100">群聊房间</span>
+        </button>
+        <button @click="goAgents()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/agents' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="智能体市场——本机发现 + 社区热度榜（只读接入）">
+          <span class="text-base leading-none">🤖</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">智能体市场</span>
         </button>
         </div>
 

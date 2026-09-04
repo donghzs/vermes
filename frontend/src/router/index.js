@@ -11,6 +11,7 @@ import KanbanBoard from '../components/KanbanBoard.vue'
 import WorkflowsPage from '../components/WorkflowsPage.vue'
 import GrowthPage from '../components/GrowthPage.vue'
 import BotRooms from '../components/BotRooms.vue'
+import AgentsPage from '../components/AgentsPage.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -35,6 +36,8 @@ const routes = [
   { path: '/growth', component: GrowthPage },
   // ③ Bot Mode P1：桌面单房间多 Agent 群聊
   { path: '/bot-rooms', component: BotRooms },
+  // ⑭ Bot 实验室：本地 agent 发现 + 远端热度榜（独立消费 /api/v1/bricks?type=agent，不复用 BricksPage 硬编码 TYPE_FILTERS）
+  { path: '/agents', component: AgentsPage },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/
