@@ -71,6 +71,12 @@ class AgentCatalogSource:
         aid = item.get("id") or item.get("name") or ""
         if ":" not in aid:
             aid = f"agent:{aid}"
+        # P2 健壮性：脏 popularity（如 "oops" / {} / 12.5）不得拖垮整批解析。
+        # 逐条 fail-open（对比 recommend.py 逐条 try 内字段 .strip()）——单条脏数据只归零，不崩。
+        try:
+            popularity = int(item.get("popularity") or 0)
+        except (ValueError, TypeError):
+            popularity = 0
         return AgentCatalogEntry(
             id=aid,
             name=item.get("name", aid),
@@ -78,7 +84,7 @@ class AgentCatalogSource:
             auth_scheme=item.get("auth_scheme", "none"),
             description=item.get("description", ""),
             version=item.get("version", ""),
-            popularity=int(item.get("popularity", 0) or 0),
+            popularity=popularity,
             homepage=item.get("homepage", ""),
             repository=item.get("repository", ""),
         )
