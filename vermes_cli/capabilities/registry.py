@@ -33,7 +33,7 @@ logger = logging.getLogger("vermes.brick_registry")
 # 统一数据模型
 # ---------------------------------------------------------------------------
 
-BRICK_TYPES = ("skill", "tool", "module", "software", "provider")
+BRICK_TYPES = ("skill", "tool", "module", "software", "provider", "agent")
 
 
 @dataclass
@@ -62,6 +62,9 @@ class BrickEntry:
     extra: Dict[str, Any] = field(default_factory=dict)
     # --- J3 强调标记（overlay 持久化，非源码/配置改写，用户显式意图）---
     emphasized: bool = False
+    # --- ⑭ Bot 实验室：agent 类型专属字段 ---
+    agent_kind: Optional[str] = None      # cli | app | mcp | subprocess | remote
+    auth_scheme: Optional[str] = None    # none | apikey | oauth | local | bearer
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -170,6 +173,7 @@ class BrickRegistry:
         entries.extend(self._discover_tools())
         entries.extend(self._discover_modules())
         entries.extend(self._discover_skills())
+        entries.extend(self._discover_agents())
         # merge overlay + custom（overlay 以用户决策为准，校正 install_state/installed_at）
         with self._lock:
             for e in entries:
@@ -409,6 +413,52 @@ class BrickRegistry:
                 ))
         except Exception as exc:  # noqa: BLE001
             logger.debug("discover software catalog failed (fail-open): %s", exc)
+        return out
+
+    # ---- ⑭ Bot 实验室：agent 发现（本地 + 远端热度榜骨架） ---------------
+    def _discover_agents(self, include_remote: bool = True) -> List[BrickEntry]:
+        out: List[BrickEntry] = []
+        # 本地发现（CLI / 配置目录 / macOS app bundle / MCP 配置）
+        try:
+            from vermes_cli.adapters.agent_discovery import LocalAgentScanner
+            for a in LocalAgentScanner().scan():
+                out.append(BrickEntry(
+                    id=a.id,
+                    type="agent",
+                    name=a.name,
+                    description=a.description or f"本地发现的 {a.kind} 类型 agent",
+                    install_state="installed" if a.source == "local" else "available",
+                    source=a.source,
+                    version=a.version or None,
+                    agent_kind=a.kind,
+                    auth_scheme=a.auth_scheme,
+                    entry_point=a.entry_point or None,
+                    extra={"popularity": a.popularity, **a.extra},
+                ))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("discover local agents failed (fail-open): %s", exc)
+
+        # 远端热度榜（骨架：默认 AGENT_CATALOG_INDEX 为空，需 add_source 后才贡献条目；
+        # 网络不可用 / 无数据 → fail-open 空 list，绝不阻断本地发现）
+        if include_remote:
+            try:
+                from vermes_cli.adapters.agent_catalog import AGENT_CATALOG_INDEX
+                for e in AGENT_CATALOG_INDEX.all_entries():
+                    out.append(BrickEntry(
+                        id=e.id,
+                        type="agent",
+                        name=e.name,
+                        description=e.description or f"社区热度榜 {e.kind} agent",
+                        install_state="available",
+                        source="remote",
+                        version=e.version or None,
+                        agent_kind=e.kind,
+                        auth_scheme=e.auth_scheme,
+                        entry_point=e.homepage or e.repository or None,
+                        extra={"popularity": e.popularity, "repository": e.repository},
+                    ))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("discover remote agents failed (fail-open): %s", exc)
         return out
 
     # ---- 统一能力索引（合并 brick caps + P0 模型 caps） -------------------

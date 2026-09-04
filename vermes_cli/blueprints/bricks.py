@@ -19,6 +19,8 @@ BrickCard / ``/bricks`` 页面（P1-3）渲染统一列表；安装/卸载**委�
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -193,6 +195,10 @@ def _delegate_install(entry: BrickEntry) -> Dict[str, Any]:
             "tools_registered": res.tools_registered,
         }
 
+    if entry.type == "agent":
+        return {"ok": True, "skipped": True,
+                "message": "agent 为本地/远端发现项，无需安装"}
+
     return {"ok": False, "message": f"不支持安装的类型: {entry.type}"}
 
 
@@ -219,6 +225,10 @@ def _delegate_uninstall(entry: BrickEntry) -> Dict[str, Any]:
             "message": f"software 卸载请执行 `cli-hub uninstall {raw}`；Vermes 不代管本体",
             "skipped": True,
         }
+
+    if entry.type == "agent":
+        return {"ok": True, "skipped": True,
+                "message": "agent 为发现项，Vermes 不代管其生命周期"}
 
     return {"ok": False, "message": f"不支持卸载的类型: {entry.type}"}
 
@@ -285,6 +295,18 @@ def _probe_brick(entry: BrickEntry) -> Dict[str, Any]:
                     f"adapter 已装，但本体未就绪：请先安装 {raw}"
                     + (f"（依赖：{req}）" if req else "")
                 )
+        elif entry.type == "agent":
+            # agent 是发现项：探测 entry_point 是否仍在（CLI 在 PATH / app bundle 在
+            # /Applications / 配置目录存在）。仍以「发现」语义呈现，不代管生命周期。
+            ep = entry.entry_point or ""
+            if ep:
+                if ep.startswith("/") or ep.startswith("~"):
+                    if os.path.exists(os.path.expanduser(ep)):
+                        registered = [raw]
+                        backend_ready = True
+                elif shutil.which(ep):
+                    registered = [raw]
+                    backend_ready = True
     except Exception as exc:  # noqa: BLE001 - 探测失败降级为「未确认可用」，不阻断
         _log.debug("probe failed for %s: %s", entry.id, exc)
 
