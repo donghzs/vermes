@@ -418,6 +418,10 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/storage/usage",
     # Agent REST API（外部系统调用）
     "/api/agent/run",
+    # ⑭ 请神收尾 T3：外部 ACP agent 登堂注册（前端 AgentsPage「登堂」按钮调用）
+    "/api/agents/register-profile",
+    # ⑭ 请神收尾 T4：可登堂食谱清单（只读，前端决定登堂按钮的显示）
+    "/api/agents/recipes",
     # Agent 更新检查
     "/api/agent/check",
     "/api/agent/update",

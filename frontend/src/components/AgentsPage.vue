@@ -8,6 +8,9 @@
         <span class="text-sm text-gray-400">
           {{ loading ? '加载中…' : `共 ${agents.length} 个（本机 ${counts.local} · 社区 ${counts.remote}）` }}
         </span>
+        <span v-if="recipes.length" class="text-sm text-emerald-600 dark:text-emerald-400">
+          · {{ recipes.length }} 个可登堂（ACP）
+        </span>
       </div>
       <div class="flex items-center gap-2">
         <input
@@ -84,6 +87,61 @@
             <span class="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300">已接入（只读发现）</span>
             <a v-if="a.source === 'remote' && (a.extra && a.extra.repository || a.entry_point)" :href="(a.extra && a.extra.repository) || a.entry_point" target="_blank" rel="noopener" class="text-blue-500 hover:underline">{{ (a.extra && a.extra.repository) ? '仓库' : '主页' }}</a>
           </div>
+
+          <!--
+            ⑭ 请神收尾 T4：登堂。
+            仅当该 agent 能匹配到一条 ACP 食谱（GET /agents/recipes）时才显示，
+            食谱名单由后端下发，不在前端硬编码（历史坑：BricksPage.vue 硬编码）。
+          -->
+          <div v-if="recipeFor(a)" class="flex items-center gap-2 flex-wrap">
+            <span class="px-2 py-0.5 text-[11px] rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300">⚡ ACP 兼容</span>
+            <button
+              @click="ascend(a)"
+              :disabled="stateOf(a._key).status === 'loading'"
+              class="px-2.5 py-1 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition"
+            >{{ ascendLabel(stateOf(a._key)) }}</button>
+            <span
+              v-if="stateOf(a._key).detail"
+              class="text-[11px] truncate"
+              :class="stateClass(stateOf(a._key))"
+              :title="stateOf(a._key).detail"
+            >{{ stateOf(a._key).detail }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 登堂授权弹窗（后端返回 need_auth 时弹出） -->
+    <div
+      v-if="authModal.open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="authModal.open = false"
+    >
+      <div class="w-[28rem] max-w-[90vw] rounded-xl bg-white dark:bg-gray-800 p-5 shadow-xl">
+        <h3 class="text-base font-semibold mb-1">
+          为「{{ authModal.recipe && authModal.recipe.name }}」配置鉴权
+        </h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          登堂需要环境变量
+          <code class="px-1 rounded bg-gray-100 dark:bg-gray-700">{{ authModal.authEnv }}</code>。
+          填入后仅在<b>当前 Vermes 进程内</b>生效，重启后需重新填写。
+        </p>
+        <input
+          v-model="authModal.value"
+          type="password"
+          :placeholder="authModal.authEnv"
+          class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-emerald-500"
+        />
+        <p v-if="authModal.error" class="mt-2 text-xs text-red-500">{{ authModal.error }}</p>
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            @click="authModal.open = false"
+            class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+          >取消</button>
+          <button
+            @click="submitAuth"
+            class="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+          >登堂</button>
         </div>
       </div>
     </div>
@@ -146,5 +204,118 @@ function sourceLabel(src) {
   return src === 'remote' ? '🔥 封神榜' : '本机发现'
 }
 
-onMounted(() => loadAgents())
+/* ── ⑭ 请神收尾 T4：登堂 ────────────────────────────────────────── */
+
+// 可登堂的 ACP 食谱（后端下发，前端不硬编码）
+const recipes = ref([])
+// 每个 agent 的登堂状态：idle / loading / success / fail / need_auth
+const ascendState = ref({})
+// 鉴权弹窗
+const authModal = ref({ open: false, key: '', recipe: null, authEnv: '', value: '', error: '' })
+
+const recipeIndex = computed(() => {
+  const m = new Map()
+  for (const r of recipes.value) {
+    if (r && r.name) m.set(String(r.name).toLowerCase(), r)
+  }
+  return m
+})
+
+/** agent 是否有匹配的 ACP 食谱（按 id → name 顺序匹配）。 */
+function recipeFor(a) {
+  const idx = recipeIndex.value
+  return (
+    idx.get(String(a.id || '').toLowerCase()) ||
+    idx.get(String(a.name || '').toLowerCase()) ||
+    null
+  )
+}
+
+function stateOf(key) {
+  return ascendState.value[key] || { status: 'idle', detail: '' }
+}
+
+function setState(key, status, detail = '') {
+  ascendState.value = { ...ascendState.value, [key]: { status, detail } }
+}
+
+function ascendLabel(st) {
+  return ({
+    idle: '⛩️ 登堂',
+    loading: '登堂中…',
+    success: '✅ 已登堂',
+    fail: '⚠️ 重试',
+    need_auth: '🔑 配置鉴权',
+  })[st.status] || '⛩️ 登堂'
+}
+
+function stateClass(st) {
+  return ({
+    success: 'text-emerald-600 dark:text-emerald-400',
+    fail: 'text-red-500',
+    need_auth: 'text-amber-600 dark:text-amber-400',
+    loading: 'text-gray-400',
+  })[st.status] || 'text-gray-400'
+}
+
+async function loadRecipes() {
+  try {
+    const data = await api.listAgentRecipes()
+    recipes.value = (data && data.recipes) || []
+  } catch (e) {
+    console.error('ACP 食谱加载失败', e)
+    recipes.value = []
+  }
+}
+
+async function ascend(a, authValue = '') {
+  const recipe = recipeFor(a)
+  if (!recipe) {
+    setState(a._key, 'fail', '暂无登堂食谱（无匹配 ACP recipe）')
+    return
+  }
+  setState(a._key, 'loading', '')
+  try {
+    const data = await api.registerAgentProfile(recipe.name, authValue)
+    if (!data || data.ok === false) {
+      setState(a._key, 'fail', (data && data.error) || '注册失败')
+      return
+    }
+    if (data.status === 'need_auth') {
+      setState(a._key, 'need_auth', `需要 ${data.auth_env || 'API Key'}`)
+      authModal.value = {
+        open: true, key: a._key, recipe,
+        authEnv: data.auth_env || '', value: '', error: '',
+      }
+      return
+    }
+    if (data.status === 'success') {
+      setState(a._key, 'success', (data.health && data.health.detail) || '已登堂')
+      return
+    }
+    if (data.status === 'fail') {
+      setState(a._key, 'fail', (data.health && data.health.detail) || '健康检查未通过')
+      return
+    }
+    setState(a._key, 'fail', (data && data.error) || '未知状态')
+  } catch (e) {
+    setState(a._key, 'fail', (e && e.message) ? e.message : String(e))
+  }
+}
+
+async function submitAuth() {
+  const m = authModal.value
+  if (!m.value.trim()) {
+    authModal.value = { ...m, error: '请输入 API Key' }
+    return
+  }
+  const a = agents.value.find(x => x._key === m.key)
+  authModal.value = { ...m, open: false, error: '' }
+  if (a) await ascend(a, m.value.trim())
+}
+
+onMounted(() => {
+  loadAgents()
+  loadRecipes()
+})
 </script>

@@ -2965,10 +2965,13 @@ DELEGATE_TASK_SCHEMA = {
             "acp_command": {
                 "type": "string",
                 "description": (
-                    "Override ACP command for child agents (e.g. 'copilot'). "
-                    "When set, children use ACP subprocess transport instead of inheriting "
-                    "the parent's transport. Requires an ACP-compatible CLI "
-                    "(currently GitHub Copilot CLI via 'copilot --acp --stdio'). "
+                    "Override ACP command for child agents (e.g. 'copilot', "
+                    "'npx @agentclientprotocol/codex-acp@1.8.0', "
+                    "'npx @agentclientprotocol/claude-agent-acp@0.73.0'). "
+                    "When set, children use the generic ACP subprocess transport "
+                    "(agent.copilot_acp_client.AcpAgentTransportBase) instead of inheriting "
+                    "the parent's transport. Any ACP-compatible CLI works — the agent is "
+                    "spawned over stdio JSON-RPC (initialize / session/new / session/prompt). "
                     "See agent/copilot_acp_client.py for the implementation. "
                     "IMPORTANT: Do NOT set this unless the user has explicitly told you "
                     "a specific ACP-compatible CLI is installed and configured. "

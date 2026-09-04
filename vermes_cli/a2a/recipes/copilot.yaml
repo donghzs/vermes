@@ -1,0 +1,25 @@
+name: copilot
+version: 1.0.0
+description: "GitHub Copilot ACP agent — spawned via copilot --acp --stdio (native ACP support)."
+transport: acp
+provider: copilot-acp
+entry_point: copilot
+args:
+  - "--acp"
+  - "--stdio"
+auth:
+  scheme: apikey
+  env_var: COPILOT_API_KEY
+  fallback_settings: ~/.vermes/settings.json
+capabilities:
+  - code
+  - search
+  - refactor
+  - writing
+fingerprint:
+  cli:
+    - copilot
+  config_dirs:
+    - .github
+  app_bundles: []
+  mcp_config: []

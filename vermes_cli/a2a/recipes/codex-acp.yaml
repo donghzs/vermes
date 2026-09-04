@@ -1,0 +1,24 @@
+name: codex-acp
+version: 1.0.0
+description: "OpenAI Codex CLI via Zed ACP adapter. Codex 本体无 --acp 标志，必须经 npx 适配器包 spawn。"
+transport: acp
+provider: acp-codex
+entry_point: npx
+args:
+  - "@agentclientprotocol/codex-acp@1.8.0"
+auth:
+  scheme: apikey
+  env_var: OPENAI_API_KEY
+  fallback_settings: ~/.vermes/settings.json
+capabilities:
+  - code
+  - search
+  - refactor
+fingerprint:
+  cli:
+    - codex
+    - npx
+  config_dirs:
+    - .codex
+  app_bundles: []
+  mcp_config: []

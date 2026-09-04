@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 import os
 import re
 import secrets
+import shutil
 import hashlib
 import time
 from pathlib import Path
@@ -36,6 +37,8 @@ from vermes_cli.blueprints.agent_cache import (
     clean_agent_for_session,
 )
 from vermes_state import SessionDB
+from vermes_cli.a2a.recipes.loader import find_recipe, load_all_recipes, RECIPES_DIR
+from vermes_cli.a2a.transport import build_acp_transport
 from vermes_cli.botmode import (
     _session_key_for_room,
     parse_room_mentions,
@@ -4121,6 +4124,156 @@ async def artifact_opened(session_id: str, body: dict):
     return {"ok": True, "opened": sorted(_opened_artifacts.get(session_id, set()))}
 
 
+async def api_list_agent_recipes(request: Request):
+    """GET /api/agents/recipes（请神收尾 T4 支撑）
+
+    列出可登堂的 ACP 食谱（``vermes_cli/a2a/recipes/*.yaml``）。前端据此判断
+    哪些已发现 agent 有对应食谱 → 只对它们显示「登堂」按钮。
+    刻意不在前端硬编码食谱名单（历史坑：BricksPage.vue 硬编码字段/名单）。
+    """
+    try:
+        recipes = load_all_recipes(RECIPES_DIR)
+    except Exception as e:
+        return {"ok": False, "error": str(e), "recipes": []}
+    return {
+        "ok": True,
+        "recipes": [
+            {
+                "name": r.name,
+                "provider": r.provider,
+                "transport": r.transport,
+                "description": r.description,
+                "capabilities": list(r.capabilities),
+                "entry_point": r.entry_point,
+                "args": list(r.args),
+                "spawn_command": r.spawn_command,
+                "auth_env": r.auth.env_var,
+                "auth_scheme": r.auth.scheme,
+            }
+            for r in recipes
+            if r.is_acp
+        ],
+    }
+
+
+def _acp_health_check(transport) -> "tuple[bool, str]":
+    """请神收尾 T3 健康检查：探测 ACP 命令在 PATH 上可达（能 spawn 才有意义）。
+
+    轻量、确定性、无副作用；真正的 stdio 握手留给运行时首次调用（T4/T5）。
+    """
+    binary = getattr(transport, "_acp_command", None)
+    if not binary:
+        return False, "transport has no acp_command"
+    resolved = shutil.which(binary)
+    if not resolved:
+        return False, f"ACP command not found on PATH: {binary!r}"
+    return True, f"resolved {binary} -> {resolved}"
+
+
+async def api_register_agent_profile(request: Request):
+    """POST /api/agents/register-profile  (请神收尾 T3)
+
+    把一条 recipe 描述的外部 ACP agent「登堂」接入神魔堂：
+    recipe 匹配 → 鉴权读取 → upsert agent_profiles → register a2a_agents
+    → 健康检查 → 状态回写。前端「登堂」按钮（T4）调用此端点。
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    recipe_name = (body.get("recipe") or body.get("recipe_name") or "").strip()
+    if not recipe_name:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "recipe required"})
+    recipe = find_recipe(recipe_name, RECIPES_DIR)
+    if recipe is None:
+        raise HTTPException(
+            status_code=404, detail={"ok": False, "error": f"recipe not found: {recipe_name}"}
+        )
+    if not recipe.is_acp:
+        raise HTTPException(
+            status_code=400,
+            detail={"ok": False, "error": f"recipe '{recipe.name}' is not an ACP transport"},
+        )
+    # 鉴权读取：recipe 要求 env 鉴权但未提供且环境未设置 → 需前端弹授权框
+    auth_env = recipe.auth.env_var
+    auth_value = (body.get("auth_value") or "").strip()
+    if auth_env and not auth_value and not os.environ.get(auth_env):
+        return {
+            "ok": True,
+            "status": "need_auth",
+            "recipe": recipe.name,
+            "provider": recipe.provider,
+            "auth_env": auth_env,
+            "spawn_command": recipe.spawn_command,
+        }
+    # 用户在前端授权框填的 key → 注入当前进程环境，使后续 spawn 的 ACP 子进程
+    # 继承（_build_subprocess_env 透传 os.environ）。
+    # ⚠️ 已知边界（T3 试水范围内，待办）：仅进程内生效，Vermes 重启后失效；
+    # 持久化应写 recipe.auth.fallback_settings（~/.vermes/settings.json），
+    # 需复用设置页的写 key 通路，不在本 sprint 扩范围。
+    if auth_env and auth_value:
+        os.environ[auth_env] = auth_value
+    # 构造 transport（复用 T2 工厂，验证 recipe 可实例化）
+    try:
+        transport = build_acp_transport(recipe)
+    except Exception as e:
+        return {
+            "ok": False,
+            "status": "error",
+            "error": f"build transport failed: {e}",
+            "recipe": recipe.name,
+        }
+    profile_id = f"a2a:{recipe.provider or recipe.name}"
+    now = time.time()
+    profile = {
+        "id": profile_id,
+        "name": recipe.name,
+        "description": recipe.description,
+        "provider": recipe.provider or "",
+        "model": recipe.provider or "",
+        "transport": "acp",
+        "transport_ref": " ".join(recipe.spawn_command),
+        "capability_tags": list(recipe.capabilities),
+        "system_prompt": "",
+        "toolsets": [],
+        "skill_set": "",
+        "created_at": now,
+    }
+    try:
+        db = _bot_room_db()
+        try:
+            db.upsert_agent_profile(profile)
+            db.upsert_a2a_agent(
+                {
+                    "profile_id": profile_id,
+                    "name": recipe.name,
+                    "provider": recipe.provider or "",
+                    "model": recipe.provider or "",
+                    "transport": "acp",
+                    "capabilities": list(recipe.capabilities),
+                    "registered_at": now,
+                    "last_heartbeat": now,
+                }
+            )
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "status": "error", "error": str(e), "recipe": recipe.name}
+    # 健康检查（命令可达性探针）→ 状态回写
+    healthy, detail = _acp_health_check(transport)
+    return {
+        "ok": True,
+        "status": "success" if healthy else "fail",
+        "recipe": recipe.name,
+        "provider": recipe.provider,
+        "profile_id": profile_id,
+        "transport": "acp",
+        "spawn_command": recipe.spawn_command,
+        "capabilities": list(recipe.capabilities),
+        "health": {"healthy": healthy, "detail": detail},
+    }
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -4146,6 +4299,20 @@ def register_to(app):
         agent_run,
         methods=["POST"],
         name="agent_run",
+    )
+    # ⑭ 请神收尾 T3：外部 ACP agent「登堂」注册（前端「登堂」按钮调用）
+    app.add_api_route(
+        "/api/agents/register-profile",
+        api_register_agent_profile,
+        methods=["POST"],
+        name="register_agent_profile",
+    )
+    # ⑭ 请神收尾 T4：列出可登堂的 ACP 食谱（前端据此决定是否显示登堂按钮）
+    app.add_api_route(
+        "/api/agents/recipes",
+        api_list_agent_recipes,
+        methods=["GET"],
+        name="list_agent_recipes",
     )
     app.add_api_route(
         "/api/evolution/status",

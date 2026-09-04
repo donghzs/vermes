@@ -1201,9 +1201,10 @@ def _maybe_wrap_anthropic(
             return client_obj
     except ImportError:
         pass
+    # 任意 ACP transport（Copilot/Codex/Claude/...）都已包装，不再 re-dispatch
     try:
-        from agent.copilot_acp_client import CopilotACPClient
-        if _safe_isinstance(client_obj, CopilotACPClient):
+        from agent.copilot_acp_client import AcpAgentTransportBase
+        if _safe_isinstance(client_obj, AcpAgentTransportBase):
             return client_obj
     except ImportError:
         pass
@@ -3218,9 +3219,10 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
             return AsyncGeminiNativeClient(sync_client), model
     except ImportError:
         pass
+    # 任意 ACP transport（Copilot/Codex/Claude/...）已包装，直接返回
     try:
-        from agent.copilot_acp_client import CopilotACPClient
-        if isinstance(sync_client, CopilotACPClient):
+        from agent.copilot_acp_client import AcpAgentTransportBase
+        if isinstance(sync_client, AcpAgentTransportBase):
             return sync_client, model
     except ImportError:
         pass

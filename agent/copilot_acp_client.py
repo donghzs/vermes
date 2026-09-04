@@ -1,9 +1,22 @@
-"""OpenAI-compatible shim that forwards Vermes requests to `copilot --acp`.
+"""Generic ACP client transport + Copilot-specific subclass.
 
-This adapter lets Vermes treat the GitHub Copilot ACP server as a chat-style
-backend. Each request starts a short-lived ACP session, sends the formatted
-conversation as a single prompt, collects text chunks, and converts the result
-back into the minimal shape Vermes expects from an OpenAI client.
+Vermes uses the Agent Client Protocol (ACP, by Zed Industries) to pull
+external ACP-compatible agents (Codex, Claude Code, Gemini CLI, OpenClaw,
+… — see the ACP Registry) in as collaborative partners. This module defines
+``AcpAgentTransportBase``: the generic transport logic (spawn the agent CLI,
+drive it over stdio JSON-RPC with the initialize → session/new →
+session/prompt handshake, collect ``session/update`` chunks, bridge fs
+permission requests). ``CopilotACPClient`` is a thin subclass carrying the
+Copilot-specific defaults and deprecation guard.
+
+泛化说明（请神收尾 T0）：
+- ``AcpAgentTransportBase`` 与具体 agent 无关；调用方通过 ``acp_command`` /
+  ``acp_args`` 指定要 spawn 的 agent CLI（如
+  ``npx @agentclientprotocol/codex-acp@1.8.0``）。
+- ``CopilotACPClient`` 保留 Copilot 专用默认值（命令 = copilot、参数 =
+  --acp --stdio、弃用检测），既有的生产调用与测试完全兼容。
+- 新接入的 agent（Codex / Claude Code / …）走同一基类，由 recipe 的
+  entry_point 决定 spawn 谁，详见 T1/T2/T3。
 """
 
 from __future__ import annotations
@@ -27,6 +40,7 @@ from typing import Any
 from agent.file_safety import get_read_block_error, is_write_denied
 from agent.redact import redact_sensitive_text
 
+# 基类默认 marker；Copilot 子类用 "acp://copilot"（见 CopilotACPClient）。
 ACP_MARKER_BASE_URL = "acp://copilot"
 _DEFAULT_TIMEOUT_SECONDS = 900.0
 
@@ -57,6 +71,8 @@ def _is_gh_copilot_deprecation_message(stderr_text: str) -> bool:
 
 
 def _resolve_command() -> str:
+    """Default ACP command. Falls back to ``copilot`` for backward compat
+    (existing Copilot path) and honours explicit env overrides."""
     return (
         os.getenv("VERMES_COPILOT_ACP_COMMAND", "").strip()
         or os.getenv("COPILOT_CLI_PATH", "").strip()
@@ -328,7 +344,7 @@ def _ensure_path_within_cwd(path_text: str, cwd: str) -> Path:
 
 
 class _ACPChatCompletions:
-    def __init__(self, client: "CopilotACPClient"):
+    def __init__(self, client: "AcpAgentTransportBase"):
         self._client = client
 
     def create(self, **kwargs: Any) -> Any:
@@ -336,12 +352,26 @@ class _ACPChatCompletions:
 
 
 class _ACPChatNamespace:
-    def __init__(self, client: "CopilotACPClient"):
+    def __init__(self, client: "AcpAgentTransportBase"):
         self.completions = _ACPChatCompletions(client)
 
 
-class CopilotACPClient:
-    """Minimal OpenAI-client-compatible facade for Copilot ACP."""
+class AcpAgentTransportBase:
+    """Generic ACP client transport.
+
+    Spawns an external ACP-compatible agent over stdio JSON-RPC and drives it
+    with the initialize → session/new → session/prompt handshake. Subclasses
+    (or direct callers) supply the agent CLI via ``acp_command`` / ``acp_args``.
+
+    The protocol logic here is agent-agnostic. Anything Copilot-specific lives
+    in :class:`CopilotACPClient`.
+    """
+
+    # Subclass-overridable labels/defaults so error messages name the right agent.
+    agent_label = "ACP"
+    acp_marker_base_url = "acp://"
+    default_api_key = "acp"
+    default_model = "acp"
 
     def __init__(
         self,
@@ -356,9 +386,11 @@ class CopilotACPClient:
         args: list[str] | None = None,
         **_: Any,
     ):
-        self.api_key = api_key or "copilot-acp"
-        self.base_url = base_url or ACP_MARKER_BASE_URL
+        self.api_key = api_key or self.default_api_key
+        self.base_url = base_url or self.acp_marker_base_url
         self._default_headers = dict(default_headers or {})
+        # 默认回退到 copilot 命令（向后兼容既有 Copilot 路径）；recipe 驱动时
+        # 由调用方通过 acp_command / acp_args 指定任意 ACP 兼容 agent。
         self._acp_command = acp_command or command or _resolve_command()
         self._acp_args = list(acp_args or args or _resolve_args())
         self._acp_cwd = str(Path(acp_cwd or os.getcwd()).resolve())
@@ -366,6 +398,14 @@ class CopilotACPClient:
         self.is_closed = False
         self._active_process: subprocess.Popen[str] | None = None
         self._active_process_lock = threading.Lock()
+
+    def _check_deprecation(self, stderr_text: str) -> "RuntimeError | None":
+        """Hook for subclass-specific deprecation guards.
+
+        Base implementation performs no check. CopilotACPClient overrides this
+        to detect the deprecated ``gh copilot`` extension.
+        """
+        return None
 
     def close(self) -> None:
         proc: subprocess.Popen[str] | None
@@ -441,7 +481,7 @@ class CopilotACPClient:
         return SimpleNamespace(
             choices=[choice],
             usage=usage,
-            model=model or "copilot-acp",
+            model=model or self.default_model,
         )
 
     def _run_prompt(self, prompt_text: str, *, timeout_seconds: float) -> tuple[str, str]:
@@ -458,13 +498,14 @@ class CopilotACPClient:
             )
         except FileNotFoundError as exc:
             raise RuntimeError(
-                f"Could not start Copilot ACP command '{self._acp_command}'. "
-                "Install GitHub Copilot CLI or set VERMES_COPILOT_ACP_COMMAND/COPILOT_CLI_PATH."
+                f"Could not start {self.agent_label} command '{self._acp_command}'. "
+                "Ensure the ACP-compatible CLI is installed and on PATH, or set the "
+                "explicit command via the agent recipe / environment override."
             ) from exc
 
         if proc.stdin is None or proc.stdout is None:
             proc.kill()
-            raise RuntimeError("Copilot ACP process did not expose stdin/stdout pipes.")
+            raise RuntimeError(f"{self.agent_label} process did not expose stdin/stdout pipes.")
 
         self.is_closed = False
         with self._active_process_lock:
@@ -531,29 +572,17 @@ class CopilotACPClient:
                 if "error" in msg:
                     err = msg.get("error") or {}
                     raise RuntimeError(
-                        f"Copilot ACP {method} failed: {err.get('message') or err}"
+                        f"{self.agent_label} {method} failed: {err.get('message') or err}"
                     )
                 return msg.get("result")
 
             stderr_text = "\n".join(stderr_tail).strip()
             if proc.poll() is not None and stderr_text:
-                if _is_gh_copilot_deprecation_message(stderr_text):
-                    raise RuntimeError(
-                        "Vermes ACP mode requires the NEW GitHub Copilot CLI "
-                        "(github.com/github/copilot-cli), but the binary it just "
-                        "spawned is the deprecated `gh copilot` extension.\n\n"
-                        "Install the new CLI:\n"
-                        "  npm install -g @github/copilot\n"
-                        "  # then verify with: copilot --help\n\n"
-                        "If `copilot` already resolves to the new CLI but you still see this,\n"
-                        "point Vermes at it explicitly:\n"
-                        "  export VERMES_COPILOT_ACP_COMMAND=/path/to/new/copilot\n\n"
-                        "Alternative: use the `copilot` provider (no ACP, hits the Copilot API\n"
-                        "directly with a Copilot subscription token) via `vermes setup`.\n\n"
-                        f"Original error:\n{stderr_text}"
-                    )
-                raise RuntimeError(f"Copilot ACP process exited early: {stderr_text}")
-            raise TimeoutError(f"Timed out waiting for Copilot ACP response to {method}.")
+                dep = self._check_deprecation(stderr_text)
+                if dep is not None:
+                    raise dep
+                raise RuntimeError(f"{self.agent_label} process exited early: {stderr_text}")
+            raise TimeoutError(f"Timed out waiting for {self.agent_label} response to {method}.")
 
         try:
             _request(
@@ -582,7 +611,7 @@ class CopilotACPClient:
             ) or {}
             session_id = str(session.get("sessionId") or "").strip()
             if not session_id:
-                raise RuntimeError("Copilot ACP did not return a sessionId.")
+                raise RuntimeError(f"{self.agent_label} did not return a sessionId.")
 
             text_parts: list[str] = []
             reasoning_parts: list[str] = []
@@ -693,3 +722,34 @@ class CopilotACPClient:
         process.stdin.write(json.dumps(response) + "\n")
         process.stdin.flush()
         return True
+
+
+class CopilotACPClient(AcpAgentTransportBase):
+    """Copilot-specific ACP client (Copilot defaults + deprecation guard).
+
+    Backward-compatible facade: default command is ``copilot`` with
+    ``--acp --stdio``, and the deprecated ``gh copilot`` extension is detected.
+    """
+
+    agent_label = "Copilot ACP"
+    acp_marker_base_url = "acp://copilot"
+    default_api_key = "copilot-acp"
+    default_model = "copilot-acp"
+
+    def _check_deprecation(self, stderr_text: str) -> "RuntimeError | None":
+        if _is_gh_copilot_deprecation_message(stderr_text):
+            return RuntimeError(
+                "Vermes ACP mode requires the NEW GitHub Copilot CLI "
+                "(github.com/github/copilot-cli), but the binary it just "
+                "spawned is the deprecated `gh copilot` extension.\n\n"
+                "Install the new CLI:\n"
+                "  npm install -g @github/copilot\n"
+                "  # then verify with: copilot --help\n\n"
+                "If `copilot` already resolves to the new CLI but you still see this,\n"
+                "point Vermes at it explicitly:\n"
+                "  export VERMES_COPILOT_ACP_COMMAND=/path/to/new/copilot\n\n"
+                "Alternative: use the `copilot` provider (no ACP, hits the Copilot API\n"
+                "directly with a Copilot subscription token) via `vermes setup`.\n\n"
+                f"Original error:\n{stderr_text}"
+            )
+        return None

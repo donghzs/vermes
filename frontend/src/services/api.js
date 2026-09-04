@@ -622,6 +622,13 @@ const api = {
   getBotRoomTimeline(roomId) {
     return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/timeline`)
   },
+
+  // ── ⑭ 请神收尾：外部 ACP agent「登堂」 ──
+  // 路径不带 /api 前缀：request() 会按在线/离线模式拼 /v1 或 /api。
+  listAgentRecipes() { return this.get('/agents/recipes') },
+  registerAgentProfile(recipe, authValue = '') {
+    return this.post('/agents/register-profile', { recipe, auth_value: authValue })
+  },
 }
 
 export default api

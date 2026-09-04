@@ -1,0 +1,27 @@
+name: claude-agent-acp
+version: 1.0.0
+description: "Anthropic Claude Code via Zed ACP adapter. Claude Code 本体是 ACP client 非 server，必须经 npx 适配器包 spawn。"
+transport: acp
+provider: acp-claude-agent
+entry_point: npx
+args:
+  - "@agentclientprotocol/claude-agent-acp@0.73.0"
+auth:
+  scheme: apikey
+  env_var: ANTHROPIC_API_KEY
+  fallback_settings: ~/.vermes/settings.json
+capabilities:
+  - code
+  - search
+  - refactor
+  - writing
+fingerprint:
+  cli:
+    - claude
+    - npx
+  config_dirs:
+    - .claude
+  app_bundles:
+    - "Claude.app"
+  mcp_config:
+    - ~/.claude.json

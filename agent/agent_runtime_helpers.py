@@ -1259,6 +1259,19 @@ def create_openai_client(agent, client_kwargs: dict, *, reason: str, shared: boo
             agent._client_log_context(),
         )
         return client
+    # 通用 ACP transport（请神收尾 T0）：任意 acp-* provider 走通用基类，
+    # 由 recipe 的 entry_point / args 决定 spawn 谁（T1/T2/T3 接入）。
+    if str(agent.provider or "").startswith("acp-") and agent.provider != "copilot-acp":
+        from agent.copilot_acp_client import AcpAgentTransportBase
+
+        client = AcpAgentTransportBase(**client_kwargs)
+        _ra().logger.info(
+            "ACP client created (%s, shared=%s) %s",
+            reason,
+            shared,
+            agent._client_log_context(),
+        )
+        return client
     if agent.provider == "google-gemini-cli" or str(client_kwargs.get("base_url", "")).startswith("cloudcode-pa://"):
         from agent.gemini_cloudcode_adapter import GeminiCloudCodeClient
 
