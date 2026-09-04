@@ -14,9 +14,12 @@ fail-open 哲学（与 recommend.py 一致）：网络不可用 / 数据源缺�
 只需把 URL 指向可用端点并 ``AGENT_CATALOG_INDEX.add_source(AgentCatalogSource(url))`` 即可。
 
 字段契约（防前后端错位，2026-09-04 董董审计发现 T4 字段错位 bug 后定档）：
-    ``AgentCatalogEntry`` 的 ``popularity`` / ``homepage`` / ``repository`` 经
-    ``_discover_agents`` 映射进 ``BrickEntry.extra``（**不在顶层**）。前端模板必须读
-    ``a.extra?.popularity`` / ``a.extra?.homepage`` / ``a.extra?.repository``。
+    ``AgentCatalogEntry`` 的 ``popularity`` / ``repository`` 经 ``_discover_agents``
+    映射进 ``BrickEntry.extra``（**不在顶层**）。``homepage`` 例外——被
+    ``_discover_agents:457`` 塞进 ``entry_point``（**不在 extra**），前端用
+    ``a.source !== 'remote'`` 守卫规避重复。前端模板必须读：
+    ``a.extra?.popularity`` / ``a.extra?.repository``；主页链接走
+    ``a.extra?.repository || a.entry_point``（远端 entry_point 即 homepage）。
     顶层只有 ``agent_kind`` / ``auth_scheme`` / ``name`` / ``description`` / ``version``
     / ``entry_point`` / ``source`` / ``install_state`` 这些 BrickEntry 内建字段。
     守护测试：``test_agent_discovery.py::test_remote_agent_field_contract``。

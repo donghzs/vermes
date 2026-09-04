@@ -249,7 +249,7 @@ class TestIntegration:
             "send_message": {"target": "user", "message": "hi"},
             "todo": {"action": "add"},
             "memory": {"action": "save", "content": "fact"},
-            "delegate_task": {"task": "do something"},
+            "delegate_task": {"goal": "do something"},
             "skill_manage": {"action": "list"},
             "process": {"action": "list"},
             "cronjob": {"schedule": "0 9 * * *", "action": "create"},

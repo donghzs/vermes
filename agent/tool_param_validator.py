@@ -95,8 +95,14 @@ TOOL_SCHEMAS: dict[str, dict[str, tuple[type, bool, str]]] = {
         "action": (str, True, "Memory action"),
         "content": (str, False, "Memory content"),
     },
+    # 注：delegate_task 权威 schema 是 tools/delegate_tool.py 的
+    # DELEGATE_TASK_SCHEMA（goal/tasks 二选一，见 delegate_tool.py:2873）。
+    # 此处曾误用已废弃的 `task` 单字段（2026-09-04 董董审计纠偏）。且
+    # validate_tool_params 当前零生产调用（组件已注册但未接入 tool_executor），
+    # 本条仅自文档化，勿照抄 `task`。
     "delegate_task": {
-        "task": (str, True, "Task description for the delegate"),
+        "goal": (str, False, "What the subagent should accomplish (goal/tasks 二选一，由 delegate_task 内部硬校验)"),
+        "tasks": (list, False, "Batch tasks to run in parallel (goal/tasks 二选一，由 delegate_task 内部硬校验)"),
     },
     "skill_manage": {
         "action": (str, True, "Skill management action"),
