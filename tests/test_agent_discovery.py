@@ -157,6 +157,77 @@ def test_remote_catalog_parse_dirty_popularity_fail_open():
     assert p["agent:g"] == 0    # 空字符串归零
 
 
+def test_remote_agent_field_contract():
+    """P1 字段契约守护：远端 BrickEntry.to_dict() 字段层级（董董 2026-09-04 审计发现 T4
+    前端读错层→热度/主页/仓库 v-if 永不渲染后定档）。
+
+    契约（agent_catalog.py 顶部 docstring 同源）：
+    - 顶层  *有*  agent_kind / auth_scheme / source / install_state / name / version / entry_point
+    - 顶层  *无*  popularity / homepage / repository（这三个走 extra）
+    - extra  *有*  popularity / repository（homepage 在远端被塞进 entry_point，见 _discover_agents:457）
+
+    触发回归场景：
+    1. 后端若把 popularity 提到顶层 → 本测试 fail（前端模板写错但未察觉的概率↑）
+    2. 后端若从 extra 移除某字段 → 本测试 fail
+    """
+    import vermes_cli.adapters.agent_catalog as ac
+    from vermes_cli.adapters.agent_catalog import AgentCatalogSource
+    from vermes_cli.capabilities.registry import BrickRegistry
+
+    # 注入一条干净的远端条目（绕过 HTTP，monkeypatch list_entries 直接返回 _items）
+    src = AgentCatalogSource.__new__(AgentCatalogSource)
+    src.name = "contract-test"
+    src.url = "stub://contract-test"
+    src._items = [
+        {
+            "id": "agent:openclaw", "name": "OpenClaw", "kind": "remote",
+            "auth_scheme": "apikey", "description": "社区热门", "version": "2.1",
+            "popularity": 1234,
+            "homepage": "https://openclaw.dev",
+            "repository": "https://github.com/openclaw/openclaw",
+        },
+    ]
+    src.list_entries = lambda: [src._parse(i) for i in src._items]
+    try:
+        ac.AGENT_CATALOG_INDEX.add_source(src)
+
+        reg = BrickRegistry(bricks_json="/tmp/__contract_bricks.json")
+        remote_entries = [e for e in reg._discover_agents(include_remote=True) if e.source == "remote"]
+        assert len(remote_entries) == 1, f"远端条目数应为 1，实际 {len(remote_entries)}"
+        d = remote_entries[0].to_dict()
+
+        # 顶层必须有的字段
+        for k in ("agent_kind", "auth_scheme", "source", "install_state", "name", "version", "entry_point"):
+            assert k in d, f"顶层缺字段 {k}（前端依赖）：{d!r}"
+
+        # 顶层必须没有的字段（防后端误把字段提到顶层 + 守前端不再写错）
+        for k in ("popularity", "homepage", "repository"):
+            assert k not in d, (
+                f"顶层不应有 {k}（董董审计 2026-09-04：T4 前端读顶层→v-if 永不渲染）；"
+                f"前端应读 a.extra?.{k}。当前 d[{k!r}] = {d.get(k)!r}"
+            )
+
+        # extra 必含的字段
+        assert isinstance(d.get("extra"), dict), f"extra 应为 dict：{d!r}"
+        assert d["extra"].get("popularity") == 1234, f"extra.popularity 应为 1234：{d!r}"
+        assert d["extra"].get("repository") == "https://github.com/openclaw/openclaw", (
+            f"extra.repository 应为仓库链接：{d!r}"
+        )
+
+        # extra 不应含 homepage（董董 2026-09-04 审计发现 T4 字段错位后定档的细化契约）
+        assert "homepage" not in d["extra"], (
+            f"extra 不应有 homepage（应走 entry_point）；d={d!r}"
+        )
+
+        # 顺带守：远端 entry_point 被塞了 homepage（设计选择，audit 2026-09-04 待董董拍板是否清理）
+        assert d["entry_point"] == "https://openclaw.dev", (
+            f"远端 entry_point 当前=homepage（_discover_agents:457 设计）；d={d!r}"
+        )
+    finally:
+        # 清理全局索引污染，防后续测试看到这条 OpenClaw
+        ac.AGENT_CATALOG_INDEX._entries.pop("agent:openclaw", None)
+
+
 class _StubSource:
     def __init__(self, entries):
         self._entries = entries

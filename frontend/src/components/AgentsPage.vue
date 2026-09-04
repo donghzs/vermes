@@ -34,7 +34,7 @@
       </div>
       <div v-else-if="filtered.length === 0" class="text-center text-gray-400 py-12">
         <p class="text-lg">🤖 暂未发现智能体</p>
-        <p class="text-sm mt-2">本机未安装常见 CLI / App，或社区热度榜暂无数据</p>
+        <p class="text-sm mt-2">本机未安装常见 CLI / App，或封神榜暂无数据</p>
       </div>
       <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <div
@@ -68,13 +68,21 @@
             <span v-if="a.version" class="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">v{{ a.version }}</span>
           </div>
 
-          <div v-if="a.entry_point" class="text-xs text-gray-400 truncate font-mono">↳ {{ a.entry_point }}</div>
-          <div v-if="a.source === 'remote' && a.popularity" class="text-xs text-amber-500">🔥 热度 {{ a.popularity }}</div>
+          <!--
+            ⑭ 字段契约（2026-09-04 董董审计发现 T4 字段错位 bug 后定档）：
+            - 顶层  有  agent_kind / auth_scheme / source / install_state / name / version
+            - 顶层  无  popularity / homepage / repository（这三个走 extra 或 entry_point）
+            - 远端 a.entry_point = homepage（_discover_agents:457 误用，但已用守卫避免重复显示）
+            - 远端 a.extra     = {popularity, repository}（homepage 不在 extra）
+            - 本地 a.entry_point = 真实 CLI 命令/路径（不当链接用，守卫隐藏）
+            - 守护测试：tests/test_agent_discovery.py::test_remote_agent_field_contract
+          -->
+          <div v-if="a.source !== 'remote' && a.entry_point" class="text-xs text-gray-400 truncate font-mono">↳ {{ a.entry_point }}</div>
+          <div v-if="a.source === 'remote' && a.extra && a.extra.popularity" class="text-xs text-amber-500">🔥 热度 {{ a.extra.popularity }}</div>
 
           <div class="mt-auto pt-1 flex items-center gap-2 text-xs">
             <span class="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300">已接入（只读发现）</span>
-            <a v-if="a.homepage" :href="a.homepage" target="_blank" class="text-blue-500 hover:underline">主页</a>
-            <a v-else-if="a.repository" :href="a.repository" target="_blank" class="text-blue-500 hover:underline">仓库</a>
+            <a v-if="a.source === 'remote' && (a.extra && a.extra.repository || a.entry_point)" :href="(a.extra && a.extra.repository) || a.entry_point" target="_blank" rel="noopener" class="text-blue-500 hover:underline">{{ (a.extra && a.extra.repository) ? '仓库' : '主页' }}</a>
           </div>
         </div>
       </div>
@@ -134,7 +142,8 @@ function authLabel(scheme) {
   return ({ none: '无需鉴权', apikey: 'API Key', oauth: 'OAuth', local: '本地', bearer: 'Bearer' })[scheme] || (scheme || '—')
 }
 function sourceLabel(src) {
-  return src === 'remote' ? '社区热度榜' : '本机发现'
+  // ⑭ 神魔堂产品语义（2026-09-04 董董定调）：远端=封神榜（市场投票/热度），本机=本机发现
+  return src === 'remote' ? '🔥 封神榜' : '本机发现'
 }
 
 onMounted(() => loadAgents())

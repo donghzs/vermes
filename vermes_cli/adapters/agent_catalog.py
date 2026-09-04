@@ -1,4 +1,8 @@
-"""⑭ Bot 实验室：远端 agent 热度榜骨架。
+"""⑭ Bot 实验室：远端 agent 封神榜骨架。
+
+神魔堂产品语义（2026-09-04 董董定调）：
+    "封神榜" = 社区投票/市场验证的热门 AI agent 集合——无论神或魔，热度即用户封神之举。
+    远端 catalog 的 popularity 字段即"封神"票数，本地 agent 不参与封神榜（无 popularity）。
 
 仿 ``recommend.py`` 的 ``CatalogSource`` / ``CatalogIndex`` 范式：
 - ``AgentCatalogSource``：HTTP GET 一个 catalog URL，解析 JSON list → ``AgentCatalogEntry``。
@@ -8,6 +12,14 @@
 fail-open 哲学（与 recommend.py 一致）：网络不可用 / 数据源缺失 / 解析失败 → 返回空 list，
 绝不阻断本地 agent 发现。本模块只提供「 plumbing 骨架」——真实 community 数据源上线时，
 只需把 URL 指向可用端点并 ``AGENT_CATALOG_INDEX.add_source(AgentCatalogSource(url))`` 即可。
+
+字段契约（防前后端错位，2026-09-04 董董审计发现 T4 字段错位 bug 后定档）：
+    ``AgentCatalogEntry`` 的 ``popularity`` / ``homepage`` / ``repository`` 经
+    ``_discover_agents`` 映射进 ``BrickEntry.extra``（**不在顶层**）。前端模板必须读
+    ``a.extra?.popularity`` / ``a.extra?.homepage`` / ``a.extra?.repository``。
+    顶层只有 ``agent_kind`` / ``auth_scheme`` / ``name`` / ``description`` / ``version``
+    / ``entry_point`` / ``source`` / ``install_state`` 这些 BrickEntry 内建字段。
+    守护测试：``test_agent_discovery.py::test_remote_agent_field_contract``。
 """
 from __future__ import annotations
 
