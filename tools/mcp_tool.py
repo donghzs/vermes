@@ -2087,12 +2087,21 @@ def _record_mcp_call(
     ok: bool,
     duration_ms: float,
     error: str = "",
+    interrupted: bool = False,
 ) -> None:
     """Record one MCP tool invocation. Fail-silent by design.
 
-    ``ok=False`` counts as an error and captures ``error`` (truncated to 500
-    chars) as ``last_error``. Never raises — monitoring must not break the
-    call path it observes.
+    三态语义（用户审计 ⑤ P2 观察后补强）：
+
+      * ``ok=True``           → 计入 success
+      * ``ok=False``          → 计入 errors + 截取 ``error``（500 字符）作 ``last_error``
+      * ``interrupted=True``  → 用户主动中断（``InterruptedError`` 出口）。
+                                 **既不计入 errors 也不计入 success**——
+                                 UI 单独展示，避免「中断」被误标为「成功/失败」。
+                                 仍计入 ``calls`` 与 ``total_ms``/``max_ms``
+                                 （属真实耗时，不应消失）。
+
+    Never raises — monitoring must not break the call path it observes.
     """
     key = f"{server_name}/{tool_name}"
     now = time.time()
@@ -2107,6 +2116,7 @@ def _record_mcp_call(
                     "tool": tool_name,
                     "calls": 0,
                     "errors": 0,
+                    "interrupts": 0,
                     "total_ms": 0.0,
                     "max_ms": 0.0,
                     "last_error": "",
@@ -2120,7 +2130,11 @@ def _record_mcp_call(
             if duration_ms > s["max_ms"]:
                 s["max_ms"] = duration_ms
             s["last_call_at"] = now
-            if ok:
+            if interrupted:
+                # 三态之一：用户主动中断。既非 errors 亦非 success——
+                # UI 单独展示，避免「中断被误标成功/失败」。
+                s["interrupts"] += 1
+            elif ok:
                 s["last_ok_at"] = now
             else:
                 s["errors"] += 1
@@ -2156,7 +2170,12 @@ def _is_error_payload(result: Any) -> tuple:
 def get_mcp_call_stats() -> List[dict]:
     """Snapshot of per-tool MCP call stats, richest-first (by ``calls`` desc).
 
-    Adds derived fields for the UI: ``avg_ms``, ``success_rate`` (0.0–1.0).
+    Adds derived fields for the UI:
+      * ``avg_ms``         —— 平均耗时（ms）
+      * ``success_rate``   —— 真正成功的占比 = (calls - errors - interrupts) / calls
+                              三态：中断既非 errors 也非 success，从分母里排除
+      * ``interrupts``     —— 用户主动中断计数（透传自底层）
+
     Consumed by ``GET /api/mcp/stats`` (⑤ MCP 指挥中心).
     """
     with _mcp_call_stats_lock:
@@ -2166,8 +2185,10 @@ def get_mcp_call_stats() -> List[dict]:
         s["avg_ms"] = round(s["total_ms"] / calls, 2) if calls else 0.0
         s["max_ms"] = round(s.get("max_ms") or 0.0, 2)
         s["total_ms"] = round(s.get("total_ms") or 0.0, 2)
+        # 三态：成功率分母排除中断（中断既非 errors 也非 success）。
+        non_terminal = (s.get("errors") or 0) + (s.get("interrupts") or 0)
         s["success_rate"] = (
-            round((calls - (s.get("errors") or 0)) / calls, 4) if calls else 0.0
+            round((calls - non_terminal) / calls, 4) if calls else 0.0
         )
     snapshot.sort(key=lambda d: (-d["calls"], d.get("server", ""), d.get("tool", "")))
     return snapshot
@@ -2998,13 +3019,19 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
         # started 在 _call_once() 之前取，因此耗时天然包含 auth/session 重试。
         started = time.monotonic()
 
-        def _record(ok: bool, err: str = "") -> None:
+        def _record(ok: bool, err: str = "", interrupted: bool = False) -> None:
             """Record this invocation. Monitoring is a side-channel — it must
             never influence the return value, so it is called *before* return
-            and swallows all errors internally."""
+            and swallows all errors internally.
+
+            ``interrupted=True`` 表示「用户主动中断（``InterruptedError``）」
+            —— 三态之一；与 ``ok`` 互斥（同时传两个时，以 ``interrupted`` 优先，
+            因为中断语义上既非成功也非失败）。
+            """
             _record_mcp_call(
                 server_name, tool_name, ok,
                 (time.monotonic() - started) * 1000.0, err,
+                interrupted=interrupted,
             )
 
         try:
@@ -3024,8 +3051,9 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
             _record(not is_err, err_text)
             return result
         except InterruptedError:
-            # 用户中断不是调用失败 —— 与断路器侧的处理保持一致（不 bump）
-            _record(True)
+            # 用户主动中断 —— 与断路器侧的处理保持一致（不 bump）
+            # 三态：标记为 interrupted，UI 单独展示（既非成功也非失败）
+            _record(ok=True, interrupted=True)
             return _interrupted_call_result()
         except Exception as exc:
             # Auth-specific recovery path: consult the manager, signal

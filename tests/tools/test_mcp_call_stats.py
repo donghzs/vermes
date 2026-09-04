@@ -1,10 +1,10 @@
 """⑤ MCP 指挥中心：per-tool 调用监控测试。
 
 覆盖：
-  * ``_record_mcp_call`` 成功/失败累加与派生字段（avg_ms / success_rate）
+  * ``_record_mcp_call`` 成功/失败/中断三态（用户审计 ⑤ P2 观察后补强）
   * ``_is_error_payload`` 各分支（含**刻意**与旧内联写法不同的 list 判定）
   * 容量上限 ``_MAX_TRACKED_MCP_TOOLS``（超限静默丢弃新条目）
-  * ``_make_tool_handler`` 端到端埋点（成功 / 工具返回错误 / 抛异常 三态）
+  * ``_make_tool_handler`` 端到端埋点（成功 / 工具返回错误 / 抛异常 / **用户中断**）
   * fail-open：统计异常不影响调用链路
 
 状态隔离说明（重要）：
@@ -56,13 +56,60 @@ def test_record_success_and_error_accumulates():
     assert s is not None, "调用统计未记录"
     assert s["calls"] == 3
     assert s["errors"] == 1
+    assert s["interrupts"] == 0, "未传 interrupted 时不应有中断计数（三态守护）"
     assert s["total_ms"] == 450.0
     assert s["max_ms"] == 300.0
     assert s["avg_ms"] == 150.0                 # 450 / 3
+    # 三态语义：成功率 = (calls - errors - interrupts) / calls = (3 - 1 - 0) / 3
     assert s["success_rate"] == round(2 / 3, 4)
     assert s["last_error"] == "boom"
     assert s["last_error_at"] > 0
     assert s["last_ok_at"] > 0
+
+
+def test_record_interrupted_is_separate_state():
+    """三态之一：``interrupted=True`` 既不增加 errors，也不增加 success。
+
+    仍计入 calls/total_ms（属真实耗时），单独 ``interrupts`` 计数。
+    """
+    mt._record_mcp_call("srv", "t1", True, 100.0)
+    mt._record_mcp_call("srv", "t1", False, 50.0, "boom")
+    mt._record_mcp_call("srv", "t1", True, 200.0, interrupted=True)
+
+    s = _one(tool="t1")
+    assert s is not None
+    assert s["calls"] == 3, "中断仍计入 calls（真实耗时）"
+    assert s["errors"] == 1, "中断不计入 errors"
+    assert s["interrupts"] == 1, "中断单独计数"
+    # 成功率 = (3 - 1 - 1) / 3 = 0.3333...（三态：中断从分母里排除）
+    assert s["success_rate"] == round(1 / 3, 4)
+    # 中断耗时仍算入 max_ms / total_ms
+    assert s["total_ms"] == 350.0
+    assert s["max_ms"] == 200.0
+
+
+def test_record_interrupted_does_not_touch_last_ok_at():
+    """中断不视为「成功」，故不动 last_ok_at（避免污染「上次成功时间」）。"""
+    mt._record_mcp_call("srv", "t1", True, 100.0)
+    s = _one(tool="t1")
+    last_ok_before = s["last_ok_at"]
+    # 立即记录一次中断 —— last_ok_at 不变
+    mt._record_mcp_call("srv", "t1", True, 200.0, interrupted=True)
+    s = _one(tool="t1")
+    assert s["last_ok_at"] == last_ok_before, "中断不应刷新 last_ok_at"
+    assert s["interrupts"] == 1
+
+
+def test_record_interrupted_only_path():
+    """纯中断场景（无成功/失败）—— success_rate 应为 0.0（分母全排除）。"""
+    mt._record_mcp_call("srv", "t1", True, 50.0, interrupted=True)
+    mt._record_mcp_call("srv", "t1", True, 60.0, interrupted=True)
+    s = _one(tool="t1")
+    assert s["calls"] == 2
+    assert s["errors"] == 0
+    assert s["interrupts"] == 2
+    # (2 - 0 - 2) / 2 = 0
+    assert s["success_rate"] == 0.0
 
 
 def test_record_separates_server_and_tool():
@@ -185,6 +232,7 @@ def test_handler_records_success(monkeypatch):
     s = _one()
     assert s is not None, "成功调用未被埋点记录"
     assert s["calls"] == 1 and s["errors"] == 0
+    assert s["interrupts"] == 0, "成功不应触发中断计数"
     assert s["success_rate"] == 1.0
     assert s["total_ms"] >= 0
 
@@ -197,6 +245,7 @@ def test_handler_records_tool_level_error(monkeypatch):
     s = _one()
     assert s["calls"] == 1
     assert s["errors"] == 1, "工具返回 error 应计入 errors"
+    assert s["interrupts"] == 0, "工具返回 error 不是中断"
     assert s["last_error"] == "tool said no"
     assert s["success_rate"] == 0.0
 
@@ -209,7 +258,27 @@ def test_handler_records_exception(monkeypatch):
     s = _one()
     assert s["calls"] == 1
     assert s["errors"] == 1
+    assert s["interrupts"] == 0, "RuntimeError 不是中断"
     assert "RuntimeError" in s["last_error"]
+
+
+def test_handler_records_user_interrupt(monkeypatch):
+    """用户主动中断（``InterruptedError``）—— 三态之一（用户审计 ⑤ P2 观察后补强）。
+
+    既不计入 errors，也不计入 success；UI 单独展示。
+    """
+    h = _build_handler(monkeypatch, InterruptedError("user sent a new message"))
+    out = h({})
+    # 既有契约：中断返回的是 ``_interrupted_call_result()``
+    # 内容为 ``{"error": "MCP call interrupted: user sent a new message"}``
+    assert "interrupted" in out, f"中断应返回 'interrupted' 字样的 payload，实际：{out!r}"
+
+    s = _one()
+    assert s["calls"] == 1, "中断仍计入 calls（真实耗时）"
+    assert s["errors"] == 0, "用户主动中断 != 调用失败"
+    assert s["interrupts"] == 1, "用户主动中断单独计数"
+    # 三态成功率：(calls - errors - interrupts) / calls = (1 - 0 - 1) / 1 = 0
+    assert s["success_rate"] == 0.0
 
 
 def test_handler_non_json_result_counts_as_success(monkeypatch):
@@ -218,6 +287,7 @@ def test_handler_non_json_result_counts_as_success(monkeypatch):
     h({})
     s = _one()
     assert s["calls"] == 1 and s["errors"] == 0
+    assert s["interrupts"] == 0
 
 
 # --------------------------------------------------------------------------
@@ -239,6 +309,7 @@ def test_record_never_raises_on_internal_error(monkeypatch):
     """统计内部出错必须静默 —— 监控不能拖垮它观察的调用链路。"""
     monkeypatch.setattr(mt, "_MCP_CALL_STATS", _BrokenDict(), raising=True)
     mt._record_mcp_call("s", "t", True, 1.0)  # 不应抛
+    mt._record_mcp_call("s", "t", True, 1.0, interrupted=True)  # 三态也不应抛
 
 
 def test_concurrent_records_are_consistent():

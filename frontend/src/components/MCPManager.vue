@@ -58,19 +58,23 @@ function refreshAll() {
 }
 
 // per-tool → per-server 聚合（含派生字段 avg_ms / rate）
+// 三态：calls / errors / interrupts —— interrupts 是 ⑤ P2 观察后加的维度
+// （用户主动中断的次数，既非成功也非失败，UI 单独展示）。
 const statsByServer = computed(() => {
   const m = {}
   for (const t of (callStats.value?.tools || [])) {
-    const s = m[t.server] || (m[t.server] = { calls: 0, errors: 0, total_ms: 0, max_ms: 0, tools: 0 })
+    const s = m[t.server] || (m[t.server] = { calls: 0, errors: 0, interrupts: 0, total_ms: 0, max_ms: 0, tools: 0 })
     s.calls += t.calls || 0
     s.errors += t.errors || 0
+    s.interrupts += t.interrupts || 0
     s.total_ms += t.total_ms || 0
     s.max_ms = Math.max(s.max_ms, t.max_ms || 0)
     s.tools += 1
   }
   for (const s of Object.values(m)) {
     s.avg_ms = s.calls ? Math.round(s.total_ms / s.calls) : 0
-    s.rate = s.calls ? Math.round((s.calls - s.errors) / s.calls * 100) : null
+    // 三态：成功率分母排除 interrupts（与后端 _record_mcp_call 语义一致）
+    s.rate = s.calls ? Math.round((s.calls - s.errors - s.interrupts) / s.calls * 100) : null
   }
   return m
 })
@@ -182,8 +186,12 @@ onEvent('tool.deregistered', () => refreshAll())
       <span class="text-gray-500 dark:text-gray-400">
         失败 <b :class="statsSummary.errors ? 'text-red-500' : 'text-gray-700 dark:text-gray-200'">{{ statsSummary.errors }}</b>
       </span>
+      <!-- 三态：用户主动中断独立展示（既非成功也非失败） -->
+      <span v-if="statsSummary.interrupts" class="text-gray-500 dark:text-gray-400">
+        中断 <b class="text-amber-600 dark:text-amber-400">{{ statsSummary.interrupts }}</b>
+      </span>
       <span class="text-gray-500 dark:text-gray-400">
-        成功率 <b :class="statsSummary.errors ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'">{{ Math.round(statsSummary.success_rate * 100) }}%</b>
+        成功率 <b :class="(statsSummary.errors || statsSummary.interrupts) ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'">{{ Math.round(statsSummary.success_rate * 100) }}%</b>
       </span>
       <span class="ml-auto text-gray-400">{{ callStats.count }} 个工具有记录</span>
     </div>
@@ -242,8 +250,11 @@ onEvent('tool.deregistered', () => refreshAll())
           <span>调用 <b class="text-gray-600 dark:text-gray-300">{{ statsByServer[srv.name].calls }}</b></span>
           <span v-if="statsByServer[srv.name].errors"
                 class="text-red-400">失败 {{ statsByServer[srv.name].errors }}</span>
+          <!-- 三态：用户主动中断独立展示 -->
+          <span v-if="statsByServer[srv.name].interrupts"
+                class="text-amber-500">中断 {{ statsByServer[srv.name].interrupts }}</span>
           <span v-if="statsByServer[srv.name].rate !== null"
-                :class="statsByServer[srv.name].errors ? 'text-amber-500' : 'text-green-500'">
+                :class="(statsByServer[srv.name].errors || statsByServer[srv.name].interrupts) ? 'text-amber-500' : 'text-green-500'">
             成功率 {{ statsByServer[srv.name].rate }}%
           </span>
           <span>均 {{ fmtMs(statsByServer[srv.name].avg_ms) }}</span>

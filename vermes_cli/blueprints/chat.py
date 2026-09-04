@@ -3852,6 +3852,10 @@ async def mcp_call_stats():
         stats = get_mcp_call_stats()
         total_calls = sum(s.get("calls", 0) for s in stats)
         total_errors = sum(s.get("errors", 0) for s in stats)
+        total_interrupts = sum(s.get("interrupts", 0) for s in stats)
+        # 三态：成功率 = (calls - errors - interrupts) / calls
+        # 中断既非 errors 也非 success —— 与底层 _record_mcp_call 语义一致
+        non_terminal = total_errors + total_interrupts
         return {
             "ok": True,
             "tools": stats,
@@ -3859,8 +3863,9 @@ async def mcp_call_stats():
             "summary": {
                 "calls": total_calls,
                 "errors": total_errors,
+                "interrupts": total_interrupts,
                 "success_rate": (
-                    round((total_calls - total_errors) / total_calls, 4)
+                    round((total_calls - non_terminal) / total_calls, 4)
                     if total_calls else 0.0
                 ),
             },
