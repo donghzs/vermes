@@ -219,11 +219,20 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-gray-500 mb-1 block">厂商（provider）</label>
-              <input v-model="forgeModal.provider" placeholder="如 deepseek / anthropic / agnes" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
+              <select v-model="forgeModal.provider" @change="onForgeProviderChange" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500">
+                <option value="">用全局默认（不指定厂商）</option>
+                <option v-for="p in modelProviders" :key="p.slug" :value="p.slug">{{ p.name }}<template v-if="p.is_current"> · 当前</template></option>
+                <option value="__custom__">自定义厂商…</option>
+              </select>
+              <input v-if="forgeModal.provider === '__custom__'" v-model="forgeModal.customProvider" placeholder="自定义 provider 名（如 deepseek）" class="mt-2 w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
             </div>
             <div>
               <label class="text-xs text-gray-500 mb-1 block">模型（model）</label>
-              <input v-model="forgeModal.model" placeholder="如 deepseek-chat" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
+              <select v-if="forgeModels.length" v-model="forgeModal.model" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500">
+                <option value="">用厂商默认</option>
+                <option v-for="m in forgeModels" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <input v-else v-model="forgeModal.model" placeholder="如 deepseek-chat（留空=厂商默认）" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
             </div>
           </div>
           <div>
@@ -259,7 +268,30 @@ const query = ref('')
 // ⑭ 造神：原生 agent 列表（transport=native 的 Vermes 原生 agent）
 const nativeAgents = ref([])
 // 造神弹窗状态
-const forgeModal = ref({ open: false, editing: null, name: '', description: '', provider: '', model: '', apiKey: '', systemPrompt: '', hue: 0 })
+const forgeModal = ref({ open: false, editing: null, name: '', description: '', provider: '', model: '', customProvider: '', apiKey: '', systemPrompt: '', hue: 0 })
+
+// ── 造神：厂商/模型下拉（复用设置页 /api/model/options 已配厂商+精选模型） ──
+const modelProviders = ref([])   // [{ slug, name, is_current, models: [] }]
+const forgeModels = computed(() => {
+  if (!forgeModal.value.provider || forgeModal.value.provider === '__custom__') return []
+  const p = modelProviders.value.find(x => x.slug === forgeModal.value.provider)
+  return (p && p.models) || []
+})
+
+async function loadModelProviders() {
+  try {
+    const data = await api.getModels()
+    modelProviders.value = (data && data.providers) || []
+  } catch (e) {
+    console.warn('[Agents] 加载厂商/模型列表失败（不影响手动输入）', e)
+    modelProviders.value = []
+  }
+}
+
+function onForgeProviderChange() {
+  // 切换厂商时清空之前选的模型（避免张冠李戴：deepseek 的模型配 anthropic 厂商）
+  forgeModal.value.model = ''
+}
 
 async function loadAgents(refresh = false) {
   loading.value = true
@@ -435,13 +467,13 @@ function openForge(editing = null) {
     ? {
         open: true, editing, error: '',
         name: editing.name || '', description: editing.description || '',
-        provider: editing.provider || '', model: editing.model || '',
+        provider: editing.provider || '', model: editing.model || '', customProvider: '',
         apiKey: '', systemPrompt: editing.system_prompt || '',
         hue: editing.hue || 0,
       }
     : {
         open: true, editing: null, error: '',
-        name: '', description: '', provider: '', model: '',
+        name: '', description: '', provider: '', model: '', customProvider: '',
         apiKey: '', systemPrompt: '', hue: 0,
       }
 }
@@ -457,11 +489,13 @@ async function submitForge() {
     ? m.apiKey.trim()
     : (m.editing ? '__KEEP__' : '')
   try {
+    // 自定义厂商：用 customProvider 输入值
+    const finalProvider = m.provider === '__custom__' ? (m.customProvider || '').trim() : m.provider
     const data = await api.upsertNativeAgent({
       id: m.editing ? m.editing.id : undefined,
       name: m.name.trim(),
       description: m.description,
-      provider: m.provider,
+      provider: finalProvider,
       model: m.model,
       api_key: apiKey,
       system_prompt: m.systemPrompt,
@@ -483,5 +517,6 @@ onMounted(() => {
   loadAgents()
   loadRecipes()
   loadNativeAgents()
+  loadModelProviders()
 })
 </script>
