@@ -29,6 +29,11 @@ for src, dst in [
     ('vermes_cli/adapters', 'vermes_cli/adapters'),
     ('vermes_cli/modules', 'vermes_cli/modules'),
     ('vermes_cli/proxy', 'vermes_cli/proxy'),
+    # ⑭ 请神收尾：a2a 食谱目录（含 registry/*.yaml 数据文件，必须显式 datas，
+    # 否则重打 DMG 后 load_all_recipes(RECIPES_DIR, recursive=True) 读空目录，登堂功能全废）
+    ('vermes_cli/a2a', 'vermes_cli/a2a'),
+    # ③ Bot Mode P1：房间/会话密钥/@mention 解析纯函数 helper 包
+    ('vermes_cli/botmode', 'vermes_cli/botmode'),
     # P3-4 D7：domains/*.yaml 数据文件（collect_submodules 只收 .py 进 PYZ，
     # 不收数据文件，必须显式 datas 打包，否则重打 DMG 后 domain_for_brick 读空目录）
     ('vermes_cli/capabilities/domains', 'vermes_cli/capabilities/domains'),
@@ -155,6 +160,10 @@ hiddenimports = [
     'vermes_cli.update_manager',
     'vermes_cli.shutdown_signal',
     'vermes_cli.win_adapter',
+    # ⑭/③ 新增子包：静态 import 已覆盖（chat.py:40-43），补 hiddenimports 双保险
+    'vermes_cli.a2a', 'vermes_cli.a2a.recipes', 'vermes_cli.a2a.recipes.loader',
+    'vermes_cli.a2a.recipes.schema', 'vermes_cli.a2a.credentials', 'vermes_cli.a2a.transport',
+    'vermes_cli.botmode', 'vermes_cli.botmode.core',
     'gateway', 'gateway.status', 'gateway.config', 'gateway.session_context',
     'gateway.gateway_utils',
     'gateway.slash_handlers', 'gateway.slash_handlers._common',

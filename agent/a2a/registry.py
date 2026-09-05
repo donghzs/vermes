@@ -52,6 +52,8 @@ class AgentRegistry:
             "capabilities": handle.capabilities,
             "registered_at": handle.registered_at,
             "last_heartbeat": time.time(),
+            # ⑭ dispatch：recipe 随 handle 一起持久化
+            "recipe": handle.recipe or None,
         })
 
     def unregister(self, profile_id: str) -> None:
@@ -102,6 +104,7 @@ class AgentRegistry:
             transport=agent.get("transport", "local"),
             capabilities=tuple(agent.get("capabilities", ())),
             registered_at=agent.get("registered_at", 0.0),
+            recipe=agent.get("recipe") or "",
         )
 
     def list_agents(self, alive_only: bool = True) -> List[AgentHandle]:
@@ -116,6 +119,7 @@ class AgentRegistry:
                 transport=agent.get("transport", "local"),
                 capabilities=tuple(agent.get("capabilities", ())),
                 registered_at=agent.get("registered_at", 0.0),
+                recipe=agent.get("recipe") or "",
             )
             if alive_only and not self.is_alive(h.profile_id):
                 continue

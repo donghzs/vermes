@@ -4159,10 +4159,19 @@ async def api_list_agent_recipes(request: Request):
     }
 
 
-def _acp_health_check(transport) -> "tuple[bool, str]":
-    """请神收尾 T3 健康检查：探测 ACP 命令在 PATH 上可达（能 spawn 才有意义）。
+def _acp_health_check(transport, timeout_seconds: float = 30.0) -> "tuple[bool, str]":
+    """请神收尾健康检查：真实 ACP initialize 握手（不止 PATH 可达性探针）。
 
-    轻量、确定性、无副作用；真正的 stdio 握手留给运行时首次调用（T4/T5）。
+    两级：
+    1. 快检 —— 命令是否在 PATH 上（不在则无需 spawn，省一次进程开销）
+    2. 真握手 —— spawn 子进程做 ``initialize`` 协议协商，验证「真能起来 +
+       真能说 ACP」，不做 session/new + session/prompt（无副作用、不烧 token）
+
+    失败**不阻断注册**：返回 ``(False, 原因)``，调用方仍完成注册并在
+    ``health.detail`` 里带上握手失败原因，供用户诊断。
+
+    ``timeout_seconds`` 默认 30s —— npx 类 recipe 首次拉包可能耗时较久，
+    超时判 unhealthy 但不阻断。
     """
     binary = getattr(transport, "_acp_command", None)
     if not binary:
@@ -4170,7 +4179,15 @@ def _acp_health_check(transport) -> "tuple[bool, str]":
     resolved = shutil.which(binary)
     if not resolved:
         return False, f"ACP command not found on PATH: {binary!r}"
-    return True, f"resolved {binary} -> {resolved}"
+    # 真握手：能 spawn + 能完成 initialize 才算健康
+    handshake = getattr(transport, "_handshake", None)
+    if handshake is None:
+        # 退化路径（不应发生）：transport 无握手能力时回退到可达性判定
+        return True, f"resolved {binary} -> {resolved} (handshake unavailable)"
+    ok, detail = handshake(timeout_seconds=timeout_seconds)
+    if ok:
+        return True, f"{detail} ({binary} -> {resolved})"
+    return False, f"handshake failed: {detail}"
 
 
 async def api_register_agent_profile(request: Request):
@@ -4268,6 +4285,9 @@ async def api_register_agent_profile(request: Request):
                     "capabilities": list(recipe.capabilities),
                     "registered_at": now,
                     "last_heartbeat": now,
+                    # ⑭ dispatch：记录登堂所用 recipe，供运行时 dispatch
+                    # 找回 recipe → 构造 transport → spawn 目标 agent。
+                    "recipe": recipe.name,
                 }
             )
         finally:

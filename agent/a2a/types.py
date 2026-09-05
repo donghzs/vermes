@@ -58,9 +58,13 @@ class AgentHandle:
     name: str = ""
     provider: str = ""      # 异构：每 bot 接不同 LLM provider
     model: str = ""         # 异构：每 bot 接不同 model
-    transport: str = "local"  # local / mcp / http / subprocess / ws
+    transport: str = "local"  # local / mcp / http / subprocess / acp / ws
     capabilities: tuple = field(default_factory=tuple)
     registered_at: float = field(default_factory=time.time)
+    # ⑭ dispatch：登堂所用 recipe.name（vermes_cli/a2a/recipes/ 下的 yaml 名）。
+    # 属「寻址信息」——决定怎么 spawn 这个 agent，故随 handle 一起流转，
+    # dispatch 时无需二次查库。空串表示非 recipe 驱动（local 等）或历史行。
+    recipe: str = ""
 
     def uri(self) -> str:
         return f"vermes://{self.profile_id}"

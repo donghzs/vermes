@@ -6,7 +6,11 @@ recipe 匹配 → 鉴权读取 → upsert agent_profiles → register a2a_agents
 
 测试隔离（与既有 botmode 测试同纪律）：
 - SessionDB 重定向到 pytest 临时库，绝不污染真实状态库；
-- shutil.which 打桩控制健康检查（成功/失败两路）；
+- shutil.which 打桩控制健康检查快检（成功/失败两路）；
+- **_handshake 打桩**：健康检查已升级为真实 ACP 握手（spawn + initialize），
+  单测里真 spawn `npx @agentclientprotocol/*` 会联网拉包、慢且不稳定
+  （表现为 flaky）。握手本身的真实行为由
+  ``tests/a2a/test_acp_handshake.py`` 用 mock Popen 覆盖，这里只测路由装配；
 - 鉴权 env 用 monkeypatch 控制（设置/清除）。
 
 断言值取自真实 recipe 文件 ``vermes_cli/a2a/recipes/*.yaml``，非记忆：
@@ -25,6 +29,7 @@ import pytest
 import vermes_state
 import vermes_cli.blueprints.chat as chat_bp
 
+from agent.copilot_acp_client import AcpAgentTransportBase
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -36,6 +41,13 @@ def reg(tmp_path, monkeypatch):
     """每个用例：干净临时库 + 注册端点 TestClient。"""
     db_path = tmp_path / "state.db"
     monkeypatch.setattr(chat_bp, "SessionDB", lambda: vermes_state.SessionDB(db_path))
+    # 真握手会 spawn 真实 npx（联网拉包、慢且 flaky）——路由层测试一律打桩。
+    # 握手真实行为见 tests/a2a/test_acp_handshake.py（mock Popen）。
+    monkeypatch.setattr(
+        AcpAgentTransportBase,
+        "_handshake",
+        lambda self, timeout_seconds=30.0: (True, "handshake ok (mocked)"),
+    )
     app = FastAPI()
     chat_bp.register_to(app)
     return SimpleNamespace(

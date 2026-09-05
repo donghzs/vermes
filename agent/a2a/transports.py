@@ -9,10 +9,12 @@
   - subprocess  —— CLI 外部 agent（Codex / Claude Code，JSON-RPC/stdio）
   - mcp         —— stdio-MCP 外部 agent（OpenClaw / 扣子 / WorkBuddy·QClaw）
   - http        —— HTTP-API 外部 agent（豆包 / 百度搭子 / 大厂 SaaS）
+  - acp         —— ACP 协议 agent（⑭ 神魔堂 recipe 驱动，register 端点写此值）
   - ws          —— WS/SSE（预留，实时双向）
 
 初版落地 local + subprocess + mcp + http 四个 adapter 工厂；
 ws 只声明接口，外部 agent 接满后再补实现（规格明示）。
+acp 为 ⑭ 请神收尾新增（transports_acp.py），唯一已真实接线 spawn 的通路。
 
 每个 adapter 声明 capability 标签，随注册写入 AgentRegistry 供调度匹配。
 """
@@ -87,7 +89,8 @@ def _discover_transports() -> None:
     """导入所有 transport 模块以触发自动注册（mirror provider 层 idiom）。"""
     global _discovered
     _discovered = True
-    for _mod in ("local", "subprocess", "mcp", "http"):
+    # "acp" = ⑭ 神魔堂 recipe 驱动通路（transports_acp.py），随登堂 agent 接线
+    for _mod in ("local", "subprocess", "mcp", "http", "acp"):
         try:
             __import__(f"agent.a2a.transports_{_mod}")
         except ImportError:

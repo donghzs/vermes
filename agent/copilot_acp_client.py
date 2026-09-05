@@ -502,6 +502,128 @@ class AcpAgentTransportBase:
             model=model or self.default_model,
         )
 
+    def _handshake(self, *, timeout_seconds: float = 30.0) -> tuple[bool, str]:
+        """真实 ACP initialize 握手：spawn → initialize → 清理。
+
+        与 ``_run_prompt`` 的区别：只做**协议版本协商**（initialize），
+        不建 session、不发 prompt——无副作用、不烧 token、快。
+
+        健康检查语义：任何失败都返回 ``(False, 原因)`` 而**不抛异常**，
+        由调用方决定是否放行注册。
+
+        进程清理是硬要求：握手结束后必须 kill 子进程并关闭 stdio，
+        否则每次注册都会留下一个孤儿 ACP 进程。
+        """
+        proc: subprocess.Popen[str] | None = None
+        try:
+            proc = subprocess.Popen(
+                [self._acp_command] + self._acp_args,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                cwd=self._acp_cwd,
+                env=self._apply_auth_env(_build_subprocess_env()),
+            )
+        except FileNotFoundError:
+            return False, f"command not found: {self._acp_command!r}"
+        except OSError as exc:
+            return False, f"spawn failed: {exc}"
+
+        inbox: queue.Queue[dict[str, Any]] = queue.Queue()
+        stderr_tail: deque[str] = deque(maxlen=20)
+
+        def _stdout_reader() -> None:
+            if proc.stdout is None:
+                return
+            for line in proc.stdout:
+                try:
+                    inbox.put(json.loads(line))
+                except Exception:
+                    inbox.put({"raw": line.rstrip("\n")})
+
+        def _stderr_reader() -> None:
+            if proc.stderr is None:
+                return
+            for line in proc.stderr:
+                stderr_tail.append(line.rstrip("\n"))
+
+        out_thread = threading.Thread(target=_stdout_reader, daemon=True)
+        err_thread = threading.Thread(target=_stderr_reader, daemon=True)
+        out_thread.start()
+        err_thread.start()
+
+        detail = ""
+        try:
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": 1,
+                    "clientCapabilities": {
+                        "fs": {"readTextFile": True, "writeTextFile": True}
+                    },
+                    "clientInfo": {"name": "vermes", "version": "1.0.0"},
+                },
+            }
+            proc.stdin.write(json.dumps(payload) + "\n")
+            proc.stdin.flush()
+
+            deadline = time.monotonic() + timeout_seconds
+            while time.monotonic() < deadline:
+                if proc.poll() is not None:
+                    break
+                try:
+                    msg = inbox.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                # 握手阶段只需匹配 id==1 的响应；session/update 通知一律忽略
+                if msg.get("id") != 1:
+                    continue
+                if "error" in msg:
+                    err = msg.get("error") or {}
+                    return False, f"initialize rejected: {err.get('message') or err}"
+                result = msg.get("result") or {}
+                detail = f"handshake ok: protocolVersion={result.get('protocolVersion')}"
+                return True, detail
+
+            # 超时 / 进程提前退出
+            stderr_text = "\n".join(stderr_tail).strip()
+            if proc.poll() is not None:
+                return False, f"process exited early (rc={proc.returncode})" + (
+                    f": {stderr_text}" if stderr_text else ""
+                )
+            return False, f"initialize timed out after {timeout_seconds}s"
+        except (BrokenPipeError, OSError) as exc:
+            return False, f"handshake io error: {exc}"
+        except Exception as exc:  # 兜底：健康检查不该抛
+            return False, f"handshake failed: {exc}"
+        finally:
+            # 硬清理：kill + 关 stdio。握手进程无复用价值，留着就是孤儿。
+            self._cleanup_handshake_process(proc)
+
+    def _cleanup_handshake_process(self, proc: "subprocess.Popen[str] | None") -> None:
+        """终止握手子进程并关闭管道（幂等，任何异常都吞掉）。"""
+        if proc is None:
+            return
+        try:
+            if proc.poll() is None:
+                proc.kill()
+                try:
+                    proc.wait(timeout=3)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            try:
+                if stream is not None:
+                    stream.close()
+            except Exception:
+                pass
+
     def _run_prompt(self, prompt_text: str, *, timeout_seconds: float) -> tuple[str, str]:
         try:
             proc = subprocess.Popen(

@@ -615,7 +615,12 @@ CREATE TABLE IF NOT EXISTS a2a_agents (
     transport       TEXT,
     capabilities    TEXT,             -- JSON 数组字符串（能力标签）
     registered_at   REAL,
-    last_heartbeat  REAL
+    last_heartbeat  REAL,
+    -- ⑭ dispatch：登堂时用的 recipe.name（vermes_cli/a2a/recipes/ 下的 yaml 名）。
+    -- dispatch 接线后，SubprocessTransport/AcpTransport 需凭此列找回 recipe
+    -- 才能构造 transport、spawn 目标 agent。历史行（未接线前注册的）为 NULL，
+    -- 调用方需判空回退（详见 transports_acp.py）。
+    recipe          TEXT
 );
 
 -- ── Bot Mode（③ Phase 1：桌面单房间多 Agent 群聊）──
@@ -1878,12 +1883,13 @@ class SessionDB:
             conn.execute(
                 "INSERT INTO a2a_agents "
                 "(profile_id, name, provider, model, transport, capabilities, "
-                " registered_at, last_heartbeat) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                " registered_at, last_heartbeat, recipe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(profile_id) DO UPDATE SET "
                 "name = excluded.name, provider = excluded.provider, "
                 "model = excluded.model, transport = excluded.transport, "
                 "capabilities = excluded.capabilities, "
-                "last_heartbeat = excluded.last_heartbeat",
+                "last_heartbeat = excluded.last_heartbeat, "
+                "recipe = excluded.recipe",
                 (
                     handle.get("profile_id", ""),
                     handle.get("name", ""),
@@ -1893,6 +1899,7 @@ class SessionDB:
                     _json.dumps(list(handle.get("capabilities", ())), ensure_ascii=False),
                     handle.get("registered_at", time.time()),
                     handle.get("last_heartbeat", time.time()),
+                    handle.get("recipe"),
                 ),
             )
         self._execute_write(_do)
@@ -1910,7 +1917,7 @@ class SessionDB:
             with self._lock:
                 row = self._conn.execute(
                     "SELECT profile_id, name, provider, model, transport, "
-                    "capabilities, registered_at, last_heartbeat "
+                    "capabilities, registered_at, last_heartbeat, recipe "
                     "FROM a2a_agents WHERE profile_id = ?", (profile_id,)
                 ).fetchone()
         except sqlite3.OperationalError as exc:
@@ -1932,6 +1939,8 @@ class SessionDB:
             "capabilities": cap_list,
             "registered_at": row["registered_at"] if isinstance(row, sqlite3.Row) else row[6],
             "last_heartbeat": row["last_heartbeat"] if isinstance(row, sqlite3.Row) else row[7],
+            # ⑭ dispatch：recipe 列（历史行可能为 None，调用方需判空）
+            "recipe": row["recipe"] if isinstance(row, sqlite3.Row) else (row[8] if len(row) > 8 else None),
         }
 
     def get_a2a_agent_by_name(self, name: str) -> Optional[dict]:
