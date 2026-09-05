@@ -4328,6 +4328,193 @@ async def api_agent_contacts(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+# ── ⑭ 造神：技能推荐（已装 + 未装可一键装） ─────────────────────────
+# 角色语义匹配：优先 experts_catalog 的 skills 字段（策展的「角色→技能名」金标准映射），
+# 命中专家（displayName/profession/tags 子串或 bigram 软匹配）即取其技能名；
+# 未命中则退化用角色名/描述做关键字。返回两层：installed（已装可直接用）
+# + market（未装，前端可一键装）。
+_EXPERT_CATALOG: Optional[list] = None
+
+
+def _load_expert_catalog() -> list:
+    global _EXPERT_CATALOG
+    if _EXPERT_CATALOG is not None:
+        return _EXPERT_CATALOG
+    import json as _json
+    from pathlib import Path as _Path
+    try:
+        p = _Path(__file__).parent.parent / "experts_catalog.json"
+        _EXPERT_CATALOG = _json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        _EXPERT_CATALOG = []
+    return _EXPERT_CATALOG
+
+
+def _cjk_bigrams(text: str) -> set:
+    """提取中文连续汉字序列（用于软匹配角色语义）。"""
+    import re as _re
+    return set(_re.findall(r"[\u4e00-\u9fff]{2,}", text or ""))
+
+
+def _text_hit(text: str, candidate: str) -> bool:
+    """文本命中：子串包含 或 bigram 重叠（2 字词也能命中 4 字词）。"""
+    if not text or not candidate:
+        return False
+    # 子串包含（"调试" ∈ "调试排错"）
+    if candidate in text or text in candidate:
+        return True
+    # bigram 重叠（字面相近词）
+    return bool(_cjk_bigrams(text) & _cjk_bigrams(candidate))
+
+
+# 能力标签 → 推荐技能名（覆盖 seed 专家 & 自造神的英文 capability_tags，
+# experts_catalog 只覆盖 6 个策展场景，seed 的 legal/analyst/marketing/product/
+# doctor/teacher 等不在其中，此表作为补充。技能名须真实存在于已装/市场源）。
+_TAG_SKILL_HINTS: dict = {
+    "code": ["software-development"],
+    "writing": ["docx", "research"],
+    "legal": ["docx"],
+    "data": ["xlsx"],
+    "analytics": ["xlsx"],
+    "marketing": ["multi-search-engine"],
+    "product": ["docx"],
+    "planning": ["docx"],
+    "content": ["docx"],
+    "search": ["multi-search-engine"],
+    "health": ["multi-search-engine"],
+    "knowledge": ["multi-search-engine"],
+    "education": ["multi-search-engine"],
+    "teaching": ["multi-search-engine"],
+}
+
+
+def _match_expert(role: str, desc: str) -> Optional[dict]:
+    """命中 experts_catalog 里的专家（子串/bigram 软匹配），返回条目或 None。"""
+    role_bg = _cjk_bigrams(role or "")
+    desc_bg = _cjk_bigrams(desc or "")
+    hay_bg = role_bg | desc_bg
+    for e in _load_expert_catalog():
+        disp = (e.get("displayName") or {}).get("zh", "")
+        prof = (e.get("profession") or {}).get("zh", "")
+        tags_zh = [t.get("zh", "") for t in (e.get("tags") or []) if t.get("zh")]
+        for cand in [disp, prof] + tags_zh:
+            # 子串：角色/描述 任一命中专家字段
+            if any(_text_hit(w, cand) for w in (role or "").split() if len(w) >= 2):
+                return e
+            if any(_text_hit(w, cand) for w in (desc or "").split() if len(w) >= 2):
+                return e
+            # bigram 重叠
+            if hay_bg & _cjk_bigrams(cand):
+                return e
+    return None
+
+
+def _match_installed_skills(keywords: list, installed: list) -> list:
+    """在已装技能里按关键词/bigram 匹配，返回命中列表（带 score）。"""
+    scored = []
+    for s in installed:
+        name = s.get("name", "")
+        desc = s.get("description", "")
+        cat = s.get("category", "")
+        hay = f"{name} {desc} {cat}".lower()
+        score = 0
+        for kw in keywords:
+            kwl = kw.lower()
+            if kwl in hay:
+                score += 3
+            elif _cjk_bigrams(kw) & _cjk_bigrams(hay):
+                score += 2
+        if score > 0:
+            scored.append({**s, "score": score})
+    scored.sort(key=lambda x: -x["score"])
+    return scored[:6]
+
+
+async def api_agent_skill_recommendations(request: Request):
+    """GET /api/agents/skill-recommendations?role=&desc=&tags= — 按角色推荐技能。
+
+    返回：
+      - expert_hit: 命中的专家目录条目（id/displayName/skills，可选）
+      - installed: 已装技能（直接可用，附 score）
+      - market: 未装技能（积木市场可一键装，附 identifier/source）
+    优先级：命中专家目录 → 直接用其 skills（金标准）；否则用能力标签映射
+    （_TAG_SKILL_HINTS）；再否则关键字搜已装+市场。
+    """
+    import asyncio as _aio
+    role = (request.query_params.get("role") or "").strip()
+    desc = (request.query_params.get("desc") or "").strip()
+    tags_raw = (request.query_params.get("tags") or "").strip()
+    tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+    if not role and not desc and not tags:
+        return {"ok": True, "expert_hit": None, "installed": [], "market": []}
+
+    # 已装技能全量（用于判定 installed / market 归属）
+    from tools.skills_tool import _find_all_skills
+    try:
+        installed_all = _find_all_skills(skip_disabled=True)
+    except Exception:
+        installed_all = []
+    installed_names = {s["name"] for s in installed_all}
+
+    expert = _match_expert(role, desc)
+    skill_names = (expert or {}).get("skills", []) or []
+
+    # 能力标签兜底：专家目录未命中 or skills 为空时，用 capability_tags 映射
+    if not skill_names and tags:
+        for t in tags:
+            for sn in _TAG_SKILL_HINTS.get(t, []):
+                if sn not in skill_names:
+                    skill_names.append(sn)
+
+    installed_hits = []
+    market = []
+
+    if skill_names:
+        # 命中专家目录 or 标签映射：skills 字段即推荐技能名
+        installed_hits = [s for s in installed_all if s.get("name") in skill_names]
+        for sn in skill_names:
+            if sn not in installed_names:
+                market.append({
+                    "name": sn, "description": "", "source": "",
+                    "identifier": sn, "recommended": True,
+                })
+    else:
+        # 未命中：用角色名/描述做关键字，搜已装 + 市场
+        keywords = [w for w in (role + " " + desc).split() if len(w) >= 2]
+        keywords = keywords[:4] if keywords else [role or desc]
+        installed_hits = _match_installed_skills(keywords, installed_all)
+        q = keywords[0] if keywords else (role or desc)
+        if q:
+            def _sync_search():
+                from tools.skills_hub import GitHubAuth, create_source_router, unified_search, _skill_meta_to_dict
+                try:
+                    auth = GitHubAuth()
+                    sources = create_source_router(auth)
+                    results = unified_search(q, sources, source_filter="all", limit=12)
+                except Exception:
+                    return []
+                return [_skill_meta_to_dict(r) for r in results]
+            try:
+                market = await _aio.to_thread(_sync_search)
+            except Exception:
+                market = []
+            market = [m for m in market if m.get("name") not in installed_names][:6]
+
+    expert_hit = None
+    if expert:
+        expert_hit = {
+            "id": expert.get("id"),
+            "displayName": (expert.get("displayName") or {}).get("zh", ""),
+            "skills": skill_names,
+        }
+    return {
+        "ok": True,
+        "expert_hit": expert_hit,
+        "installed": installed_hits,
+        "market": market,
+    }
+
+
 async def api_native_agent_upsert(request: Request):
     """POST /api/agents/native — 造神/编辑原生 agent（含 per-agent 专属 API key）。
 
@@ -4618,6 +4805,13 @@ def register_to(app):
         api_native_agent_upsert,
         methods=["POST"],
         name="native_agent_upsert",
+    )
+    # ⑭ 造神：技能推荐（已装 + 未装可一键装）
+    app.add_api_route(
+        "/api/agents/skill-recommendations",
+        api_agent_skill_recommendations,
+        methods=["GET"],
+        name="agent_skill_recommendations",
     )
     # ⚙️ 微信式：联系人列表（可拉人进群的全量 agent：原生 + ACP 登堂）
     app.add_api_route(

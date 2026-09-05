@@ -258,6 +258,29 @@
             </div>
             <p v-else class="text-[11px] text-gray-400">技能列表加载中/不可用，可留空用全量工具。</p>
           </div>
+          <div class="border-t border-gray-100 dark:border-gray-700 pt-2">
+            <label class="text-xs text-gray-500 mb-1 flex items-center justify-between">
+              <span>📚 技能推荐（SKILL 文档）</span>
+              <button @click="recommendSkills" :disabled="skillRec.loading" class="text-[11px] text-indigo-500 hover:text-indigo-600 disabled:opacity-50">✨ 按角色推荐</button>
+            </label>
+            <p class="text-[11px] text-gray-400 mb-2">根据角色语义推荐专用技能：已装的直接可用，未装的可一键安装。</p>
+            <div v-if="skillRec.loading" class="text-[11px] text-gray-400 py-1">推荐中…</div>
+            <template v-else>
+              <div v-if="skillRec.installed.length" class="mb-2">
+                <div class="text-[11px] text-emerald-600 font-medium mb-1">✓ 已装（直接用）</div>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="s in skillRec.installed" :key="s.name" class="px-2 py-0.5 rounded text-[11px] bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">{{ s.name }}</span>
+                </div>
+              </div>
+              <div v-if="skillRec.market.length" class="mb-2">
+                <div class="text-[11px] text-amber-600 font-medium mb-1">未装（可一键装）</div>
+                <div class="flex flex-wrap gap-1">
+                  <button v-for="m in skillRec.market" :key="m.name" @click="installSkill(m)" :disabled="skillRec.installing === m.name" class="px-2 py-0.5 rounded text-[11px] bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800 disabled:opacity-50">{{ skillRec.installing === m.name ? '安装中…' : '⬇ ' + m.name }}</button>
+                </div>
+              </div>
+              <p v-if="!skillRec.installed.length && !skillRec.market.length && skillRec.queried" class="text-[11px] text-gray-400">无匹配推荐，可留空。</p>
+            </template>
+          </div>
         </div>
         <p v-if="forgeModal.error" class="mt-3 text-xs text-red-500">{{ forgeModal.error }}</p>
         <div class="mt-4 flex justify-end gap-2">
@@ -346,6 +369,49 @@ function recommendToolsets() {
   // 只在技能列表里有的才勾（避免推荐了不存在的 toolset）
   const valid = new Set(allToolsets.value.map(t => t.name))
   forgeModal.value.toolsets = picked.filter(t => valid.has(t))
+}
+
+// ── 技能推荐（SKILL 文档层：已装 + 未装可一键装） ──
+const skillRec = ref({ loading: false, queried: false, installed: [], market: [], installing: '' })
+
+async function recommendSkills() {
+  const role = forgeModal.value.name || ''
+  const desc = forgeModal.value.description || ''
+  skillRec.value = { loading: true, queried: false, installed: [], market: [], installing: '' }
+  try {
+    const params = new URLSearchParams({ role, desc })
+    const data = await api.get(`/agents/skill-recommendations?${params.toString()}`)
+    skillRec.value = {
+      loading: false, queried: true,
+      installed: (data && data.installed) || [],
+      market: (data && data.market) || [],
+      installing: '',
+    }
+  } catch (e) {
+    console.warn('[Agents] 技能推荐失败', e)
+    skillRec.value = { loading: false, queried: true, installed: [], market: [], installing: '' }
+  }
+}
+
+async function installSkill(m) {
+  const name = m.name || m.identifier
+  if (!name) return
+  skillRec.value.installing = name
+  try {
+    const payload = { identifier: m.identifier || name, name, source: m.source || undefined }
+    const r = await api.installSkill(payload)
+    if (r && r.ok !== false) {
+      // 安装成功：从未装移到已装
+      skillRec.value.market = skillRec.value.market.filter(x => (x.name || x.identifier) !== name)
+      skillRec.value.installed.push({ name })
+    } else {
+      console.warn('[Agents] 安装失败', r)
+    }
+  } catch (e) {
+    console.warn('[Agents] 安装技能失败', e)
+  } finally {
+    skillRec.value.installing = ''
+  }
 }
 
 async function loadAgents(refresh = false) {
