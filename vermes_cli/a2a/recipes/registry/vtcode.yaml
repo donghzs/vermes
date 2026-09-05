@@ -13,7 +13,8 @@ description: An open-source coding agent with LLM-native code understanding and 
   context management.（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./vtcode
-args: []
+args:
+- acp
 provider: acp-vtcode
 auth:
   scheme: apikey

@@ -10,7 +10,8 @@ version: 2026.09.02
 description: Cursor's coding agent（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./dist-package/cursor-agent
-args: []
+args:
+- acp
 provider: acp-cursor
 auth:
   scheme: apikey

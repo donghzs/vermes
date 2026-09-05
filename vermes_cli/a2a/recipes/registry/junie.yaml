@@ -11,7 +11,8 @@ version: 3123.7.0
 description: AI Coding Agent by JetBrains（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./Applications/junie.app/Contents/MacOS/junie
-args: []
+args:
+- --acp=true
 provider: acp-junie
 auth:
   scheme: apikey

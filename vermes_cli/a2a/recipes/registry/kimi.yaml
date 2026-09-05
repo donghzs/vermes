@@ -11,7 +11,8 @@ version: 1.50.0
 description: Moonshot AI's coding assistant（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./kimi
-args: []
+args:
+- acp
 provider: acp-kimi
 auth:
   scheme: apikey

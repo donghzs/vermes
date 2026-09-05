@@ -11,7 +11,8 @@ version: 3000.6.14
 description: Devin CLI coding agent by Cognition（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./bin/devin
-args: []
+args:
+- acp
 provider: acp-devin
 auth:
   scheme: apikey

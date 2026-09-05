@@ -12,7 +12,8 @@ description: Open-source DevOps agent in Rust with enterprise-grade security（b
   release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./stakpak
-args: []
+args:
+- acp
 provider: acp-stakpak
 auth:
   scheme: apikey

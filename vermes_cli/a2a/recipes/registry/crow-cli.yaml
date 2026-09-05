@@ -11,7 +11,8 @@ version: 0.1.24
 description: Minimal ACP Native Coding Agent（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./crow-cli
-args: []
+args:
+- acp
 provider: acp-crow-cli
 auth:
   scheme: apikey

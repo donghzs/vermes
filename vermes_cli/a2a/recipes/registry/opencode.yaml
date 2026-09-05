@@ -11,7 +11,8 @@ version: 1.18.28
 description: The open source coding agent（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./opencode
-args: []
+args:
+- acp
 provider: acp-opencode
 auth:
   scheme: apikey

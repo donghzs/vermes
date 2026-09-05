@@ -12,7 +12,9 @@ description: Harn runs .harn agent pipelines as a native ACP coding agent over s
   release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./harn
-args: []
+args:
+- serve
+- acp
 provider: acp-harn
 auth:
   scheme: apikey

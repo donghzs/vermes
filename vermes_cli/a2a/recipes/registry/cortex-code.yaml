@@ -10,7 +10,9 @@ version: 1.0.73
 description: Snowflake's Cortex Code coding agent（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./coco-1.0.73+180523.e6179a031de9-darwin-arm64/cortex
-args: []
+args:
+- acp
+- serve
 provider: acp-cortex-code
 auth:
   scheme: apikey

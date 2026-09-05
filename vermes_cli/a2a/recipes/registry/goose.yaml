@@ -12,7 +12,8 @@ description: A local, extensible, open source AI agent that automates engineerin
   tasks（binary：需先从 release 下载解包后运行 entry_point）
 transport: acp
 entry_point: ./goose
-args: []
+args:
+- acp
 provider: acp-goose
 auth:
   scheme: apikey

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from vermes_cli.a2a.recipes.generate_from_registry import (
     CURATED_NAMES,
+    _BINARY_PLATFORM_PRIORITY,
     generate,
 )
 from vermes_cli.a2a.recipes.loader import (
@@ -91,3 +92,41 @@ def test_claude_acp_registry_recipe_uses_newer_zed_adapter() -> None:
     rc = load_recipe(RECIPES_DIR / "registry" / "claude-acp.yaml")
     assert rc.entry_point == "npx"
     assert rc.args and rc.args[0].startswith("@agentclientprotocol/claude-agent-acp@")
+
+
+def test_binary_recipes_preserve_registry_args(tmp_path: Path) -> None:
+    """P1 回归守卫：binary 类 recipe 必须透传 registry 真源的 args。
+
+    初版 _build_spawn 的 binary 分支写死 ``return cmd, [], "binary"``，导致
+    12/16 个 binary recipe 丢了启动 ACP 模式的关键参数（cursor/kimi 的 ['acp']、
+    junie 的 ['--acp=true'] 等），spawn 出来不是 ACP 模式、握手必失败。本条
+    逐条比对生成 recipe 的 args 与 registry 真源，杜绝再次静默丢参。
+    """
+    data = _registry_data()
+    written = generate(data, tmp_path)
+    written_by_name = {p.stem: p for p in written}
+    reg_agents = {a["id"]: a for a in data["agents"]}
+    for name, path in written_by_name.items():
+        rc = load_recipe(path)
+        if not rc.entry_point.startswith("./"):  # 仅校验 binary 类
+            continue
+        agent = reg_agents[name]
+        b = (agent.get("distribution") or {}).get("binary") or {}
+        expected_args: list[str] = []
+        for plat in _BINARY_PLATFORM_PRIORITY:
+            node = b.get(plat) or {}
+            if (node.get("cmd") or "").strip():
+                expected_args = list(node.get("args") or [])
+                break
+        assert rc.args == expected_args, (
+            f"{name}: binary args 丢失/错配！生成={rc.args} 真源={expected_args}"
+        )
+
+
+def test_cursor_and_junie_binary_args() -> None:
+    """针对审计点名的代表 agent 做高信号断言：丢 args = 登堂必失败。"""
+    cur = load_recipe(RECIPES_DIR / "registry" / "cursor.yaml")
+    assert cur.entry_point.startswith("./")
+    assert cur.args == ["acp"], f"cursor 必须带 ['acp'] 才能进 ACP 模式，实得 {cur.args}"
+    jun = load_recipe(RECIPES_DIR / "registry" / "junie.yaml")
+    assert jun.args == ["--acp=true"], f"junie 必须带 ['--acp=true']，实得 {jun.args}"

@@ -13,7 +13,9 @@ agent 批量 dump 成 recipe，作为 P2 起步器——用户拿到的不是 39
 - npx/uvx：``entry_point`` 分别为 ``npx`` / ``uvx``，``args = [package] + args``。
 - binary：registry 只给各平台 ``archive/cmd/sha256``，没有可直接 spawn 的命令，
   故 ``entry_point`` 取代表性平台（darwin-aarch64 优先）的 ``cmd``（相对路径，
-  需先下载解包），并在 description 注明「需下载解包」。
+  需先下载解包），并在 description 注明「需下载解包」。**但各平台节点普遍带
+  ``args``（cursor/kimi 的 ``['acp']``、junie 的 ``['--acp=true']`` 等），是
+  启动 ACP 模式的关键参数，必须透传，**绝不**写死空列表**。
 - 同时含 binary+npx 的 agent（kilo / sigit）：优先 npx（更便携）。
 - registry **无 auth 字段**（"auth" 命中只是 ``authors`` 子串误报），故 auth
   留空，由「登堂」授权弹窗按 agent 要求填。
@@ -98,7 +100,11 @@ def _build_spawn(agent: dict[str, Any]) -> tuple[str, list[str], str]:
             node = b.get(plat) or {}
             cmd = (node.get("cmd") or "").strip()
             if cmd:
-                return cmd, [], "binary"
+                # ⚠️ 关键：各平台节点普遍带 args（cursor/kimi 的 ['acp']、
+                # junie 的 ['--acp=true'] 等），是启动 ACP 模式的关键参数，
+                # 必须透传，绝不能写死空列表（初版 P1 bug：12/16 个 binary
+                # recipe 因丢 args 而 spawn 出非 ACP 模式，握手必失败）。
+                return cmd, list(node.get("args") or []), "binary"
     return "", [], "unknown"
 
 
