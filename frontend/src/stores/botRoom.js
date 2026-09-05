@@ -77,15 +77,35 @@ export const useBotRoomStore = defineStore('botRoom', {
       }
       return this.rooms
     },
-    async createRoom(id, name) {
+    async createRoom(name, members = [], extra = {}) {
       if (this.botModeDisabled) return { ok: false, error: 'bot mode disabled' }
-      const r = await api.createBotRoom(id, name)
+      const r = await api.createBotRoom(name, members, extra)
       if (r && r.ok) {
         await this.loadRooms()
-        this.currentRoomId = id
-        // 新房间创建时后端已自动把 seed profile 入房 → 立即拉成员供 @ 补全
-        await Promise.all([this.loadTimeline(id), this.loadMembers(id)])
+        this.currentRoomId = r.room_id
+        await Promise.all([this.loadTimeline(r.room_id), this.loadMembers(r.room_id)])
       }
+      return r
+    },
+    async updateRoom(patch) {
+      const rid = this.currentRoomId
+      if (!rid || this.botModeDisabled) return { ok: false, error: 'no room' }
+      const r = await api.updateBotRoom(rid, patch)
+      if (r && r.ok) await this.loadRooms()
+      return r
+    },
+    async addMember(refId) {
+      const rid = this.currentRoomId
+      if (!rid) return { ok: false, error: 'no room' }
+      const r = await api.addBotRoomMember(rid, refId)
+      if (r && r.ok) await this.loadMembers(rid)
+      return r
+    },
+    async removeMember(refId) {
+      const rid = this.currentRoomId
+      if (!rid) return { ok: false, error: 'no room' }
+      const r = await api.removeBotRoomMember(rid, refId)
+      if (r && r.ok) await this.loadMembers(rid)
       return r
     },
     async selectRoom(id) {

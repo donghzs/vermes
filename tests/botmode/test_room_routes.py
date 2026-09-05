@@ -99,37 +99,43 @@ def run_e2e(env):
     _seed(db)
     db.close()
 
-    r = client.post("/api/bot/rooms", json={"id": "r1", "name": "测试房"})
+    r = client.post("/api/bot/rooms", json={"name": "测试房"})
     check("create room ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    room_id = r.json().get("room_id")
+    check("room_id auto-generated", bool(room_id), r.text[:200])
 
-    r = client.post("/api/bot/rooms", json={"id": "", "name": "x"})
-    check("empty room_id -> 400", r.status_code == 400, r.text[:200])
-
-    r = client.post("/api/bot/rooms", json={"id": "r2", "name": ""})
+    r = client.post("/api/bot/rooms", json={"name": ""})
     check("empty name -> 400", r.status_code == 400, r.text[:200])
 
-    r = client.post("/api/bot/rooms/r1/members", json={"ref_id": ""})
+    r = client.post("/api/bot/rooms", json={"id": "r2", "name": ""})
+    check("empty name -> 400 (with id)", r.status_code == 400, r.text[:200])
+
+    r = client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": ""})
     check("empty ref_id -> 400", r.status_code == 400, r.text[:200])
 
     r = client.get("/api/bot/rooms")
     rooms = r.json().get("rooms", [])
-    check("list rooms has r1", any(x["id"] == "r1" for x in rooms), str(rooms)[:200])
+    check("list rooms has new room", any(x["id"] == room_id for x in rooms), str(rooms)[:200])
 
-    r = client.post("/api/bot/rooms/r1/messages", json={"text": "@研究助手 你好"})
+    # ⚙️ 微信式：新群默认空群（不自动全员入房），手动拉 researcher 进群
+    r = client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": "researcher"})
+    check("add member ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "@研究助手 你好"})
     check("send message ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:300])
 
-    r = client.get("/api/bot/rooms/r1/timeline")
+    r = client.get(f"/api/bot/rooms/{room_id}/timeline")
     tl = r.json().get("timeline", [])
     check("timeline non-empty", len(tl) >= 1, str(tl)[:400])
     check("timeline has user msg", any(t["author_type"] == "user" for t in tl))
     check("timeline has agent reply", any(t["author_type"] == "agent" for t in tl), str(tl)[:400])
 
     sess_ids = [t.get("turn_session_id") for t in tl]
-    check("G4 session_key format", any((s or "").startswith("room:r1:agent:") for s in sess_ids), str(sess_ids)[:200])
-    check("mention resolved researcher", any(s == "room:r1:agent:researcher" for s in sess_ids), str(sess_ids)[:200])
+    check("G4 session_key format", any((s or "").startswith(f"room:{room_id}:agent:") for s in sess_ids), str(sess_ids)[:200])
+    check("mention resolved researcher", any(s == f"room:{room_id}:agent:researcher" for s in sess_ids), str(sess_ids)[:200])
 
     db2 = vermes_state.SessionDB(env.db_path)
-    tl2 = db2.get_bot_room_timeline("r1")
+    tl2 = db2.get_bot_room_timeline(room_id)
     db2.close()
     check("restart restores timeline", len(tl2) >= 1 and any(t["author_type"] == "user" for t in tl2), f"len={len(tl2)}")
 
@@ -140,22 +146,39 @@ def run_e2e(env):
     conn.close()
     check("no empty-id pollution", bad_ap == 0 and bad_mb == 0 and bad_rm == 0, f"ap={bad_ap},mb={bad_mb},rm={bad_rm}")
 
-    r = client.post("/api/bot/rooms", json={"id": "r3", "name": "房3"})
+    # ⚙️ 微信式：新建群默认空群（0 成员），不自动全员入房
+    r = client.post("/api/bot/rooms", json={"name": "房3"})
+    r3_id = r.json().get("room_id")
     dbx = vermes_state.SessionDB(env.db_path)
-    members = dbx._conn.execute("SELECT ref_id FROM bot_room_members WHERE room_id='r3'").fetchall()
+    members = dbx._conn.execute("SELECT ref_id FROM bot_room_members WHERE room_id=?", (r3_id,)).fetchall()
     dbx.close()
-    check("default partners auto-join (>=2)", len(members) >= 2, str(members)[:200])
+    check("new room starts empty (no auto-join)", len(members) == 0, str(members)[:200])
+
+    # 群公告/群任务往返 + 踢人
+    r = client.patch(f"/api/bot/rooms/{room_id}", json={"announcement": "本周冲刺", "tasks": "完成P0"})
+    check("patch room announcement/tasks ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    dbx = vermes_state.SessionDB(env.db_path)
+    rm = dbx.get_bot_room(room_id)
+    dbx.close()
+    check("announcement persisted", rm and rm["announcement"] == "本周冲刺", str(rm)[:200])
+    check("tasks persisted", rm and rm["tasks"] == "完成P0", str(rm)[:200])
+    r = client.delete(f"/api/bot/rooms/{room_id}/members/researcher")
+    check("remove member ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    dbx = vermes_state.SessionDB(env.db_path)
+    after = [m["ref_id"] for m in dbx.list_bot_room_members(room_id)]
+    dbx.close()
+    check("member removed", "researcher" not in after, str(after)[:200])
 
     keys = [f"{a.kwargs['provider']}:{a.kwargs['model']}:{a.session_id}" for a in env.captured]
     check("agent cached under derived key (G2)", any(chat_bp._agent_cache.get(k) is not None for k in keys), str(keys)[:200])
 
     # ── T5/P1：session_id 绑定房间派生 key + 不污染单聊 sessions 表 ──
     check("AIAgent session_id == room key (P1)",
-          any(a.session_id == "room:r1:agent:researcher" for a in env.captured),
+          any(a.session_id == f"room:{room_id}:agent:researcher" for a in env.captured),
           [a.session_id for a in env.captured])
 
     db3 = vermes_state.SessionDB(env.db_path)
-    room_key = "room:r1:agent:researcher"
+    room_key = f"room:{room_id}:agent:researcher"
     pol_all = db3.list_sessions_rich(limit=100000, offset=0)
     pol_web_excl = db3.list_sessions_rich(limit=100000, offset=0, exclude_sources=["web"])
     db3.close()

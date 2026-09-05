@@ -299,6 +299,15 @@ const api = {
     return resp.json()
   },
 
+  async patch(path, data) {
+    const resp = await request(path, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    return resp.json()
+  },
+
   // 会话
   getSessions() { return this.get('/sessions') },
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
@@ -609,9 +618,17 @@ const api = {
 
   // ── Bot 房间（③ Bot Mode P1 · 桌面单房间多 Agent 群聊） ──
   listBotRooms() { return this.get('/bot/rooms') },
-  createBotRoom(id, name) { return this.post('/bot/rooms', { id, name }) },
+  createBotRoom(name, members = [], extra = {}) {
+    return this.post('/bot/rooms', { name, members, ...extra })
+  },
+  updateBotRoom(roomId, patch) {
+    return this.patch(`/bot/rooms/${encodeURIComponent(roomId)}`, patch)
+  },
   addBotRoomMember(roomId, refId, role = 'agent') {
     return this.post(`/bot/rooms/${encodeURIComponent(roomId)}/members`, { ref_id: refId, role })
+  },
+  removeBotRoomMember(roomId, refId) {
+    return this.del(`/bot/rooms/${encodeURIComponent(roomId)}/members/${encodeURIComponent(refId)}`)
   },
   listBotRoomMembers(roomId) {
     return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/members`)
@@ -633,6 +650,9 @@ const api = {
   // ── ⑭ 造神：原生 agent 管理（per-agent 专属 API key） ──
   listNativeAgents() { return this.get('/agents/native') },
   upsertNativeAgent(payload) { return this.post('/agents/native', payload) },
+
+  // ── ⚙️ 微信式：联系人列表（可拉人进群的全量 agent：原生 + ACP 登堂） ──
+  listAgentContacts() { return this.get('/agents/contacts') },
 }
 
 export default api

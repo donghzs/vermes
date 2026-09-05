@@ -656,6 +656,8 @@ CREATE TABLE IF NOT EXISTS bot_rooms (
     title TEXT,
     channel TEXT DEFAULT 'desktop',
     source_group_id TEXT,
+    announcement TEXT DEFAULT '',
+    tasks TEXT DEFAULT '',
     created_at REAL,
     updated_at REAL
 );
@@ -2106,22 +2108,23 @@ class SessionDB:
         return result
 
     def seed_default_profiles(self) -> None:
-        """幂等植入默认 agent profile（researcher / coder）。
+        """幂等植入默认 agent profile（分行业/分场景专家 + 通用研究员/编码）。
 
-        仅在 agent_profiles 为空时插入，多次调用安全。房间创建端点会调用，
-        保证默认伙伴始终存在（房间创建时默认 agent 自动入房）。
+        仅在 agent_profiles 为空时插入，多次调用安全。向 WorkBuddy 学习：
+        预置不同行业、不同场景、不同角色的专家 agent，放到群聊里正好——
+        用户建群时可按需拉入对应专家（微信式加好友/拉人进群）。
         """
         try:
             with self._lock:
-                cnt = self._conn.execute(
-                    "SELECT COUNT(*) AS c FROM agent_profiles"
-                ).fetchone()
-                _n = cnt[0] if isinstance(cnt, (tuple, list)) else cnt["c"]
-                if _n > 0:
-                    return
+                existing_ids = {
+                    r[0] for r in self._conn.execute(
+                        "SELECT id FROM agent_profiles"
+                    ).fetchall()
+                }
         except sqlite3.OperationalError:
-            return
+            existing_ids = set()
         defaults = [
+            # ── 通用底座 ──
             {
                 "id": "researcher", "name": "研究助手",
                 "description": "通用研究/检索/写作助手",
@@ -2133,28 +2136,127 @@ class SessionDB:
             },
             {
                 "id": "coder", "name": "编码助手",
-                "description": "代码编写/审查助手",
+                "description": "代码编写/审查/重构助手",
                 "capability_tags": ["code"],
                 "is_default": 0, "hue": 140, "avatar_seed": "coder",
                 "provider": "", "model": "", "toolsets": [],
                 "system_prompt": "", "transport": "native",
                 "transport_ref": "", "skill_set": "",
             },
+            # ── 分行业专家（向 WorkBuddy 学习：不同行业/场景/角色） ──
+            {
+                "id": "legal", "name": "法律顾问",
+                "description": "合同审查/法务咨询/合规风险提示",
+                "capability_tags": ["legal", "writing"],
+                "is_default": 0, "hue": 0, "avatar_seed": "legal",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "你是资深法律顾问，擅长合同审查、法务咨询、合规风险提示。回答严谨、援引法条、明确风险点，不提供可能造成误导的绝对化结论。",
+                "transport": "native", "transport_ref": "", "skill_set": "",
+            },
+            {
+                "id": "analyst", "name": "数据分析师",
+                "description": "数据分析/指标解读/可视化建议",
+                "capability_tags": ["data", "analytics"],
+                "is_default": 0, "hue": 30, "avatar_seed": "analyst",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "你是资深数据分析师，擅长数据解读、指标分析、可视化建议。结论用数据说话，能区分相关性与因果，主动指出数据局限。",
+                "transport": "native", "transport_ref": "", "skill_set": "",
+            },
+            {
+                "id": "marketing", "name": "营销策划",
+                "description": "营销方案/文案/增长策略",
+                "capability_tags": ["marketing", "writing"],
+                "is_default": 0, "hue": 330, "avatar_seed": "marketing",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "你是资深营销策划，擅长营销方案、广告文案、增长策略。洞察用户心理，产出可落地、可量化的方案。",
+                "transport": "native", "transport_ref": "", "skill_set": "",
+            },
+            {
+                "id": "product", "name": "产品经理",
+                "description": "需求分析/产品规划/PRD/竞品分析",
+                "capability_tags": ["product", "planning"],
+                "is_default": 0, "hue": 200, "avatar_seed": "product",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "你是资深产品经理，擅长需求分析、产品规划、PRD 撰写、竞品分析。以用户价值为中心，结构化输出，明确优先级与取舍。",
+                "transport": "native", "transport_ref": "", "skill_set": "",
+            },
+            {
+                "id": "writer", "name": "写作导师",
+                "description": "文案润色/内容创作/结构优化",
+                "capability_tags": ["writing", "content"],
+                "is_default": 0, "hue": 270, "avatar_seed": "writer",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "你是资深写作导师，擅长文案润色、内容创作、结构优化。文风清晰有感染力，能根据受众与目的调整语气。",
+                "transport": "native", "transport_ref": "", "skill_set": "",
+            },
+            {
+                "id": "doctor", "name": "健康顾问",
+                "description": "健康科普/报告解读（非医疗诊断）",
+                "capability_tags": ["health", "knowledge"],
+                "is_default": 0, "hue": 120, "avatar_seed": "doctor",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "你是健康科普顾问，擅长健康知识科普、体检报告通俗解读。始终声明不替代医生诊断，涉及疾病治疗建议就医。",
+                "transport": "native", "transport_ref": "", "skill_set": "",
+            },
+            {
+                "id": "teacher", "name": "学习教练",
+                "description": "知识点讲解/学习方法/课程设计",
+                "capability_tags": ["education", "teaching"],
+                "is_default": 0, "hue": 50, "avatar_seed": "teacher",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "你是资深学习教练，擅长知识点讲解、学习方法指导、课程设计。深入浅出，用类比与例子帮人真正理解。",
+                "transport": "native", "transport_ref": "", "skill_set": "",
+            },
         ]
         for d in defaults:
+            if d["id"] in existing_ids:
+                continue  # 已存在（含用户自造同名）→ 不覆盖用户自定义
             self.upsert_agent_profile(d)
 
     def create_bot_room(self, room_id: str, title: str,
                         channel: str = "desktop",
-                        source_group_id: Optional[str] = None) -> None:
-        """创建一个房间（幂等：已存在则忽略）。"""
+                        source_group_id: Optional[str] = None,
+                        announcement: str = "",
+                        tasks: str = "") -> None:
+        """创建一个房间（幂等：已存在则忽略）。
+
+        ⚙️ 微信式建群（2026-09-05）：不再自动把全员拉进房——成员由
+        调用方在创建后按需 add_bot_room_member() 手动拉入（用户想拉谁拉谁）。
+        群公告/群任务为可编辑文本字段，建群时可一并给定。
+        """
         def _do(conn):
             conn.execute(
                 "INSERT OR IGNORE INTO bot_rooms "
-                "(id, title, channel, source_group_id, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (room_id, title, channel, source_group_id,
+                "(id, title, channel, source_group_id, announcement, tasks, "
+                " created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (room_id, title, channel, source_group_id, announcement, tasks,
                  time.time(), time.time()),
+            )
+        self._execute_write(_do)
+
+    def update_bot_room(self, room_id: str, *, title: Optional[str] = None,
+                        announcement: Optional[str] = None,
+                        tasks: Optional[str] = None) -> None:
+        """更新房间元信息（标题/群公告/群任务）。None 表示不改动该字段。"""
+        def _do(conn):
+            sets, params = [], []
+            if title is not None:
+                sets.append("title = ?")
+                params.append(title)
+            if announcement is not None:
+                sets.append("announcement = ?")
+                params.append(announcement)
+            if tasks is not None:
+                sets.append("tasks = ?")
+                params.append(tasks)
+            if not sets:
+                return
+            sets.append("updated_at = ?")
+            params.append(time.time())
+            params.append(room_id)
+            conn.execute(
+                f"UPDATE bot_rooms SET {', '.join(sets)} WHERE id = ?", params,
             )
         self._execute_write(_do)
 
@@ -2164,7 +2266,7 @@ class SessionDB:
             with self._lock:
                 rows = self._conn.execute(
                     "SELECT id, title, channel, source_group_id, "
-                    "created_at, updated_at FROM bot_rooms "
+                    "announcement, tasks, created_at, updated_at FROM bot_rooms "
                     "ORDER BY created_at DESC"
                 ).fetchall()
         except sqlite3.OperationalError as exc:
@@ -2174,9 +2276,30 @@ class SessionDB:
         for r in rows:
             out.append({
                 "id": r[0], "title": r[1], "channel": r[2],
-                "source_group_id": r[3], "created_at": r[4], "updated_at": r[5],
+                "source_group_id": r[3], "announcement": r[4] or "",
+                "tasks": r[5] or "", "created_at": r[6], "updated_at": r[7],
             })
         return out
+
+    def get_bot_room(self, room_id: str) -> Optional[Dict[str, Any]]:
+        """查单个房间，无则 None。"""
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT id, title, channel, source_group_id, "
+                    "announcement, tasks, created_at, updated_at FROM bot_rooms "
+                    "WHERE id = ?", (room_id,),
+                ).fetchone()
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_bot_room skipped: %s", exc)
+            return None
+        if row is None:
+            return None
+        return {
+            "id": row[0], "title": row[1], "channel": row[2],
+            "source_group_id": row[3], "announcement": row[4] or "",
+            "tasks": row[5] or "", "created_at": row[6], "updated_at": row[7],
+        }
 
     def add_bot_room_member(self, room_id: str, member_type: str,
                            ref_id: str) -> None:
@@ -2186,6 +2309,21 @@ class SessionDB:
                 "INSERT OR IGNORE INTO bot_room_members "
                 "(room_id, member_type, ref_id, joined_at) VALUES (?, ?, ?, ?)",
                 (room_id, member_type, ref_id, time.time()),
+            )
+            conn.execute(
+                "UPDATE bot_rooms SET updated_at = ? WHERE id = ?",
+                (time.time(), room_id),
+            )
+        self._execute_write(_do)
+
+    def remove_bot_room_member(self, room_id: str, member_type: str,
+                               ref_id: str) -> None:
+        """把成员移出房间（踢人，幂等：不存在也不报错）。"""
+        def _do(conn):
+            conn.execute(
+                "DELETE FROM bot_room_members "
+                "WHERE room_id = ? AND member_type = ? AND ref_id = ?",
+                (room_id, member_type, ref_id),
             )
             conn.execute(
                 "UPDATE bot_rooms SET updated_at = ? WHERE id = ?",

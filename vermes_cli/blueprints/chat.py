@@ -3091,7 +3091,13 @@ async def _bot_broadcast_room_update(room_id: str, event: str, **extra) -> None:
 
 
 async def bot_rooms_create(request: Request):
-    """POST /api/bot/rooms  body: {"id": str, "name": str, "channel": str?}"""
+    """POST /api/bot/rooms  body: {name: str, id?: str, members?: [ref_id], announcement?: str, tasks?: str}
+
+    ⚙️ 微信式建群（2026-09-05）：
+    - 群名必填（想怎么命名怎么命名）；id 可选，缺省自动生成。
+    - 不再自动全员入房——members 显式指定拉谁进群，缺省空群（用户自己拉）。
+    - 群公告/群任务可建群时一并给定（也可后续编辑）。
+    """
     if not _bot_mode_enabled():
         raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
     try:
@@ -3101,20 +3107,31 @@ async def bot_rooms_create(request: Request):
     room_id = (body.get("id") or "").strip()
     name = (body.get("name") or "").strip()
     channel = (body.get("channel") or "desktop").strip()
-    # ⚠️ 空 id 校验（交叉审计补充必做项）
-    if not room_id:
-        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    announcement = (body.get("announcement") or "").strip()
+    tasks = (body.get("tasks") or "").strip()
+    members = body.get("members") or []
+    if not isinstance(members, list):
+        members = []
     if not name:
         raise HTTPException(status_code=400, detail={"ok": False, "error": "name required"})
+    # 群名缺省 id：由标题生成稳定 id（中文保留，空白/特符转 _），并加短随机后缀防撞
+    if not room_id:
+        import re as _re
+        import uuid as _uuid
+        _base = _re.sub(r"\s+", "_", name).strip("_")
+        _base = _base or "room"
+        room_id = f"{_base}_{_uuid.uuid4().hex[:6]}"
     try:
         db = _bot_room_db()
         try:
-            db.seed_default_profiles()  # 幂等：空库才插 researcher/coder
-            db.create_bot_room(room_id, name, channel)
-            # P1 阶段所有 seed profile 视为默认伙伴，自动入房
-            profiles = db.list_agent_profiles()
-            for p in profiles:
-                db.add_bot_room_member(room_id, "agent", p["id"])
+            db.seed_default_profiles()  # 幂等：空库才插专家角色
+            db.create_bot_room(room_id, name, channel,
+                               announcement=announcement, tasks=tasks)
+            # ⚙️ 手动拉人：只拉 members 指定的 agent（想拉谁拉谁）
+            for ref in members:
+                ref = (str(ref) or "").strip()
+                if ref:
+                    db.add_bot_room_member(room_id, "agent", ref)
         finally:
             db.close()
         # 广播房间创建事件（其它桌面客户端即时刷新房间列表）
@@ -3170,6 +3187,68 @@ async def bot_room_members_add(request: Request, room_id: str):
         return {"ok": False, "error": str(e)}
 
 
+async def bot_room_members_remove(request: Request, room_id: str, ref_id: str):
+    """DELETE /api/bot/rooms/{room_id}/members/{ref_id} — 踢人（移出房间）。
+
+    ⚙️ 微信式：拉人进群对应踢人出群。幂等，成员不存在也不报错。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    ref_id = (ref_id or "").strip()
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    if not ref_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "ref_id required"})
+    try:
+        db = _bot_room_db()
+        try:
+            db.remove_bot_room_member(room_id, "agent", ref_id)
+        finally:
+            db.close()
+        await _bot_broadcast_room_update(room_id, "member_change", ref_id=ref_id, role="removed")
+        return {"ok": True, "room_id": room_id, "ref_id": ref_id}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def bot_room_update(request: Request, room_id: str):
+    """PATCH /api/bot/rooms/{room_id} — 编辑群名/群公告/群任务。
+
+    ⚙️ 微信式：群公告/群任务用户可编辑（想怎么命名怎么命名，想设什么任务设什么）。
+    body: {title?, announcement?, tasks?}（只改传入字段）
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    title = body.get("title")
+    announcement = body.get("announcement")
+    tasks = body.get("tasks")
+    if title is None and announcement is None and tasks is None:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "nothing to update"})
+    try:
+        db = _bot_room_db()
+        try:
+            db.update_bot_room(
+                room_id,
+                title=(title or "").strip() if title is not None else None,
+                announcement=(announcement or "").strip() if announcement is not None else None,
+                tasks=(tasks or "").strip() if tasks is not None else None,
+            )
+        finally:
+            db.close()
+        await _bot_broadcast_room_update(room_id, "room_updated", title=title)
+        return {"ok": True, "room_id": room_id}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def bot_room_members_list(request: Request, room_id: str):
     """GET /api/bot/rooms/{room_id}/members
 
@@ -3219,33 +3298,29 @@ async def bot_room_message_send(request: Request, room_id: str):
             norm = RoomIdNormalizer.normalize("desktop", room_id)
             # 2) 解析 @mention → 目标 profile 列表
             #
-            # ⚠️ 候选池口径（董董审计观察，2026-09-04 记档）：
-            # 此处用**全局 profile 池**（db.list_agent_profiles），而前端 @ 补全
-            # 的下拉候选用的是**当前房间成员**（GET .../members，member_type=agent）。
-            # 两者口径不同 → 不在房间内的 profile，前端下拉不显示，但用户手输
-            # @它 时后端仍会派发。
-            #
-            # **这是有意选择，非疏漏**：房间成员是"谁该被默认唤起"，全局池是
-            # "谁能被显式点名"，后者更宽，方便临时召唤未入房的 agent。
-            #
-            # 当前两者**实际等价**，靠两个前提同时成立：
-            #   (a) P1 无创建 agent profile 的入口（只有 seed_default_profiles
-            #       幂等植入 researcher/coder；注意 `vermes profile` CLI 是
-            #       「多实例隔离 profile」，与本表同名不同物，别混淆）；
-            #   (b) bot_rooms_create 会把全部 seed profile 自动入房。
-            # 任一前提被打破（如 ⑭ Bot 实验室接入外部 agent 并注册 profile），
-            # 不一致即显形。
-            #
-            # 将来若要收紧为「房间内才能 @」：把本行换成按房间成员过滤
-            #   profiles = [p for p in db.list_agent_profiles()
-            #               if p["id"] in {m["ref_id"] for m in
-            #                   db.list_bot_room_members(room_id)
-            #                   if m["member_type"] == "agent"}]
-            # 并同步前端候选来源（届时两者才真正一致）。
-            profiles = db.list_agent_profiles()
+            # ⚙️ 微信式（2026-09-05）：候选池 = **当前房间成员**（想拉谁进群才
+            # 能 @ 谁），不再用全局 profile 池。这解决了此前「全局池 vs 房间成员」
+            # 口径不一致的观察（董董审计，2026-09-04）：现在前端 @ 补全与后端
+            # 解析同一口径，均以房间成员为准。
+            member_ids = [
+                m["ref_id"] for m in db.list_bot_room_members(room_id)
+                if m["member_type"] == "agent"
+            ]
+            profiles = [db.get_agent_profile(pid) for pid in member_ids]
+            profiles = [p for p in profiles if p]
+            if not profiles:
+                # 空群：没有可应答的 agent → 写一条系统提示
+                db.append_bot_room_message(room_id, "system", None,
+                                           "[群里还没有 Agent，点「👥 拉人」拉一个进群再聊]")
+                await _bot_broadcast_room_update(
+                    room_id, "room_message",
+                    message={"author_type": "system", "author_ref": None,
+                             "content": "[群里还没有 Agent，点「👥 拉人」拉一个进群再聊]"},
+                )
+                return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
             target_ids = parse_room_mentions(text, profiles)
             if not target_ids:
-                # 空 → default agent（无则 fan-out 全员）
+                # 空 → default agent（房间成员中），无则 fan-out 全员
                 defaults = [p["id"] for p in profiles if p.get("is_default")]
                 target_ids = defaults or [p["id"] for p in profiles]
             # 3) 写用户消息（turn_session_id 关联房间派生 key，供 G4 清理）
@@ -4171,6 +4246,41 @@ async def api_native_agent_profiles(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+async def api_agent_contacts(request: Request):
+    """GET /api/agents/contacts — 联系人列表（可拉人进群的全量 agent）。
+
+    ⚙️ 微信式：登堂即入联系人列表。返回原生 agent（native）+ 外部 ACP agent
+    （acp）统一列表，作为群聊「拉人进群」的候选池。api_key 不回传。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    try:
+        db = _bot_room_db()
+        try:
+            db.seed_default_profiles()
+            profiles = db.list_agent_profiles()
+            out = []
+            for p in profiles:
+                out.append({
+                    "id": p["id"],
+                    "name": p["name"],
+                    "description": p.get("description", ""),
+                    "provider": p.get("provider", ""),
+                    "model": p.get("model", ""),
+                    "avatar_seed": p.get("avatar_seed", ""),
+                    "hue": p.get("hue", 0),
+                    "is_default": p.get("is_default", 0),
+                    "capability_tags": p.get("capability_tags", []),
+                    "transport": p.get("transport", "native"),
+                    "has_api_key": bool(p.get("api_key")),
+                })
+            return {"ok": True, "contacts": out}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def api_native_agent_upsert(request: Request):
     """POST /api/agents/native — 造神/编辑原生 agent（含 per-agent 专属 API key）。
 
@@ -4462,6 +4572,13 @@ def register_to(app):
         methods=["POST"],
         name="native_agent_upsert",
     )
+    # ⚙️ 微信式：联系人列表（可拉人进群的全量 agent：原生 + ACP 登堂）
+    app.add_api_route(
+        "/api/agents/contacts",
+        api_agent_contacts,
+        methods=["GET"],
+        name="agent_contacts",
+    )
     # ⑭ 请神收尾 T4：列出可登堂的 ACP 食谱（前端据此决定是否显示登堂按钮）
     app.add_api_route(
         "/api/agents/recipes",
@@ -4570,6 +4687,18 @@ def register_to(app):
             bot_room_members_list,
             methods=["GET"],
             name="bot_room_members_list",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/members/{ref_id}",
+            bot_room_members_remove,
+            methods=["DELETE"],
+            name="bot_room_members_remove",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}",
+            bot_room_update,
+            methods=["PATCH"],
+            name="bot_room_update",
         )
         app.add_api_route(
             "/api/bot/rooms/{room_id}/messages",
