@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useBotRoomStore } from '../stores/botRoom'
-import { toast } from '../utils/toast'
+import { showToast as toast } from '../utils/toast'
 
 const bot = useBotRoomStore()
 
