@@ -11,10 +11,12 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from agent.copilot_acp_client import AcpAgentTransportBase, CopilotACPClient
 
+from .credentials import get_credential
 from .recipes.schema import RecipeConfig
 
 # provider → transport class 映射。
@@ -46,8 +48,20 @@ def build_acp_transport(recipe: RecipeConfig, **kwargs: Any) -> AcpAgentTranspor
     cls = _PROVIDER_TRANSPORT_REGISTRY.get(
         recipe.provider or "", AcpAgentTransportBase
     )
+    # 授权 Key 持久化 · 读侧解析：优先进程环境，回退到用户凭据库
+    # （~/.vermes/agent_auth.json）。凭据库 key 一律用 recipe.name —— 唯一；
+    # 不用 recipe.auth.fallback_settings（那是 settings.json 路径字面量，
+    # 三条手写 recipe 该值相同，会让 key 共用导致覆盖——P0 已修）。
+    auth_env = recipe.auth.env_var
+    auth_value = None
+    if auth_env:
+        auth_value = os.environ.get(auth_env)
+        if not auth_value:
+            auth_value = get_credential(recipe.name)
     return cls(
         acp_command=recipe.entry_point,
         acp_args=list(recipe.args),
+        auth_env=auth_env,
+        auth_value=auth_value,
         **kwargs,
     )

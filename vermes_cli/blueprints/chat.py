@@ -38,6 +38,7 @@ from vermes_cli.blueprints.agent_cache import (
 )
 from vermes_state import SessionDB
 from vermes_cli.a2a.recipes.loader import find_recipe, load_all_recipes, RECIPES_DIR
+from vermes_cli.a2a.credentials import save_credential
 from vermes_cli.a2a.transport import build_acp_transport
 from vermes_cli.botmode import (
     _session_key_for_room,
@@ -4208,13 +4209,25 @@ async def api_register_agent_profile(request: Request):
             "auth_env": auth_env,
             "spawn_command": recipe.spawn_command,
         }
-    # 用户在前端授权框填的 key → 注入当前进程环境，使后续 spawn 的 ACP 子进程
-    # 继承（_build_subprocess_env 透传 os.environ）。
-    # ⚠️ 已知边界（T3 试水范围内，待办）：仅进程内生效，Vermes 重启后失效；
-    # 持久化应写 recipe.auth.fallback_settings（~/.vermes/settings.json），
-    # 需复用设置页的写 key 通路，不在本 sprint 扩范围。
+    # 用户在前端授权框填的 key → 注入当前进程环境 + 持久化到凭据库。
+    # - os.environ：当次会话有效，使后续 spawn 的 ACP 子进程继承
+    #   （_build_subprocess_env 透传 os.environ）。
+    # - save_credential：写入 ~/.vermes/agent_auth.json（0600，非 git 跟踪），
+    #   Vermes 重启后 build_acp_transport 经 recipe.name 引用键从凭据库回读，
+    #   实现「填一次、跨重启生效」。
+    # 关键：凭据库 key 一律用 recipe.name（唯一）—— 不用 fallback_settings
+    # （那是 settings.json 路径字面量，多 recipe 会冲突覆盖，P0 已修）。
+    # 失败语义：os.environ 已生效（当次可用），凭据库写失败不阻断注册——
+    # 在最终返回里加 persisted: False，前端可基于此 flag 提示用户「未持久化」。
+    persisted = True
+    persist_error: str | None = None
     if auth_env and auth_value:
         os.environ[auth_env] = auth_value
+        try:
+            save_credential(recipe.name, auth_value)
+        except OSError as e:
+            persisted = False
+            persist_error = f"credential store write failed: {e}"
     # 构造 transport（复用 T2 工厂，验证 recipe 可实例化）
     try:
         transport = build_acp_transport(recipe)
@@ -4273,6 +4286,15 @@ async def api_register_agent_profile(request: Request):
         "spawn_command": recipe.spawn_command,
         "capabilities": list(recipe.capabilities),
         "health": {"healthy": healthy, "detail": detail},
+        # 凭据库写入状态：前端可基于 persisted 判断是否要告警「未持久化」。
+        # - persisted=True: 已写入 ~/.vermes/agent_auth.json，重启生效
+        # - persisted=False: os.environ 已注入（当次可用），但磁盘写入失败，
+        #   重启后失效；前端可显示非阻断性提示
+        "auth": {
+            "env_var": auth_env,
+            "persisted": persisted,
+            "persist_error": persist_error,
+        },
     }
 
 

@@ -384,6 +384,8 @@ class AcpAgentTransportBase:
         acp_cwd: str | None = None,
         command: str | None = None,
         args: list[str] | None = None,
+        auth_env: str | None = None,
+        auth_value: str | None = None,
         **_: Any,
     ):
         self.api_key = api_key or self.default_api_key
@@ -394,10 +396,26 @@ class AcpAgentTransportBase:
         self._acp_command = acp_command or command or _resolve_command()
         self._acp_args = list(acp_args or args or _resolve_args())
         self._acp_cwd = str(Path(acp_cwd or os.getcwd()).resolve())
+        # 授权 Key 持久化 · 读侧：recipe 要求的 env_var 及其持久化值（由
+        # build_acp_transport 从进程环境 / 凭据库解析后传入）。
+        self._auth_env = auth_env
+        self._auth_value = auth_value
         self.chat = _ACPChatNamespace(self)
         self.is_closed = False
         self._active_process: subprocess.Popen[str] | None = None
         self._active_process_lock = threading.Lock()
+
+    def _apply_auth_env(self, env: dict[str, str]) -> dict[str, str]:
+        """Inject a persisted auth key into the subprocess env if missing.
+
+        授权 Key 持久化 · 读侧最后一步：recipe 要求的 ``env_var`` 若不在当前
+        进程环境，则使用 ``build_acp_transport`` 从凭据库解析出的持久化值。
+        仅当缺失时才注入，避免覆盖已显式设置的环境变量。
+        """
+        if self._auth_env and self._auth_value and self._auth_env not in env:
+            env = dict(env)
+            env[self._auth_env] = self._auth_value
+        return env
 
     def _check_deprecation(self, stderr_text: str) -> "RuntimeError | None":
         """Hook for subclass-specific deprecation guards.
@@ -494,7 +512,7 @@ class AcpAgentTransportBase:
                 text=True,
                 bufsize=1,
                 cwd=self._acp_cwd,
-                env=_build_subprocess_env(),
+                env=self._apply_auth_env(_build_subprocess_env()),
             )
         except FileNotFoundError as exc:
             raise RuntimeError(
