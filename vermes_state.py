@@ -643,6 +643,11 @@ CREATE TABLE IF NOT EXISTS agent_profiles (
     transport TEXT DEFAULT 'native',
     transport_ref TEXT,
     capability_tags TEXT,
+    -- ⑭ 造神：per-agent 专属 API key（原生 agent 各绑各厂商 key，真正协同作战）。
+    -- 仅对 transport=native 的 Vermes 原生 agent 生效；外部 ACP agent 走
+    -- ~/.vermes/agent_auth.json（凭据库，见 vermes_cli/a2a/credentials.py）。
+    -- 空串 = 回退全局 provider key（_resolve_model_provider）。
+    api_key TEXT DEFAULT '',
     created_at REAL
 );
 
@@ -2013,8 +2018,8 @@ class SessionDB:
                 "INSERT INTO agent_profiles "
                 "(id, name, description, system_prompt, toolsets, avatar_seed, "
                 " hue, is_default, provider, model, skill_set, transport, "
-                " transport_ref, capability_tags, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " transport_ref, capability_tags, api_key, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET "
                 "name = excluded.name, description = excluded.description, "
                 "system_prompt = excluded.system_prompt, "
@@ -2024,6 +2029,7 @@ class SessionDB:
                 "skill_set = excluded.skill_set, transport = excluded.transport, "
                 "transport_ref = excluded.transport_ref, "
                 "capability_tags = excluded.capability_tags, "
+                "api_key = excluded.api_key, "
                 "created_at = excluded.created_at",
                 (
                     profile.get("id", ""),
@@ -2040,6 +2046,7 @@ class SessionDB:
                     profile.get("transport", "native") or "native",
                     profile.get("transport_ref", "") or "",
                     _json.dumps(_norm_list(profile.get("capability_tags")), ensure_ascii=False),
+                    profile.get("api_key", "") or "",
                     profile.get("created_at", time.time()),
                 ),
             )
@@ -2053,7 +2060,7 @@ class SessionDB:
                 row = self._conn.execute(
                     "SELECT id, name, description, system_prompt, toolsets, "
                     "avatar_seed, hue, is_default, provider, model, skill_set, "
-                    "transport, transport_ref, capability_tags, created_at "
+                    "transport, transport_ref, capability_tags, api_key, created_at "
                     "FROM agent_profiles WHERE id = ?", (profile_id,)
                 ).fetchone()
         except sqlite3.OperationalError as exc:
@@ -2075,7 +2082,8 @@ class SessionDB:
             "provider": R(8), "model": R(9), "skill_set": R(10),
             "transport": R(11), "transport_ref": R(12),
             "capability_tags": _load(R(13), "[]"),
-            "created_at": R(14),
+            "api_key": R(14),
+            "created_at": R(15),
         }
 
     def list_agent_profiles(self) -> List[dict]:

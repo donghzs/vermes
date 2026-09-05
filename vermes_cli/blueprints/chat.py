@@ -2999,9 +2999,16 @@ def _resolve_room_agent_identity(profile):
     T5 钩子：profile 填了 provider/model 时改为 profile 覆写，实现异构。
     关键：返回的 provider/model **同时**用于 ``_cache_key`` 与 AIAgent 构造，
     保证 G2 缓存 key 一致（T4 不返工）。
+
+    ⑭ 造神（per-agent 专属 key）：profile.api_key 非空时，用它覆盖全局
+    provider key——不同 agent 各绑各厂商 key，真正协同作战。空串回退全局。
     """
     if profile and profile.get("provider") and profile.get("model"):
-        return _resolve_model_provider(profile["model"], profile["provider"])
+        provider, base_url, api_key, model = _resolve_model_provider(profile["model"], profile["provider"])
+        # per-agent 专属 key 覆盖（原生 agent 各绑各厂商）；空串保留全局解析结果
+        if profile.get("api_key"):
+            api_key = profile["api_key"]
+        return provider, base_url, api_key, model
     return _resolve_model_provider("agnes-2.0-flash", None)
 
 
@@ -4125,6 +4132,97 @@ async def artifact_opened(session_id: str, body: dict):
     return {"ok": True, "opened": sorted(_opened_artifacts.get(session_id, set()))}
 
 
+async def api_native_agent_profiles(request: Request):
+    """GET /api/agents/native — 列出全部原生 agent profile（造神管理）。
+
+    ⑭ 造神（per-agent 专属 API）：返回 transport=native 的 Vermes 原生 agent
+    （researcher/coder 等 seed + 用户自造的神）。api_key 不回传（安全），
+    仅返回 has_api_key 布尔供前端判断是否已配专属 key。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    try:
+        db = _bot_room_db()
+        try:
+            db.seed_default_profiles()
+            profiles = db.list_agent_profiles()
+            out = []
+            for p in profiles:
+                if p.get("transport") == "acp":
+                    continue  # 外部 ACP agent 归诸神魔堂，不在此列
+                out.append({
+                    "id": p["id"],
+                    "name": p["name"],
+                    "description": p.get("description", ""),
+                    "system_prompt": p.get("system_prompt", ""),
+                    "provider": p.get("provider", ""),
+                    "model": p.get("model", ""),
+                    "toolsets": p.get("toolsets", []),
+                    "avatar_seed": p.get("avatar_seed", ""),
+                    "hue": p.get("hue", 0),
+                    "is_default": p.get("is_default", 0),
+                    "capability_tags": p.get("capability_tags", []),
+                    "has_api_key": bool(p.get("api_key")),
+                })
+            return {"ok": True, "agents": out}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def api_native_agent_upsert(request: Request):
+    """POST /api/agents/native — 造神/编辑原生 agent（含 per-agent 专属 API key）。
+
+    body: {id?, name, description?, system_prompt?, provider?, model?,
+           toolsets?, capability_tags?, api_key?, hue?}
+    - id 缺省时用 name 生成稳定 id（造神）；id 已存在时覆盖（编辑）。
+    - api_key 空串 = 清除专属 key（回退全局 provider key）。
+    - api_key 为特殊哨兵 "__KEEP__" = 保持原 key 不变（编辑时前端不传明文）。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "name required"})
+    pid = (body.get("id") or "").strip()
+    if not pid:
+        # 造神：由 name 生成稳定 id（中文保留，空格/特符转 _）
+        pid = name
+    try:
+        db = _bot_room_db()
+        try:
+            existing = db.get_agent_profile(pid)
+            api_key = body.get("api_key", "")
+            if api_key == "__KEEP__":
+                api_key = (existing or {}).get("api_key", "") if existing else ""
+            db.upsert_agent_profile({
+                "id": pid,
+                "name": name,
+                "description": body.get("description", "") or "",
+                "system_prompt": body.get("system_prompt", "") or "",
+                "provider": body.get("provider", "") or "",
+                "model": body.get("model", "") or "",
+                "toolsets": body.get("toolsets", []) or [],
+                "capability_tags": body.get("capability_tags", []) or [],
+                "avatar_seed": body.get("avatar_seed", pid) or pid,
+                "hue": int(body.get("hue", 0) or 0),
+                "is_default": int(body.get("is_default", 0) or 0),
+                "transport": "native",
+                "api_key": api_key or "",
+            })
+            return {"ok": True, "id": pid, "has_api_key": bool(api_key)}
+        finally:
+            db.close()
+    except Exception as e:
+        _log.exception("[BotMode] native agent upsert failed")
+        return {"ok": False, "error": str(e)}
+
+
 async def api_list_agent_recipes(request: Request):
     """GET /api/agents/recipes（请神收尾 T4 支撑）
 
@@ -4350,6 +4448,19 @@ def register_to(app):
         api_register_agent_profile,
         methods=["POST"],
         name="register_agent_profile",
+    )
+    # ⑭ 造神：原生 agent 管理（per-agent 专属 API key）
+    app.add_api_route(
+        "/api/agents/native",
+        api_native_agent_profiles,
+        methods=["GET"],
+        name="native_agent_profiles",
+    )
+    app.add_api_route(
+        "/api/agents/native",
+        api_native_agent_upsert,
+        methods=["POST"],
+        name="native_agent_upsert",
     )
     # ⑭ 请神收尾 T4：列出可登堂的 ACP 食谱（前端据此决定是否显示登堂按钮）
     app.add_api_route(
