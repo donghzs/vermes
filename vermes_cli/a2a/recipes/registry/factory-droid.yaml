@@ -1,0 +1,25 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: factory-droid
+# display name: Factory Droid
+# website: https://factory.ai/product/cli
+# license: proprietary
+# distribution: npx
+name: factory-droid
+version: 0.212.1
+description: Factory Droid - AI coding agent powered by Factory AI
+transport: acp
+entry_point: npx
+args:
+- droid@0.212.1
+- exec
+- --output-format
+- acp-daemon
+provider: acp-factory-droid
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

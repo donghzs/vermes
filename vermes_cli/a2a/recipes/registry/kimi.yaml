@@ -1,0 +1,21 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: kimi
+# display name: Kimi CLI
+# website: https://moonshotai.github.io/kimi-cli/
+# repository: https://github.com/MoonshotAI/kimi-cli
+# license: MIT
+# distribution: binary
+name: kimi
+version: 1.50.0
+description: Moonshot AI's coding assistant（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./kimi
+args: []
+provider: acp-kimi
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

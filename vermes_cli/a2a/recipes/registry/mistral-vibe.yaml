@@ -1,0 +1,21 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: mistral-vibe
+# display name: Mistral Vibe
+# website: https://mistral.ai/products/vibe
+# repository: https://github.com/mistralai/mistral-vibe
+# license: Apache-2.0
+# distribution: binary
+name: mistral-vibe
+version: 2.24.1
+description: Mistral's open-source coding assistant（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./vibe-acp
+args: []
+provider: acp-mistral-vibe
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

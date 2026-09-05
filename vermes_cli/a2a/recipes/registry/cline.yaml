@@ -1,0 +1,25 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: cline
+# display name: Cline
+# website: https://cline.bot/cli
+# repository: https://github.com/cline/cline
+# license: Apache-2.0
+# distribution: npx
+name: cline
+version: 3.0.61
+description: Autonomous coding agent CLI - capable of creating/editing files, running
+  commands, using the browser, and more
+transport: acp
+entry_point: npx
+args:
+- cline@3.0.61
+- --acp
+provider: acp-cline
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

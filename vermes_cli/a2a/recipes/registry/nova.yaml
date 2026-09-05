@@ -1,0 +1,24 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: nova
+# display name: Nova
+# website: https://www.compassap.ai/portfolio/nova.html
+# repository: https://github.com/Compass-Agentic-Platform/nova
+# license: proprietary
+# distribution: npx
+name: nova
+version: 1.1.37
+description: Nova by Compass AI - a fully-fledged software engineer at your command
+transport: acp
+entry_point: npx
+args:
+- '@compass-ai/nova@1.1.37'
+- acp
+provider: acp-nova
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

@@ -1,0 +1,21 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: devin
+# display name: Devin
+# website: https://docs.devin.ai/cli
+# repository: https://github.com/CognitionAI/devin-cli
+# license: proprietary
+# distribution: binary
+name: devin
+version: 3000.6.14
+description: Devin CLI coding agent by Cognition（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./bin/devin
+args: []
+provider: acp-devin
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

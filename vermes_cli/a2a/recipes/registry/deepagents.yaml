@@ -1,0 +1,23 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: deepagents
+# display name: DeepAgents
+# website: https://docs.langchain.com/oss/javascript/deepagents/overview
+# repository: https://github.com/langchain-ai/deepagentsjs
+# license: MIT
+# distribution: npx
+name: deepagents
+version: 0.1.7
+description: Batteries-included AI coding and general purpose agent powered by LangChain.
+transport: acp
+entry_point: npx
+args:
+- deepagents-acp@0.1.7
+provider: acp-deepagents
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

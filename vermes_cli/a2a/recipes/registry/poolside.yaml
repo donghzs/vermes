@@ -1,0 +1,21 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: poolside
+# display name: Poolside
+# website: https://poolside.ai
+# repository: https://github.com/poolsideai/pool
+# license: proprietary
+# distribution: binary
+name: poolside
+version: 1.0.16
+description: Poolside's coding agent（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./pool-darwin-arm64
+args: []
+provider: acp-poolside
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

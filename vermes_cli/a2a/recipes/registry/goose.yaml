@@ -1,0 +1,22 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: goose
+# display name: goose
+# website: https://block.github.io/goose/
+# repository: https://github.com/block/goose
+# license: Apache-2.0
+# distribution: binary
+name: goose
+version: 1.49.0
+description: A local, extensible, open source AI agent that automates engineering
+  tasks（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./goose
+args: []
+provider: acp-goose
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

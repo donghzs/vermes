@@ -1,0 +1,25 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: qwen-code
+# display name: Qwen Code
+# website: https://qwenlm.github.io/qwen-code-docs/en/users/overview
+# repository: https://github.com/QwenLM/qwen-code
+# license: Apache-2.0
+# distribution: npx
+name: qwen-code
+version: 0.23.0
+description: Alibaba's Qwen coding assistant
+transport: acp
+entry_point: npx
+args:
+- '@qwen-code/qwen-code@0.23.0'
+- --acp
+- --experimental-skills
+provider: acp-qwen-code
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

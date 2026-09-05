@@ -59,22 +59,40 @@ def load_recipe(path: str | Path) -> RecipeConfig:
     return RecipeConfig.from_dict(raw, source=str(p))
 
 
-def iter_recipe_files(directory: str | Path) -> Iterator[Path]:
+def iter_recipe_files(directory: str | Path, recursive: bool = False) -> Iterator[Path]:
+    """Yield recipe files in ``directory``.
+
+    ``recursive=False`` (default) only scans the top level — this is what the
+    curated recipes use and keeps ``test_load_all_recipes_finds_three`` exact.
+    ``recursive=True`` also descends into subdirs (e.g. ``registry/`` auto-dumped
+    from the ACP Registry) so generated starters surface alongside curated ones.
+    """
     d = Path(directory)
     if not d.is_dir():
         return
-    for path in sorted(d.glob("*.yaml")):
-        if path.is_file():
-            yield path
-    for path in sorted(d.glob("*.yml")):
-        if path.is_file():
-            yield path
+    if recursive:
+        for path in sorted(d.rglob("*.yaml")):
+            if path.is_file():
+                yield path
+        for path in sorted(d.rglob("*.yml")):
+            if path.is_file():
+                yield path
+    else:
+        for path in sorted(d.glob("*.yaml")):
+            if path.is_file():
+                yield path
+        for path in sorted(d.glob("*.yml")):
+            if path.is_file():
+                yield path
 
 
-def load_all_recipes(directory: str | Path) -> list[RecipeConfig]:
-    """Load every recipe in ``directory`` (skips files that fail validation)."""
+def load_all_recipes(directory: str | Path, recursive: bool = False) -> list[RecipeConfig]:
+    """Load every recipe in ``directory`` (skips files that fail validation).
+
+    Pass ``recursive=True`` to also include recipes in subdirectories.
+    """
     recipes: list[RecipeConfig] = []
-    for path in iter_recipe_files(directory):
+    for path in iter_recipe_files(directory, recursive=recursive):
         try:
             recipes.append(load_recipe(path))
         except ValueError as e:

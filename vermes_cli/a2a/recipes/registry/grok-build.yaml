@@ -1,0 +1,24 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: grok-build
+# display name: Grok Build
+# website: https://x.ai/cli
+# license: proprietary
+# distribution: npx
+name: grok-build
+version: 1.0.21
+description: xAI's coding agent and CLI
+transport: acp
+entry_point: npx
+args:
+- '@xai-official/grok@1.0.21'
+- agent
+- stdio
+provider: acp-grok-build
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

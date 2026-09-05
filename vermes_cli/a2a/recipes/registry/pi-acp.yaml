@@ -1,0 +1,22 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: pi-acp
+# display name: pi ACP
+# repository: https://github.com/svkozak/pi-acp
+# license: MIT
+# distribution: npx
+name: pi-acp
+version: 0.0.33
+description: ACP adapter for pi coding agent
+transport: acp
+entry_point: npx
+args:
+- pi-acp@0.0.33
+provider: acp-pi-acp
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

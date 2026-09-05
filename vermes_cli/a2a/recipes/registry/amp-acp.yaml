@@ -1,0 +1,21 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: amp-acp
+# display name: Amp
+# repository: https://github.com/tao12345666333/amp-acp
+# license: Apache-2.0
+# distribution: binary
+name: amp-acp
+version: 0.9.0
+description: ACP wrapper for Amp - the frontier coding agent（binary：需先从 release 下载解包后运行
+  entry_point）
+transport: acp
+entry_point: ./amp-acp
+args: []
+provider: acp-amp-acp
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

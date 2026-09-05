@@ -1,0 +1,22 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: harn
+# display name: Harn
+# website: https://harnlang.com
+# repository: https://github.com/burin-labs/harn
+# license: Apache-2.0
+# distribution: binary
+name: harn
+version: 0.10.129
+description: Harn runs .harn agent pipelines as a native ACP coding agent over stdio.（binary：需先从
+  release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./harn
+args: []
+provider: acp-harn
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

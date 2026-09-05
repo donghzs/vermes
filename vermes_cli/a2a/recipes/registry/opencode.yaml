@@ -1,0 +1,21 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: opencode
+# display name: OpenCode
+# website: https://opencode.ai
+# repository: https://github.com/anomalyco/opencode
+# license: MIT
+# distribution: binary
+name: opencode
+version: 1.18.28
+description: The open source coding agent（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./opencode
+args: []
+provider: acp-opencode
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

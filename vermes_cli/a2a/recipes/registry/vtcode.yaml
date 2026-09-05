@@ -1,0 +1,23 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: vtcode
+# display name: VT Code
+# website: https://github.com/vinhnx/VTCode/blob/main/docs/guides/zed-acp.md
+# repository: https://github.com/vinhnx/VTCode
+# license: MIT
+# distribution: binary
+name: vtcode
+version: 0.96.14
+description: An open-source coding agent with LLM-native code understanding and robust
+  shell safety. Supports multiple LLM providers with automatic failover and efficient
+  context management.（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./vtcode
+args: []
+provider: acp-vtcode
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

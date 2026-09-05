@@ -1,0 +1,22 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: stakpak
+# display name: Stakpak
+# website: https://stakpak.dev
+# repository: https://github.com/stakpak/agent
+# license: Apache-2.0
+# distribution: binary
+name: stakpak
+version: 0.3.88
+description: Open-source DevOps agent in Rust with enterprise-grade security（binary：需先从
+  release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./stakpak
+args: []
+provider: acp-stakpak
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

@@ -1,0 +1,25 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: glm-acp-agent
+# display name: GLM Agent
+# repository: https://github.com/stefandevo/glm-acp-agent
+# license: Apache-2.0
+# distribution: npx
+name: glm-acp-agent
+version: 1.8.0
+description: ACP agent powered by Zhipu AI's GLM Coding Plan models (glm-5.1, glm-5-turbo,
+  glm-4.7, glm-4.5-air). Supports streaming, tool calls, mid-session model switching,
+  image input via Z.AI Coding Plan Vision MCP, and session load/fork/resume with on-disk
+  persistence.
+transport: acp
+entry_point: npx
+args:
+- glm-acp-agent@1.8.0
+provider: acp-glm-acp-agent
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

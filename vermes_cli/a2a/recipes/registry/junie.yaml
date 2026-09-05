@@ -1,0 +1,21 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: junie
+# display name: Junie
+# website: https://junie.jetbrains.com
+# repository: https://github.com/JetBrains/junie-acp-release
+# license: proprietary
+# distribution: binary
+name: junie
+version: 3123.7.0
+description: AI Coding Agent by JetBrains（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./Applications/junie.app/Contents/MacOS/junie
+args: []
+provider: acp-junie
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

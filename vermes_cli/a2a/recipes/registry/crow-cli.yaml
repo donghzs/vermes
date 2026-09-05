@@ -1,0 +1,21 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: crow-cli
+# display name: crow-cli
+# website: https://crow-ai.dev
+# repository: https://github.com/crow-cli/crow-cli
+# license: Apache-2.0
+# distribution: binary
+name: crow-cli
+version: 0.1.24
+description: Minimal ACP Native Coding Agent（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./crow-cli
+args: []
+provider: acp-crow-cli
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

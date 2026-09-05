@@ -1,0 +1,22 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: claude-acp
+# display name: Claude Agent
+# repository: https://github.com/agentclientprotocol/claude-agent-acp
+# license: proprietary
+# distribution: npx
+name: claude-acp
+version: 0.74.0
+description: ACP wrapper for Anthropic's Claude
+transport: acp
+entry_point: npx
+args:
+- '@agentclientprotocol/claude-agent-acp@0.74.0'
+provider: acp-claude-acp
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

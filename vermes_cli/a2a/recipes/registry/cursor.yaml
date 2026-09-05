@@ -1,0 +1,20 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: cursor
+# display name: Cursor
+# website: https://cursor.com/docs/cli/acp
+# license: proprietary
+# distribution: binary
+name: cursor
+version: 2026.09.02
+description: Cursor's coding agent（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./dist-package/cursor-agent
+args: []
+provider: acp-cursor
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

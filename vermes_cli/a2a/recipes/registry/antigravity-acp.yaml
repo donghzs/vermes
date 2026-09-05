@@ -1,0 +1,20 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: antigravity-acp
+# display name: Google Antigravity
+# website: https://antigravity.google/docs/ide/extensions
+# license: proprietary
+# distribution: binary
+name: antigravity-acp
+version: 1.1.1
+description: Google’s AI coding agent（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./agy_acp_server.par
+args: []
+provider: acp-antigravity-acp
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

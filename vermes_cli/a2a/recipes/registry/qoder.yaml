@@ -1,0 +1,23 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: qoder
+# display name: Qoder CLI
+# website: https://qoder.com
+# license: proprietary
+# distribution: npx
+name: qoder
+version: 0.2.14
+description: AI coding assistant with agentic capabilities
+transport: acp
+entry_point: npx
+args:
+- '@qoder-ai/qodercli@0.2.14'
+- --acp
+provider: acp-qoder
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

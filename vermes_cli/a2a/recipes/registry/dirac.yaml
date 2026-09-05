@@ -1,0 +1,26 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: dirac
+# display name: Dirac
+# website: https://dirac.run
+# repository: https://github.com/dirac-run/dirac
+# license: Apache-2.0
+# distribution: npx
+name: dirac
+version: 0.5.9
+description: Reduces API costs by more than 50%, produces better and faster work.
+  Uses Hash anchored parallel edits, AST manipulation and a whole lot of neat optimizations.
+  Fully Open Source.
+transport: acp
+entry_point: npx
+args:
+- dirac-cli@0.5.9
+- --acp
+provider: acp-dirac
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

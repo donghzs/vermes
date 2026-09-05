@@ -4132,7 +4132,9 @@ async def api_list_agent_recipes(request: Request):
     刻意不在前端硬编码食谱名单（历史坑：BricksPage.vue 硬编码字段/名单）。
     """
     try:
-        recipes = load_all_recipes(RECIPES_DIR)
+        # recursive=True：同时纳入 ``recipes/registry/`` 里由 ACP Registry 自动
+        # dump 的 P2 起步器食谱（手写 3 条核心 + registry 批量生成）
+        recipes = load_all_recipes(RECIPES_DIR, recursive=True)
     except Exception as e:
         return {"ok": False, "error": str(e), "recipes": []}
     return {

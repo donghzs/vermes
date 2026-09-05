@@ -1,0 +1,20 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: cortex-code
+# display name: Cortex Code
+# repository: https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code
+# license: proprietary
+# distribution: binary
+name: cortex-code
+version: 1.0.73
+description: Snowflake's Cortex Code coding agent（binary：需先从 release 下载解包后运行 entry_point）
+transport: acp
+entry_point: ./coco-1.0.73+180523.e6179a031de9-darwin-arm64/cortex
+args: []
+provider: acp-cortex-code
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli: []

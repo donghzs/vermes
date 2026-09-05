@@ -1,0 +1,24 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: github-copilot-cli
+# display name: GitHub Copilot
+# website: https://github.com/features/copilot/cli/
+# repository: https://github.com/github/copilot-cli
+# license: proprietary
+# distribution: npx
+name: github-copilot-cli
+version: 1.0.83
+description: GitHub's AI pair programmer
+transport: acp
+entry_point: npx
+args:
+- '@github/copilot@1.0.83'
+- --acp
+provider: acp-github-copilot-cli
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx

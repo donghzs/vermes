@@ -1,0 +1,24 @@
+# Auto-generated from ACP Registry v1.0.0 (2026-09-05)
+# source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+# agent id: sigit
+# display name: siGit Code
+# website: https://github.com/getsigit/sigit
+# repository: https://github.com/getsigit/sigit
+# license: Apache-2.0
+# distribution: binary,npx
+name: sigit
+version: 1.5.2
+description: Local-first coding agent. Runs entirely on your machine with optional
+  on-device LLM inference via Onde.
+transport: acp
+entry_point: npx
+args:
+- '@smbcloud/sigit@1.5.2'
+provider: acp-sigit
+auth:
+  scheme: apikey
+  env_var: null
+capabilities: []
+fingerprint:
+  cli:
+  - npx
