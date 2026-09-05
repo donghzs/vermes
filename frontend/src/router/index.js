@@ -10,8 +10,7 @@ import BenchmarkDashboard from '../components/BenchmarkDashboard.vue'
 import KanbanBoard from '../components/KanbanBoard.vue'
 import WorkflowsPage from '../components/WorkflowsPage.vue'
 import GrowthPage from '../components/GrowthPage.vue'
-import BotRooms from '../components/BotRooms.vue'
-import AgentsPage from '../components/AgentsPage.vue'
+import Shenmotang from '../components/Shenmotang.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -34,10 +33,11 @@ const routes = [
   { path: '/workflows', component: WorkflowsPage },
   // G13：成长页 —— 成长/能力自检/我懂你 全宽呈现（原侧栏底部 EvolutionPanel + modal 提级）
   { path: '/growth', component: GrowthPage },
-  // ③ Bot Mode P1：桌面单房间多 Agent 群聊
-  { path: '/bot-rooms', component: BotRooms },
-  // ⑭ Bot 实验室：本地 agent 发现 + 远端热度榜（独立消费 /api/v1/bricks?type=agent，不复用 BricksPage 硬编码 TYPE_FILTERS）
-  { path: '/agents', component: AgentsPage },
+  // ⛩️ 神魔堂：融合入口（诸神会晤 + 神魔架）
+  { path: '/shenmotang', component: Shenmotang },
+  // 旧入口重定向到神魔堂（避免旧外链/书签 404）
+  { path: '/bot-rooms', redirect: '/shenmotang' },
+  { path: '/agents', redirect: '/shenmotang' },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/

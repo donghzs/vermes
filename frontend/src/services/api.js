@@ -629,6 +629,10 @@ const api = {
   registerAgentProfile(recipe, authValue = '') {
     return this.post('/agents/register-profile', { recipe, auth_value: authValue })
   },
+
+  // ── ⑭ 造神：原生 agent 管理（per-agent 专属 API key） ──
+  listNativeAgents() { return this.get('/agents/native') },
+  upsertNativeAgent(payload) { return this.post('/agents/native', payload) },
 }
 
 export default api
