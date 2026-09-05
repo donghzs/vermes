@@ -244,6 +244,20 @@
             <label class="text-xs text-gray-500 mb-1 block">系统提示词（人设）</label>
             <textarea v-model="forgeModal.systemPrompt" rows="3" placeholder="定义它的性格 / 专长 / 输出风格…" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500 resize-none"></textarea>
           </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 flex items-center justify-between">
+              <span>技能集（工具集）</span>
+              <button @click="recommendToolsets" class="text-[11px] text-indigo-500 hover:text-indigo-600">✨ 按角色推荐</button>
+            </label>
+            <p class="text-[11px] text-gray-400 mb-2">留空 = 全量工具；勾选后只给它这些技能，不同角色各干各的活。</p>
+            <div v-if="allToolsets.length" class="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
+              <label v-for="t in allToolsets" :key="t.name" class="flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-gray-700">
+                <input type="checkbox" :value="t.name" v-model="forgeModal.toolsets" class="accent-indigo-500" />
+                <span class="truncate">{{ t.label || t.name }}</span>
+              </label>
+            </div>
+            <p v-else class="text-[11px] text-gray-400">技能列表加载中/不可用，可留空用全量工具。</p>
+          </div>
         </div>
         <p v-if="forgeModal.error" class="mt-3 text-xs text-red-500">{{ forgeModal.error }}</p>
         <div class="mt-4 flex justify-end gap-2">
@@ -268,10 +282,11 @@ const query = ref('')
 // ⑭ 造神：原生 agent 列表（transport=native 的 Vermes 原生 agent）
 const nativeAgents = ref([])
 // 造神弹窗状态
-const forgeModal = ref({ open: false, editing: null, name: '', description: '', provider: '', model: '', customProvider: '', apiKey: '', systemPrompt: '', hue: 0 })
+const forgeModal = ref({ open: false, editing: null, name: '', description: '', provider: '', model: '', customProvider: '', apiKey: '', systemPrompt: '', hue: 0, toolsets: [] })
 
 // ── 造神：厂商/模型下拉（复用设置页 /api/model/options 已配厂商+精选模型） ──
 const modelProviders = ref([])   // [{ slug, name, is_current, models: [] }]
+const allToolsets = ref([])      // [{ name, label, description }]（/api/tools/toolsets）
 const forgeModels = computed(() => {
   if (!forgeModal.value.provider || forgeModal.value.provider === '__custom__') return []
   const p = modelProviders.value.find(x => x.slug === forgeModal.value.provider)
@@ -288,9 +303,49 @@ async function loadModelProviders() {
   }
 }
 
+async function loadToolsets() {
+  try {
+    const data = await api.getToolsets()
+    allToolsets.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    console.warn('[Agents] 加载技能集失败（可留空用全量工具）', e)
+    allToolsets.value = []
+  }
+}
+
 function onForgeProviderChange() {
   // 切换厂商时清空之前选的模型（避免张冠李戴：deepseek 的模型配 anthropic 厂商）
   forgeModal.value.model = ''
+}
+
+// 角色 → 推荐技能集（与后端 _profile_enabled_toolsets 的 capability_tags 映射对齐）
+const _ROLE_TOOLSET_HINTS = {
+  '法律': ['file', 'web'],
+  '数据': ['code_execution', 'file'],
+  '分析': ['code_execution', 'file'],
+  '营销': ['web', 'writing'],
+  '产品': ['file', 'todo', 'web'],
+  '写作': ['scholarforge'],
+  '编': ['terminal', 'file', 'code_execution'],
+  '研究': ['web', 'search'],
+  '健康': ['web', 'search'],
+  '教育': ['web', 'search', 'file'],
+  '学习': ['web', 'search', 'file'],
+}
+
+function recommendToolsets() {
+  const name = forgeModal.value.name || ''
+  const desc = forgeModal.value.description || ''
+  const text = name + desc
+  const picked = []
+  for (const [kw, ts] of Object.entries(_ROLE_TOOLSET_HINTS)) {
+    if (text.includes(kw)) {
+      for (const t of ts) if (!picked.includes(t)) picked.push(t)
+    }
+  }
+  // 只在技能列表里有的才勾（避免推荐了不存在的 toolset）
+  const valid = new Set(allToolsets.value.map(t => t.name))
+  forgeModal.value.toolsets = picked.filter(t => valid.has(t))
 }
 
 async function loadAgents(refresh = false) {
@@ -469,12 +524,12 @@ function openForge(editing = null) {
         name: editing.name || '', description: editing.description || '',
         provider: editing.provider || '', model: editing.model || '', customProvider: '',
         apiKey: '', systemPrompt: editing.system_prompt || '',
-        hue: editing.hue || 0,
+        hue: editing.hue || 0, toolsets: Array.isArray(editing.toolsets) ? [...editing.toolsets] : [],
       }
     : {
         open: true, editing: null, error: '',
         name: '', description: '', provider: '', model: '', customProvider: '',
-        apiKey: '', systemPrompt: '', hue: 0,
+        apiKey: '', systemPrompt: '', hue: 0, toolsets: [],
       }
 }
 
@@ -500,6 +555,7 @@ async function submitForge() {
       api_key: apiKey,
       system_prompt: m.systemPrompt,
       hue: m.hue,
+      toolsets: m.toolsets || [],
     })
     if (data && data.ok) {
       forgeModal.value = { ...forgeModal.value, open: false }
@@ -518,5 +574,6 @@ onMounted(() => {
   loadRecipes()
   loadNativeAgents()
   loadModelProviders()
+  loadToolsets()
 })
 </script>

@@ -2992,6 +2992,49 @@ def _bot_room_db() -> "SessionDB":
     return SessionDB()
 
 
+def _profile_enabled_toolsets(profile) -> list:
+    """按 profile 的技能集/能力标签裁剪 agent 工具（⑭ 造神）。
+
+    优先级：
+    1. profile.toolsets 非空 → 直接用（用户明确勾选的工具集）
+    2. capability_tags 非空 → 按能力标签映射为工具集（code→terminal/file、
+       writing→scholarforge、search→web、data→code_execution 等）
+    3. 都空 → 回退全量 "Vermes-cli"（保持默认 seed 行为不变，零回归）
+    """
+    toolsets = (profile or {}).get("toolsets") or []
+    if toolsets:
+        return list(toolsets)
+
+    # 能力标签 → 工具集映射（与 capability_tags 语义对齐）
+    _TAG_TO_TOOLSET = {
+        "code": ["terminal", "file", "code_execution"],
+        "writing": ["scholarforge"],
+        "search": ["web", "search"],
+        "data": ["code_execution", "file"],
+        "analytics": ["code_execution", "file"],
+        "web": ["web", "search"],
+        "vision": ["vision"],
+        "marketing": ["web", "writing"],
+        "legal": ["file", "web"],
+        "product": ["file", "todo", "web"],
+        "planning": ["todo", "file"],
+        "content": ["scholarforge"],
+        "health": ["web", "search"],
+        "education": ["web", "search", "file"],
+    }
+    tags = (profile or {}).get("capability_tags") or []
+    resolved = []
+    for tag in tags:
+        mapped = _TAG_TO_TOOLSET.get(tag)
+        if mapped:
+            for t in mapped:
+                if t not in resolved:
+                    resolved.append(t)
+    if resolved:
+        return resolved
+    return ["Vermes-cli"]
+
+
 def _resolve_room_agent_identity(profile):
     """返回 (provider, base_url, api_key, model)。
 
@@ -3035,6 +3078,10 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
         # 含冒号文件名（Windows 路径非法）。届时须先 _slugify 或将冒号替换为 '_'，
         # 并在本 helper 入口做标注，避免静默失败。
         from run_agent import AIAgent
+        # ⑭ 造神（技能集）：profile.toolsets 非空时按角色/技能集裁剪工具；
+        # 空则回退全量 "Vermes-cli"。capability_tags 补充映射为工具集（code→terminal/file、
+        # writing→scholarforge 等），让不同角色专家各带各的工具，真正"各干各的活"。
+        enabled_toolsets = _profile_enabled_toolsets(profile)
         agent = AIAgent(
             base_url=base_url,
             api_key=api_key,
@@ -3044,7 +3091,7 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
             quiet_mode=True,
             verbose_logging=False,
             platform="web",
-            enabled_toolsets=["Vermes-cli"],
+            enabled_toolsets=enabled_toolsets,
             # ⚠️ P1（T4 交叉审计）：session_id 绑定房间派生 key，而非让 agent 内部
             # 生成随机 {timestamp}_{uuid}。否则 _agent_cache 是 LRU maxsize=20，房间一多
             # 被淘汰重建后新 agent 拿到新随机 session_id，房间对话记忆（docmemory /
