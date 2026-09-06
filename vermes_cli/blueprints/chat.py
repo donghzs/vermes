@@ -3038,7 +3038,9 @@ def _profile_enabled_toolsets(profile) -> list:
 def _resolve_room_agent_identity(profile):
     """返回 (provider, base_url, api_key, model)。
 
-    T4：profile 无 provider/model（默认 seed 未填）→ 用默认 ``agnes-2.0-flash``。
+    T4：profile 无 provider/model（默认 seed 未填）→ 用**全局默认模型**
+    （config.yaml ``model.default`` + ``model.provider``，即前端设置页统一配置的
+    那套）——群聊角色默认「跟随单聊/全局设置」，不再硬编码 agnes。
     T5 钩子：profile 填了 provider/model 时改为 profile 覆写，实现异构。
     关键：返回的 provider/model **同时**用于 ``_cache_key`` 与 AIAgent 构造，
     保证 G2 缓存 key 一致（T4 不返工）。
@@ -3052,6 +3054,11 @@ def _resolve_room_agent_identity(profile):
         if profile.get("api_key"):
             api_key = profile["api_key"]
         return provider, base_url, api_key, model
+    # 群聊角色默认跟随全局设置（复用前端设置页 / 单聊统一配置）
+    base_url, api_key, default_model = _get_chat_credentials()
+    if default_model:
+        return _resolve_model_provider(default_model, None)
+    # 全局也未配置时，退回 provider 默认（config.yaml model.provider 或 agnes）
     return _resolve_model_provider("agnes-2.0-flash", None)
 
 
