@@ -3128,7 +3128,9 @@ async def _bot_broadcast_room_update(room_id: str, event: str, **extra) -> None:
         ``channel_update`` 同信道，零新增连接）。
       - ``type="room_update"`` 与渠道未读 ``channel_update`` 区分，前端按 type 分流。
       - ``topic="room:{room_id}"`` **房间级粒度**（非消息级），前端按 topic 过滤订阅当前房间。
-      - ``event ∈ {room_message, room_created, member_change}`` 事件判别器。
+      - ``event ∈ {room_message, room_message_delta, room_created, member_change}`` 事件判别器。
+        ``room_message_delta``（P2 流式）携 message={agent_id, phase∈{start,delta}, delta}，
+        供前端渲染「正在输入」实时气泡；最终落库后仍走 room_message 重拉完整时间线。
     该 envelope（type + topic 粒度 + event 判别）亦为 ⑭ Bot 实验室复用基础，
     topic 可扩展为 ``lab:{id}``、event 可扩展为 ``agent_discovered`` 等。
     """
@@ -3390,7 +3392,9 @@ async def bot_room_message_send(request: Request, room_id: str):
                 room_id, "room_message",
                 message={"author_type": "user", "author_ref": None, "content": text},
             )
-            # 4) 每个目标派生 session → 取/建 agent → 跑 → 写回复
+            # 4) 每个目标派生 session → 取/建 agent → 跑 → 流式写回复
+            # 流式：先广播 phase=start，逐 delta 广播，最终落库完整回复
+            _main_loop = asyncio.get_running_loop()
             for agent_id in target_ids:
                 profile = db.get_agent_profile(agent_id)
                 if not profile:
@@ -3400,14 +3404,38 @@ async def bot_room_message_send(request: Request, room_id: str):
                 agent = await _bot_build_agent(session_key, profile)
                 reply = None
                 if agent is not None:
+                    # 广播流式开始（前端据此显示「正在输入」气泡）
+                    await _bot_broadcast_room_update(
+                        room_id, "room_message_delta",
+                        message={"agent_id": agent_id, "phase": "start", "delta": ""},
+                    )
+
+                    def _make_stream_cb(ag_id: str):
+                        # stream_callback 在 agent 子线程被调（每次一个文本 delta），
+                        # 需经 run_coroutine_threadsafe 回事件循环广播，保证 WS 线程安全。
+                        def _cb(delta):
+                            if delta is None:
+                                return
+                            try:
+                                asyncio.run_coroutine_threadsafe(
+                                    _bot_broadcast_room_update(
+                                        room_id, "room_message_delta",
+                                        message={"agent_id": ag_id, "phase": "delta", "delta": delta},
+                                    ),
+                                    _main_loop,
+                                )
+                            except Exception:
+                                pass
+                        return _cb
+
                     try:
-                        reply = await asyncio.to_thread(agent.chat, text)
+                        reply = await asyncio.to_thread(agent.chat, text, _make_stream_cb(agent_id))
                     except Exception as e:
                         _log.warning("[BotMode] agent run failed %s: %s", agent_id, e)
                 if reply:
                     db.append_bot_room_message(room_id, "agent", agent_id, reply,
                                                turn_session_id=session_key)
-                    # 广播 agent 回复（其它客户端即时看到）
+                    # 广播 agent 回复（其它客户端即时看到；前端据此清 streaming 气泡 + 重拉）
                     await _bot_broadcast_room_update(
                         room_id, "room_message",
                         message={"author_type": "agent", "author_ref": agent_id, "content": reply},

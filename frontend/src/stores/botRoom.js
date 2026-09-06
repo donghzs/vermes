@@ -14,6 +14,7 @@ export const useBotRoomStore = defineStore('botRoom', {
     sending: false,
     error: '',
     botModeDisabled: false,  // BOT_MODE_ENABLED 关闭 → 优雅降级（T7）
+    streaming: {},           // 流式：{ [agent_id]: { text: 累计文本, active: bool } }（真群聊流式体验）
   }),
   getters: {
     currentRoom: (s) => s.rooms.find(r => r.id === s.currentRoomId) || null,
@@ -170,6 +171,30 @@ export const useBotRoomStore = defineStore('botRoom', {
       if (msg.event === 'room_message' && topicRoom === this.currentRoomId) {
         // 直接重拉时间线（P1 房间小，简单正确优先；未来可改为增量 merge）
         await this.loadTimeline(this.currentRoomId)
+      }
+      if (msg.event === 'room_message_delta' && topicRoom === this.currentRoomId) {
+        // 流式：delta 阶段累积文本；start 阶段初始化气泡；最终 room_message 落库后由
+        // 上面的 room_message 分支重拉完整时间线，此处清理 streaming 状态。
+        const m = msg.message || {}
+        const aid = m.agent_id || ''
+        if (!aid) return
+        if (m.phase === 'start') {
+          this.streaming = { ...this.streaming, [aid]: { text: '', active: true } }
+          return
+        }
+        if (m.phase === 'delta') {
+          const cur = this.streaming[aid] || { text: '', active: true }
+          this.streaming = { ...this.streaming, [aid]: { text: cur.text + (m.delta || ''), active: true } }
+        }
+      }
+      // 落库完成（room_message 且是 agent 消息）→ 清理对应 streaming 气泡
+      if (msg.event === 'room_message' && topicRoom === this.currentRoomId) {
+        const m = msg.message || {}
+        if (m && m.author_type === 'agent' && m.author_ref) {
+          const next = { ...this.streaming }
+          delete next[m.author_ref]
+          this.streaming = next
+        }
       }
     },
   },

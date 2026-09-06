@@ -57,7 +57,11 @@ def _install_fakes(env):
             self.session_id = kwargs.get("session_id")
             env.captured.append(self)
 
-        def chat(self, msg):
+        def chat(self, msg, stream_callback=None):
+            # 兼容流式：若传入 stream_callback，模拟逐字回调（验证 delta 广播链路）
+            if stream_callback is not None:
+                for ch in f"[fake-agent-reply] {msg[:20]}":
+                    stream_callback(ch)
             return f"[fake-agent-reply] {msg[:20]}"
 
     run_agent.AIAgent = _FakeAgent

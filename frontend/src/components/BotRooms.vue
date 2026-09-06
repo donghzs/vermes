@@ -25,6 +25,14 @@ function formatTime(ts) {
 
 const messages = computed(() => bot.timeline)
 const currentRoom = computed(() => bot.currentRoom)
+// 流式：正在输入的 agent（按 author_ref 过滤出 active 的）
+const streamingAgents = computed(() => {
+  const out = {}
+  for (const [aid, s] of Object.entries(bot.streaming || {})) {
+    if (s && s.active) out[aid] = s
+  }
+  return out
+})
 
 // 自动滚到底部
 async function scrollToBottom() {
@@ -343,6 +351,22 @@ onUnmounted(() => {
               <div class="text-[11px] text-gray-400 mb-0.5 px-1">@{{ vis(m.author_ref).name || m.author_ref }}</div>
               <div class="px-3 py-2 rounded-2xl rounded-tl-sm bg-gray-100 dark:bg-gray-700 text-sm whitespace-pre-wrap break-words">
                 {{ m.content }}
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 流式：正在输入的 agent（真群聊流式体验，逐 delta 累积） -->
+        <template v-for="(s, aid) in streamingAgents" :key="'stream-' + aid">
+          <div class="flex justify-start gap-2">
+            <svg viewBox="0 0 32 32" class="w-7 h-7 rounded-full shrink-0 mt-4">
+              <circle cx="16" cy="16" r="16" :fill="`hsl(${vis(aid).hue}, 65%, 45%)`" />
+              <text x="16" y="22" text-anchor="middle" fill="#fff" font-size="15" font-weight="600">{{ vis(aid).initial }}</text>
+            </svg>
+            <div class="max-w-[72%]">
+              <div class="text-[11px] text-gray-400 mb-0.5 px-1">@{{ vis(aid).name || aid }} <span class="text-emerald-500">▌正在输入…</span></div>
+              <div class="px-3 py-2 rounded-2xl rounded-tl-sm bg-gray-100 dark:bg-gray-700 text-sm whitespace-pre-wrap break-words">
+                {{ s.text || '…' }}
               </div>
             </div>
           </div>
