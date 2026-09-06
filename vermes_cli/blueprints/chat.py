@@ -1256,10 +1256,12 @@ async def chat_completions(req: ChatRequest, request: Request):
 
     if agent is None:
         # ── 跨会话涌现：注入进化上下文 + 行为引导（提炼至 evolution_manager）──
+            # 单聊主 agent 无 profile → agent_id=None → 全局聚合底座（默认语义）
             _evo_prompt = ""
+            _agent_id = None
             try:
                 from agent.evolution_manager import build_evolution_prompt
-                _evo_prompt = build_evolution_prompt() or ""
+                _evo_prompt = build_evolution_prompt(_agent_id) or ""
             except Exception:
                 pass
             # ── 推理配置：请求参数优先，其次 config ──────────
@@ -1319,6 +1321,7 @@ async def chat_completions(req: ChatRequest, request: Request):
                 disabled_toolsets=_disabled_toolsets,
                 ephemeral_system_prompt=_combined_prompt,
                 reasoning_config=_reasoning_config,
+                agent_id=_agent_id,
             )
             # 记录进化基线提示，供缓存复用时与最新联网开关重组 ephemeral prompt。
             agent._evo_base_prompt = _evo_prompt
@@ -2227,6 +2230,7 @@ async def agent_run(req: AgentRunRequest):
     _evo_prompt = ""
     try:
         from agent.evolution_manager import build_evolution_prompt
+        # API agent：按 session 隔离？否 —— 与单聊一致走全局聚合（agent_id=None）。
         _evo_prompt = build_evolution_prompt() or ""
     except Exception:
         pass
@@ -2290,6 +2294,7 @@ async def evolution_status():
     try:
         from agent.evolution_manager import get_evolution_status, get_current_emotional_state
 
+        # 前端总览面板=全局聚合（agent_id=None）。群聊 per-agent 状态不走此端点。
         status = get_evolution_status()
         if isinstance(status, dict):
             status["current_emotion"] = get_current_emotional_state()
@@ -3091,8 +3096,26 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
         enabled_toolsets = _profile_enabled_toolsets(profile)
         # 记忆/进化按角色隔离（非硬隔离，boost 加权）：群聊 bot 传 role:{profile_id}，
         # 写入/召回时优先自己的角色记忆，通用记忆（scope=""）仍共享底座。
+        # H3 进化硬隔离：agent_id=profile_id（strategies/v_outcomes 写入标 agent_id，
+        # 读取仅见自己），self_model 软共享（仍写全局聚合快照）。
         _pid = profile.get("id") if isinstance(profile, dict) else None
         _memory_scope = f"role:{_pid}" if _pid else None
+        # H3 读取侧接线（2026-09-07 审计 #3 修复）：群聊 agent 此前**从不注入**进化
+        # 上下文，导致 agent_id=_pid 只作用于写入侧，"per-agent 硬隔离"名不副实。
+        # 现注入 build_evolution_prompt(_pid)：该 agent 只看自己的进化 + 行为准则。
+        # 与单聊同构 —— 均为构造期快照：单聊复用时用 _evo_base_prompt 旧基线、
+        # 群聊复用走 _agent_cache 直接 return 不复算，语义一致。
+        # 沉默设计决策（2026-09-07 审计 #3 补记）：此为构造期快照而非每次对话实时查询，
+        # 长生命周期房间内若策略侧有更新，需等 _agent_cache 淘汰/重建才反映——
+        # 与单聊 _evo_base_prompt 既有语义一致，属有意（避免每轮对话重算进化提示），
+        # 非 bug；调用方应知悉该延迟窗口。fail-open：异常则不注入。
+        _evo_prompt = None
+        if _pid:
+            try:
+                from agent.evolution_manager import build_evolution_prompt
+                _evo_prompt = build_evolution_prompt(_pid) or None
+            except Exception:
+                _evo_prompt = None
         agent = AIAgent(
             base_url=base_url,
             api_key=api_key,
@@ -3103,6 +3126,8 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
             verbose_logging=False,
             platform="web",
             memory_scope=_memory_scope,
+            agent_id=_pid,
+            ephemeral_system_prompt=_evo_prompt,
             enabled_toolsets=enabled_toolsets,
             # ⚠️ P1（T4 交叉审计）：session_id 绑定房间派生 key，而非让 agent 内部
             # 生成随机 {timestamp}_{uuid}。否则 _agent_cache 是 LRU maxsize=20，房间一多

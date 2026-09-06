@@ -162,6 +162,7 @@ def init_agent(
     provider_data_collection: str = None,
     openrouter_min_coding_score: Optional[float] = None,
     session_id: str = None,
+    agent_id: str = None,
     tool_progress_callback: callable = None,
     tool_start_callback: callable = None,
     tool_complete_callback: callable = None,
@@ -267,6 +268,11 @@ def init_agent(
     # 记忆/进化的隔离维度（可空）。单聊主 agent 为 None → 走全局共享底座；
     # 群聊 bot 传 role:{profile_id} → 写入/召回时按角色加权（boost 非硬隔离）。
     agent.memory_scope = memory_scope
+    # H3: 进化隔离维度（可空）。None = 全局聚合（单聊默认，写入 agent_id=NULL）；
+    # 群聊 bot 传 profile_id → strategies 硬隔离（写入标 agent_id，读取仅见自己），
+    # self_model 软共享（写入标 agent_id，读取仍聚合）。用于 record_tool_outcome /
+    # build_evolution_prompt 的 per-agent 维度，与 memory_scope 解耦。
+    agent.agent_id = agent_id
     agent._user_id = user_id  # Platform user identifier (gateway sessions)
     agent._user_id_alt = user_id_alt  # Optional stable alternate platform identifier
     agent._user_name = user_name

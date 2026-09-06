@@ -57,8 +57,10 @@ class TestVOutcomesView:
         conn = sqlite3.connect(fresh_vermes_home)
         cols = conn.execute("PRAGMA table_info(v_outcomes)").fetchall()
         col_names = [c[1] for c in cols]
-        expected = ["id", "timestamp", "task", "action", "tool", "success",
+        expected = ["id", "timestamp", "agent_id", "task", "action", "tool", "success",
                     "details", "duration", "domain", "error_type", "error_msg", "role"]
+        # H3 (2026-09-06): v_outcomes 新增 agent_id 透出列（raw_events.agent_id）,
+        # role 由 CASE WHEN 映射真值（NULL→'default'，群聊 profile_id→自身）。
         assert col_names == expected
         conn.close()
 

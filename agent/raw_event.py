@@ -109,6 +109,7 @@ class RawEvent:
       - cluster_id:    P2 聚类后回填 (NULL 表示未聚类)
       - embedding_id:  关联 embeddings 表 ID (NULL 表示未嵌入)
       - protected:     洞察溯源保护标记 (0=可淘汰, 1=受洞察保护)
+      - agent_id:     H3 进化隔离维度（None=全局/单聊，群聊=profile_id）
 
     Example:
         event = RawEvent(
@@ -133,6 +134,7 @@ class RawEvent:
     embedding_id: Optional[int] = None
     protected: bool = False
     variant_hash: Optional[str] = None  # P4: active processor variant when this tool ran (None for non-processor tools)
+    agent_id: Optional[str] = None  # H3: 进化隔离维度（None=全局聚合，群聊传 profile_id）
 
     def to_db_row(self) -> tuple:
         """Convert to tuple for INSERT INTO raw_events."""
@@ -149,6 +151,7 @@ class RawEvent:
             self.embedding_id,
             1 if self.protected else 0,
             self.variant_hash,
+            self.agent_id,
         )
 
     @classmethod
@@ -167,6 +170,7 @@ class RawEvent:
             embedding_id=row["embedding_id"],
             protected=bool(row["protected"]),
             variant_hash=row["variant_hash"] if "variant_hash" in row.keys() else None,
+            agent_id=row["agent_id"] if "agent_id" in row.keys() else None,
         )
 
 
@@ -186,12 +190,14 @@ CREATE TABLE IF NOT EXISTS raw_events (
     cluster_id      INTEGER DEFAULT NULL,
     embedding_id    INTEGER DEFAULT NULL,
     protected       INTEGER DEFAULT 0,
-    variant_hash    TEXT    DEFAULT NULL
+    variant_hash    TEXT    DEFAULT NULL,
+    agent_id        TEXT    DEFAULT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_raw_events_timestamp   ON raw_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_raw_events_session      ON raw_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_raw_events_tool         ON raw_events(tool_name);
 CREATE INDEX IF NOT EXISTS idx_raw_events_cluster      ON raw_events(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_raw_events_agent        ON raw_events(agent_id);
 """
 
 
@@ -210,12 +216,17 @@ def ensure_raw_events_table(conn: sqlite3.Connection) -> None:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_events)")}
         if cols and "variant_hash" not in cols:
             conn.execute("ALTER TABLE raw_events ADD COLUMN variant_hash TEXT DEFAULT NULL")
+        # H3: 老库补 agent_id 列（新增表由 RAW_EVENTS_TABLE_SQL 自带）。幂等。
+        if cols and "agent_id" not in cols:
+            conn.execute("ALTER TABLE raw_events ADD COLUMN agent_id TEXT DEFAULT NULL")
     except Exception:
-        logger.debug("variant_hash migration skipped", exc_info=True)
+        logger.debug("raw_events migration skipped", exc_info=True)
     conn.executescript(RAW_EVENTS_TABLE_SQL)
     # variant_hash index (column now guaranteed to exist on fresh + migrated tables)
     try:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_raw_events_variant ON raw_events(variant_hash)")
+        # H3: agent 维度索引（老库 ALTER 后补建，幂等）
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_raw_events_agent ON raw_events(agent_id)")
     except Exception:
         logger.debug("variant_hash index skipped", exc_info=True)
     # Compatibility view: maps raw_events → outcomes schema
@@ -231,6 +242,7 @@ def ensure_raw_events_table(conn: sqlite3.Connection) -> None:
            SELECT
              id,
              timestamp,
+             agent_id,
              tool_name AS task,
              args_preview AS action,
              tool_name AS tool,
@@ -240,7 +252,7 @@ def ensure_raw_events_table(conn: sqlite3.Connection) -> None:
              '' AS domain,
              '' AS error_type,
              CASE WHEN success = 0 THEN result_preview ELSE '' END AS error_msg,
-             'default' AS role
+             CASE WHEN agent_id IS NULL THEN 'default' ELSE agent_id END AS role
            FROM raw_events
            WHERE tool_name NOT IN ('__verified__', '__self_validation__')"""
     )
@@ -260,8 +272,8 @@ def _write_raw_event_to_db(event: RawEvent, db_path: str) -> Optional[int]:
             """INSERT INTO raw_events
                (timestamp, tool_name, args_preview, result_preview, success,
                 duration, session_id, turn_number, cluster_id, embedding_id,
-                protected, variant_hash)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                protected, variant_hash, agent_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             event.to_db_row(),
         )
         conn.commit()
@@ -286,6 +298,7 @@ def record_raw_event(
     trigger_clustering: bool = True,
     variant_hash: Optional[str] = None,
     skip_embedding: bool = False,
+    agent_id: Optional[str] = None,
 ) -> Optional[int]:
     """Record a tool execution as a zero-classification RawEvent.
 
@@ -304,6 +317,8 @@ def record_raw_event(
         turn_number: Turn number within the session
         variant_hash: P4 — active processor variant hash when this tool ran
                       (None for non-processor tools / processors with no variants)
+        agent_id:    H3 — evolution isolation dimension (None=global/single-chat,
+                     群聊=profile_id)。由调用方从 agent.agent_id 透传。
 
     Returns:
         Row ID of the inserted event, or None on failure.
@@ -321,6 +336,7 @@ def record_raw_event(
         session_id=session_id,
         turn_number=turn_number,
         variant_hash=variant_hash,
+        agent_id=agent_id,
     )
 
     db_path = get_self_model_db()

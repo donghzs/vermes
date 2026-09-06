@@ -122,13 +122,29 @@ def is_evolution_active() -> bool:
                 strategy TEXT,
                 success_rate_when_used REAL,
                 times_used INTEGER DEFAULT 0,
-                created TEXT)""")
+                created TEXT,
+                agent_id TEXT DEFAULT NULL)  -- H3: NULL=全局底座；群聊=profile_id""")
             c.execute("""CREATE TABLE IF NOT EXISTS self_model (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT,
                 metric TEXT,
                 value REAL,
-                details TEXT)""")
+                details TEXT,
+                agent_id TEXT DEFAULT NULL)  -- H3: NULL=全局底座（软共享）；群聊写入标 profile_id""")
+            # H3 幂等迁移：老库 strategies/self_model 无 agent_id 列，CREATE IF NOT EXISTS
+            # 不会加列到已存在表 → 必须显式 ALTER（与 raw_events 的迁移同风格）。
+            try:
+                _scols = {r[1] for r in c.execute("PRAGMA table_info(strategies)")}
+                if "agent_id" not in _scols:
+                    c.execute("ALTER TABLE strategies ADD COLUMN agent_id TEXT DEFAULT NULL")
+            except Exception:
+                pass
+            try:
+                _mcols = {r[1] for r in c.execute("PRAGMA table_info(self_model)")}
+                if "agent_id" not in _mcols:
+                    c.execute("ALTER TABLE self_model ADD COLUMN agent_id TEXT DEFAULT NULL")
+            except Exception:
+                pass
             conn.commit()
         except Exception as e:
             logger.debug("evolution_manager.py: is evolution active failed: %s", e)
@@ -315,10 +331,12 @@ def _seed_evolution_db() -> None:
     c.execute("""CREATE TABLE IF NOT EXISTS strategies (
         id INTEGER PRIMARY KEY AUTOINCREMENT, task_type TEXT,
         strategy TEXT, success_rate_when_used REAL,
-        times_used INTEGER DEFAULT 0, created TEXT)""")
+        times_used INTEGER DEFAULT 0, created TEXT,
+        agent_id TEXT DEFAULT NULL)  -- H3 双 CREATE 同步（勿只改一处）""")
     c.execute("""CREATE TABLE IF NOT EXISTS self_model (
         id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT,
-        metric TEXT, value REAL, details TEXT)""")
+        metric TEXT, value REAL, details TEXT,
+        agent_id TEXT DEFAULT NULL)  -- H3 双 CREATE 同步（勿只改一处）""")
     c.execute("""CREATE TABLE IF NOT EXISTS roles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         role TEXT NOT NULL UNIQUE,
@@ -441,12 +459,31 @@ def detect_role(tool_name: str, args: Dict[str, Any], user_message: str = "") ->
     
     # Otherwise, create a new role from this pattern
     new_role_name = _generate_role_name(signature, user_message)
-    cursor.execute('''
-        INSERT INTO roles (role, signature, frequency, first_seen, last_seen)
-        VALUES (?, ?, 1, ?, ?)
-    ''', (new_role_name, signature, datetime.now().isoformat(), datetime.now().isoformat()))
+    try:
+        cursor.execute('''
+            INSERT OR IGNORE INTO roles (role, signature, frequency, first_seen, last_seen)
+            VALUES (?, ?, 1, ?, ?)
+        ''', (new_role_name, signature, datetime.now().isoformat(), datetime.now().isoformat()))
+    except Exception:
+        # 并发/竞态下不抛错中断主流程
+        pass
     conn.commit()
-    
+    # 名字冲突（同一 tool 不同 signature 派生同名 role，如 write_file 已有 .py
+    # 的 role、本次是 .md）→ INSERT OR IGNORE 未插入 → 复用同名 role 计数+1。
+    # 否则返回“新角色”分支会被跳过，检测直接继续。
+    if cursor.rowcount == 0:
+        _existing = cursor.execute(
+            "SELECT role FROM roles WHERE role = ?", (new_role_name,)
+        ).fetchone()
+        if _existing:
+            cursor.execute(
+                "UPDATE roles SET frequency = frequency + 1, last_seen = ? WHERE role = ?",
+                (datetime.now().isoformat(), new_role_name),
+            )
+            conn.commit()
+            logger.info("Evolution: role reused (name collision): %s", new_role_name)
+            return new_role_name
+
     logger.info("Evolution: new role emerged: %s (signature: %s)", new_role_name, signature[:50])
     return new_role_name
 
@@ -634,7 +671,11 @@ def purge_phantom_emotional_state_relations() -> int:
             )
             removed = conn.total_changes
         conn.commit()
-        conn.close()
+        # ⚠️ 不要 conn.close()：_get_conn 返回的是进程级缓存连接（_conn_cache），
+        # close 后缓存仍持有死连接 → 下一次 record_tool_outcome 的 strategies 写入
+        # 报 "Cannot operate on a closed database"（只在进程内首次 purge 后触发一次，
+        # 因 _get_conn 随后会重建；但仍属真实 bug，2026-09-06 修复）。
+        # 连接由 shutdown_connections() 统一回收。
     except Exception:
         logger.debug("purge phantom emotional_state relations failed", exc_info=True)
         return 0
@@ -742,6 +783,8 @@ def record_tool_outcome(
             from agent.raw_event import record_raw_event
             session_id = getattr(agent, 'session_id', '') if agent else ''
             turn_number = getattr(agent, 'turn_counter', 0) if agent else 0
+            # H3: 透传 agent.agent_id（None=全局；群聊 bot 由 chat.py 构造时注入 profile_id）
+            _agent_id = getattr(agent, 'agent_id', None) if agent else None
             record_raw_event(
                 tool_name=tool_name,
                 tool_args=tool_args,
@@ -751,6 +794,7 @@ def record_tool_outcome(
                 session_id=session_id,
                 turn_number=turn_number,
                 variant_hash=variant_hash,
+                agent_id=_agent_id,
             )
         except Exception:
             logger.debug("raw_event recording skipped", exc_info=True)
@@ -758,7 +802,12 @@ def record_tool_outcome(
         # Task and domain (no hardcoded classification — clustering will do this later)
         task = tool_name
         domain = ""
-        role = detect_role(tool_name, tool_args, user_message)
+        try:
+            # 角色探测失败绝不能中断进化写入主流程（曾因 roles UNIQUE 冲突
+            # 让整段 strategies/self_model 静默跳过）
+            role = detect_role(tool_name, tool_args, user_message)
+        except Exception:
+            role = "default"
         
         # Capture raw error (no hardcoded classification — insights will emerge from patterns)
         error_type = ""
@@ -860,11 +909,21 @@ def record_tool_outcome(
 
         # ── 策略记录：outcome → strategy（激活 strategies 表）──
         try:
+            # H3: per-agent 硬隔离。NULL(单聊/无 profile)=全局底座行；
+            # 群聊 agent 写入标 profile_id，查找/更新仅限自己的行 → 互不可见。
+            _agent_id = getattr(agent, 'agent_id', None) if agent else None
             _strategy = f"{tool_name}:{task}"
-            cursor.execute(
-                "SELECT id, times_used, success_rate_when_used FROM strategies WHERE task_type=? AND strategy=?",
-                (task, _strategy)
-            )
+            if _agent_id:
+                cursor.execute(
+                    "SELECT id, times_used, success_rate_when_used FROM strategies "
+                    "WHERE task_type=? AND strategy=? AND agent_id=?",
+                    (task, _strategy, _agent_id)
+                )
+            else:
+                cursor.execute(
+                    "SELECT id, times_used, success_rate_when_used FROM strategies WHERE task_type=? AND strategy=? AND agent_id IS NULL",
+                    (task, _strategy)
+                )
             _existing_strat = cursor.fetchone()
             if _existing_strat:
                 _sid, _used, _rate = _existing_strat
@@ -877,8 +936,9 @@ def record_tool_outcome(
                 )
             else:
                 cursor.execute(
-                    "INSERT INTO strategies (task_type, strategy, success_rate_when_used, times_used, created) VALUES (?, ?, ?, 1, ?)",
-                    (task, _strategy, 0.0 if is_error else 1.0, timestamp)
+                    "INSERT INTO strategies (task_type, strategy, success_rate_when_used, times_used, created, agent_id) "
+                    "VALUES (?, ?, ?, 1, ?, ?)",
+                    (task, _strategy, 0.0 if is_error else 1.0, timestamp, _agent_id)
                 )
                 _sid = cursor.lastrowid
             cursor.execute(
@@ -901,6 +961,10 @@ def record_tool_outcome(
 
         # ── self_model 指标快照（UPSERT 防止膨胀）─────────────────────
         try:
+            # H3 软共享：DELETE/INSERT 键仍走全局（metric+details 不区分 agent），
+            # 但写入行标 agent_id —— 读取侧 get_evolution_status 读 summary.% 时不过滤
+            # agent（软共享：群聊 agent 也能看到全局聚合快照）。
+            _agent_id = getattr(agent, 'agent_id', None) if agent else None
             # DELETE-then-INSERT: 同一 metric+details 只保留最新值
             _success_details = f"{tool_name}:{task}"
             cursor.execute(
@@ -908,16 +972,16 @@ def record_tool_outcome(
                 ("tool.success", _success_details)
             )
             cursor.execute(
-                "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-                (timestamp, "tool.success", 0.0 if is_error else 1.0, _success_details)
+                "INSERT INTO self_model (timestamp, metric, value, details, agent_id) VALUES (?, ?, ?, ?, ?)",
+                (timestamp, "tool.success", 0.0 if is_error else 1.0, _success_details, _agent_id)
             )
             cursor.execute(
                 "DELETE FROM self_model WHERE metric = ? AND details = ?",
                 ("tool.duration", _success_details)
             )
             cursor.execute(
-                "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-                (timestamp, "tool.duration", round(duration, 2), _success_details)
+                "INSERT INTO self_model (timestamp, metric, value, details, agent_id) VALUES (?, ?, ?, ?, ?)",
+                (timestamp, "tool.duration", round(duration, 2), _success_details, _agent_id)
             )
 
             # 每50次工具调用写入一次汇总快照
@@ -943,16 +1007,16 @@ def record_tool_outcome(
                     ("summary.success_rate_24h", _summary_details)
                 )
                 cursor.execute(
-                    "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-                    (timestamp, "summary.success_rate_24h", round(_recent_rate, 4), _summary_details)
+                    "INSERT INTO self_model (timestamp, metric, value, details, agent_id) VALUES (?, ?, ?, ?, ?)",
+                    (timestamp, "summary.success_rate_24h", round(_recent_rate, 4), _summary_details, _agent_id)
                 )
                 cursor.execute(
                     "DELETE FROM self_model WHERE metric = ? AND details = ?",
                     ("summary.total_outcomes", "cumulative")
                 )
                 cursor.execute(
-                    "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-                    (timestamp, "summary.total_outcomes", float(_total), "cumulative")
+                    "INSERT INTO self_model (timestamp, metric, value, details, agent_id) VALUES (?, ?, ?, ?, ?)",
+                    (timestamp, "summary.total_outcomes", float(_total), "cumulative", _agent_id)
                 )
             conn.commit()
         except Exception:
@@ -1099,22 +1163,39 @@ def get_verified_rate() -> float:
         return 0.0
 
 
-def get_evolution_status() -> Dict[str, Any]:
-    """Get current evolution system status."""
+def get_evolution_status(agent_id: Optional[str] = None) -> Dict[str, Any]:
+    """Get current evolution system status.
+
+    H3: agent_id 维度。None = 全局聚合（单聊/默认，含全部行）；
+    传入 profile_id = 仅看该 agent 自己的进化（strategies/v_outcomes 硬隔离，只含自己的行）。
+    self_model 为软共享：summary.% 快照与计数不按 agent 过滤（聚合指标），见调用处注释。
+    """
     if not is_evolution_active():
         return {"active": False}
-    
+
+    # H3 过滤子句：None → 不过滤（全表聚合，单聊/总览语义）；
+    # 有值 → 仅该 agent 自己的行（WHERE agent_id = ?，**不含** NULL 底座行）。
+    # 后者即纯硬隔离：群聊 agent 看不到单聊积累的全局策略，反之亦然。
+    # 两种形态：_scope_where 用于无既有 WHERE 的裸查询，_scope_and 用于已有 WHERE 的查询。
+    _scope_where = ""
+    _scope_and = ""
+    _scope_args: tuple = ()
+    if agent_id:
+        _scope_where = " WHERE agent_id = ?"
+        _scope_and = " AND agent_id = ?"
+        _scope_args = (agent_id,)
+    # 注意：strategies/self_model 查询有自己的 agent 子句（见下），不复用 _scope_*。
     try:
         db_path = get_self_model_db()
         conn = _get_conn(db_path)
         cursor = conn.cursor()
         
         # Total outcomes
-        cursor.execute("SELECT COUNT(*) FROM v_outcomes")
+        cursor.execute("SELECT COUNT(*) FROM v_outcomes" + _scope_where, _scope_args)
         total = cursor.fetchone()[0]
         
         # Success rate
-        cursor.execute("SELECT COUNT(*) FROM v_outcomes WHERE success = 1")
+        cursor.execute("SELECT COUNT(*) FROM v_outcomes WHERE success = 1" + _scope_and, _scope_args)
         successes = cursor.fetchone()[0]
         success_rate = (successes / total * 100) if total > 0 else 0
 
@@ -1131,35 +1212,40 @@ def get_evolution_status() -> Dict[str, Any]:
         # Top domains
         cursor.execute('''
             SELECT domain, COUNT(*) as count
-            FROM v_outcomes
+            FROM v_outcomes''' + _scope_where + '''
             GROUP BY domain
             ORDER BY count DESC
             LIMIT 5
-        ''')
+        ''', _scope_args)
         top_domains = cursor.fetchall()
         
         # Per-role stats
+        # H3: role 来自 v_outcomes.role（= agent_id 真值，NULL→'default'）。
+        # 硬隔离语义：与同函数 top_domains / recent_failures 一致，按 agent_id 过滤 →
+        # 群聊 agent 只看自己的 role 分布，不泄漏他人调用量/成功率。
+        # （2026-09-07 审计 #1 修复：此前唯独此处不过滤，get_evolution_status('p_A')
+        #   会返回 ('p_B', N) 这类他人聚合统计，与"互不可见"设计冲突。）
         cursor.execute('''
             SELECT role, COUNT(*) as total, SUM(success) as successes
             FROM v_outcomes
-            WHERE role IS NOT NULL
+            WHERE role IS NOT NULL''' + _scope_and + '''
             GROUP BY role
             ORDER BY total DESC
-        ''')
+        ''', _scope_args)
         role_stats = cursor.fetchall()
         
         # Recent failures
         cursor.execute('''
             SELECT tool, error_type, COUNT(*) as count
             FROM v_outcomes
-            WHERE success = 0
+            WHERE success = 0''' + _scope_and + '''
             GROUP BY tool, error_type
             ORDER BY count DESC
             LIMIT 5
-        ''')
+        ''', _scope_args)
         recent_failures = cursor.fetchall()
         
-        # self_model: 最近指标快照
+        # self_model: 最近指标快照（软共享：summary.% 聚合快照不按 agent 过滤）
         cursor.execute('''
             SELECT metric, value, details, timestamp
             FROM self_model
@@ -1168,17 +1254,17 @@ def get_evolution_status() -> Dict[str, Any]:
         ''')
         self_model_snapshots = cursor.fetchall()
         
-        # self_model: 汇总统计
+        # self_model: 汇总统计（软共享：全量计数不过滤）
         cursor.execute("SELECT COUNT(*) FROM self_model")
         self_model_count = cursor.fetchone()[0]
         
-        # strategies 统计
-        cursor.execute("SELECT COUNT(*) FROM strategies")
+        # strategies 统计（硬隔离：agent_id 只看自己 + NULL 底座）
+        cursor.execute("SELECT COUNT(*) FROM strategies" + _scope_where, _scope_args)
         strategies_count = cursor.fetchone()[0]
         cursor.execute('''
             SELECT task_type, strategy, success_rate_when_used, times_used
-            FROM strategies ORDER BY times_used DESC LIMIT 5
-        ''')
+            FROM strategies''' + _scope_where + ''' ORDER BY times_used DESC LIMIT 5
+        ''', _scope_args)
         top_strategies = cursor.fetchall()
         
         return {
@@ -1201,13 +1287,14 @@ def get_evolution_status() -> Dict[str, Any]:
         return {"active": True, "error": str(e)}
 
 
-def build_daily_briefing() -> str:
+def build_daily_briefing(agent_id: Optional[str] = None) -> str:
     """生成每日签到简报，注入到首次对话的 system prompt。
 
+    H3: agent_id 透传给 get_evolution_status —— None=全局（单聊），群聊=该 agent 自己的进化。
     返回空字符串表示数据不足或首次运行。
     """
     try:
-        status = get_evolution_status()
+        status = get_evolution_status(agent_id)
         if not status or not status.get("active") or status.get("total_outcomes", 0) < 10:
             return ""
 
@@ -1219,10 +1306,16 @@ def build_daily_briefing() -> str:
         # 最近 24h 新增
         conn = _get_conn(str(get_self_model_db()))
         c = conn.cursor()
-        c.execute(
-            "SELECT COUNT(*) FROM v_outcomes WHERE timestamp > ?",
-            ((datetime.now() - timedelta(days=1)).isoformat(),)
-        )
+        if agent_id:
+            c.execute(
+                "SELECT COUNT(*) FROM v_outcomes WHERE timestamp > ? AND agent_id = ?",
+                ((datetime.now() - timedelta(days=1)).isoformat(), agent_id)
+            )
+        else:
+            c.execute(
+                "SELECT COUNT(*) FROM v_outcomes WHERE timestamp > ?",
+                ((datetime.now() - timedelta(days=1)).isoformat(),)
+            )
         recent = c.fetchone()[0]
         if recent > 0:
             parts.append(f"📈 最近24小时新增 {recent} 条记录")
@@ -1242,14 +1335,15 @@ def build_daily_briefing() -> str:
         return ""
 
 
-def build_evolution_prompt() -> str:
+def build_evolution_prompt(agent_id: Optional[str] = None) -> str:
     """构建[进化上下文] + [行为准则]文本块，替代 3 处重复代码。
 
+    H3: agent_id 维度。None=全局聚合（单聊默认）；群聊传 profile_id → 仅看自己的进化。
     返回空字符串表示无可用的进化数据（首次运行 / 数据不足 5 条）。
     由 cli.py / chat.py 调用，作为 ephemeral_system_prompt 注入。
     """
     try:
-        status = get_evolution_status()
+        status = get_evolution_status(agent_id)
         if not status or not status.get("active") or status.get("total_outcomes", 0) <= 5:
             # 数据不够时只返回行为准则（不含进化统计）
             return (
@@ -1282,7 +1376,7 @@ def build_evolution_prompt() -> str:
             pass  # variant 信息不可用不阻断进化上下文
 
         # 注入每日签到简报
-        briefing = build_daily_briefing()
+        briefing = build_daily_briefing(agent_id)
         if briefing:
             parts.append("\n" + briefing)
 
