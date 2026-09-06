@@ -78,6 +78,59 @@
         </div>
       </div>
 
+      <!-- 🔥 封神榜：可登堂的 ACP agent（ACP Registry 食谱，正儿八经的封神榜） -->
+      <div class="mb-6">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-sm font-semibold text-gray-600 dark:text-gray-300">🔥 封神榜（可登堂 ACP Agent）</span>
+          <span v-if="recipes.length" class="text-xs text-gray-400">{{ recipes.length }} 个</span>
+          <span class="text-[11px] text-gray-400">· 点「⛩️ 登堂」接入神魔堂，进群聊即可 @ 拉入</span>
+        </div>
+        <div v-if="loading && recipes.length === 0" class="text-center text-gray-400 py-6 text-sm">⏳ 加载食谱中…</div>
+        <div v-else-if="filteredRecipes.length === 0" class="text-center text-gray-400 py-6 text-sm">暂无匹配的可登堂食谱</div>
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div
+            v-for="r in filteredRecipes"
+            :key="'recipe-' + r.name"
+            class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-white dark:bg-gray-800 p-4 flex flex-col gap-2 hover:shadow-md transition"
+          >
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-2xl">🤖</span>
+                <div class="min-w-0">
+                  <h3 class="font-semibold truncate">{{ r.name }}</h3>
+                  <p v-if="r.provider" class="text-xs text-gray-400 truncate">{{ r.provider }}</p>
+                </div>
+              </div>
+              <span class="shrink-0 px-2 py-0.5 text-xs rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300">ACP</span>
+            </div>
+            <p
+              v-if="r.description"
+              class="text-xs text-gray-500 dark:text-gray-400"
+              style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"
+            >{{ r.description }}</p>
+            <div class="flex flex-wrap gap-1.5">
+              <span v-if="r.version" class="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">v{{ r.version }}</span>
+              <span class="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">鉴权：{{ authLabel(r.auth_scheme) }}</span>
+              <span v-for="c in (r.capabilities || []).slice(0, 3)" :key="c" class="px-2 py-0.5 text-[11px] rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300">{{ c }}</span>
+            </div>
+            <div v-if="r.spawn_command && r.spawn_command.length" class="text-[11px] text-gray-400 truncate font-mono">↳ {{ r.spawn_command.join(' ') }}</div>
+            <div class="mt-auto pt-1 flex items-center gap-2">
+              <button
+                @click="ascendRecipe(r)"
+                :disabled="stateOf('recipe-' + r.name).status === 'loading'"
+                class="px-2.5 py-1 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition"
+              >{{ ascendLabel(stateOf('recipe-' + r.name)) }}</button>
+              <span
+                v-if="stateOf('recipe-' + r.name).detail"
+                class="text-[11px] truncate"
+                :class="stateClass(stateOf('recipe-' + r.name))"
+                :title="stateOf('recipe-' + r.name).detail"
+              >{{ stateOf('recipe-' + r.name).detail }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-if="loading && agents.length === 0" class="text-center text-gray-400 py-12">
         <p class="text-lg animate-pulse">⏳ 正在扫描本机 agent…</p>
       </div>
@@ -438,6 +491,15 @@ const filtered = computed(() => {
   )
 })
 
+// 封神榜：可登堂的 ACP recipe 过滤（搜索命中名称/描述/provider）
+const filteredRecipes = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return recipes.value
+  return recipes.value.filter(r =>
+    `${r.name || ''} ${r.description || ''} ${r.provider || ''}`.toLowerCase().includes(q)
+  )
+})
+
 const counts = computed(() => {
   let local = 0, remote = 0
   for (const a of agents.value) {
@@ -531,32 +593,44 @@ async function ascend(a, authValue = '') {
     setState(a._key, 'fail', '暂无登堂食谱（无匹配 ACP recipe）')
     return
   }
-  setState(a._key, 'loading', '')
+  await _doAscend(a._key, recipe, authValue)
+}
+
+/** 直接按 recipe 登堂（封神榜卡片，不依赖本机发现的 agent 对象）。 */
+async function ascendRecipe(r, authValue = '') {
+  await _doAscend('recipe-' + r.name, r, authValue)
+}
+
+/** 登堂公共逻辑：调 register-profile → 处理 need_auth/success/fail。 */
+async function _doAscend(key, recipe, authValue = '') {
+  setState(key, 'loading', '')
   try {
     const data = await api.registerAgentProfile(recipe.name, authValue)
     if (!data || data.ok === false) {
-      setState(a._key, 'fail', (data && data.error) || '注册失败')
+      setState(key, 'fail', (data && data.error) || '注册失败')
       return
     }
     if (data.status === 'need_auth') {
-      setState(a._key, 'need_auth', `需要 ${data.auth_env || 'API Key'}`)
+      setState(key, 'need_auth', `需要 ${data.auth_env || 'API Key'}`)
       authModal.value = {
-        open: true, key: a._key, recipe,
+        open: true, key, recipe,
         authEnv: data.auth_env || '', value: '', error: '',
       }
       return
     }
     if (data.status === 'success') {
-      setState(a._key, 'success', (data.health && data.health.detail) || '已登堂')
+      setState(key, 'success', (data.health && data.health.detail) || '已登堂')
+      // 登堂成功：刷新联系人/原生列表，让群聊拉人候选池立即可见
+      loadNativeAgents()
       return
     }
     if (data.status === 'fail') {
-      setState(a._key, 'fail', (data.health && data.health.detail) || '健康检查未通过')
+      setState(key, 'fail', (data.health && data.health.detail) || '健康检查未通过')
       return
     }
-    setState(a._key, 'fail', (data && data.error) || '未知状态')
+    setState(key, 'fail', (data && data.error) || '未知状态')
   } catch (e) {
-    setState(a._key, 'fail', (e && e.message) ? e.message : String(e))
+    setState(key, 'fail', (e && e.message) ? e.message : String(e))
   }
 }
 
@@ -566,8 +640,15 @@ async function submitAuth() {
     authModal.value = { ...m, error: '请输入 API Key' }
     return
   }
-  const a = agents.value.find(x => x._key === m.key)
+  const key = m.key
+  const recipe = m.recipe
   authModal.value = { ...m, open: false, error: '' }
+  if (recipe) {
+    // 封神榜卡片直接按 recipe 登堂（不依赖本机发现 agent）
+    await _doAscend(key, recipe, m.value.trim())
+    return
+  }
+  const a = agents.value.find(x => x._key === key)
   if (a) await ascend(a, m.value.trim())
 }
 
