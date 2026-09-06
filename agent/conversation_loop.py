@@ -837,7 +837,7 @@ def _build_conversation_result(
     if final_response and not interrupted:
         try:
             from agent.memory_aware_executor import post_task_reflect
-            _scope = getattr(agent, "platform", "") or ""
+            _scope = getattr(agent, "memory_scope", None) or getattr(agent, "platform", "") or ""
             post_task_reflect(
                 original_user_message if isinstance(original_user_message, str) else "",
                 final_response,
@@ -1235,7 +1235,7 @@ def run_conversation(
     try:
         from agent.memory_aware_executor import pre_task_recall
         _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
-        _scope = getattr(agent, "platform", "") or ""
+        _scope = getattr(agent, "memory_scope", None) or getattr(agent, "platform", "") or ""
         _task_mem = pre_task_recall(
             _turn_msg,
             turn=agent._user_turn_count,

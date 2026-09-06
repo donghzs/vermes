@@ -180,6 +180,7 @@ def init_agent(
     request_overrides: Dict[str, Any] = None,
     prefill_messages: List[Dict[str, Any]] = None,
     platform: str = None,
+    memory_scope: str = None,
     user_id: str = None,
     user_id_alt: str = None,
     user_name: str = None,
@@ -263,6 +264,9 @@ def init_agent(
     agent.quiet_mode = quiet_mode
     agent.ephemeral_system_prompt = ephemeral_system_prompt
     agent.platform = platform  # "cli", "telegram", "discord", "whatsapp", etc.
+    # 记忆/进化的隔离维度（可空）。单聊主 agent 为 None → 走全局共享底座；
+    # 群聊 bot 传 role:{profile_id} → 写入/召回时按角色加权（boost 非硬隔离）。
+    agent.memory_scope = memory_scope
     agent._user_id = user_id  # Platform user identifier (gateway sessions)
     agent._user_id_alt = user_id_alt  # Optional stable alternate platform identifier
     agent._user_name = user_name

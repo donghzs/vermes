@@ -3082,6 +3082,10 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
         # 空则回退全量 "Vermes-cli"。capability_tags 补充映射为工具集（code→terminal/file、
         # writing→scholarforge 等），让不同角色专家各带各的工具，真正"各干各的活"。
         enabled_toolsets = _profile_enabled_toolsets(profile)
+        # 记忆/进化按角色隔离（非硬隔离，boost 加权）：群聊 bot 传 role:{profile_id}，
+        # 写入/召回时优先自己的角色记忆，通用记忆（scope=""）仍共享底座。
+        _pid = profile.get("id") if isinstance(profile, dict) else None
+        _memory_scope = f"role:{_pid}" if _pid else None
         agent = AIAgent(
             base_url=base_url,
             api_key=api_key,
@@ -3091,6 +3095,7 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
             quiet_mode=True,
             verbose_logging=False,
             platform="web",
+            memory_scope=_memory_scope,
             enabled_toolsets=enabled_toolsets,
             # ⚠️ P1（T4 交叉审计）：session_id 绑定房间派生 key，而非让 agent 内部
             # 生成随机 {timestamp}_{uuid}。否则 _agent_cache 是 LRU maxsize=20，房间一多
