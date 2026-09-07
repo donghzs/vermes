@@ -683,6 +683,48 @@ CREATE TABLE IF NOT EXISTS bot_room_messages (
     created_at REAL,
     turn_session_id TEXT
 );
+
+-- ═══ ⑭ 组织流水线（Agent Org，2026-09-07 董董拍板：群=组织=生产单元）═══
+-- 群聊的独特价值 = 多角色共享上下文 + 分工协作交付；建群即配架构（岗位表）。
+-- org_roles：组织岗位表（岗位=职责单元，绑定具体 agent profile）。
+--   type: dispatcher(分派) / executor(执行) / auditor(审计) / aggregator(汇总)
+--   report_to：汇报线（岗位 id，空=直接向老板/用户汇报）
+--   order：展示/执行顺序
+CREATE TABLE IF NOT EXISTS org_roles (
+    room_id TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    profile_id TEXT,
+    report_to TEXT,
+    description TEXT DEFAULT '',
+    sort_order INTEGER DEFAULT 0,
+    PRIMARY KEY (room_id, role_id)
+);
+
+-- org_tasks：任务主档（状态机核心对象）。
+--   brief：老板原始指令；plan/artifacts/audit_log/final_output 为 JSON 列。
+--   status：dispatched(待拆解) → planning(拆解中) → executing(执行中) →
+--            auditing(审计中) → reworking(打回重做) → aggregating(汇总中) →
+--            delivered(待老板验收) → done(通过) / rejected(老板打回)
+--   current_round：当前审计轮次（打回重做会 +1）
+CREATE TABLE IF NOT EXISTS org_tasks (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    title TEXT,
+    brief TEXT,
+    status TEXT DEFAULT 'dispatched',
+    plan TEXT DEFAULT '[]',
+    artifacts TEXT DEFAULT '{}',
+    audit_log TEXT DEFAULT '[]',
+    final_output TEXT DEFAULT '',
+    current_round INTEGER DEFAULT 1,
+    created_at REAL,
+    updated_at REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_tasks_room ON org_tasks(room_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_org_roles_room ON org_roles(room_id);
 """
 
 # channel_sync_events 自清理配置。该表只是桌面控制台未读角标的实时投递
@@ -2428,6 +2470,149 @@ class SessionDB:
                 "content": r[3], "created_at": r[4], "turn_session_id": r[5],
             })
         return out
+
+
+    # ════════════════════════════════════════════════════════════════════
+    # ⑭ 组织流水线（Agent Org）— org_roles / org_tasks CRUD
+    # 群=组织=生产单元（2026-09-07 定调）：岗位表 + 任务状态机。
+    # ════════════════════════════════════════════════════════════════════
+
+    def set_org_roles(self, room_id: str, roles: List[Dict]) -> None:
+        """整表覆盖设置房间岗位表（组织架构）。
+
+        roles: [{role_id, name, type, profile_id?, report_to?, description?,
+                 sort_order?}]。原子替换：先删该房全部岗位再插入。
+        """
+        def _do(conn):
+            conn.execute("DELETE FROM org_roles WHERE room_id = ?", (room_id,))
+            for i, r in enumerate(roles or []):
+                conn.execute(
+                    "INSERT OR REPLACE INTO org_roles "
+                    "(room_id, role_id, name, type, profile_id, report_to, "
+                    " description, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (room_id, r.get("role_id") or f"r{i}",
+                     r.get("name") or f"岗位{i+1}",
+                     r.get("type") or "executor",
+                     r.get("profile_id"), r.get("report_to"),
+                     r.get("description") or "", r.get("sort_order") or i),
+                )
+        self._execute_write(_do)
+
+    def get_org_roles(self, room_id: str) -> List[Dict[str, Any]]:
+        """取房间岗位表（按 sort_order 升序）。"""
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT role_id, name, type, profile_id, report_to, "
+                    "description, sort_order FROM org_roles "
+                    "WHERE room_id = ? ORDER BY sort_order ASC",
+                    (room_id,),
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_org_roles skipped: %s", exc)
+            return []
+        return [{
+            "role_id": r[0], "name": r[1], "type": r[2],
+            "profile_id": r[3], "report_to": r[4],
+            "description": r[5] or "", "sort_order": r[6],
+        } for r in rows]
+
+    def create_org_task(self, room_id: str, title: str, brief: str,
+                        task_id: Optional[str] = None) -> str:
+        """创建任务（状态 dispatched，待拆解）。返回任务 id。"""
+        import uuid as _uuid
+        tid = task_id or f"t_{int(time.time())}_{_uuid.uuid4().hex[:6]}"
+        def _do(conn):
+            now = time.time()
+            conn.execute(
+                "INSERT INTO org_tasks "
+                "(id, room_id, title, brief, status, plan, artifacts, "
+                " audit_log, final_output, current_round, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, 'dispatched', '[]', '{}', '[]', '', 1, ?, ?)",
+                (tid, room_id, title, brief, now, now),
+            )
+        self._execute_write(_do)
+        return tid
+
+    def update_org_task(self, task_id: str, **fields) -> None:
+        """更新任务字段（status/plan/artifacts/audit_log/final_output/
+        current_round/title/brief）。None 值跳过。"""
+        allowed = {"status", "plan", "artifacts", "audit_log",
+                   "final_output", "current_round", "title", "brief"}
+        sets, params = [], []
+        for k, v in fields.items():
+            if k in allowed and v is not None:
+                if isinstance(v, (dict, list)):
+                    import json as _json
+                    v = _json.dumps(v, ensure_ascii=False)
+                sets.append(f"{k} = ?")
+                params.append(v)
+        if not sets:
+            return
+        sets.append("updated_at = ?")
+        params.append(time.time())
+        params.append(task_id)
+        def _do(conn):
+            conn.execute(
+                f"UPDATE org_tasks SET {', '.join(sets)} WHERE id = ?", params,
+            )
+        self._execute_write(_do)
+
+    def get_org_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """取任务详情（JSON 列解析回 dict/list）。"""
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT id, room_id, title, brief, status, plan, artifacts, "
+                    "audit_log, final_output, current_round, created_at, updated_at "
+                    "FROM org_tasks WHERE id = ?",
+                    (task_id,),
+                ).fetchone()
+        except sqlite3.OperationalError as exc:
+            logger.debug("get_org_task skipped: %s", exc)
+            return None
+        if row is None:
+            return None
+        import json as _json
+        def _loads(x, fb):
+            try:
+                return _json.loads(x) if x else fb
+            except Exception:
+                return fb
+        return {
+            "id": row[0], "room_id": row[1], "title": row[2] or "",
+            "brief": row[3] or "", "status": row[4],
+            "plan": _loads(row[5], []), "artifacts": _loads(row[6], {}),
+            "audit_log": _loads(row[7], []), "final_output": row[8] or "",
+            "current_round": row[9] or 1,
+            "created_at": row[10], "updated_at": row[11],
+        }
+
+    def list_org_tasks(self, room_id: str) -> List[Dict[str, Any]]:
+        """列房间任务（按创建倒序，不含 JSON 大字段的轻量视图）。"""
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT id, room_id, title, brief, status, current_round, "
+                    "created_at, updated_at FROM org_tasks "
+                    "WHERE room_id = ? ORDER BY created_at DESC",
+                    (room_id,),
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("list_org_tasks skipped: %s", exc)
+            return []
+        return [{
+            "id": r[0], "room_id": r[1], "title": r[2] or "",
+            "brief": r[3] or "", "status": r[4],
+            "current_round": r[5] or 1,
+            "created_at": r[6], "updated_at": r[7],
+        } for r in rows]
+
+    def delete_org_task(self, task_id: str) -> None:
+        """删除任务。"""
+        def _do(conn):
+            conn.execute("DELETE FROM org_tasks WHERE id = ?", (task_id,))
+        self._execute_write(_do)
 
     def list_sessions_by_board(
         self, board_id: str, limit: int = 50

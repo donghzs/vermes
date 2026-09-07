@@ -45,6 +45,17 @@ from vermes_cli.botmode import (
     parse_room_mentions,
     RoomIdNormalizer,
 )
+from vermes_cli.botmode.org_engine import (
+    build_candidate_list,
+    parse_secretary_plan,
+    SECRETARY_INSTRUCTION,
+    ST_DISPATCHED,
+    ST_DELIVERED,
+    ST_DONE,
+    ST_REJECTED,
+    OrgContext,
+    run_org_task,
+)
 
 # ── Session plan state store (for SSE reconnect snapshot) ──────────
 # session_id → {"plan": dict|None, "todo_states": dict, "plan_emitted": bool}
@@ -3667,6 +3678,377 @@ def _extract_relay_targets(reply: str, profiles: list, self_id: str) -> list:
     return [t for t in targets if t != self_id]
 
 
+async def _org_message_orchestrate(db, room: dict, room_id: str, norm,
+                                     text: str, roles: list) -> dict:
+    """组织模式消息处理（⑭ 群=组织）：用户消息即老板指令。
+
+    - 有 delivered（待验收）任务：以「验收通过 / 通过 / ok」→ done；
+      「打回: 意见」→ 回 dispatched 带意见重跑
+    - 有进行中任务（dispatched/planning/executing/auditing/...）→ 提示等待
+    - 否则 → 建新任务跑标准流水线
+    """
+    db.append_bot_room_message(room_id, "user", None, text,
+                               turn_session_id=_session_key_for_room(norm, "org:boss"))
+    await _bot_broadcast_room_update(
+        room_id, "room_message",
+        message={"author_type": "user", "author_ref": None, "content": text},
+    )
+    try:
+        tasks = db.list_org_tasks(room_id) or []
+    except Exception:
+        tasks = []
+
+    def _active(t):
+        return t.get("status") in ("dispatched", "planning", "executing",
+                                   "auditing", "reworking", "aggregating")
+
+    delivered = [t for t in tasks if t.get("status") == "delivered"]
+    active = [t for t in tasks if _active(t)]
+    prof_map = {}
+    try:
+        for p in db.list_agent_profiles():
+            prof_map[p["id"]] = p
+    except Exception:
+        pass
+
+    def _mk_ctx(task: dict):
+        return OrgContext(
+            task=task,
+            roles=roles,
+            profiles=prof_map,
+            room={"id": room_id, "title": room.get("title") or ""},
+            store=lambda tid_, updated: db.update_org_task(tid_, **updated),
+            append_message=lambda rid, atype, aref, content: db.append_bot_room_message(
+                rid, atype, aref, content,
+                turn_session_id=_session_key_for_room(norm, aref) if aref else None,
+            ),
+            log=lambda s: _log.info("[Org] %s", s),
+        )
+
+    # 1) 老板验收/打回
+    if delivered:
+        t = delivered[-1]
+        low = text.strip().lower()
+        if low.startswith(("验收通过", "通过", "ok", "可以", "批准", "收下", "accept", "approve")):
+            t["status"] = "done"
+            t["updated_at"] = time.time()
+            db.update_org_task(t["id"], **t)
+            line = f"[组织流水线] ✅ 老板验收通过，任务 {t['id']} 完结（done）。"
+            db.append_bot_room_message(room_id, "system", None, line)
+            await _bot_broadcast_room_update(
+                room_id, "room_message",
+                message={"author_type": "system", "author_ref": None, "content": line},
+            )
+            return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+        if low.startswith(("打回", "驳回", "退回", "reject")):
+            comment = text.split(":", 1)[-1].split("：", 1)[-1].strip() or "老板打回，请重做"
+            t["status"] = "dispatched"
+            t["boss_feedback"] = comment
+            t.setdefault("brief", "")
+            t["brief"] = (t["brief"] + f"\n[老板打回意见] {comment}").strip()
+            t["updated_at"] = time.time()
+            db.update_org_task(t["id"], **t)
+            line = f"[组织流水线] 🔁 老板打回：{comment}。任务重新下达执行。"
+            db.append_bot_room_message(room_id, "system", None, line)
+            await _bot_broadcast_room_update(
+                room_id, "room_message",
+                message={"author_type": "system", "author_ref": None, "content": line},
+            )
+            final_task = await run_org_task(_mk_ctx(t), _org_runner_factory(db, room_id, norm))
+            db.update_org_task(t["id"], **final_task)
+            _org_deliver_line(db, room_id, norm, final_task)
+            return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+
+    # 2) 有进行中任务 → 提示等待（不并发跑两条流水线）
+    if active:
+        a = active[-1]
+        line = (f"[组织流水线] 任务 {a['id']}（{a.get('title') or ''}）进行中"
+                f"（{a.get('status')}）。完成后我会交付；要新任务请等当前任务验收/完结。")
+        db.append_bot_room_message(room_id, "system", None, line)
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "system", "author_ref": None, "content": line},
+        )
+        return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+
+    # 3) 新任务
+    tid = db.create_org_task(room_id, text[:40], text)
+    task = db.get_org_task(tid)
+    line = f"[组织流水线] 📋 新任务已下达（{tid}），按组织岗位表驱动执行。"
+    db.append_bot_room_message(room_id, "system", None, line)
+    await _bot_broadcast_room_update(
+        room_id, "room_message",
+        message={"author_type": "system", "author_ref": None, "content": line},
+    )
+    try:
+        final_task = await run_org_task(_mk_ctx(task), _org_runner_factory(db, room_id, norm))
+        db.update_org_task(tid, **final_task)
+        _org_deliver_line(db, room_id, norm, final_task)
+    except Exception as e:
+        _log.exception("[Org] task run failed")
+        line = f"[组织流水线] 任务执行异常：{e}"
+        db.append_bot_room_message(room_id, "system", None, line)
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "system", "author_ref": None, "content": line},
+        )
+    return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+
+
+def _org_runner_factory(db, room_id: str, norm):
+    """组织流水线的 agent 三通路 runner 工厂（复用秘书同款语义）。"""
+    import asyncio as _asyncio
+
+    async def _runner(profile: dict, instruction: str, _ctx) -> str:
+        sid = _session_key_for_room(norm, profile.get("id"))
+        tr = profile.get("transport")
+        try:
+            if tr == "acp":
+                return (await _asyncio.to_thread(
+                    _acp_agent_chat_sync, profile, instruction)) or ""
+            if tr == "cli":
+                return (await _asyncio.to_thread(
+                    _cli_agent_chat_sync, profile, instruction)) or ""
+            agent = await _bot_build_agent(sid, profile)
+            if agent is None:
+                return ""
+            return (await _asyncio.to_thread(agent.chat, instruction)) or ""
+        except Exception as e:
+            _log.warning("[Org] runner failed %s: %s", profile.get("id"), e)
+            return f"[执行失败] {e}"
+
+    return _runner
+
+
+def _org_deliver_line(db, room_id: str, norm, final_task: dict) -> None:
+    """任务跑完后的交付/状态落房间。"""
+    output = final_task.get("final_output") or ""
+    status = final_task.get("status")
+    if output:
+        db.append_bot_room_message(
+            room_id, "agent", "org:aggregator", output,
+            turn_session_id=_session_key_for_room(norm, "org:aggregator"),
+        )
+        import asyncio as _asyncio
+        try:
+            asyncio.run_coroutine_threadsafe(
+                _bot_broadcast_room_update(
+                    room_id, "room_message",
+                    message={"author_type": "agent", "author_ref": "org:aggregator",
+                              "content": output},
+                ),
+                _asyncio.get_event_loop(),
+            )
+        except Exception:
+            pass
+    tail = f"[组织流水线] 任务 {final_task.get('id', '?')} 状态：{status}。"
+    if status == "delivered":
+        tail += " 等待老板验收（回复「验收通过」或「打回: 意见」）。"
+    elif status == "done":
+        tail += " 老板已验收通过。"
+    elif status == "rejected":
+        tail += " 已被打回/上报，老板可回复意见重新下达。"
+    db.append_bot_room_message(room_id, "system", None, tail)
+
+
+async def _secretary_orchestrate(db, room: dict, room_id: str, norm,
+                                    text: str, secretary_profile: dict) -> dict:
+    """秘书模式（⑭ 傻瓜式懒人路径，2026-09-07 董董拍板）：
+
+    群里只有 1 个 agent（= 老板秘书）+ 群尚无岗位表 → 用户直接提需求：
+      1. 秘书按需设计组织框架（产出岗位 JSON，标注各岗选用哪个 agent）；
+      2. 系统落地岗位表 + 自动把选中的 agent 拉进群；
+      3. 自动建任务并驱动标准流水线（拆解→执行+交叉审计→汇总）；
+      4. 成果交付（final_output 落房间）。
+    秘书设计时要求按「经济-质量-效率」三平衡选人（executor 用快/便宜模型、
+    auditor/aggregator 用强模型、人数精干）。
+    """
+    # 1) 落用户消息 + 广播（与正常路径一致，前端立即可见）
+    db.append_bot_room_message(room_id, "user", None, text,
+                               turn_session_id=_session_key_for_room(norm, secretary_profile["id"]))
+    await _bot_broadcast_room_update(
+        room_id, "room_message",
+        message={"author_type": "user", "author_ref": None, "content": text},
+    )
+
+    # 2) 候选池 = 全量联系人（秘书可摇人入群）
+    candidates = {}
+    try:
+        for p in db.list_agent_profiles():
+            candidates[p["id"]] = p
+    except Exception:
+        candidates = {}
+    if not candidates:
+        db.append_bot_room_message(
+            room_id, "system", None,
+            "[秘书模式] 当前没有可选联系人，秘书无法组队。请先在「神魔架」造神或接入 agent。",
+        )
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "system", "author_ref": None,
+                      "content": "[秘书模式] 当前没有可选联系人，秘书无法组队。请先在「神魔架」造神或接入 agent。"},
+        )
+        return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+
+    # 3) 秘书设计组织（唯一 agent 跑一轮，复用三通路）
+    session_key = _session_key_for_room(norm, secretary_profile["id"])
+    _main_loop = asyncio.get_running_loop()
+    transport = secretary_profile.get("transport")
+    inst = SECRETARY_INSTRUCTION.format(
+        brief=text[:1500],
+        candidates=build_candidate_list(candidates),
+    )
+    # 广播流式开始
+    await _bot_broadcast_room_update(
+        room_id, "room_message_delta",
+        message={"agent_id": secretary_profile["id"], "phase": "start", "delta": ""},
+    )
+    reply = None
+    try:
+        if transport == "acp":
+            reply = await asyncio.to_thread(_acp_agent_chat_sync, secretary_profile, inst)
+        elif transport == "cli":
+            reply = await asyncio.to_thread(_cli_agent_chat_sync, secretary_profile, inst)
+        else:
+            agent = await _bot_build_agent(session_key, secretary_profile)
+            if agent is not None:
+                def _cb(delta):
+                    if delta is None:
+                        return
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            _bot_broadcast_room_update(
+                                room_id, "room_message_delta",
+                                message={"agent_id": secretary_profile["id"],
+                                         "phase": "delta", "delta": delta},
+                            ),
+                            _main_loop,
+                        )
+                    except Exception:
+                        pass
+                reply = await asyncio.to_thread(agent.chat, inst, _cb)
+    except Exception as e:
+        _log.warning("[BotMode] secretary design failed: %s", e)
+        reply = None
+    if reply:
+        db.append_bot_room_message(room_id, "agent", secretary_profile["id"], reply,
+                                   turn_session_id=session_key)
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "agent", "author_ref": secretary_profile["id"],
+                      "content": reply},
+        )
+
+    # 4) 解析秘书方案
+    plan = parse_secretary_plan(reply or "", candidates)
+    if not plan["roles"]:
+        hint = "；".join(plan["errors"][:3]) if plan["errors"] else "方案为空"
+        db.append_bot_room_message(
+            room_id, "system", None,
+            f"[秘书模式] 秘书未能给出可用组织方案（{hint}）。可重试，或手动在「神魔架」配好后拉人进群。",
+        )
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "system", "author_ref": None,
+                      "content": f"[秘书模式] 秘书未能给出可用组织方案（{hint}）。可重试，或手动在「神魔架」配好后拉人进群。"},
+        )
+        return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+
+    # 5) 落地：岗位表 + 自动拉人（幂等，已在群的跳过）
+    db.set_org_roles(room_id, plan["roles"])
+    chosen = [r["profile_id"] for r in plan["roles"]]
+    existing = {m["ref_id"] for m in db.list_bot_room_members(room_id)
+                if m["member_type"] == "agent"}
+    for pid in chosen:
+        if pid not in existing:
+            db.add_bot_room_member(room_id, "agent", pid)
+    names = [candidates.get(pid, {}).get("name", pid) for pid in chosen]
+    role_desc = "、".join(
+        "{} ({})".format(
+            r["name"],
+            (candidates.get(r["profile_id"]) or {}).get("name") or r["profile_id"],
+        )
+        for r in plan["roles"]
+    )
+    org_line = "[秘书模式] 组织已搭建：{}。岗位：{}。秘书将按此组织执行你的任务。".format(
+        plan["title"] or "未命名", role_desc
+    )
+    db.append_bot_room_message(room_id, "system", None, org_line)
+    await _bot_broadcast_room_update(
+        room_id, "room_message",
+        message={"author_type": "system", "author_ref": None, "content": org_line},
+    )
+    _log.info("[BotMode] secretary org assembled room=%s roles=%d members=%s",
+              room_id, len(plan["roles"]), names)
+
+    # 6) 自动建任务并驱动流水线（secretary 模式一条龙）
+    try:
+        tid = db.create_org_task(room_id, plan["title"] or text[:40], text)
+        task = db.get_org_task(tid)
+        if task is None:
+            raise RuntimeError("task not created")
+
+        # 岗位表 + profiles 注入 OrgContext
+        roles = db.get_org_roles(room_id)
+        prof_map = {}
+        for p in db.list_agent_profiles():
+            prof_map[p["id"]] = p
+        # org_engine 里 executor 跑分派时用 dispatcher 岗位绑定的 agent；
+        # profiles 需含全部被选 agent
+        ctx = OrgContext(
+            task=task,
+            roles=roles,
+            profiles=prof_map,
+            room={"id": room_id, "title": room.get("title") or ""},
+            store=lambda tid_, updated: db.update_org_task(tid_, **updated),
+            append_message=lambda rid, atype, aref, content: db.append_bot_room_message(
+                rid, atype, aref, content, turn_session_id=_session_key_for_room(norm, aref) if aref else None
+            ),
+            log=lambda s: _log.info("[Org] %s", s),
+        )
+        final_task = await run_org_task(
+            ctx, _org_runner_factory(db, room_id, norm),
+        )
+        db.update_org_task(tid, **final_task)
+        # 交付：final_output 落房间
+        output = final_task.get("final_output") or ""
+        status = final_task.get("status")
+        if output:
+            db.append_bot_room_message(
+                room_id, "agent", "org:aggregator", output,
+                turn_session_id=_session_key_for_room(norm, "org:aggregator"),
+            )
+            await _bot_broadcast_room_update(
+                room_id, "room_message",
+                message={"author_type": "agent", "author_ref": "org:aggregator",
+                          "content": output},
+            )
+        tail = f"[组织流水线] 任务 {final_task.get('id', tid)} 状态：{status}。"
+        if status == "delivered":
+            tail += " 等待老板验收（回复「验收通过」或「打回: 意见」）。"
+        elif status == "done":
+            tail += " 老板已验收通过。"
+        elif status == "rejected":
+            tail += " 已被打回/上报，老板可回复意见重新下达。"
+        db.append_bot_room_message(room_id, "system", None, tail)
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "system", "author_ref": None, "content": tail},
+        )
+    except Exception as e:
+        _log.exception("[BotMode] secretary org run failed")
+        db.append_bot_room_message(
+            room_id, "system", None,
+            f"[秘书模式] 任务执行异常：{e}。组织岗位已保留，可重试下达。",
+        )
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "system", "author_ref": None,
+                      "content": f"[秘书模式] 任务执行异常：{e}。组织岗位已保留，可重试下达。"},
+        )
+    return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+
+
 async def bot_room_message_send(request: Request, room_id: str):
     """POST /api/bot/rooms/{room_id}/messages  body: {"text": str}
 
@@ -3713,6 +4095,23 @@ async def bot_room_message_send(request: Request, room_id: str):
                              "content": "[群里还没有 Agent，点「👥 拉人」拉一个进群再聊]"},
                 )
                 return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+            # 2b) 秘书模式（⑭ 傻瓜式懒人路径）：群无岗位表 + 只有 1 个 agent
+            #     → 该 agent 即老板秘书，按用户需求搭组织、摇人、派活、交付
+            try:
+                room_roles = db.get_org_roles(room_id) if hasattr(db, "get_org_roles") else []
+            except Exception:
+                room_roles = []
+            if not room_roles and len(profiles) == 1:
+                return await _secretary_orchestrate(
+                    db, room, room_id, norm, text, profiles[0],
+                )
+            # 2c) 组织任务分流：群已有岗位表（组织模式）→ 用户消息即老板指令
+            #     进行中任务未完成 → 提示等待；delivered 待验收 → 验收/打回；
+            #     否则 → 建新任务跑流水线
+            if room_roles:
+                return await _org_message_orchestrate(
+                    db, room, room_id, norm, text, room_roles,
+                )
             # 3) 解析 @mention → 首轮目标（无则 default agent，再无则 fan-out）
             target_ids = parse_room_mentions(text, profiles)
             if not target_ids:

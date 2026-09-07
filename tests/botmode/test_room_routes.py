@@ -203,6 +203,82 @@ def run_cli_room(env):
     return results
 
 
+def run_secretary_org_flow(env):
+    """⑭ 秘书模式端到端（2026-09-07 16:32 董董拍板·傻瓜式懒人路径）：
+    群里只有 1 个 agent（秘书）+ 群无岗位表 → 用户直接提需求 →
+    秘书设计组织 JSON → 系统落岗位表 + 自动拉人 → 建任务跑流水线 →
+    delivered 等老板验收 → 「验收通过」→ done。
+    """
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    db.close()
+
+    # 秘书 agent：设计 JSON / 审计 pass / 其它工件
+    class SecretaryAgent:
+        tools = ["dummy"]
+        def __init__(self, **kwargs):
+            self.session_id = kwargs.get("session_id")
+        def chat(self, msg, stream_callback=None):
+            if "[组织流水线 · 秘书设计]" in msg:
+                return ('{"title": "写周报", "roles": ['
+                        '{"role_id": "eng", "name": "研究员", "type": "executor", '
+                        '"profile_id": "researcher", "description": "写正文"},'
+                        '{"role_id": "qa", "name": "QA", "type": "auditor", '
+                        '"profile_id": "coder", "description": "交叉审计"},'
+                        '{"role_id": "agg", "name": "汇总", "type": "aggregator", '
+                        '"profile_id": "researcher", "description": "整合"}]}')
+            if "[组织流水线 · 审计]" in msg:
+                return '{"verdict": "pass", "comment": ""}'
+            if "汇总" in msg and "你是" in msg:
+                return "【汇总】周报已整合完成。"
+            return "[工件] 周报正文内容。"
+    run_agent.AIAgent = SecretaryAgent
+
+    r = client.post("/api/bot/rooms", json={"name": "秘书群"})
+    room_id = r.json().get("room_id")
+    check("create room ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    r = client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": "researcher"})
+    check("add secretary member ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+
+    # 发需求 → 秘书模式应自动触发（非普通群聊）
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "帮我写一份周报"})
+    check("send demand ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:300])
+    tl = r.json().get("timeline", [])
+    joined = "\n".join(f"[{m['author_type']}|{m.get('author_ref')}] {m['content']}" for m in tl)
+
+    # 组织岗位表落地（含自动拉入的 coder）
+    db2 = vermes_state.SessionDB(env.db_path)
+    roles = db2.get_org_roles(room_id)
+    check("org roles persisted", len(roles) >= 2, str(roles)[:300])
+    types = {r["type"] for r in roles}
+    check("roles have executor+auditor", {"executor", "auditor"} <= types, str(types))
+    members = {m["ref_id"] for m in db2.list_bot_room_members(room_id) if m["member_type"] == "agent"}
+    check("auto-pulled coder into room", "coder" in members, str(members))
+    tasks = db2.list_org_tasks(room_id)
+    check("task auto-created", len(tasks) >= 1, str(tasks)[:200])
+    check("task delivered awaiting boss", bool(tasks) and tasks[-1].get("status") == "delivered",
+          str(tasks)[:300])
+    # timeline 应有流水线留痕（执行→审计→交付）
+    check("pipeline traces in timeline", "审计" in joined and "已交付" in joined, joined[-400:])
+
+    # 老板验收 → done
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "验收通过"})
+    tl2 = r.json().get("timeline", [])
+    joined2 = "\n".join(m["content"] for m in tl2)
+    check("accept -> done", "验收通过，任务" in joined2 and "done" in joined2, joined2[-300:])
+    tasks2 = db2.list_org_tasks(room_id)
+    status = tasks2[-1].get("status") if tasks2 else None
+    check("final status done", status == "done", str(tasks2[-1])[:200] if tasks2 else "")
+    db2.close()
+    return results
+
+
 def run_collab(env):
     """⑭ 群聊真协作（2026-09-07 董董拍板：非并行单聊）四层验证：
 
@@ -697,6 +773,11 @@ def test_cli_agent_room_dispatch(env):
     failed = [n for n, c in results if not c]
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
+def test_secretary_org_flow(env):
+    results = run_secretary_org_flow(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
 def test_collab_room_relay(env):
     results = run_collab(env)
     failed = [n for n, c in results if not c]
@@ -832,6 +913,8 @@ if __name__ == "__main__":
     all_results += run_cli_room(e)
     all_results += run_cli_room(e)
     all_results += run_cli_room(e)
+    all_results += run_secretary_org_flow(e)
+    all_results += run_secretary_org_flow(e)
 
     print("\n=== SUMMARY ===")
     fails = [n for n, c in all_results if not c]
