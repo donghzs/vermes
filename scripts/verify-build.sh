@@ -8,26 +8,35 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
-# ── 定位 DMG ──
-DMG="${1:-}"
-if [ -z "$DMG" ]; then
-  DMG=$(ls -t dist-electron/Vermes-*.dmg 2>/dev/null | head -1)
+# ── 定位目标（支持直接传 .app，避免 hdiutil 挂载）──
+TARGET="${1:-}"
+if [ -z "$TARGET" ]; then
+  TARGET=$(ls -t dist-electron/Vermes-*.dmg 2>/dev/null | head -1)
 fi
-if [ -z "$DMG" ] || [ ! -f "$DMG" ]; then
-  echo "❌ ERROR: 未找到 DMG 文件"
+if [ -z "$TARGET" ]; then
+  echo "❌ ERROR: 未找到 DMG 或 .app 文件"
   exit 1
 fi
-echo "🔍 检查 DMG: $DMG ($(du -h "$DMG" | cut -f1))"
 
-# ── 挂载 DMG ──
-MOUNT_POINT=$(mktemp -d)
-hdiutil attach "$DMG" -nobrowse -mountpoint "$MOUNT_POINT" 2>/dev/null
-APP_PATH="$MOUNT_POINT/Vermes.app"
-
-if [ ! -d "$APP_PATH" ]; then
-  echo "❌ ERROR: DMG 内未找到 Vermes.app"
-  hdiutil detach "$MOUNT_POINT" 2>/dev/null || true
-  exit 1
+if [[ "$TARGET" == *.app ]]; then
+  APP_PATH="$TARGET"
+  MOUNT_POINT=""
+  echo "🔍 检查 .app: $APP_PATH"
+else
+  DMG="$TARGET"
+  if [ ! -f "$DMG" ]; then
+    echo "❌ ERROR: 未找到 DMG 文件: $DMG"
+    exit 1
+  fi
+  echo "🔍 检查 DMG: $DMG ($(du -h "$DMG" | cut -f1))"
+  MOUNT_POINT=$(mktemp -d)
+  hdiutil attach "$DMG" -nobrowse -mountpoint "$MOUNT_POINT" 2>/dev/null
+  APP_PATH="$MOUNT_POINT/Vermes.app"
+  if [ ! -d "$APP_PATH" ]; then
+    echo "❌ ERROR: DMG 内未找到 Vermes.app"
+    hdiutil detach "$MOUNT_POINT" 2>/dev/null || true
+    exit 1
+  fi
 fi
 
 ERRORS=0
@@ -163,14 +172,15 @@ if [ -f "$ASAR" ]; then
     ok "npx 不可用，跳过 asar 检查"
   fi
 else
-  fail "app.asar 不存在"
+  # PyInstaller 构建（本仓库路径）无 app.asar —— splash 由 web_dist 承载，跳过
+  ok "PyInstaller 构建无 app.asar，跳过 Electron 壳检查"
 fi
 
 # ── 6. 版本号一致性 ──
 echo ""
 echo "=== 6. 版本号 ==="
 INIT_VER=$(grep '__version__' vermes_cli/__init__.py | grep -o '"[^"]*"' | tr -d '"')
-DMG_VER=$(echo "$DMG" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+DMG_VER=$(echo "$TARGET" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 if [ "$INIT_VER" = "$DMG_VER" ]; then
   ok "版本号一致: $INIT_VER"
 else
