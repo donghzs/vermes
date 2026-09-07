@@ -19,6 +19,142 @@ const memberModal = ref({ open: false })
 // ── 群公告/群任务编辑弹窗 ──
 const editModal = ref({ open: false, title: '', announcement: '', tasks: '' })
 
+// ── 组织任务看板（2026-09-07 ⑭ 秘书模式/组织流水线）：右侧滑出面板 ──
+const orgBoard = ref({
+  open: false,
+  loading: false,
+  roles: [],
+  tasks: [],
+  profileNames: {},
+  statusLabels: {},
+  expandedTask: null, // 当前展开的任务 id
+  polling: null,      // 轮询定时器
+})
+
+const ORG_TYPE_LABELS = { dispatcher: '分派', executor: '执行', auditor: '审计', aggregator: '汇总' }
+
+async function openOrgBoard() {
+  orgBoard.value.open = true
+  await loadOrgBoard()
+  startOrgPolling()
+}
+
+function closeOrgBoard() {
+  orgBoard.value.open = false
+  stopOrgPolling()
+}
+
+function startOrgPolling() {
+  stopOrgPolling()
+  orgBoard.value.polling = setInterval(loadOrgBoard, 4000)
+}
+
+function stopOrgPolling() {
+  if (orgBoard.value.polling) {
+    clearInterval(orgBoard.value.polling)
+    orgBoard.value.polling = null
+  }
+}
+
+async function loadOrgBoard() {
+  if (!bot.currentRoomId) return
+  orgBoard.value.loading = true
+  try {
+    const res = await api.getBotRoomOrg(bot.currentRoomId)
+    if (res && res.ok) {
+      orgBoard.value.roles = res.roles || []
+      orgBoard.value.tasks = res.tasks || []
+      orgBoard.value.profileNames = res.profile_names || {}
+      orgBoard.value.statusLabels = res.status_labels || {}
+    }
+  } catch (e) {
+    // 静默：轮询期间网络抖动忽略
+  } finally {
+    orgBoard.value.loading = false
+  }
+}
+
+function orgStatusText(s) {
+  return (orgBoard.value.statusLabels && orgBoard.value.statusLabels[s]) || s || ''
+}
+
+// 通过的子任务数：audit_log 按 sub_id 去重取最新 verdict
+function passedSubCount(t) {
+  if (!t || !t.audit_log || !t.audit_log.length) return 0
+  return Object.values(latestAuditBySub(t)).filter(a => a.verdict === 'pass').length
+}
+
+function latestAuditBySub(t) {
+  const latest = {}
+  if (!t || !t.audit_log) return latest
+  for (const a of t.audit_log) {
+    if (!a.sub_id) continue
+    const prev = latest[a.sub_id]
+    if (!prev || (a.round || 0) >= (prev.round || 0)) latest[a.sub_id] = a
+  }
+  return latest
+}
+
+// 子任务最新审计状态图标
+function subStatusIcon(t, p) {
+  const a = latestAuditBySub(t)[p.sub_id]
+  if (!a) return '⏳'
+  return a.verdict === 'pass' ? '✅' : '🔴'
+}
+
+function subAuditComment(t, subId) {
+  const a = latestAuditBySub(t)[subId]
+  if (!a || a.verdict === 'pass') return ''
+  return a.comment || ''
+}
+
+function orgStatusClass(s) {
+  const map = {
+    done: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+    delivered: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    rejected: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    executing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    auditing: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+    aggregating: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+    planning: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+    reworking: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  }
+  return map[s] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+}
+
+function orgRoleTypeText(t) {
+  return ORG_TYPE_LABELS[t] || t || ''
+}
+
+function orgTaskRoleName(roleId) {
+  const r = (orgBoard.value.roles || []).find(x => x.role_id === roleId)
+  return r ? r.name : roleId
+}
+
+function orgProfileName(pid) {
+  return (orgBoard.value.profileNames && orgBoard.value.profileNames[pid]) || pid || ''
+}
+
+function toggleTaskDetail(t) {
+  orgBoard.value.expandedTask = orgBoard.value.expandedTask === t.id ? null : t.id
+  if (orgBoard.value.expandedTask === t.id) {
+    loadTaskDetail(t.id)
+  }
+}
+
+async function loadTaskDetail(taskId) {
+  if (!bot.currentRoomId) return
+  try {
+    const res = await api.getBotRoomOrgTask(bot.currentRoomId, taskId)
+    if (res && res.ok) {
+      const idx = orgBoard.value.tasks.findIndex(x => x.id === taskId)
+      if (idx >= 0) orgBoard.value.tasks[idx] = res.task
+    }
+  } catch (e) { /* 静默 */ }
+}
+
+onUnmounted(stopOrgPolling)
+
 // ── 输入 ──
 const inputText = ref('')
 const timelineRef = ref(null)
@@ -347,6 +483,13 @@ onUnmounted(() => {
               title="拉新 Agent 进群"
               @click="openInvite"
             >＋ 拉人</button>
+            <!-- 组织任务看板入口（秘书/组织流水线） -->
+            <button
+              v-if="currentRoom"
+              class="px-2 py-1 text-xs rounded bg-emerald-600 hover:bg-emerald-700 text-white transition"
+              title="组织岗位与任务流水线看板"
+              @click="orgBoard.open ? closeOrgBoard() : openOrgBoard()"
+            >📊 看板</button>
           </div>
         </div>
         <!-- 群公告条 -->
@@ -636,6 +779,122 @@ onUnmounted(() => {
               title="移出群"
               @click="removeMemberFromModal(m)"
             >移出</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 组织任务看板（⑭ 秘书模式/组织流水线，2026-09-07） -->
+    <div
+      v-if="orgBoard.open"
+      class="fixed inset-0 z-50 bg-black/40"
+      @click.self="closeOrgBoard"
+    >
+      <div class="absolute right-0 top-0 bottom-0 w-[26rem] max-w-[92vw] flex flex-col bg-white dark:bg-gray-800 shadow-2xl">
+        <!-- 头部 -->
+        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <div class="font-semibold text-sm">📊 组织 · 任务看板</div>
+            <div v-if="orgBoard.roles.length" class="text-[11px] text-gray-400 mt-0.5">
+              {{ orgBoard.roles.length }} 个岗位 · {{ orgBoard.tasks.length }} 个任务
+            </div>
+          </div>
+          <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none px-1" @click="closeOrgBoard">×</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-3 space-y-3">
+          <!-- 空组织引导 -->
+          <div v-if="!orgBoard.roles.length && !orgBoard.tasks.length" class="text-center py-8 text-sm text-gray-400">
+            <div class="text-3xl mb-2">🏗️</div>
+            这个群还没有组织架构。<br/>
+            <span class="text-xs">群里有 1 个 Agent 时直接发需求，秘书会自动搭组织并派活；<br/>或用「👥 拉人」拉多个 Agent 后在此看到流水线。</span>
+          </div>
+
+          <!-- 岗位表 -->
+          <div v-if="orgBoard.roles.length">
+            <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">岗位表（组织架构）</div>
+            <div class="space-y-1">
+              <div
+                v-for="r in orgBoard.roles"
+                :key="r.role_id"
+                class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm"
+              >
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 shrink-0">{{ orgRoleTypeText(r.type) }}</span>
+                <span class="font-medium truncate">{{ r.name }}</span>
+                <span class="text-xs text-gray-400 truncate">← {{ orgProfileName(r.profile_id) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 任务列表 -->
+          <div v-if="orgBoard.tasks.length">
+            <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">任务流水线</div>
+            <div class="space-y-2">
+              <div
+                v-for="t in orgBoard.tasks"
+                :key="t.id"
+                class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+              >
+                <button class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition" @click="toggleTaskDetail(t)">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-sm font-medium truncate">{{ t.title || t.brief?.slice(0, 30) || t.id }}</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded shrink-0" :class="orgStatusClass(t.status)">{{ orgStatusText(t.status) }}</span>
+                  </div>
+                  <div class="text-[11px] text-gray-400 mt-1 flex items-center gap-2">
+                    <span>第 {{ t.current_round || 1 }} 轮</span>
+                    <template v-if="t.plan && t.plan.length">
+                      <span>·</span>
+                      <span>{{ passedSubCount(t) }}/{{ t.plan.length }} 子任务通过</span>
+                    </template>
+                    <span class="ml-auto">{{ formatTime(t.updated_at || t.created_at) }}</span>
+                  </div>
+                </button>
+
+                <!-- 展开详情：子任务 + 审计流水 + 交付物 -->
+                <div v-if="orgBoard.expandedTask === t.id" class="border-t border-gray-200 dark:border-gray-700 px-3 py-2.5 space-y-3 bg-gray-50/60 dark:bg-gray-900/40">
+                  <div>
+                    <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">老板指令</div>
+                    <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ t.brief }}</div>
+                  </div>
+
+                  <!-- 子任务（plan） -->
+                  <div v-if="t.plan && t.plan.length">
+                    <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">子任务</div>
+                    <div class="space-y-1">
+                      <div v-for="(p, i) in t.plan" :key="i" class="text-xs flex items-start gap-2 px-2 py-1 rounded bg-white dark:bg-gray-800">
+                        <span class="mt-0.5">{{ subStatusIcon(t, p) }}</span>
+                        <div class="min-w-0 flex-1">
+                          <div class="text-gray-700 dark:text-gray-200">[{{ orgProfileName(p.assignee) }}] {{ p.instruction }}</div>
+                          <div v-if="p.acceptance" class="text-gray-400 mt-0.5">验收标准：{{ p.acceptance }}</div>
+                          <div v-if="subAuditComment(t, p.sub_id)" class="text-gray-400 mt-0.5">意见：{{ subAuditComment(t, p.sub_id) }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 审计流水（audit_log） -->
+                  <div v-if="t.audit_log && t.audit_log.length">
+                    <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">交叉审计流水</div>
+                    <div class="space-y-1">
+                      <div v-for="(a, i) in t.audit_log" :key="i" class="text-[11px] flex items-start gap-1.5 px-2 py-1 rounded bg-white dark:bg-gray-800">
+                        <span>{{ a.verdict === 'pass' ? '🟢' : '🔴' }}</span>
+                        <div class="min-w-0">
+                          <span class="text-gray-500">第 {{ a.round }} 轮 · {{ a.auditor }}</span>
+                          <span v-if="a.sub_id" class="text-gray-400"> · 审 {{ a.executor || a.sub_id }}</span>
+                          <div v-if="a.comment" class="text-gray-500 mt-0.5">{{ a.comment }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 交付物 -->
+                  <div v-if="t.final_output">
+                    <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">📦 交付物</div>
+                    <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-white dark:bg-gray-800 rounded p-2 max-h-48 overflow-y-auto">{{ t.final_output }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

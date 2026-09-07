@@ -4283,6 +4283,82 @@ async def bot_room_timeline_get(request: Request, room_id: str):
         return {"ok": False, "error": str(e)}
 
 
+_ORG_STATUS_LABELS = {
+    "dispatched": "已下达",
+    "planning": "拆解中",
+    "executing": "执行中",
+    "auditing": "审计中",
+    "reworking": "重做中",
+    "aggregating": "汇总中",
+    "delivered": "待验收",
+    "done": "已完成",
+    "rejected": "已打回",
+}
+
+
+async def bot_room_org_get(request: Request, room_id: str):
+    """GET /api/bot/rooms/{room_id}/org —— 组织看板数据（⑭ 神魔堂秘书/组织模式）：
+    岗位表（含绑定 profile 名）+ 任务列表（含详情）。无岗位表返回空组织（前端可引导建组织）。"""
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        db = _bot_room_db()
+        try:
+            roles = db.get_org_roles(room_id)
+            tasks = db.list_org_tasks(room_id)
+            # 任务补详情（plan/audit_log/final_output/artifacts）
+            detail_tasks = []
+            for t in tasks:
+                full = db.get_org_task(t["id"])
+                if full is not None:
+                    detail_tasks.append(full)
+                else:
+                    detail_tasks.append(t)
+            # profile 名映射（岗位显示人名）
+            prof_names = {}
+            try:
+                for p in db.list_agent_profiles():
+                    prof_names[p["id"]] = p.get("name") or p["id"]
+            except Exception:
+                pass
+        finally:
+            db.close()
+        return {
+            "ok": True,
+            "room_id": room_id,
+            "roles": roles,
+            "tasks": detail_tasks,
+            "profile_names": prof_names,
+            "status_labels": _ORG_STATUS_LABELS,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def bot_room_org_task_get(request: Request, room_id: str, task_id: str):
+    """GET /api/bot/rooms/{room_id}/org/tasks/{task_id} —— 单任务详情（看板轮询/展开）。"""
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    task_id = (task_id or "").strip()
+    if not room_id or not task_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id and task_id required"})
+    try:
+        db = _bot_room_db()
+        try:
+            task = db.get_org_task(task_id)
+            if task is None or task.get("room_id") != room_id:
+                return {"ok": False, "error": "task not found"}
+        finally:
+            db.close()
+        return {"ok": True, "task": task}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def _build_config_diff(target_path: str, new_content: str) -> str:
     """Unified diff of new_content vs current config file (for approval UI)."""
     import difflib
@@ -5960,6 +6036,18 @@ def register_to(app):
             bot_room_timeline_get,
             methods=["GET"],
             name="bot_room_timeline_get",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/org",
+            bot_room_org_get,
+            methods=["GET"],
+            name="bot_room_org_get",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/org/tasks/{task_id}",
+            bot_room_org_task_get,
+            methods=["GET"],
+            name="bot_room_org_task_get",
         )
     app.add_api_route(
         "/api/emergence/status",

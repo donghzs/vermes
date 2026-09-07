@@ -657,6 +657,12 @@ const api = {
   getBotRoomTimeline(roomId) {
     return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/timeline`)
   },
+  getBotRoomOrg(roomId) {
+    return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/org`)
+  },
+  getBotRoomOrgTask(roomId, taskId) {
+    return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/org/tasks/${encodeURIComponent(taskId)}`)
+  },
 
   // ── ⑭ 请神收尾：外部 ACP agent「登堂」 ──
   // 路径不带 /api 前缀：request() 会按在线/离线模式拼 /v1 或 /api。
