@@ -7,7 +7,6 @@ import { useQuota } from '../composables/useQuota'
 import ChatHeader from './ChatHeader.vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
-import MemoryFlags from './MemoryFlags.vue'
 import QuotaModal from './QuotaModal.vue'
 import TaskFlowCard from './TaskFlowCard.vue'
 import HistoryPanel from './HistoryPanel.vue'
@@ -210,7 +209,6 @@ onUnmounted(() => {
         </div>
       </div>
       <WelcomeGuide v-else @openWeChatQR="openWeChatQR" />
-      <MemoryFlags />
     </div>
 
     <!-- 输入区 -->

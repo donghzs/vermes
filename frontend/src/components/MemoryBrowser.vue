@@ -114,11 +114,16 @@ onMounted(() => {
   fetchMemories()
   // P2-13 fix: 不依赖 MemoryFlags.vue 先挂载，自己拉 resolved
   flagsStore.fetchResolved()
+  // 记忆问题面板已从聊天界面合并到本模块（agent 管理 → 记忆），主动拉 open flags
+  flagsStore.fetchFlags()
 })
 </script>
 
 <template>
   <div class="p-4">
+    <!-- 记忆问题面板：原聊天界面强打扰弹窗，已合并到 agent 管理 → 记忆模块（见 ChatView 移除说明） -->
+    <MemoryFlags />
+
     <!-- 搜索与过滤 -->
     <div class="flex gap-3 mb-4 items-center flex-wrap">
       <input
