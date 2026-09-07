@@ -24,6 +24,30 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger("vermes.agent_discovery")
 
+# CLI 二进制额外探测目录（不依赖 PATH）。GUI 双击启动的 app 后端进程继承
+# launchd 精简 PATH（/usr/bin:/bin:...），导致 npm-global/homebrew/QClaw 等
+# 目录里的 agent CLI 用 shutil.which 找不到 → 本机发现不全。这里列出 macOS
+# 常见 CLI 落脚点，`_scan_cli` 会先 which、再逐个目录直查，双保险。
+def _extra_cli_dirs(home: Path) -> List[Path]:
+    """返回 CLI 额外探测目录（存在即纳入），供 PATH 缺失时兜底。"""
+    qclaw_root = home / "Library" / "Application Support" / "QClaw"
+    candidates = [
+        Path("/opt/homebrew/bin"),            # Apple Silicon Homebrew
+        Path("/usr/local/bin"),               # Intel Homebrew / 通用
+        qclaw_root / "npm-global" / "bin",     # QClaw npm 全局（claude/codex）
+        home / ".npm-global" / "bin",
+        home / ".local" / "bin",
+        home / ".cargo" / "bin",
+        qclaw_root / "openclaw" / "config" / "bin",  # QClaw/openclaw CLI
+        home / ".config" / "openclaw" / "config" / "bin",
+        home / "Library" / "Python" / "3.9" / "bin",
+    ]
+    out: List[Path] = []
+    for d in candidates:
+        if d.is_dir() and d not in out:
+            out.append(d)
+    return out
+
 # 已知 agent CLI：命令名 → (展示名, 版本探测参数)
 _KNOWN_CLI_AGENTS: Dict[str, Tuple[str, List[str]]] = {
     "claude": ("Claude Code", ["--version"]),
@@ -86,11 +110,19 @@ class LocalAgentScanner:
 
     # ---- CLI 二进制 ----------------------------------------------------
     def _scan_cli(self, found: Dict[str, AgentDiscovery]) -> None:
+        extra_dirs = _extra_cli_dirs(self.home)
         for bin_name, (disp, ver_args) in _KNOWN_CLI_AGENTS.items():
             try:
                 path = shutil.which(bin_name)
             except Exception:  # noqa: BLE001 - which 探测失败 → 跳过该命令，不阻断其他源
-                continue
+                path = None
+            # PATH 精简（GUI 启动）时 which 可能落空 → 遍历额外目录直查兜底
+            if not path:
+                for d in extra_dirs:
+                    cand = d / bin_name
+                    if cand.exists() and os.access(cand, os.X_OK):
+                        path = str(cand)
+                        break
             if not path:
                 continue
             key = f"agent:{bin_name}"

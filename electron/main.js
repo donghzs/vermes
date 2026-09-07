@@ -216,6 +216,20 @@ function startBackend() {
       env.PYTHONPATH = path.join(process.resourcesPath, 'app');
       env.VERMES_HOME = path.join(require('os').homedir(), '.vermes');
     }
+    // macOS GUI 双击启动时 launchd 注入精简 PATH（/usr/bin:/bin:...），导致
+    // 后端 LocalAgentScanner 用 shutil.which 找不到 npm-global/homebrew/QClaw
+    // 里的 agent CLI（本机发现不全）。这里合并用户 shell 的完整 PATH 兜底。
+    if (process.platform === 'darwin') {
+      try {
+        const loginPath = require('child_process').execSync(
+          "/bin/zsh -ilc 'printf %s \"$PATH\"' 2>/dev/null",
+          { timeout: 3000, encoding: 'utf8' }
+        ).trim();
+        if (loginPath) {
+          env.PATH = [...new Set([...loginPath.split(':'), ...(env.PATH || '').split(':')].filter(Boolean))].join(':');
+        }
+      } catch (_) { /* 静默：拿不到 shell PATH 就保持原样，不阻断启动 */ }
+    }
 
     backendProcess = spawn(backendExe, backendArgs, {
       cwd: app.isPackaged ? path.join(process.resourcesPath, 'backend') : getAppDir(),
