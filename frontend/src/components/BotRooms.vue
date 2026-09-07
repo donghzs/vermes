@@ -382,7 +382,8 @@ onUnmounted(() => {
       <div ref="timelineRef" class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         <div v-if="bot.loadingTimeline" class="text-xs text-gray-400">加载消息…</div>
         <div v-else-if="messages.length === 0" class="text-sm text-gray-400 mt-8 text-center">
-          还没有消息。在下方输入并 @ 一个 Agent 开始对话。
+          还没有消息。输入 @名字 点名 Agent，可 @ 多人协作；
+          Agent 回复中会 @ 接力其他成员，形成协作链。
         </div>
         <template v-for="m in messages" :key="m.id">
           <div v-if="m.author_type === 'user'" class="flex justify-end">
