@@ -79,7 +79,7 @@ class AcpTransport(AgentTransport):
                 ),
             }
 
-        recipe = find_recipe(handle.recipe, RECIPES_DIR)
+        recipe = find_recipe(handle.recipe, RECIPES_DIR, recursive=True)
         if recipe is None:
             return {
                 "transport": self.name,

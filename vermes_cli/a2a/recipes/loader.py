@@ -101,9 +101,17 @@ def load_all_recipes(directory: str | Path, recursive: bool = False) -> list[Rec
     return recipes
 
 
-def find_recipe(name: str, directory: str | Path) -> RecipeConfig | None:
-    """Find a recipe by ``name`` field (exact match)."""
-    for path in iter_recipe_files(directory):
+def find_recipe(
+    name: str, directory: str | Path, recursive: bool = False
+) -> RecipeConfig | None:
+    """Find a recipe by ``name`` field (exact match).
+
+    ``recursive=False`` (default) only scans the top level (backwards
+    compatible with the curated-recipes call sites). Pass ``recursive=True``
+    to also search subdirectories (e.g. ``registry/`` auto-dumped recipes) —
+    required wherever the full 41-recipe surface is exposed (登堂/dispatch).
+    """
+    for path in iter_recipe_files(directory, recursive=recursive):
         try:
             rc = load_recipe(path)
         except ValueError:

@@ -4720,7 +4720,7 @@ async def api_register_agent_profile(request: Request):
     recipe_name = (body.get("recipe") or body.get("recipe_name") or "").strip()
     if not recipe_name:
         raise HTTPException(status_code=400, detail={"ok": False, "error": "recipe required"})
-    recipe = find_recipe(recipe_name, RECIPES_DIR)
+    recipe = find_recipe(recipe_name, RECIPES_DIR, recursive=True)
     if recipe is None:
         raise HTTPException(
             status_code=404, detail={"ok": False, "error": f"recipe not found: {recipe_name}"}

@@ -83,3 +83,20 @@ def test_load_all_recipes_finds_three() -> None:
 def test_find_recipe_by_name() -> None:
     rc = find_recipe("copilot", RECIPES_DIR)
     assert rc is not None and rc.name == "copilot"
+
+
+def test_find_recipe_recursive_finds_registry_recipes() -> None:
+    # 回归守卫（2026-09-07）：GET /agents/recipes 递归返回 41 条（含 registry/ 38 条），
+    # 但 find_recipe 若不递归就找不到 registry 里的 recipe → 封神榜 38/41 卡片点登堂
+    # 必 404。此处验证 recursive=True 能命中 registry 子目录 recipe。
+    for name in ("cursor", "grok-build", "qwen-code", "cline", "claude-acp"):
+        assert find_recipe(name, RECIPES_DIR, recursive=True) is not None, (
+            f"recursive find_recipe 找不到 registry/ 里的 {name!r}"
+        )
+
+
+def test_find_recipe_default_non_recursive_matches_top_level_only() -> None:
+    # 默认行为保持向后兼容：不递归时只扫顶层（手写 3 条）。
+    assert find_recipe("copilot", RECIPES_DIR) is not None
+    # registry/ 里的 cursor 默认不递归时找不到（与旧语义一致）
+    assert find_recipe("cursor", RECIPES_DIR) is None
