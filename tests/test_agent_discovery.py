@@ -45,7 +45,7 @@ def test_scanner_cli_and_config_and_mcp(fake_home, monkeypatch):
     assert "agent:claude" in found
     assert found["agent:claude"].kind == "cli"
     assert "agent:cfg_.claude" in found
-    assert found["agent:cfg_.claude"].kind == "app"
+    assert found["agent:cfg_.claude"].kind == "config"
     assert any(a.id.startswith("agent:mcp_") for a in found.values())
     assert found["agent:mcp_my-server"].auth_scheme == "apikey"
 

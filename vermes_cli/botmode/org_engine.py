@@ -126,12 +126,14 @@ SECRETARY_INSTRUCTION = (
     "- 审计者(auditor)：必须与执行者不同人 → 用强模型交叉审计质量\n"
     "- 汇总者(aggregator)：用强模型整合最终成果\n"
     "- 分派者(dispatcher)：复杂任务配，简单任务可不配（老板直派执行者）\n"
+    "- 可选人员里没有合适角色时：profile_id 写 \"forge:角色名\"（如 forge:财务分析师），"
+    "并在 description 里写清该角色专长人设，系统会自动造一个新 agent 坐这个岗位\n"
     "严格按 JSON 输出（不要多余文字）：\n"
     '{{"title": "<任务短名>", "roles": [{{"role_id": "<短id>", "name": "<岗位名>", '
     '"type": "dispatcher|executor|auditor|aggregator", '
-    '"profile_id": "<从上面可选人员中选>", '
-    '"description": "<该岗位在此任务中的职责>"}}]}}\n'
-    "每个岗位必须选一个可选人员（profile_id 必须来自上面列表）；人数精干不冗余；"
+    '"profile_id": "<从上面可选人员中选，或 forge:角色名>", '
+    '"description": "<该岗位在此任务中的职责（forge 时=新人设）>"}}]}}\n'
+    "每个岗位必须选一个可选人员（profile_id 来自上面列表，或 forge: 前缀造新）；人数精干不冗余；"
     "默认至少 1 执行 + 1 审计（不同人）+ 1 汇总。"
 )
 
@@ -140,7 +142,9 @@ def parse_secretary_plan(raw: str, candidates: Dict[str, Dict]) -> Dict:
     """解析秘书产出的组织方案 JSON → {title, roles, errors}。
 
     容错：坏 JSON → roles=[]（路由层回退：让秘书重试或提示用户手动配）；
-    profile_id 不在候选池 → 该岗位剔除并记 error。
+    profile_id 不在候选池且非 forge: 前缀 → 该岗位剔除并记 error；
+    forge: 前缀（如 forge:财务分析师）→ 保留，profile_id 原样透传，由路由层
+    自动造神（用 description 做人设）。
     """
     text = _extract_json(raw)
     out: Dict[str, Any] = {"title": "", "roles": [], "errors": []}
@@ -170,7 +174,8 @@ def parse_secretary_plan(raw: str, candidates: Dict[str, Dict]) -> Dict:
         if rtype not in SECRETARY_ROLE_TYPES:
             out["errors"].append(f"岗位 {rid} 类型非法: {rtype}")
             continue
-        if pid not in candidates:
+        is_forge = pid.startswith("forge:")
+        if not is_forge and pid not in candidates:
             out["errors"].append(f"岗位 {rid} 选的 {pid} 不在候选池")
             continue
         if pid in seen:
@@ -182,6 +187,7 @@ def parse_secretary_plan(raw: str, candidates: Dict[str, Dict]) -> Dict:
             "type": rtype,
             "profile_id": pid,
             "description": str(r.get("description") or "")[:200],
+            "forge": is_forge,  # 路由层据此自动造神
         })
     return out
 

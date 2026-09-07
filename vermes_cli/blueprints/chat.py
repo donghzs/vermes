@@ -4077,7 +4077,56 @@ async def _secretary_orchestrate(db, room: dict, room_id: str, norm,
         )
         return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
 
-    # 5) 落地：岗位表 + 自动拉人（幂等，已在群的跳过）
+    # 5) 落地：先自动造神（forge 岗位），再落岗位表 + 自动拉人（幂等）
+    # 秘书发现候选池没人时用 "forge:角色名" 占位 → 这里造出真实 agent 顶上
+    _forged = 0
+    for r in plan["roles"]:
+        if not r.get("forge"):
+            continue
+        forge_name = r["profile_id"][len("forge:"):].strip() or r["name"]
+        forge_id = "sec:" + forge_name
+        # 幂等：同名已存在则复用，不重复造
+        if forge_id in candidates or db.get_agent_profile(forge_id):
+            r["profile_id"] = forge_id
+            r["forge"] = False
+            continue
+        try:
+            db.upsert_agent_profile({
+                "id": forge_id,
+                "name": r["name"] or forge_name,
+                "description": r["description"] or forge_name,
+                "system_prompt": r["description"] or ("你是" + (r["name"] or forge_name)),
+                "capability_tags": [],
+                "is_default": 0,
+                "hue": (abs(hash(forge_name)) % 360),
+                "avatar_seed": forge_name,
+                "provider": "", "model": "", "toolsets": [],
+                "transport": "native", "transport_ref": "", "skill_set": "",
+                "editable": 1,
+            })
+            candidates[forge_id] = {"id": forge_id, "name": r["name"] or forge_name}
+            r["profile_id"] = forge_id
+            r["forge"] = False
+            _forged += 1
+            _log.info("[BotMode] secretary forged agent %s (%s)", forge_id, r["name"])
+        except Exception as e:
+            _log.warning("[BotMode] secretary forge failed %s: %s", forge_id, e)
+            # 造神失败：降级为剔除该岗位，避免 pipeline 引用不存在的 profile
+            r["profile_id"] = None
+
+    plan["roles"] = [r for r in plan["roles"] if r.get("profile_id")]
+    if not plan["roles"]:
+        db.append_bot_room_message(
+            room_id, "system", None,
+            "[秘书模式] 组织方案全部岗位都无法落地（造神失败或无人可用），请重试。",
+        )
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "system", "author_ref": None,
+                      "content": "[秘书模式] 组织方案全部岗位都无法落地，请重试。"},
+        )
+        return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+
     db.set_org_roles(room_id, plan["roles"])
     chosen = [r["profile_id"] for r in plan["roles"]]
     existing = {m["ref_id"] for m in db.list_bot_room_members(room_id)

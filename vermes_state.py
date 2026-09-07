@@ -2167,11 +2167,12 @@ class SessionDB:
         return result
 
     def seed_default_profiles(self) -> None:
-        """幂等植入默认 agent profile（分行业/分场景专家 + 通用研究员/编码）。
+        """幂等植入默认 agent profile（2026-09-07 收敛为「秘书 + 通用助手」2 个）。
 
-        仅在 agent_profiles 为空时插入，多次调用安全。向 WorkBuddy 学习：
-        预置不同行业、不同场景、不同角色的专家 agent，放到群聊里正好——
-        用户建群时可按需拉入对应专家（微信式加好友/拉人进群）。
+        不再预置一堆行业专家——专家由「秘书」按需现造（用户直接提需求，
+        秘书发现候选池没人就自动造神），避免预置角色让用户困惑（WorkBuddy
+        专家过载的反面教材）。仅在新库首次植入，多次调用安全；已存在
+        （含用户自造同名）不覆盖。
         """
         try:
             with self._lock:
@@ -2183,88 +2184,25 @@ class SessionDB:
         except sqlite3.OperationalError:
             existing_ids = set()
         defaults = [
-            # ── 通用底座 ──
+            # ── 秘书（默认）：一句话调度——组队/造神/拉群/派活/汇总 ──
             {
-                "id": "researcher", "name": "研究助手",
+                "id": "secretary", "name": "秘书",
+                "description": "老板的秘书：按需组队、自动造神、拉群派活、汇总交付",
+                "capability_tags": ["orchestrate", "planning"],
+                "is_default": 1, "hue": 160, "avatar_seed": "secretary",
+                "provider": "", "model": "", "toolsets": [],
+                "system_prompt": "你是老板的秘书。老板提需求，你负责把它落地：判断需要哪些角色（执行/审计/汇总等），现有 agent 不够就临时造，然后组队、派活、跟进、汇总成果交付。讲究经济-质量-效率三平衡（执行用快/便宜模型，审计汇总用强模型）。",
+                "transport": "native", "transport_ref": "", "skill_set": "",
+            },
+            # ── 通用助手（默认）：单聊兜底 ──
+            {
+                "id": "researcher", "name": "通用助手",
                 "description": "通用研究/检索/写作助手",
                 "capability_tags": ["search", "writing"],
                 "is_default": 1, "hue": 210, "avatar_seed": "researcher",
                 "provider": "", "model": "", "toolsets": [],
                 "system_prompt": "", "transport": "native",
                 "transport_ref": "", "skill_set": "",
-            },
-            {
-                "id": "coder", "name": "编码助手",
-                "description": "代码编写/审查/重构助手",
-                "capability_tags": ["code"],
-                "is_default": 0, "hue": 140, "avatar_seed": "coder",
-                "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "", "transport": "native",
-                "transport_ref": "", "skill_set": "",
-            },
-            # ── 分行业专家（向 WorkBuddy 学习：不同行业/场景/角色） ──
-            {
-                "id": "legal", "name": "法律顾问",
-                "description": "合同审查/法务咨询/合规风险提示",
-                "capability_tags": ["legal", "writing"],
-                "is_default": 0, "hue": 0, "avatar_seed": "legal",
-                "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "你是资深法律顾问，擅长合同审查、法务咨询、合规风险提示。回答严谨、援引法条、明确风险点，不提供可能造成误导的绝对化结论。",
-                "transport": "native", "transport_ref": "", "skill_set": "",
-            },
-            {
-                "id": "analyst", "name": "数据分析师",
-                "description": "数据分析/指标解读/可视化建议",
-                "capability_tags": ["data", "analytics"],
-                "is_default": 0, "hue": 30, "avatar_seed": "analyst",
-                "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "你是资深数据分析师，擅长数据解读、指标分析、可视化建议。结论用数据说话，能区分相关性与因果，主动指出数据局限。",
-                "transport": "native", "transport_ref": "", "skill_set": "",
-            },
-            {
-                "id": "marketing", "name": "营销策划",
-                "description": "营销方案/文案/增长策略",
-                "capability_tags": ["marketing", "writing"],
-                "is_default": 0, "hue": 330, "avatar_seed": "marketing",
-                "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "你是资深营销策划，擅长营销方案、广告文案、增长策略。洞察用户心理，产出可落地、可量化的方案。",
-                "transport": "native", "transport_ref": "", "skill_set": "",
-            },
-            {
-                "id": "product", "name": "产品经理",
-                "description": "需求分析/产品规划/PRD/竞品分析",
-                "capability_tags": ["product", "planning"],
-                "is_default": 0, "hue": 200, "avatar_seed": "product",
-                "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "你是资深产品经理，擅长需求分析、产品规划、PRD 撰写、竞品分析。以用户价值为中心，结构化输出，明确优先级与取舍。",
-                "transport": "native", "transport_ref": "", "skill_set": "",
-            },
-            {
-                "id": "writer", "name": "写作导师",
-                "description": "文案润色/内容创作/结构优化",
-                "capability_tags": ["writing", "content"],
-                "is_default": 0, "hue": 270, "avatar_seed": "writer",
-                "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "你是资深写作导师，擅长文案润色、内容创作、结构优化。文风清晰有感染力，能根据受众与目的调整语气。",
-                "transport": "native", "transport_ref": "", "skill_set": "",
-            },
-            {
-                "id": "doctor", "name": "健康顾问",
-                "description": "健康科普/报告解读（非医疗诊断）",
-                "capability_tags": ["health", "knowledge"],
-                "is_default": 0, "hue": 120, "avatar_seed": "doctor",
-                "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "你是健康科普顾问，擅长健康知识科普、体检报告通俗解读。始终声明不替代医生诊断，涉及疾病治疗建议就医。",
-                "transport": "native", "transport_ref": "", "skill_set": "",
-            },
-            {
-                "id": "teacher", "name": "学习教练",
-                "description": "知识点讲解/学习方法/课程设计",
-                "capability_tags": ["education", "teaching"],
-                "is_default": 0, "hue": 50, "avatar_seed": "teacher",
-                "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "你是资深学习教练，擅长知识点讲解、学习方法指导、课程设计。深入浅出，用类比与例子帮人真正理解。",
-                "transport": "native", "transport_ref": "", "skill_set": "",
             },
         ]
         for d in defaults:

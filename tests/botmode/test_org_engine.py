@@ -375,6 +375,28 @@ def test_parse_secretary_plan_bad_json_fail_safe():
     assert out["errors"]
 
 
+def test_parse_secretary_plan_forge_prefix():
+    """秘书用 forge:角色名 造神 → 保留岗位并标记 forge=True（不剔除非候选池）。"""
+    cands = {"eng1": {"id": "eng1", "name": "甲"}}
+    raw = ('{"title": "做财务报表", "roles": ['
+           '{"role_id": "eng", "name": "研究员", "type": "executor", "profile_id": "eng1", "description": "写正文"},'
+           '{"role_id": "fin", "name": "财务分析师", "type": "auditor", "profile_id": "forge:财务分析师", "description": "审计报表数据准确性"}]}')
+    out = oe.parse_secretary_plan(raw, cands)
+    assert not out["errors"]
+    assert len(out["roles"]) == 2
+    fin = out["roles"][1]
+    assert fin["profile_id"] == "forge:财务分析师"
+    assert fin["forge"] is True
+    # 非 forge 岗位 forge 标志应为 False
+    assert out["roles"][0]["forge"] is False
+
+
+def test_secretary_instruction_mentions_forge():
+    """秘书指令需提示：候选池没人时可 forge: 前缀造神。"""
+    inst = oe.SECRETARY_INSTRUCTION
+    assert "forge:" in inst
+
+
 def test_secretary_instruction_mentions_balance():
     """秘书指令必须包含三平衡选人要求 + 候选清单占位。"""
     inst = oe.SECRETARY_INSTRUCTION

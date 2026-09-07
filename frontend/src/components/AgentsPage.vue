@@ -241,6 +241,9 @@
               :title="stateOf(a._key).detail"
             >{{ stateOf(a._key).detail }}</span>
           </div>
+          <div v-else-if="a.source !== 'remote' && isGatewayType(a)" class="text-[11px] text-amber-500">
+            ⚠️ gateway 服务型（已安装但无 print 直连通路）——它自己就是 Agent 运行时，请直接用其入口，或到封神榜搜同名 agent 登堂后拉群协作
+          </div>
           <div v-else-if="a.source !== 'remote' && !canLocalConnect(a)" class="text-[11px] text-gray-400">
             仅配置目录/App 发现，无 CLI 通路 —— 到封神榜搜同名 agent 登堂后可入群
           </div>
@@ -599,10 +602,10 @@ const counts = computed(() => {
 })
 
 function kindIcon(kind) {
-  return ({ cli: '🖥️', app: '📦', mcp: '🔌', remote: '☁️', subprocess: '⚙️' })[kind] || '🤖'
+  return ({ cli: '🖥️', app: '📦', config: '📂', mcp: '🔌', remote: '☁️', subprocess: '⚙️' })[kind] || '🤖'
 }
 function kindLabel(kind) {
-  return ({ cli: 'CLI', app: 'App', mcp: 'MCP', remote: '远端', subprocess: '子进程' })[kind] || (kind || '未知')
+  return ({ cli: 'CLI', app: 'App', config: '配置', mcp: 'MCP', remote: '远端', subprocess: '子进程' })[kind] || (kind || '未知')
 }
 function authLabel(scheme) {
   return ({ none: '无需鉴权', apikey: 'API Key', oauth: 'OAuth', local: '本地', bearer: 'Bearer' })[scheme] || (scheme || '—')
@@ -676,6 +679,9 @@ function stateClass(st) {
  */
 const localCli = ref(new Set())
 
+/** gateway 服务型 agent（有 CLI 但非 print 模式，无法 CLI 直连）。 */
+const GATEWAY_BINS = ['openclaw', 'qclaw']
+
 /** 本机 CLI agent 是否可本地直连（entry_point 在 PATH / 是已知 CLI 名）。 */
 function canLocalConnect(a) {
   if (!a || a.source === 'remote') return false
@@ -683,8 +689,19 @@ function canLocalConnect(a) {
   const ep = (a.entry_point || '').trim()
   if (!ep) return false // 配置目录/app bundle 发现无 CLI 入口
   const bin = ep.split(/[ /]/)[0]
+  // gateway 服务型（openclaw/qclaw）不是 print 模式，不能 CLI 直连
+  if (GATEWAY_BINS.includes(bin)) return false
   // 后端映射表认识的 CLI 类型（claude/codex/aider/gemini/goose/claude-code）
   return ['claude', 'claude-code', 'codex', 'aider', 'gemini', 'goose'].includes(bin)
+}
+
+/** 是否 gateway 服务型 agent（openclaw/qclaw 等，有 CLI 但非 print 直连）。 */
+function isGatewayType(a) {
+  if (!a || a.source === 'remote') return false
+  const ep = (a.entry_point || '').trim()
+  if (!ep) return false
+  const bin = ep.split(/[ /]/)[0]
+  return GATEWAY_BINS.includes(bin)
 }
 
 /** 该本机 agent 是否已接入（本会话内）。 */

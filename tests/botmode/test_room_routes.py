@@ -230,7 +230,7 @@ def run_secretary_org_flow(env):
                         '{"role_id": "eng", "name": "研究员", "type": "executor", '
                         '"profile_id": "researcher", "description": "写正文"},'
                         '{"role_id": "qa", "name": "QA", "type": "auditor", '
-                        '"profile_id": "coder", "description": "交叉审计"},'
+                        '"profile_id": "secretary", "description": "交叉审计"},'
                         '{"role_id": "agg", "name": "汇总", "type": "aggregator", '
                         '"profile_id": "researcher", "description": "整合"}]}')
             if "[组织流水线 · 审计]" in msg:
@@ -252,14 +252,14 @@ def run_secretary_org_flow(env):
     tl = r.json().get("timeline", [])
     joined = "\n".join(f"[{m['author_type']}|{m.get('author_ref')}] {m['content']}" for m in tl)
 
-    # 组织岗位表落地（含自动拉入的 coder）
+    # 组织岗位表落地（含自动拉入的 secretary 做审计）
     db2 = vermes_state.SessionDB(env.db_path)
     roles = db2.get_org_roles(room_id)
     check("org roles persisted", len(roles) >= 2, str(roles)[:300])
     types = {r["type"] for r in roles}
     check("roles have executor+auditor", {"executor", "auditor"} <= types, str(types))
     members = {m["ref_id"] for m in db2.list_bot_room_members(room_id) if m["member_type"] == "agent"}
-    check("auto-pulled coder into room", "coder" in members, str(members))
+    check("auto-pulled secretary into room", "secretary" in members, str(members))
     tasks = db2.list_org_tasks(room_id)
     check("task auto-created", len(tasks) >= 1, str(tasks)[:200])
     check("task delivered awaiting boss", bool(tasks) and tasks[-1].get("status") == "delivered",
@@ -338,7 +338,7 @@ def run_collab(env):
     if rese_msgs:
         body = rese_msgs[0]
         check("roster: 群名", "协作房" in body, body[:150])
-        check("roster: 自己身份", "你是 @研究助手" in body, body[:300])
+        check("roster: 自己身份", "你是 @通用助手" in body, body[:300])
         check("roster: 成员名单含分析师", "@分析师" in body, body[:400])
         check("任务注入", "调研一下市场" in body, body[-150:])
     # 2. @ 接力：研究助手回复 @分析师 → 分析师被自动派发
@@ -693,14 +693,14 @@ def run_members(env):
     check("GET members 200 + ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
     members = r.json().get("members", [])
     refs = {m["ref_id"] for m in members}
-    check("候选含 researcher/coder", refs >= {"researcher", "coder"}, str(refs)[:300])
+    check("候选含 secretary/researcher", refs >= {"secretary", "researcher"}, str(refs)[:300])
 
     by_ref = {m["ref_id"]: m for m in members}
     rs = by_ref.get("researcher", {})
-    cd = by_ref.get("coder", {})
-    check("候选带 name（中文别名）", rs.get("name") == "研究助手", str(rs)[:200])
+    cd = by_ref.get("secretary", {})
+    check("候选带 name（中文别名）", rs.get("name") == "通用助手", str(rs)[:200])
     check("候选带 hue（头像色相 210）", rs.get("hue") == 210, str(rs)[:200])
-    check("候选带 avatar_seed", cd.get("avatar_seed") == "coder", str(cd)[:200])
+    check("候选带 avatar_seed", cd.get("avatar_seed") == "secretary", str(cd)[:200])
     check("候选 member_type=agent", all(m.get("member_type") == "agent" for m in members), str(members)[:300])
 
     # 空 room_id 校验（与其余 bot handler 同纪律）：%20 → strip 后为空 → 400

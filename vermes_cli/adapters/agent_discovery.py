@@ -40,13 +40,13 @@ _KNOWN_CLI_AGENTS: Dict[str, Tuple[str, List[str]]] = {
 
 # 已知 agent 配置目录（home 相对）：存在即视为已装（home-dir based agent）
 _KNOWN_AGENT_CONFIG_DIRS: Dict[str, Tuple[str, str]] = {
-    ".claude": ("Claude", "app"),
-    ".config/codex": ("Codex", "cli"),
-    ".config/openclaw": ("OpenClaw", "app"),
-    ".qclaw": ("QClaw", "app"),
-    ".config/aider": ("Aider", "cli"),
-    ".gemini": ("Gemini CLI", "cli"),
-    ".goose": ("Goose", "cli"),
+    ".claude": ("Claude", "config"),
+    ".config/codex": ("Codex", "config"),
+    ".config/openclaw": ("OpenClaw", "config"),
+    ".qclaw": ("QClaw", "config"),
+    ".config/aider": ("Aider", "config"),
+    ".gemini": ("Gemini CLI", "config"),
+    ".goose": ("Goose", "config"),
 }
 
 # macOS app bundle 候选（/Applications 下）
