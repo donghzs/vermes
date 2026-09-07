@@ -127,6 +127,27 @@ else
   fail "gateway/ 目录未找到"
 fi
 
+# ── 4.5 a2a 食谱 + botmode（⑭ 请神收尾必需，曾因 gui spec 漏 datas 导致 41 recipe 全丢）──
+echo ""
+echo "=== 4.5 a2a 食谱 + botmode ==="
+A2A_DIR="$INTERNAL/vermes_cli/a2a"
+if [ -d "$A2A_DIR" ]; then
+  ok "a2a/ 目录存在"
+  RECIPE_COUNT=$(find "$A2A_DIR/recipes" -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$RECIPE_COUNT" -ge 40 ]; then
+    ok "recipes/ 有 $RECIPE_COUNT 个 yaml（≥40）"
+  else
+    fail "recipes/ yaml 不足 ($RECIPE_COUNT, 期望 ≥40 — 封神榜登堂会 404)"
+  fi
+else
+  fail "a2a/ 目录未找到（spec datas 缺 ('vermes_cli/a2a', ...)）"
+fi
+if [ -d "$INTERNAL/vermes_cli/botmode" ]; then
+  ok "botmode/ 目录存在"
+else
+  fail "botmode/ 目录未找到（spec datas 缺 ('vermes_cli/botmode', ...)）"
+fi
+
 # ── 5. splash.html (Electron) ──
 echo ""
 echo "=== 5. Electron 壳 ==="
