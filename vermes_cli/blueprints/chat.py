@@ -3109,6 +3109,60 @@ def _resolve_room_agent_identity(profile):
     return _resolve_model_provider("agnes-2.0-flash", None)
 
 
+def _acp_agent_chat_sync(profile, text: str, timeout_seconds: float = 900.0) -> str:
+    """驱动一个已登堂的 ACP 异构 agent 完成单轮对话（⑭ 请神群聊协作）。
+
+    神魔堂收口（2026-09-07 董董）：登堂 agent（transport="acp"）此前拉进群后
+    无法协作——bot_room_message_send 只走 _bot_build_agent（原生 AIAgent），
+    _resolve_room_agent_identity 对 acp profile 无 transport 分支 → provider
+    不在已配置 providers → base_url="" → agent 构建失败 → 群里永远
+    "[agent 不可用]"。a2a dispatch 通路（transports_acp.py）已实现但零调用点。
+
+    本 helper 是群聊侧的 acp 派发原语：profile.id → a2a_agents.recipe
+    → find_recipe → build_acp_transport → chat.completions.create。
+    走同步实现（ACP 是 stdio 阻塞往返），由调用方 to_thread 包裹。
+
+    Raises:
+        ValueError / RuntimeError: 任一环节失败（调用方 catch 后 fail-open
+        写系统提示，不阻断其他成员回复）。
+    """
+    pid = profile.get("id") if isinstance(profile, dict) else None
+    if not pid:
+        raise ValueError("acp profile missing id")
+    # 1) 取 a2a_agents 行 → recipe 名（登堂时写入；历史行可能为 NULL）
+    from vermes_state import SessionDB as _SessionDB
+    db = _SessionDB()
+    try:
+        a2a_row = db.get_a2a_agent(pid)
+    finally:
+        db.close()
+    recipe_name = (a2a_row or {}).get("recipe") or ""
+    if not recipe_name:
+        raise RuntimeError(
+            f"agent {pid!r} has no recipe on record; re-register via "
+            "/api/agents/register-profile to enable dispatch"
+        )
+    # 2) 找回 recipe → 构造 transport
+    recipe = find_recipe(recipe_name, RECIPES_DIR, recursive=True)
+    if recipe is None:
+        raise RuntimeError(f"recipe not found: {recipe_name!r}")
+    transport = build_acp_transport(recipe)
+    # 3) spawn + 对话（内部 initialize → session/new → session/prompt → 回收 chunk）
+    model = (a2a_row or {}).get("model") or recipe.provider or "acp-agent"
+    response = transport.chat.completions.create(
+        messages=[{"role": "user", "content": text}],
+        model=model,
+        timeout=timeout_seconds,
+    )
+    try:
+        content = response.choices[0].message.content
+    except Exception as exc:
+        raise RuntimeError(f"malformed acp response: {exc}") from exc
+    if not content:
+        raise RuntimeError("acp agent returned empty response")
+    return content
+
+
 async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
     """为某 profile 取/建 AIAgent（复用 ``_agent_cache``），fail-open。
 
@@ -3468,6 +3522,40 @@ async def bot_room_message_send(request: Request, room_id: str):
                     continue
                 # ⚠️ G4：session_id 必须是**完整**房间 key（room:{norm}:agent:{id}）
                 session_key = _session_key_for_room(norm, agent_id)
+                # ⑭ 请神群聊协作（2026-09-07 董董收口）：transport="acp" 的
+                # 登堂异构 agent 走 ACP dispatch（真实 spawn 外部 agent 单轮对话），
+                # 不走原生 AIAgent 路径——_resolve_room_agent_identity 对 acp
+                # profile 会因 provider 不在已配置列表而 base_url="" 构建失败。
+                if (profile.get("transport") if isinstance(profile, dict) else None) == "acp":
+                    # 广播流式开始（前端显示「正在输入」气泡）
+                    await _bot_broadcast_room_update(
+                        room_id, "room_message_delta",
+                        message={"agent_id": agent_id, "phase": "start", "delta": ""},
+                    )
+                    try:
+                        reply = await asyncio.to_thread(_acp_agent_chat_sync, profile, text)
+                    except Exception as e:
+                        _log.warning("[BotMode] acp agent run failed %s: %s", agent_id, e)
+                        reply = None
+                    if reply:
+                        db.append_bot_room_message(room_id, "agent", agent_id, reply,
+                                                   turn_session_id=session_key)
+                        await _bot_broadcast_room_update(
+                            room_id, "room_message",
+                            message={"author_type": "agent", "author_ref": agent_id, "content": reply},
+                        )
+                    else:
+                        db.append_bot_room_message(
+                            room_id, "system", None,
+                            f"[@{profile.get('name', agent_id)} 未产生回复：ACP agent 不可用（已登堂但 spawn 失败，检查对应 CLI/鉴权）]",
+                            turn_session_id=session_key,
+                        )
+                        await _bot_broadcast_room_update(
+                            room_id, "room_message",
+                            message={"author_type": "system", "author_ref": None,
+                                      "content": f"[@{profile.get('name', agent_id)} 未产生回复：ACP agent 不可用（已登堂但 spawn 失败，检查对应 CLI/鉴权）]"},
+                        )
+                    continue
                 agent = await _bot_build_agent(session_key, profile)
                 reply = None
                 if agent is not None:
@@ -4710,6 +4798,8 @@ async def api_list_agent_recipes(request: Request):
                 "spawn_command": r.spawn_command,
                 "auth_env": r.auth.env_var,
                 "auth_scheme": r.auth.scheme,
+                # 傻瓜式安装引导：未装 CLI 时前端展示「怎么装」（官网/命令）
+                "install_hint": r.install_hint,
             }
             for r in recipes
             if r.is_acp

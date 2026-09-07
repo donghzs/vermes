@@ -22,3 +22,4 @@ capabilities: []
 fingerprint:
   cli:
   - uvx
+install_hint: https://github.com/femto/minion-code

@@ -11,6 +11,11 @@ const createModal = ref({ open: false, name: '', announcement: '', tasks: '', se
 const contacts = ref([])        // 联系人列表（可拉人进群的全量 agent）
 const loadingContacts = ref(false)
 
+// ── 拉人进群弹窗（2026-09-07 神魔堂收口：👥 拉人不再死链，多选未入群联系人直接拉入） ──
+const inviteModal = ref({ open: false, selected: [], submitting: false })
+// ── 群成员管理弹窗（微信式：点成员看详情/移出） ──
+const memberModal = ref({ open: false })
+
 // ── 群公告/群任务编辑弹窗 ──
 const editModal = ref({ open: false, title: '', announcement: '', tasks: '' })
 
@@ -119,6 +124,47 @@ async function removeMember(id) {
   const r = await bot.removeMember(id)
   if (r && r.ok) toast('已移出群', 'success')
   else toast((r && r.error) || '移出失败', 'error')
+}
+
+// 拉人弹窗：打开时载入联系人，未入群的可多选拉入（已入群的置灰标记）
+function openInvite() {
+  if (!bot.currentRoomId) { toast('请先选择或创建群', 'error'); return }
+  inviteModal.value = { open: true, selected: [], submitting: false }
+  loadContacts()
+}
+function toggleInvite(id) {
+  const s = inviteModal.value.selected
+  const i = s.indexOf(id)
+  if (i >= 0) s.splice(i, 1)
+  else s.push(id)
+}
+async function handleInvite() {
+  const sel = inviteModal.value.selected
+  if (sel.length === 0) { toast('请勾选要拉入的 Agent', 'error'); return }
+  inviteModal.value.submitting = true
+  try {
+    let ok = true
+    for (const id of sel) {
+      const r = await bot.addMember(id)
+      if (!(r && r.ok)) { ok = false; toast((r && r.error) || `拉入 ${id} 失败`, 'error') }
+    }
+    if (ok) toast(`已拉入 ${sel.length} 个 Agent`, 'success')
+    inviteModal.value.open = false
+  } finally {
+    inviteModal.value.submitting = false
+  }
+}
+
+// 群成员管理：微信式弹窗，点成员可看详情 / 移出群
+function openMembers() {
+  if (!bot.currentRoomId) return
+  memberModal.value = { open: true }
+}
+async function removeMemberFromModal(m) {
+  const nm = (m && (m.name || m.ref_id)) || ''
+  if (!confirm(`确定把「${nm}」移出群？`)) return
+  await removeMember(m.ref_id)
+  // 若移出后群已空，保持弹窗开着但列表同步为空
 }
 
 async function handleSelect(id) {
@@ -288,12 +334,19 @@ onUnmounted(() => {
               title="编辑群公告 / 群任务"
               @click="openEdit"
             >📋 群公告</button>
+            <!-- 群成员管理（微信式：看谁在群、点成员详情/移出） -->
             <button
               v-if="currentRoom"
               class="px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-              title="拉人进群"
-              @click="loadContacts"
-            >👥 拉人</button>
+              :title="`群成员 ${(bot.members || []).length} 人`"
+              @click="openMembers"
+            >👥 群成员{{ (bot.members || []).length ? `(${(bot.members || []).length})` : '' }}</button>
+            <button
+              v-if="currentRoom"
+              class="px-2 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white transition"
+              title="拉新 Agent 进群"
+              @click="openInvite"
+            >＋ 拉人</button>
           </div>
         </div>
         <!-- 群公告条 -->
@@ -499,6 +552,90 @@ onUnmounted(() => {
         <div class="mt-4 flex justify-end gap-2">
           <button @click="editModal.open = false" class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">取消</button>
           <button @click="handleEditSave" class="px-3 py-1.5 text-sm rounded-lg bg-blue-500 hover:bg-blue-600 text-white">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 拉人进群弹窗（2026-09-07：微信式多选拉人，未入群的可勾选，已入群的置灰标记） -->
+    <div
+      v-if="inviteModal.open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="inviteModal.open = false"
+    >
+      <div class="w-[28rem] max-w-[92vw] max-h-[85vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-800 p-5 shadow-xl">
+        <h3 class="text-base font-semibold mb-1">拉人进群</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">勾选要拉入的 Agent（原生 + 已登堂的封神榜 Agent 都能拉，@ 它即可协作）。</p>
+        <div v-if="loadingContacts" class="text-xs text-gray-400">加载联系人…</div>
+        <div v-else-if="addableContacts.length === 0" class="text-sm text-gray-400 py-6 text-center">
+          没有可拉入的新 Agent（全部已在群）。<br/>可到「🔥 神魔架」造神或从封神榜登堂后再拉。
+        </div>
+        <div v-else class="max-h-72 overflow-y-auto space-y-1">
+          <label
+            v-for="c in addableContacts"
+            :key="c.id"
+            class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+          >
+            <input type="checkbox" :checked="inviteModal.selected.includes(c.id)" @change="toggleInvite(c.id)" class="accent-blue-500" />
+            <svg viewBox="0 0 32 32" class="w-6 h-6 rounded-full shrink-0">
+              <circle cx="16" cy="16" r="16" :fill="`hsl(${c.hue || 0}, 65%, 45%)`" />
+              <text x="16" y="22" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">{{ (c.name || '?').slice(0, 1) }}</text>
+            </svg>
+            <div class="min-w-0">
+              <div class="text-sm truncate">{{ c.name }}</div>
+              <div class="text-[11px] text-gray-400 truncate">{{ c.description || c.id }}</div>
+            </div>
+            <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded shrink-0" :class="c.transport === 'acp' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'">{{ c.transport === 'acp' ? '⛩️ 登堂' : '原生' }}</span>
+          </label>
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button @click="inviteModal.open = false" class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">取消</button>
+          <button @click="handleInvite" :disabled="inviteModal.submitting || inviteModal.selected.length === 0" class="px-3 py-1.5 text-sm rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">{{ inviteModal.submitting ? '拉入中…' : `拉入 ${inviteModal.selected.length} 个` }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 群成员管理弹窗（微信式：看谁在群、点移出；transport 徽标区分原生/登堂） -->
+    <div
+      v-if="memberModal.open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="memberModal.open = false"
+    >
+      <div class="w-[28rem] max-w-[92vw] max-h-[85vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-800 p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="text-base font-semibold">群成员（{{ (bot.members || []).length }}）</h3>
+          <button @click="memberModal.open = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none px-1">✕</button>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">点成员名可快速 @；移出后该 Agent 不再应答群消息。</p>
+        <div v-if="bot.loadingMembers" class="text-xs text-gray-400">加载成员…</div>
+        <div v-else-if="(bot.members || []).length === 0" class="text-sm text-gray-400 py-6 text-center">群里还没有成员，点「＋ 拉人」把 Agent 拉进来。</div>
+        <div v-else class="space-y-1">
+          <div
+            v-for="m in bot.members"
+            :key="m.ref_id"
+            class="flex items-center gap-2 px-2 py-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            <svg viewBox="0 0 32 32" class="w-8 h-8 rounded-full shrink-0">
+              <circle cx="16" cy="16" r="16" :fill="`hsl(${Number(m.hue) || ((m.name || m.ref_id || '').split('').reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 0))}, 65%, 45%)`" />
+              <text x="16" y="22" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">{{ (m.name || m.ref_id || '?').slice(0, 1) }}</text>
+            </svg>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm truncate flex items-center gap-1.5">
+                <span class="truncate">{{ m.name || m.ref_id }}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded shrink-0" :class="m.transport === 'acp' || (m.ref_id || '').startsWith('a2a:') ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'">{{ m.transport === 'acp' || (m.ref_id || '').startsWith('a2a:') ? '⛩️ 登堂' : '原生' }}</span>
+              </div>
+              <div class="text-[11px] text-gray-400 truncate">{{ m.ref_id }}</div>
+            </div>
+            <button
+              class="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition shrink-0"
+              title="在输入框 @ 这个 Agent"
+              @click="mentionAtInput({ ...m, name: m.name || m.ref_id, insert: (m.name || m.ref_id), hue: m.hue })"
+            >@</button>
+            <button
+              class="text-xs px-2 py-1 rounded bg-red-50 dark:bg-red-900/30 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 transition shrink-0"
+              title="移出群"
+              @click="removeMemberFromModal(m)"
+            >移出</button>
+          </div>
         </div>
       </div>
     </div>

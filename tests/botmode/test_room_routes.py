@@ -89,6 +89,68 @@ def _seed(db):
     db.seed_default_profiles()  # 幂等：空库才插 researcher/coder
 
 
+def run_acp_room(env):
+    """⑭ 请神群聊协作（2026-09-07 神魔堂收口）：登堂 ACP agent 拉进群后可被 @ 且
+    走 ACP dispatch（_acp_agent_chat_sync），而非原生 AIAgent 路径（后者对 acp
+    profile 会因 base_url="" 构建失败 → 永远 "[agent 不可用]"）。
+    """
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    # 模拟一条已登堂的 ACP agent 行（register-profile 的产物：id=a2a:{provider|name}）
+    db.upsert_agent_profile({
+        "id": "a2a:acp-codex", "name": "codex-acp",
+        "description": "", "provider": "acp-codex", "model": "acp-codex",
+        "transport": "acp", "editable": 1,
+    })
+    db.upsert_a2a_agent({
+        "profile_id": "a2a:acp-codex", "name": "codex-acp",
+        "provider": "acp-codex", "model": "acp-codex", "transport": "acp",
+        "recipe": "codex-acp",
+    })
+    db.close()
+
+    # monkeypatch ACP dispatch 为记录式 fake（不真 spawn CLI）
+    calls = []
+    def _fake_acp_chat(profile, text, timeout_seconds=900.0):
+        calls.append((profile.get("id"), text))
+        return f"[acp-reply] {text[:20]}"
+    chat_bp._acp_agent_chat_sync = _fake_acp_chat
+
+    r = client.post("/api/bot/rooms", json={"name": "异构房"})
+    room_id = r.json().get("room_id")
+    check("create room ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+
+    # 拉登堂 agent + 原生 agent 同群
+    r = client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": "a2a:acp-codex"})
+    check("add acp member ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    r = client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": "researcher"})
+    check("add native member ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+
+    n_before = len(env.captured)
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "@codex-acp 写个冒泡排序"})
+    check("send @acp message ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:300])
+
+    # ACP 派发被调用（而非原生 agent）
+    check("acp dispatch invoked", len(calls) == 1 and calls[0][0] == "a2a:acp-codex", str(calls)[:200])
+    check("native agent NOT built for acp member", len(env.captured) == n_before,
+          f"captured={len(env.captured)}")
+
+    tl = client.get(f"/api/bot/rooms/{room_id}/timeline").json().get("timeline", [])
+    check("acp reply in timeline", any(
+        t["author_type"] == "agent" and t["author_ref"] == "a2a:acp-codex" and "[acp-reply]" in t["content"]
+        for t in tl), str(tl)[-400:])
+    check("no agent-unavailable system msg for acp", not any(
+        t["author_type"] == "system" and "acp-codex" in t.get("content", "")
+        for t in tl), str(tl)[-400:])
+    return results
+
+
 # ─────────────────────────── 核心断言逻辑（pytest 与 __main__ 共用） ───────────────────────────
 
 def run_e2e(env):
@@ -448,6 +510,12 @@ def test_room_members_endpoint(env):
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
 
+def test_acp_agent_room_dispatch(env):
+    results = run_acp_room(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
 # ─────────────────────────── 独立运行入口 ───────────────────────────
 
 if __name__ == "__main__":
@@ -464,6 +532,107 @@ if __name__ == "__main__":
     all_results += run_ws(e)
     all_results += run_off(e)
     all_results += run_members(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
+    all_results += run_acp_room(e)
 
     print("\n=== SUMMARY ===")
     fails = [n for n, c in all_results if not c]

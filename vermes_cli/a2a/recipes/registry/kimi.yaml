@@ -20,3 +20,4 @@ auth:
 capabilities: []
 fingerprint:
   cli: []
+install_hint: https://moonshotai.github.io/kimi-cli/

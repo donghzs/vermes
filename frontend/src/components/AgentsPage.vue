@@ -121,6 +121,12 @@
                 :disabled="stateOf('recipe-' + r.name).status === 'loading'"
                 class="px-2.5 py-1 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition"
               >{{ ascendLabel(stateOf('recipe-' + r.name)) }}</button>
+              <!-- 未安装引导：本机没装 CLI 时给出「📥 安装」入口（傻瓜式） -->
+              <button
+                v-if="looksNotInstalled(stateOf('recipe-' + r.name))"
+                @click="openInstall(r)"
+                class="px-2.5 py-1 text-xs rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition"
+              >📥 去安装</button>
               <span
                 v-if="stateOf('recipe-' + r.name).detail"
                 class="text-[11px] truncate"
@@ -250,6 +256,43 @@
       </div>
     </div>
 
+    <!-- 📥 安装引导弹窗（神魔堂收口：登堂失败=本机没装 CLI，引导下载） -->
+    <div
+      v-if="installModal.open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="installModal.open = false"
+    >
+      <div class="w-[30rem] max-w-[92vw] rounded-xl bg-white dark:bg-gray-800 p-5 shadow-xl">
+        <h3 class="text-base font-semibold mb-1">📥 安装「{{ installModal.recipe && installModal.recipe.name }}」</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          登堂失败 = 本机还没装它的 CLI。装好后回到这里重新点「⛩️ 登堂」即可。
+        </p>
+        <div class="space-y-2 text-sm">
+          <div v-if="installModal.hint" class="rounded-lg bg-gray-50 dark:bg-gray-900 p-3 break-all">
+            <div class="text-[11px] text-gray-400 mb-1">🔗 下载 / 安装指引</div>
+            <a v-if="/^https?:\/\//.test(installModal.hint)" :href="installModal.hint" target="_blank" rel="noopener" class="text-emerald-600 dark:text-emerald-400 hover:underline">{{ installModal.hint }}</a>
+            <template v-else>{{ installModal.hint }}</template>
+          </div>
+          <div v-if="installModal.entryPoint" class="rounded-lg bg-gray-50 dark:bg-gray-900 p-3">
+            <div class="text-[11px] text-gray-400 mb-1">启动命令（装好后它会被这样拉起）</div>
+            <code class="font-mono text-xs break-all">{{ installModal.entryPoint }}</code>
+          </div>
+          <p class="text-xs text-gray-400">💡 也可在终端自行安装，例如 <code class="font-mono">npm install -g</code> 对应 CLI 包。</p>
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            @click="installModal.open = false"
+            class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+          >知道了</button>
+          <button
+            v-if="/^https?:\/\//.test(installModal.hint)"
+            @click="windowOpen(installModal.hint)"
+            class="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+          >打开官网 ↗</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ⑭ 造神弹窗（原生 agent，可各绑专属 API） -->
     <div
       v-if="forgeModal.open"
@@ -357,6 +400,17 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../services/api'
 import { showToast as toast } from '../utils/toast'
+
+// 安全打开外链（在桌面壳里走系统浏览器，网页里新窗口）
+function windowOpen(url) {
+  const a = document.createElement('a')
+  a.href = url
+  a.target = '_blank'
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
 
 const agents = ref([])
 const loading = ref(false)
@@ -539,6 +593,8 @@ const recipes = ref([])
 const ascendState = ref({})
 // 鉴权弹窗
 const authModal = ref({ open: false, key: '', recipe: null, authEnv: '', value: '', error: '' })
+// 安装引导弹窗（神魔堂公开版收口 2026-09-07：登堂失败=本机没装 CLI → 引导去官网下载）
+const installModal = ref({ open: false, recipe: null, hint: '', entryPoint: '', spawn: '' })
 
 const recipeIndex = computed(() => {
   const m = new Map()
@@ -583,6 +639,22 @@ function stateClass(st) {
     need_auth: 'text-amber-600 dark:text-amber-400',
     loading: 'text-gray-400',
   })[st.status] || 'text-gray-400'
+}
+
+/** 登堂失败且原因像是「本机没装 CLI」（command not found on PATH）。 */
+function looksNotInstalled(st) {
+  const d = (st && st.detail) || ''
+  return st && st.status === 'fail' && /not found on PATH|not found|No such file/i.test(d)
+}
+
+/** 打开安装引导弹窗（复制官网/提示文案给用户）。 */
+function openInstall(r) {
+  installModal.value = {
+    open: true, recipe: r,
+    hint: r.install_hint || '',
+    entryPoint: (r.spawn_command || []).join(' ') || r.entry_point || '',
+    spawn: '',
+  }
 }
 
 async function loadRecipes() {

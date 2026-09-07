@@ -1,24 +1,30 @@
+# OpenAI Codex CLI via Zed ACP adapter（手写核心 recipe，勿用生成器覆盖）。
+# entry_point: npx —— Codex 本体无 --acp 标志，必须经 Zed 维护的 npx 适配器包 spawn。
+# fingerprint.cli: codex/npx 探活；鉴权用 OPENAI_API_KEY（settings.json 兜底）。
 name: codex-acp
 version: 1.0.0
-description: "OpenAI Codex CLI via Zed ACP adapter. Codex 本体无 --acp 标志，必须经 npx 适配器包 spawn。"
+description: OpenAI Codex CLI via Zed ACP adapter. Codex 本体无 --acp 标志，必须经 npx 适配器包
+  spawn。
 transport: acp
 provider: acp-codex
 entry_point: npx
 args:
-  - "@agentclientprotocol/codex-acp@1.8.0"
+- '@agentclientprotocol/codex-acp@1.8.0'
 auth:
   scheme: apikey
   env_var: OPENAI_API_KEY
   fallback_settings: ~/.vermes/settings.json
 capabilities:
-  - code
-  - search
-  - refactor
+- code
+- search
+- refactor
 fingerprint:
   cli:
-    - codex
-    - npx
+  - codex
+  - npx
   config_dirs:
-    - .codex
+  - .codex
   app_bundles: []
   mcp_config: []
+install_hint: https://developers.openai.com/codex/ （Codex CLI：npm install -g @openai/codex，需
+  OpenAI API Key）

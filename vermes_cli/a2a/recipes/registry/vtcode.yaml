@@ -22,3 +22,4 @@ auth:
 capabilities: []
 fingerprint:
   cli: []
+install_hint: https://github.com/vinhnx/VTCode/blob/main/docs/guides/zed-acp.md

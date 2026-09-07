@@ -23,3 +23,4 @@ capabilities: []
 fingerprint:
   cli:
   - npx
+install_hint: https://agoragentic.com

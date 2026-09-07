@@ -21,3 +21,4 @@ capabilities: []
 fingerprint:
   cli:
   - npx
+install_hint: https://qoder.com

@@ -123,6 +123,9 @@ def _recipe_dict(agent: dict[str, Any], reg_version: str) -> dict[str, Any]:
         "provider": f"acp-{agent['id']}",
         "auth": {"scheme": "apikey", "env_var": None},
         "capabilities": [],
+        # 傻瓜式安装引导：把 ACP Registry 的官网/repo 带进 recipe，前端登堂
+        # 失败（未装 CLI）时可一键跳转官网下载（神魔堂公开版收口 2026-09-07）。
+        "install_hint": (agent.get("website") or agent.get("repository") or "") or None,
         "fingerprint": {
             "cli": [entry_point] if entry_point and dist_type != "binary" else [],
         },

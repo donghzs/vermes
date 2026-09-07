@@ -1,27 +1,33 @@
+# Claude Code via Zed ACP adapter（手写核心 recipe，勿用生成器覆盖）。
+# entry_point: npx —— Claude Code 本体是 ACP client 非 server，须经 claude-agent-acp 适配器。
+# fingerprint.cli: claude/npx 探活；鉴权用 ANTHROPIC_API_KEY（settings.json 兜底）。
 name: claude-agent-acp
 version: 1.0.0
-description: "Anthropic Claude Code via Zed ACP adapter. Claude Code 本体是 ACP client 非 server，必须经 npx 适配器包 spawn。"
+description: Anthropic Claude Code via Zed ACP adapter. Claude Code 本体是 ACP client
+  非 server，必须经 npx 适配器包 spawn。
 transport: acp
 provider: acp-claude-agent
 entry_point: npx
 args:
-  - "@agentclientprotocol/claude-agent-acp@0.73.0"
+- '@agentclientprotocol/claude-agent-acp@0.73.0'
 auth:
   scheme: apikey
   env_var: ANTHROPIC_API_KEY
   fallback_settings: ~/.vermes/settings.json
 capabilities:
-  - code
-  - search
-  - refactor
-  - writing
+- code
+- search
+- refactor
+- writing
 fingerprint:
   cli:
-    - claude
-    - npx
+  - claude
+  - npx
   config_dirs:
-    - .claude
+  - .claude
   app_bundles:
-    - "Claude.app"
+  - Claude.app
   mcp_config:
-    - ~/.claude.json
+  - ~/.claude.json
+install_hint: https://docs.anthropic.com/en/docs/claude-code （Claude Code：npm install
+  -g @anthropic-ai/claude-code）

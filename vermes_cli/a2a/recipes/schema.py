@@ -44,6 +44,9 @@ class RecipeConfig:
     capabilities: list[str] = field(default_factory=list)
     fingerprint: RecipeFingerprint = field(default_factory=RecipeFingerprint)
     provider: str | None = None
+    # 傻瓜式安装引导（神魔堂公开版收口 2026-09-07）：用户电脑没装对应 CLI 时，
+    # 前端据此展示「怎么装」——给官网/安装命令/提示文案，一键复制跳转。
+    install_hint: str | None = None
 
     @property
     def spawn_command(self) -> list[str]:
@@ -110,4 +113,5 @@ class RecipeConfig:
                 mcp_config=list(fp_raw.get("mcp_config") or []),
             ),
             provider=(data.get("provider") or None),
+            install_hint=(data.get("install_hint") or data.get("website") or None),
         )
