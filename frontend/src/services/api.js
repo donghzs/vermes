@@ -664,6 +664,10 @@ const api = {
   registerAgentProfile(recipe, authValue = '') {
     return this.post('/agents/register-profile', { recipe, auth_value: authValue })
   },
+  // 本机发现一键接入（无 recipe 的本地 CLI agent → transport=cli 联系人）
+  localConnectAgent(id) {
+    return this.post('/agents/local-connect', { id })
+  },
 
   // ── ⑭ 造神：原生 agent 管理（per-agent 专属 API key） ──
   listNativeAgents() { return this.get('/agents/native') },

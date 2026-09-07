@@ -151,6 +151,58 @@ def run_acp_room(env):
     return results
 
 
+def run_cli_room(env):
+    """⑭ 本机直连群聊（2026-09-07 神魔堂公开版收口）：无 ACP recipe 的本机已装
+    CLI agent（local-connect 建 transport=cli 联系人）拉进群后可被 @ 且走
+    _cli_agent_chat_sync（CLI print 直连），而非原生 AIAgent 路径。
+    """
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    # 模拟 local-connect 产物：transport=cli 联系人，transport_ref=CLI 类型名
+    db.upsert_agent_profile({
+        "id": "local:aider", "name": "Aider",
+        "description": "本机 cli agent（CLI 直连）", "provider": "", "model": "",
+        "transport": "cli", "transport_ref": "aider", "editable": 1,
+    })
+    db.close()
+
+    calls = []
+    def _fake_cli_chat(profile, text, timeout_seconds=180.0):
+        calls.append((profile.get("id"), text))
+        return f"[cli-reply] {text[:20]}"
+    chat_bp._cli_agent_chat_sync = _fake_cli_chat
+
+    r = client.post("/api/bot/rooms", json={"name": "直连房"})
+    room_id = r.json().get("room_id")
+    check("create room ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+
+    r = client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": "local:aider"})
+    check("add cli member ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+
+    n_before = len(env.captured)
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "@Aider 列出三个设计模式"})
+    check("send @cli message ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:300])
+
+    check("cli dispatch invoked", len(calls) == 1 and calls[0][0] == "local:aider", str(calls)[:200])
+    check("native agent NOT built for cli member", len(env.captured) == n_before,
+          f"captured={len(env.captured)}")
+
+    tl = client.get(f"/api/bot/rooms/{room_id}/timeline").json().get("timeline", [])
+    check("cli reply in timeline", any(
+        t["author_type"] == "agent" and t["author_ref"] == "local:aider" and "[cli-reply]" in t["content"]
+        for t in tl), str(tl)[-400:])
+    check("no unavailable system msg for cli", not any(
+        t["author_type"] == "system" and "Aider" in t.get("content", "")
+        for t in tl), str(tl)[-400:])
+    return results
+
+
 # ─────────────────────────── 核心断言逻辑（pytest 与 __main__ 共用） ───────────────────────────
 
 def run_e2e(env):
@@ -516,6 +568,12 @@ def test_acp_agent_room_dispatch(env):
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
 
+def test_cli_agent_room_dispatch(env):
+    results = run_cli_room(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
 # ─────────────────────────── 独立运行入口 ───────────────────────────
 
 if __name__ == "__main__":
@@ -633,6 +691,9 @@ if __name__ == "__main__":
     all_results += run_acp_room(e)
     all_results += run_acp_room(e)
     all_results += run_acp_room(e)
+    all_results += run_cli_room(e)
+    all_results += run_cli_room(e)
+    all_results += run_cli_room(e)
 
     print("\n=== SUMMARY ===")
     fails = [n for n, c in all_results if not c]

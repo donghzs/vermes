@@ -194,7 +194,11 @@
           <div v-if="a.source === 'remote' && a.extra && a.extra.popularity" class="text-xs text-amber-500">🔥 热度 {{ a.extra.popularity }}</div>
 
           <div class="mt-auto pt-1 flex items-center gap-2 text-xs">
-            <span class="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300">已接入（只读发现）</span>
+            <span
+              v-if="a.source !== 'remote'"
+              class="px-2 py-0.5 rounded-full"
+              :class="isLocalConnected(a) ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300'"
+            >{{ isLocalConnected(a) ? '✅ 已接入' : '📡 本机已发现' }}</span>
             <a v-if="a.source === 'remote' && (a.extra && a.extra.repository || a.entry_point)" :href="(a.extra && a.extra.repository) || a.entry_point" target="_blank" rel="noopener" class="text-blue-500 hover:underline">{{ (a.extra && a.extra.repository) ? '仓库' : '主页' }}</a>
           </div>
 
@@ -216,6 +220,29 @@
               :class="stateClass(stateOf(a._key))"
               :title="stateOf(a._key).detail"
             >{{ stateOf(a._key).detail }}</span>
+          </div>
+          <!--
+            本机直连（神魔堂公开版收口 2026-09-07）：无 ACP recipe 但本机已装的
+            CLI agent（aider/openclaw 等）→ 一键接入为 transport=cli 联系人，
+            可拉进群 @ 直连对话。不再「只读发现」纯展示。
+          -->
+          <div v-else-if="a.source !== 'remote' && canLocalConnect(a)" class="flex items-center gap-2 flex-wrap">
+            <span class="px-2 py-0.5 text-[11px] rounded-full bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-300">⚡ 本机直连</span>
+            <button
+              v-if="!isLocalConnected(a)"
+              @click="localConnect(a)"
+              :disabled="stateOf(a._key).status === 'loading'"
+              class="px-2.5 py-1 text-xs rounded-lg bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-50 transition"
+            >一键接入</button>
+            <span
+              v-if="stateOf(a._key).detail"
+              class="text-[11px] truncate"
+              :class="stateClass(stateOf(a._key))"
+              :title="stateOf(a._key).detail"
+            >{{ stateOf(a._key).detail }}</span>
+          </div>
+          <div v-else-if="a.source !== 'remote' && !canLocalConnect(a)" class="text-[11px] text-gray-400">
+            仅配置目录/App 发现，无 CLI 通路 —— 到封神榜搜同名 agent 登堂后可入群
           </div>
         </div>
       </div>
@@ -639,6 +666,58 @@ function stateClass(st) {
     need_auth: 'text-amber-600 dark:text-amber-400',
     loading: 'text-gray-400',
   })[st.status] || 'text-gray-400'
+}
+
+/* ── ⑭ 本机一键接入（神魔堂公开版收口 2026-09-07） ───────────────
+ * 本机发现的 agent 不该「只读展示」：无 ACP recipe 但有 CLI 的
+ * （aider/openclaw 等）→ 一键接入为 transport=cli 联系人，拉群后 @ 直连。
+ * 有 recipe 的走上方登堂按钮；均无的通路提示去封神榜。
+ * 已接入判定：localCli 集合 = 本会话已成功 local-connect 的 agent id。
+ */
+const localCli = ref(new Set())
+
+/** 本机 CLI agent 是否可本地直连（entry_point 在 PATH / 是已知 CLI 名）。 */
+function canLocalConnect(a) {
+  if (!a || a.source === 'remote') return false
+  if (recipeFor(a)) return false // 有 ACP recipe → 走登堂，不重复给两个按钮
+  const ep = (a.entry_point || '').trim()
+  if (!ep) return false // 配置目录/app bundle 发现无 CLI 入口
+  const bin = ep.split(/[ /]/)[0]
+  // 后端映射表认识的 CLI 类型（claude/codex/aider/gemini/goose/claude-code）
+  return ['claude', 'claude-code', 'codex', 'aider', 'gemini', 'goose'].includes(bin)
+}
+
+/** 该本机 agent 是否已接入（本会话内）。 */
+function isLocalConnected(a) {
+  return a && localCli.value.has(a.id)
+}
+
+/** 一键接入：无 recipe 的本地 CLI → local-connect 建 transport=cli 联系人。 */
+async function localConnect(a) {
+  const key = a._key
+  setState(key, 'loading', '')
+  try {
+    const data = await api.localConnectAgent(a.id)
+    if (!data || data.ok === false) {
+      setState(key, 'fail', (data && data.error) || '接入失败')
+      return
+    }
+    if (data.status === 'need_auth') {
+      // 理论上 CLI 直连无需鉴权弹窗（auth 由 CLI 自身登录态管）；保底处理
+      setState(key, 'need_auth', '需要配置鉴权')
+      return
+    }
+    if (data.status === 'success') {
+      localCli.value.add(a.id)
+      setState(key, 'success', (data.health && data.health.detail) || '已接入')
+      // 刷新联系人候选池（拉人弹窗立即可见）
+      loadNativeAgents()
+      return
+    }
+    setState(key, 'fail', (data.health && data.health.detail) || '接入失败')
+  } catch (e) {
+    setState(key, 'fail', (e && e.message) ? e.message : String(e))
+  }
 }
 
 /** 登堂失败且原因像是「本机没装 CLI」（command not found on PATH）。 */

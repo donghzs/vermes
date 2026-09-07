@@ -3163,6 +3163,98 @@ def _acp_agent_chat_sync(profile, text: str, timeout_seconds: float = 900.0) -> 
     return content
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# ⑭ 本机 agent 本地直连（神魔堂公开版收口 2026-09-07 董董拍板）
+#
+# 产品语义：本机发现的 agent（LocalAgentScanner 扫到 = 本机已装）不该是
+# 「只读展示」——发现即应可接入为联系人、可拉进群协作。接入通路自动选优：
+#   1) 命中 ACP recipe（registry/ 有该 agent 的 ACP 适配）→ transport=acp，
+#      走 register-profile 既有链路（_acp_agent_chat_sync）。
+#   2) 未命中 recipe 但发现层给了 entry_point CLI → transport=cli，
+#      走本模块 CLI print 模式单轮直连（_cli_agent_chat_sync）。
+# transport_ref 列存「如何驱动它」：acp → spawn_command 字符串；
+# cli → CLI 类型名（claude/codex/aider/...），驱动参数查 _CLI_PRINT_ARGS。
+# ═══════════════════════════════════════════════════════════════════════
+
+# 各已知 CLI 的非交互（print）驱动参数。键 = CLI 类型名（= discovery 的
+# entry_point basename / transport_ref），值 = (argv 模板, 失败提示)。
+# prompt 经 subprocess.run 列表传参（无 shell 注入面），统一加超时。
+_CLI_PRINT_ARGS: dict[str, tuple[list[str], str]] = {
+    # Claude Code: -p/--print 非交互模式（需要已登录；未登录返回登录引导）
+    "claude": (["-p", "{prompt}", "--output-format", "text"],
+               "Claude Code 未登录或不可用，请先运行 `claude` 完成 /login"),
+    "claude-code": (["-p", "{prompt}", "--output-format", "text"],
+                     "Claude Code 未登录或不可用，请先运行 `claude` 完成 /login"),
+    # Codex: exec 非交互（本机需在 trusted git 目录内，或 --skip-git-repo-check）
+    "codex": (["exec", "--skip-git-repo-check", "{prompt}"],
+               "Codex CLI 不可用，请先 `codex login` 并确认在可信目录"),
+    # Aider: -m 单轮消息（静默、不自动提交、不装 git 钩子）
+    "aider": (["--message", "{prompt}", "--no-auto-commits",
+                "--no-suggest-shell-commands", "--yes-always"],
+               "Aider 不可用或初始化超时（首启需下载模型索引）"),
+    # Gemini CLI: -p/--print 非交互
+    "gemini": (["-p", "{prompt}"],
+                "Gemini CLI 未登录或不可用，请先 `gemini login`"),
+    "goose": (["run", "{prompt}"],
+               "Goose 不可用，请先安装并登录 goose"),
+}
+
+
+def _cli_agent_chat_sync(profile, text: str, timeout_seconds: float = 180.0) -> str:
+    """驱动一个 transport=cli 的本机 agent 完成单轮非交互对话。
+
+    transport_ref 存 CLI 类型名（claude/codex/aider/...），spawn 参数查
+    _CLI_PRINT_ARGS。CLI 不在映射表 → 明确报错（提示本机直连暂不支持该
+    agent，可改走 ACP recipe 登堂），绝不静默透传假成功。
+
+    Raises:
+        ValueError / RuntimeError: 任一环节失败（调用方 catch 后 fail-open
+        写系统提示，不阻断其他成员回复）。
+    """
+    import shutil as _shutil
+    import subprocess as _subprocess
+
+    if isinstance(profile, dict):
+        cli_type = profile.get("transport_ref") or ""
+        cli_bin = profile.get("name") or ""
+    else:
+        cli_type = getattr(profile, "transport_ref", "") or ""
+        cli_bin = getattr(profile, "name", "") or ""
+    cli_type = (cli_type or "").strip()
+    if not cli_type:
+        raise RuntimeError("cli profile missing transport_ref (CLI type)")
+    argv_tpl = _CLI_PRINT_ARGS.get(cli_type)
+    if argv_tpl is None:
+        raise RuntimeError(
+            f"本机直连暂不支持 CLI 类型 {cli_type!r}（transport_ref 应为 "
+            f"claude/codex/aider/gemini/goose 之一）；可改用 ACP recipe 登堂接入"
+        )
+    argv, fail_hint = argv_tpl
+    # 命令可达性快检（PATH 探针），失败给安装引导而非裸报错
+    if _shutil.which(cli_type) is None:
+        raise RuntimeError(f"{cli_type} 不在 PATH：{fail_hint}")
+    cmd = [cli_type, *[a.replace("{prompt}", text) for a in argv]]
+    try:
+        proc = _subprocess.run(
+            cmd,
+            capture_output=True, text=True, timeout=timeout_seconds,
+        )
+    except _subprocess.TimeoutExpired:
+        raise RuntimeError(f"{cli_type} 响应超时（>{timeout_seconds}s），已中止本次调用") from None
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"{cli_type} spawn 失败: {exc}") from exc
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    if proc.returncode != 0:
+        # 优先给可操作的失败提示（登录/目录类），其次给原始 stderr 摘要
+        detail = (err or out or "")[:300]
+        raise RuntimeError(f"{cli_type} 退出码 {proc.returncode}：{fail_hint}"
+                          + (f"（{detail}）" if detail else ""))
+    if not out:
+        raise RuntimeError(f"{cli_type} 返回空回复")
+    return out[:8000]
+
+
 async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
     """为某 profile 取/建 AIAgent（复用 ``_agent_cache``），fail-open。
 
@@ -3554,6 +3646,38 @@ async def bot_room_message_send(request: Request, room_id: str):
                             room_id, "room_message",
                             message={"author_type": "system", "author_ref": None,
                                       "content": f"[@{profile.get('name', agent_id)} 未产生回复：ACP agent 不可用（已登堂但 spawn 失败，检查对应 CLI/鉴权）]"},
+                        )
+                    continue
+                # ⑭ 本机直连（2026-09-07 董董拍板）：transport="cli" 的本机已装
+                # agent（无 ACP recipe 但发现层给了 CLI）走 CLI print 单轮直连，
+                # 不经原生 AIAgent——它没有 provider/model 配置，构建必失败。
+                if (profile.get("transport") if isinstance(profile, dict) else None) == "cli":
+                    await _bot_broadcast_room_update(
+                        room_id, "room_message_delta",
+                        message={"agent_id": agent_id, "phase": "start", "delta": ""},
+                    )
+                    try:
+                        reply = await asyncio.to_thread(_cli_agent_chat_sync, profile, text)
+                    except Exception as e:
+                        _log.warning("[BotMode] cli agent run failed %s: %s", agent_id, e)
+                        reply = None
+                    if reply:
+                        db.append_bot_room_message(room_id, "agent", agent_id, reply,
+                                                   turn_session_id=session_key)
+                        await _bot_broadcast_room_update(
+                            room_id, "room_message",
+                            message={"author_type": "agent", "author_ref": agent_id, "content": reply},
+                        )
+                    else:
+                        db.append_bot_room_message(
+                            room_id, "system", None,
+                            f"[@{profile.get('name', agent_id)} 未产生回复：本机 {profile.get('transport_ref', '?')} CLI 调用失败（检查登录态/安装）]",
+                            turn_session_id=session_key,
+                        )
+                        await _bot_broadcast_room_update(
+                            room_id, "room_message",
+                            message={"author_type": "system", "author_ref": None,
+                                      "content": f"[@{profile.get('name', agent_id)} 未产生回复：本机 {profile.get('transport_ref', '?')} CLI 调用失败（检查登录态/安装）]"},
                         )
                     continue
                 agent = await _bot_build_agent(session_key, profile)
@@ -4838,6 +4962,152 @@ def _acp_health_check(transport, timeout_seconds: float = 30.0) -> "tuple[bool, 
     return False, f"handshake failed: {detail}"
 
 
+async def api_agent_local_connect(request: Request):
+    """POST /api/agents/local-connect  (本机发现一键接入，神魔堂公开版收口)
+
+    把一条「本机发现」的 agent（LocalAgentScanner 扫到 = 本机已装）接入为
+    联系人（可拉进群）。接入通路自动选优：
+      1) id/name 命中 ACP recipe（registry/ 有该 agent 的 ACP 适配）→
+         内部复用 register-profile 的 recipe 登堂逻辑（transport=acp）。
+      2) 未命中但发现层给了 entry_point CLI → 建 transport=cli 联系人
+         （transport_ref = CLI 类型名），群聊 @ 它走 CLI print 直连。
+      3) 两者皆无 → 明确报错，不建半成品联系人。
+    body: {"id": str}  (发现条目的 id，如 agent:codex / agent:aider)
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    agent_id = (body.get("id") or "").strip()
+    if not agent_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "agent id required"})
+    # 1) 重扫本机发现层，定位该 agent（拿 entry_point / name / kind）
+    from vermes_cli.adapters.agent_discovery import LocalAgentScanner
+    found = None
+    try:
+        for a in LocalAgentScanner().scan():
+            if a.id == agent_id:
+                found = a
+                break
+    except Exception as exc:  # noqa: BLE001 - 扫描失败 fail-open
+        return {"ok": False, "status": "error", "error": f"本机扫描失败: {exc}"}
+    if found is None:
+        return {"ok": False, "status": "error",
+                "error": f"本机未发现该 agent: {agent_id}（可能已卸载，刷新后重试）"}
+    # 2) 通路选优：先看有没有 ACP recipe
+    recipe = None
+    _name_aliases = {}
+    try:
+        # discovery name → recipe 候选别名（本机发现的品牌名 vs recipe 文件名）
+        _nm = (found.name or "").strip()
+        _name_aliases = {
+            "claude": "claude-agent-acp", "claude code": "claude-agent-acp",
+            "claude-code": "claude-agent-acp",
+            "codex": "codex-acp", "openai codex": "codex-acp",
+            "gemini": "gemini", "cursor": "cursor", "copilot": "copilot",
+            "goose": "goose",
+        }
+    except Exception:
+        pass
+    for cand in (found.id, found.name, _name_aliases.get((found.name or "").strip().lower())):
+        if not cand:
+            continue
+        r = find_recipe(cand, RECIPES_DIR, recursive=True)
+        if r is not None and r.is_acp:
+            recipe = r
+            break
+    # 2a) 命中 recipe → 复用 register-profile 的 recipe 登堂逻辑（建 acp 联系人）
+    if recipe is not None:
+        # 鉴权：需要 env 但没给且环境无 → 返回 need_auth（前端弹授权框）
+        auth_env = recipe.auth.env_var
+        if auth_env and not os.environ.get(auth_env):
+            return {
+                "ok": True, "status": "need_auth",
+                "recipe": recipe.name, "provider": recipe.provider,
+                "auth_env": auth_env, "spawn_command": recipe.spawn_command,
+                "via": "acp",
+            }
+        try:
+            transport = build_acp_transport(recipe)
+        except Exception as e:
+            return {"ok": False, "status": "error", "error": f"build transport failed: {e}"}
+        profile_id = f"a2a:{recipe.provider or recipe.name}"
+        now = time.time()
+        profile = {
+            "id": profile_id, "name": recipe.name,
+            "description": recipe.description,
+            "provider": recipe.provider or "", "model": recipe.provider or "",
+            "transport": "acp", "transport_ref": " ".join(recipe.spawn_command),
+            "capability_tags": list(recipe.capabilities),
+            "system_prompt": "", "toolsets": [], "skill_set": "",
+            "created_at": now,
+        }
+        try:
+            db = _bot_room_db()
+            try:
+                db.upsert_agent_profile(profile)
+                db.upsert_a2a_agent({
+                    "profile_id": profile_id, "name": recipe.name,
+                    "provider": recipe.provider or "", "model": recipe.provider or "",
+                    "transport": "acp", "capabilities": list(recipe.capabilities),
+                    "registered_at": now, "last_heartbeat": now,
+                    "recipe": recipe.name,
+                })
+            finally:
+                db.close()
+        except Exception as e:
+            return {"ok": False, "status": "error", "error": str(e)}
+        healthy, detail = _acp_health_check(transport)
+        return {
+            "ok": True, "status": "success" if healthy else "fail",
+            "recipe": recipe.name, "provider": recipe.provider,
+            "profile_id": profile_id, "transport": "acp",
+            "health": {"healthy": healthy, "detail": detail},
+            "via": "acp",
+        }
+    # 2b) 无 recipe 但有 CLI → 建 transport=cli 联系人
+    cli_bin = (found.entry_point or "").strip()
+    cli_type = cli_bin
+    if not cli_type:
+        # 配置目录/app bundle 类发现无直接 CLI（如 cfg_.qclaw）→ 无法本地直连
+        return {"ok": False, "status": "error",
+                "error": f"{found.name} 无 ACP recipe 且无 CLI 入口，暂无法本地直连；"
+                         f"可到封神榜找同名 agent 用官方 recipe 登堂"}
+    if cli_type not in _CLI_PRINT_ARGS:
+        return {"ok": False, "status": "error",
+                "error": f"本机直连暂不支持 {cli_type!r}（映射表缺该 CLI 类型）"}
+    import shutil as _shutil
+    if _shutil.which(cli_type) is None:
+        return {"ok": False, "status": "error",
+                "error": f"{cli_type} 不在 PATH（发现缓存过期？），无法本地直连"}
+    now = time.time()
+    profile_id = f"local:{cli_type}"
+    profile = {
+        "id": profile_id, "name": found.name,
+        "description": found.description or f"本机 {found.kind} agent（CLI 直连）",
+        "provider": "", "model": "",
+        "transport": "cli", "transport_ref": cli_type,
+        "capability_tags": [],
+        "system_prompt": "", "toolsets": [], "skill_set": "",
+        "created_at": now,
+    }
+    try:
+        db = _bot_room_db()
+        try:
+            db.upsert_agent_profile(profile)
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "status": "error", "error": str(e)}
+    return {
+        "ok": True, "status": "success",
+        "profile_id": profile_id, "transport": "cli",
+        "cli": cli_type,
+        "health": {"healthy": True, "detail": f"{cli_type} 在 PATH，可被 @ 直连调用"},
+        "via": "cli",
+    }
+
+
 async def api_register_agent_profile(request: Request):
     """POST /api/agents/register-profile  (请神收尾 T3)
 
@@ -4998,6 +5268,13 @@ def register_to(app):
         api_register_agent_profile,
         methods=["POST"],
         name="register_agent_profile",
+    )
+    # ⑭ 本机发现一键接入（无 recipe 的本地 CLI agent → transport=cli 联系人）
+    app.add_api_route(
+        "/api/agents/local-connect",
+        api_agent_local_connect,
+        methods=["POST"],
+        name="agent_local_connect",
     )
     # ⑭ 造神：原生 agent 管理（per-agent 专属 API key）
     app.add_api_route(
