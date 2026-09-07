@@ -3594,6 +3594,8 @@ def _build_room_prompt(room, self_profile, all_profiles, timeline, user_text: st
     - 末尾是本次实际要响应的指令。
     """
     room_title = (room or {}).get("title") or "未命名群"
+    room_task = ((room or {}).get("tasks") or "").strip()
+    room_ann = ((room or {}).get("announcement") or "").strip()
     me = _agent_display_name(self_profile)
     self_id = self_profile.get("id") if isinstance(self_profile, dict) else None
     roster_lines = []
@@ -3610,6 +3612,15 @@ def _build_room_prompt(room, self_profile, all_profiles, timeline, user_text: st
         f"你是 @{me}。本群当前成员：",
         *roster_lines,
         "",
+    ]
+    if room_task:
+        lines.append(f"[群任务/流水线目标] {room_task}")
+        lines.append("(本群所有协作围绕此目标推进；你发言时应服务于它)")
+        lines.append("")
+    if room_ann:
+        lines.append(f"[群公告] {room_ann}")
+        lines.append("")
+    lines += [
         "协作规则：",
         "1. 只回答与你职责相关、或直接 @ 了你的部分；",
         "2. 若任务需要其他成员的专业能力，在回复末尾用 @名字 点名接力，说明需要对方做什么；",
