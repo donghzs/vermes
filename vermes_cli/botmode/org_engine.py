@@ -304,6 +304,19 @@ async def run_org_task(
     _set_status(ctx, ST_PLANNING)
     dispatcher_roles = ctx.role_profiles(ROLE_DISPATCHER)
     exec_roles = ctx.executor_profiles()
+    # 兜底：组织缺 executor 岗位时，让已绑定的其他岗位 agent 兼任执行者。
+    # 小组织「一人兼多岗」是常态（只拉秘书/只配分派岗），缺 executor 不该直接卡死，
+    # 而是让已有岗位的 agent 顶上（仅一 agent 时退化为单 agent 直通）。
+    if not exec_roles:
+        seen_ids = set()
+        for rt in (ROLE_DISPATCHER, ROLE_AUDITOR, ROLE_AGGREGATOR):
+            for r, p in ctx.role_profiles(rt):
+                if p.get("id") in seen_ids:
+                    continue
+                seen_ids.add(p.get("id"))
+                exec_roles.append((r, p))
+        if exec_roles:
+            _announce(ctx, f"⚠️ [{tid}] 组织未配执行(executor)岗位，由已有岗位 agent 兼任执行者。", None)
     _announce(ctx, f"📋 [{tid}] 任务下达：{task.get('title', '')}", None)
     _announce(ctx, f"📋 [{tid}] 拆解中（分派者：{dispatcher_roles[0][0]['name'] if dispatcher_roles else '老板直派'}）…")
 

@@ -271,6 +271,29 @@ def test_no_aggregator_concats():
     assert "唯一工件" in task["final_output"]
 
 
+def test_no_executor_uses_other_roles():
+    """缺 executor 岗位 → 由已有岗位（分派/审计/汇总）agent 兼任执行者，不卡死。"""
+    roles = [
+        {"role_id": "sec", "name": "分派", "type": "dispatcher", "profile_id": "sec"},
+    ]
+    profiles = {"sec": {"id": "sec", "name": "秘书"}}
+    ctx = oe.OrgContext(task=make_task(), roles=roles, profiles=profiles,
+                        room={"title": "只拉秘书群"},
+                        store=lambda *a, **k: None,
+                        append_message=lambda *a, **k: None)
+    calls = []
+
+    async def runner(profile, instruction, ctx):
+        calls.append(profile["id"])
+        return f"工件-{profile['id']}"
+
+    task = run(oe.run_org_task(ctx, runner))
+    # 不再 rejected，而是让秘书兼任执行者跑完（无审计/汇总 → 直通拼接）
+    assert task["status"] == "delivered"
+    assert len(task["plan"]) == 1
+    assert "sec" in calls
+
+
 def test_parse_plan_fallback():
     """分派者输出坏格式 → 均分兜底（每个执行者领任务）。"""
     ctx, calls, stored = make_ctx()
