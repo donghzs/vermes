@@ -6,10 +6,61 @@ import api from '../services/api'
 
 const bot = useBotRoomStore()
 
-// ── 新建群弹窗（微信式：只填群名，勾选拉谁） ──
-const createModal = ref({ open: false, name: '', announcement: '', tasks: '', selected: [] })
+// ── 新建群弹窗（2026-09-07 改版：建群即建组织——模板搭岗，一键开干） ──
+const createModal = ref({
+  open: false, name: '', announcement: '', tasks: '', selected: [],
+  // 🏢 组织区（可选）：useOrg 开启后选模板/指派联系人坐岗，建群即搭好组织
+  useOrg: false,
+  templates: [],
+  orgKey: null,        // 选中的模板 key（'custom' = 自定义岗位）
+  roles: [],           // 岗位指派 [{role_id,name,type,profile_id,description}]
+  loadingOrg: false,
+})
 const contacts = ref([])        // 联系人列表（可拉人进群的全量 agent）
 const loadingContacts = ref(false)
+const orgTemplates = ref([])    // 后端 ORG_TEMPLATES（建群弹窗复用）
+
+// 建群弹窗当前模板岗位列表（useOrg + 选了模板时生效）
+const createRoles = computed(() => {
+  const m = createModal.value
+  if (!m.useOrg) return []
+  if (m.orgKey === 'custom') return m.roles
+  const t = (m.templates || []).find(x => x.key === m.orgKey)
+  return (t && t.roles) || []
+})
+
+// 模板岗位→指派态岗位（每岗可指派 profile_id，改岗名/描述）
+function rolesWithAssign(tplRoles) {
+  return (tplRoles || []).map(r => ({ ...r, profile_id: null }))
+}
+
+function pickOrgTemplate(key) {
+  const m = createModal.value
+  m.orgKey = key
+  if (key === 'custom') {
+    // 自定义：给 4 个默认空岗（分派/执行×2/审计/汇总 可自行改名）
+    m.roles = [
+      { role_id: 'dispatcher', name: '分派', type: 'dispatcher', profile_id: null },
+      { role_id: 'executor1', name: '执行', type: 'executor', profile_id: null },
+      { role_id: 'auditor', name: '审计', type: 'auditor', profile_id: null },
+      { role_id: 'aggregator', name: '汇总', type: 'aggregator', profile_id: null },
+    ]
+    return
+  }
+  const t = (m.templates || []).find(x => x.key === key)
+  if (t) m.roles = rolesWithAssign(t.roles)
+}
+
+// 已指派去重（岗位下拉不能重复选同一联系人）
+function createAssignedIds() {
+  const ids = []
+  for (const r of createModal.value.roles) {
+    if (r.profile_id && !ids.includes(r.profile_id)) ids.push(r.profile_id)
+  }
+  return ids
+}
+
+function assignRole(r, pid) { r.profile_id = pid || null }
 
 // ── 拉人进群弹窗（2026-09-07 神魔堂收口：👥 拉人不再死链，多选未入群联系人直接拉入） ──
 const inviteModal = ref({ open: false, selected: [], submitting: false })
@@ -172,7 +223,7 @@ function orgTypeBadge(t) { return ORG_TYPE_BADGE[t] || t || '' }
 
 // 当前模板的角色列表
 const orgModalRoles = computed(() => {
-  const t = orgModal.templates.find(x => x.key === orgModal.value.selectedKey)
+  const t = orgModal.value.templates.find(x => x.key === orgModal.value.selectedKey)
   return (t && t.roles) || []
 })
 
@@ -288,10 +339,30 @@ const memberIds = computed(() => new Set((bot.members || []).map(m => m.ref_id))
 // 可拉人进群的联系人 = 全量联系人（未入群的）
 const addableContacts = computed(() => contacts.value.filter(c => !memberIds.value.has(c.id)))
 
-// ── 新建群 ──
+// ── 新建群（建群即建组织） ──
 function openCreate() {
-  createModal.value = { open: true, name: '', announcement: '', tasks: '', selected: [] }
+  createModal.value = {
+    open: true, name: '', announcement: '', tasks: '', selected: [],
+    useOrg: false, templates: [], orgKey: null, roles: [], loadingOrg: false,
+  }
   loadContacts()
+  // 预载组织模板（懒加载一次缓存全局 orgTemplates）
+  if (!orgTemplates.value.length) {
+    createModal.value.loadingOrg = true
+    api.getBotOrgTemplates().then(tr => {
+      if (tr && tr.ok) {
+        orgTemplates.value = tr.templates || []
+        createModal.value.templates = orgTemplates.value
+        // 默认勾选「搭组织」+ 选中第一个模板（公司）——主路径即组织协作
+        createModal.value.useOrg = true
+        if (orgTemplates.value.length) pickOrgTemplate(orgTemplates.value[0].key)
+      }
+    }).catch(() => {}).finally(() => { createModal.value.loadingOrg = false })
+  } else {
+    createModal.value.templates = orgTemplates.value
+    createModal.value.useOrg = true
+    if (orgTemplates.value.length) pickOrgTemplate(orgTemplates.value[0].key)
+  }
 }
 function toggleSelect(id) {
   const s = createModal.value.selected
@@ -303,10 +374,28 @@ async function handleCreate() {
   const m = createModal.value
   const name = m.name.trim()
   if (!name) { toast('请填写群名称', 'error'); return }
-  const r = await bot.createRoom(name, m.selected, { announcement: m.announcement, tasks: m.tasks })
+  // 岗位指派了联系人 → 这些人自动进群（后端 org/apply 拉人）；勾选的补充成员另算
+  const orgRoles = m.useOrg ? (m.roles || []).filter(r => r.profile_id) : []
+  const assignedIds = new Set(orgRoles.map(r => r.profile_id))
+  const extraSelected = m.selected.filter(id => !assignedIds.has(id))
+  const r = await bot.createRoom(name, extraSelected, { announcement: m.announcement, tasks: m.tasks })
   if (r && r.ok) {
-    createModal.value = { open: false, name: '', announcement: '', tasks: '', selected: [] }
-    toast('群已创建', 'success')
+    let orgRes = null
+    if (orgRoles.length) {
+      orgRes = await api.applyBotOrg(r.room_id, orgRoles)
+      if (!(orgRes && orgRes.ok)) {
+        toast((orgRes && orgRes.error) || '群已建但组织搭建失败', 'error')
+      }
+    }
+    createModal.value = { open: false, name: '', announcement: '', tasks: '', selected: [], useOrg: false, templates: [], orgKey: null, roles: [], loadingOrg: false }
+    if (orgRes && orgRes.ok) {
+      const pulled = orgRes.pulled ? orgRes.pulled.length : 0
+      toast(`组织已就绪：${orgRoles.length} 个岗位${pulled ? `，自动拉入 ${pulled} 个 agent` : ''}`)
+    } else {
+      toast('群已创建', 'success')
+    }
+    // 若建群时房间未选，切到新群并加载
+    await bot.selectRoom(r.room_id)
     await scrollToBottom()
   } else {
     toast((r && r.error) || '创建失败', 'error')
@@ -736,20 +825,67 @@ onUnmounted(() => {
     </main>
     </template>
 
-    <!-- 新建群弹窗（微信式：只填群名，勾选拉谁） -->
+    <!-- 新建群弹窗（2026-09-07：建群即建组织——模板搭岗指派，一键开干；不搭组织也可纯闲聊群） -->
     <div
       v-if="createModal.open"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       @click.self="createModal.open = false"
     >
-      <div class="w-[28rem] max-w-[92vw] max-h-[85vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-800 p-5 shadow-xl">
-        <h3 class="text-base font-semibold mb-1">+ 建群</h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">群名自由命名，勾选要拉进群的 Agent（想拉谁拉谁）。</p>
+      <div class="w-[32rem] max-w-[94vw] max-h-[88vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-800 p-5 shadow-xl">
+        <h3 class="text-base font-semibold mb-1">🏢 建群（组织）</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">群 = 组织：搭好岗位分工后发需求，Agent 自动拆解→执行→审计→汇总→交付。不搭组织也可当普通群聊。</p>
         <div class="flex flex-col gap-3">
           <div>
             <label class="text-xs text-gray-500 mb-1 block">群名称 *</label>
             <input v-model="createModal.name" placeholder="如：法务项目组 / 我的智囊团" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-blue-500" @keydown.enter="handleCreate" />
           </div>
+
+          <!-- 🏢 组织模式开关（默认开：模板已预选） -->
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+            <label class="flex items-center justify-between cursor-pointer">
+              <span class="text-sm font-medium">🏢 搭组织（分工协作）</span>
+              <input type="checkbox" v-model="createModal.useOrg" class="accent-emerald-500 w-4 h-4" />
+            </label>
+            <div v-if="createModal.loadingOrg" class="text-xs text-gray-400 mt-2">加载模板…</div>
+            <template v-else-if="createModal.useOrg">
+              <div class="text-[11px] text-gray-400 mt-1.5">模板只定岗位骨架（谁拆解/执行/审计/汇总），人从你的 Agent 里选——不用为每个场景预设角色。</div>
+              <!-- 模板选择 -->
+              <div class="flex gap-1.5 mt-2 flex-wrap">
+                <button
+                  v-for="t in createModal.templates"
+                  :key="t.key"
+                  class="px-2 py-1 text-[11px] rounded-full border transition"
+                  :class="createModal.orgKey === t.key ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 dark:border-gray-600 hover:border-emerald-400'"
+                  @click="pickOrgTemplate(t.key)"
+                >{{ t.name }}</button>
+                <button
+                  class="px-2 py-1 text-[11px] rounded-full border transition"
+                  :class="createModal.orgKey === 'custom' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 dark:border-gray-600 hover:border-emerald-400'"
+                  @click="pickOrgTemplate('custom')"
+                >✏️ 自定义</button>
+              </div>
+              <!-- 岗位指派 -->
+              <div v-if="createRoles.length" class="mt-2.5 space-y-1.5">
+                <div v-for="r in createRoles" :key="r.role_id" class="flex items-center gap-2 text-xs">
+                  <span class="w-16 shrink-0">
+                    <input v-model="r.name" class="w-full px-1 py-0.5 rounded bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-600 outline-none focus:border-emerald-400" title="可改名" />
+                  </span>
+                  <span class="w-8 shrink-0 text-[10px] px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500">{{ ({ dispatcher: '分派', executor: '执行', auditor: '审计', aggregator: '汇总' })[r.type] || r.type }}</span>
+                  <select
+                    v-model="r.profile_id"
+                    class="flex-1 min-w-0 px-1.5 py-1 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-emerald-400"
+                  >
+                    <option :value="null">— 指派 Agent（可留空后补）—</option>
+                    <option v-for="c in contacts" :key="c.id" :value="c.id" :disabled="createAssignedIds().includes(c.id) && r.profile_id !== c.id">
+                      {{ c.name || c.id }}{{ c.transport === 'acp' ? '（登堂）' : '' }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+              <div v-else class="text-xs text-gray-400 mt-2">模板加载失败或无岗位，可换「✏️ 自定义」。</div>
+            </template>
+          </div>
+
           <div>
             <label class="text-xs text-gray-500 mb-1 block">群公告</label>
             <input v-model="createModal.announcement" placeholder="可留空，建群后也能编辑" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-blue-500" />
@@ -759,32 +895,33 @@ onUnmounted(() => {
             <input v-model="createModal.tasks" placeholder="可留空，建群后也能编辑" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-blue-500" />
           </div>
           <div>
-            <label class="text-xs text-gray-500 mb-1 block">拉谁进群</label>
+            <label class="text-xs text-gray-500 mb-1 block">补充拉人（可选：岗位指派外的助手）</label>
             <div v-if="loadingContacts" class="text-xs text-gray-400">加载联系人…</div>
             <div v-else-if="contacts.length === 0" class="text-xs text-gray-400">暂无联系人（请先在「神魔架」造神或登堂）</div>
-            <div v-else class="max-h-48 overflow-y-auto space-y-1">
+            <div v-else class="max-h-36 overflow-y-auto space-y-1">
               <label
                 v-for="c in contacts"
                 :key="c.id"
                 class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
               >
-                <input type="checkbox" :checked="createModal.selected.includes(c.id)" @change="toggleSelect(c.id)" class="accent-blue-500" />
-                <svg viewBox="0 0 32 32" class="w-6 h-6 rounded-full shrink-0">
+                <input type="checkbox" :checked="createModal.selected.includes(c.id)" :disabled="createAssignedIds().includes(c.id)" @change="toggleSelect(c.id)" class="accent-blue-500" />
+                <svg viewBox="0 0 32 32" class="w-5 h-5 rounded-full shrink-0">
                   <circle cx="16" cy="16" r="16" :fill="`hsl(${c.hue || 0}, 65%, 45%)`" />
-                  <text x="16" y="22" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">{{ (c.name || '?').slice(0, 1) }}</text>
+                  <text x="16" y="22" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">{{ (c.name || '?').slice(0, 1) }}</text>
                 </svg>
-                <div class="min-w-0">
+                <div class="min-w-0 flex-1">
                   <div class="text-sm truncate">{{ c.name }}</div>
                   <div class="text-[11px] text-gray-400 truncate">{{ c.description || c.id }}</div>
                 </div>
-                <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded" :class="c.transport === 'acp' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'">{{ c.transport === 'acp' ? '登堂' : '原生' }}</span>
+                <span v-if="createAssignedIds().includes(c.id)" class="text-[10px] text-emerald-500">已坐岗</span>
+                <span v-else class="text-[10px] px-1.5 py-0.5 rounded" :class="c.transport === 'acp' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'">{{ c.transport === 'acp' ? '登堂' : '原生' }}</span>
               </label>
             </div>
           </div>
         </div>
         <div class="mt-4 flex justify-end gap-2">
           <button @click="createModal.open = false" class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">取消</button>
-          <button @click="handleCreate" class="px-3 py-1.5 text-sm rounded-lg bg-blue-500 hover:bg-blue-600 text-white">创建</button>
+          <button @click="handleCreate" class="px-3 py-1.5 text-sm rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white">{{ createModal.useOrg && createRoles.some(r => r.profile_id) ? '🚀 建组织开工' : '创建群' }}</button>
         </div>
       </div>
     </div>
@@ -1061,8 +1198,8 @@ onUnmounted(() => {
           </div>
 
           <!-- 选中模板描述 -->
-          <div v-if="orgModal.templates.find(t => t.key === orgModal.selectedKey)" class="text-[11px] text-gray-400 mb-3">
-            {{ orgModal.templates.find(t => t.key === orgModal.selectedKey).description }}
+          <div v-if="(orgModal.templates || []).find(t => t.key === orgModal.selectedKey)" class="text-[11px] text-gray-400 mb-3">
+            {{ (orgModal.templates || []).find(t => t.key === orgModal.selectedKey).description }}
           </div>
 
           <!-- 岗位指派 -->
