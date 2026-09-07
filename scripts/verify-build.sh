@@ -43,13 +43,19 @@ ERRORS=0
 ok()   { echo "✅ $1"; }
 fail() { echo "❌ FAIL: $1"; ERRORS=$((ERRORS + 1)); }
 
-# backend _internal 目录
-INTERNAL="$APP_PATH/Contents/Resources/backend/_internal"
+# ── 布局检测：Electron（app.asar + backend/_internal）vs PyInstaller（onedir，模块平铺在 Resources）──
+if [ -f "$APP_PATH/Contents/Resources/app.asar" ]; then
+  INTERNAL="$APP_PATH/Contents/Resources/backend/_internal"
+  WEB_DIST="$APP_PATH/Contents/Resources/app/vermes_cli/web_dist"
+else
+  # PyInstaller onedir：运行时模块直接平铺在 Contents/Resources，无 backend/_internal、无 app.asar
+  INTERNAL="$APP_PATH/Contents/Resources"
+  WEB_DIST="$APP_PATH/Contents/Resources/vermes_cli/web_dist"
+fi
 
 # ── 1. 前端产物 ──
 echo ""
 echo "=== 1. 前端产物 ==="
-WEB_DIST="$APP_PATH/Contents/Resources/app/vermes_cli/web_dist"
 if [ -f "$WEB_DIST/index.html" ] && [ -s "$WEB_DIST/index.html" ]; then
   ok "web_dist/index.html 存在且非空"
 else
@@ -73,18 +79,18 @@ if [ -d "$INTERNAL/harness" ]; then
   else
     fail "harness/ 文件不足 ($HARNESS_FILES, 期望 ≥3)"
   fi
-  # grep 关键类
-  if grep -rl "RecoverableFeedback" "$INTERNAL/harness" 2>/dev/null | grep -q .; then
+  # grep 关键类（用 -q 直接判存在，避免 pipefail + grep -q 的脆弱管道）
+  if grep -rq "RecoverableFeedback" "$INTERNAL/harness" 2>/dev/null; then
     ok "RecoverableFeedback 类存在"
   else
     fail "RecoverableFeedback 类未找到"
   fi
-  if grep -rl "StabilityReport" "$INTERNAL/harness" 2>/dev/null | grep -q .; then
+  if grep -rq "StabilityReport" "$INTERNAL/harness" 2>/dev/null; then
     ok "StabilityReport 类存在"
   else
     fail "StabilityReport 类未找到"
   fi
-  if grep -rl "ConstraintReport" "$INTERNAL/harness" 2>/dev/null | grep -q .; then
+  if grep -rq "ConstraintReport" "$INTERNAL/harness" 2>/dev/null; then
     ok "ConstraintReport 类存在"
   else
     fail "ConstraintReport 类未找到"
@@ -180,8 +186,13 @@ fi
 echo ""
 echo "=== 6. 版本号 ==="
 INIT_VER=$(grep '__version__' vermes_cli/__init__.py | grep -o '"[^"]*"' | tr -d '"')
-DMG_VER=$(echo "$TARGET" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-if [ "$INIT_VER" = "$DMG_VER" ]; then
+if [[ "$TARGET" == *.app ]]; then
+  # .app 直传：从包内 vermes_cli/__init__.py 取版本（最权威）
+  DMG_VER=$(grep '__version__' "$APP_PATH/Contents/Resources/vermes_cli/__init__.py" 2>/dev/null | grep -o '"[^"]*"' | tr -d '"')
+else
+  DMG_VER=$(echo "$TARGET" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+fi
+if [ -n "$DMG_VER" ] && [ "$INIT_VER" = "$DMG_VER" ]; then
   ok "版本号一致: $INIT_VER"
 else
   fail "版本号不一致: __init__.py=$INIT_VER, DMG=$DMG_VER"
