@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '../services/api'
 import { useMemoryFlagsStore } from '../stores/memoryFlags'
+import MemoryFlags from './MemoryFlags.vue'
 import { showToast } from '../utils/toast'
 
 const flagsStore = useMemoryFlagsStore()
