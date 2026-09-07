@@ -98,6 +98,21 @@ export const useBotRoomStore = defineStore('botRoom', {
       if (r && r.ok) await this.loadRooms()
       return r
     },
+    async deleteRoom(id) {
+      // ⚙️ 2026-09-07 解散群：删群 + 级联清理（后端 delete_bot_room）
+      const rid = id || this.currentRoomId
+      if (!rid || this.botModeDisabled) return { ok: false, error: 'no room' }
+      const r = await api.deleteBotRoom(rid)
+      if (r && r.ok) {
+        this.rooms = this.rooms.filter(x => x.id !== rid)
+        if (this.currentRoomId === rid) {
+          this.currentRoomId = ''
+          this.timeline = []
+          this.members = []
+        }
+      }
+      return r
+    },
     async addMember(refId) {
       const rid = this.currentRoomId
       if (!rid) return { ok: false, error: 'no room' }
@@ -168,6 +183,16 @@ export const useBotRoomStore = defineStore('botRoom', {
         // 成员变更直接影响 @ 补全候选 → 当前房间同步刷新成员列表
         if (topicRoom === this.currentRoomId) {
           await this.loadMembers(this.currentRoomId)
+        }
+        return
+      }
+      // ⚙️ 2026-09-07 解散群广播：本端清理（他端删除时同步消失）
+      if (msg.event === 'room_deleted') {
+        this.rooms = this.rooms.filter(x => x.id !== topicRoom)
+        if (this.currentRoomId === topicRoom) {
+          this.currentRoomId = ''
+          this.timeline = []
+          this.members = []
         }
         return
       }

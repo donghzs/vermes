@@ -2319,6 +2319,28 @@ class SessionDB:
             )
         self._execute_write(_do)
 
+    def delete_bot_room(self, room_id: str) -> bool:
+        """删除房间及其全部关联数据（成员/消息/组织岗位/组织任务）。
+
+        ⚙️ 2026-09-07：神魔堂群聊「解散群」。级联清理 4 张关联表，
+        返回是否真删（不存在返回 False）。
+        """
+        existed = [False]
+
+        def _do(conn):
+            cur = conn.execute("SELECT 1 FROM bot_rooms WHERE id = ?", (room_id,))
+            if cur.fetchone() is None:
+                return
+            existed[0] = True
+            conn.execute("DELETE FROM bot_room_members WHERE room_id = ?", (room_id,))
+            conn.execute("DELETE FROM bot_room_messages WHERE room_id = ?", (room_id,))
+            conn.execute("DELETE FROM org_roles WHERE room_id = ?", (room_id,))
+            conn.execute("DELETE FROM org_tasks WHERE room_id = ?", (room_id,))
+            conn.execute("DELETE FROM bot_rooms WHERE id = ?", (room_id,))
+
+        self._execute_write(_do)
+        return existed[0]
+
     def list_bot_rooms(self) -> List[Dict[str, Any]]:
         """列出全部房间（按创建时间倒序）。"""
         try:

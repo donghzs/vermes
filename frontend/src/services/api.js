@@ -642,6 +642,9 @@ const api = {
   updateBotRoom(roomId, patch) {
     return this.patch(`/bot/rooms/${encodeURIComponent(roomId)}`, patch)
   },
+  deleteBotRoom(roomId) {
+    return this.del(`/bot/rooms/${encodeURIComponent(roomId)}`)
+  },
   addBotRoomMember(roomId, refId, role = 'agent') {
     return this.post(`/bot/rooms/${encodeURIComponent(roomId)}/members`, { ref_id: refId, role })
   },

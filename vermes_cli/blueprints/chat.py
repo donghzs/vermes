@@ -3536,6 +3536,35 @@ async def bot_room_update(request: Request, room_id: str):
         return {"ok": False, "error": str(e)}
 
 
+async def bot_room_delete(request: Request, room_id: str):
+    """DELETE /api/bot/rooms/{room_id} — 解散群（删群 + 级联清理）。
+
+    ⚙️ 2026-09-07：神魔堂微信式群管理补缺——之前只能建/改不能删。
+    级联删成员/消息/组织岗位/组织任务，防残留脏数据。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        db = _bot_room_db()
+        try:
+            deleted = db.delete_bot_room(room_id)
+            if not deleted:
+                return {"ok": False, "error": "room not found"}
+            # 通知前端移除该群（房间已删，广播让各端从列表/选中态清理）
+            try:
+                await _bot_broadcast_room_update(room_id, "room_deleted", room_id=room_id)
+            except Exception:
+                pass
+            return {"ok": True, "room_id": room_id}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def bot_room_members_list(request: Request, room_id: str):
     """GET /api/bot/rooms/{room_id}/members
 
@@ -6129,6 +6158,12 @@ def register_to(app):
             bot_room_update,
             methods=["PATCH"],
             name="bot_room_update",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}",
+            bot_room_delete,
+            methods=["DELETE"],
+            name="bot_room_delete",
         )
         app.add_api_route(
             "/api/bot/rooms/{room_id}/messages",

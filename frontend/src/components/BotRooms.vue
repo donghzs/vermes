@@ -393,6 +393,17 @@ async function handleSelect(id) {
   await scrollToBottom()
 }
 
+// ⚙️ 2026-09-07 解散群（微信式）：二次确认后调 store.deleteRoom
+async function confirmDeleteRoom(id) {
+  const rid = id || bot.currentRoomId
+  const room = bot.rooms.find(x => x.id === rid)
+  const name = (room && (room.title || room.id)) || rid
+  if (!window.confirm(`确定解散群「${name}」吗？群成员、消息、组织岗位与任务将一并删除，不可恢复。`)) return
+  const r = await bot.deleteRoom(rid)
+  if (r && r.ok) toast('群已解散')
+  else toast((r && r.error) || '解散失败', 'error')
+}
+
 function handleSend() {
   const text = inputText.value.trim()
   if (!text || bot.sending) return
@@ -537,12 +548,19 @@ onUnmounted(() => {
         <button
           v-for="r in bot.rooms"
           :key="r.id"
-          class="w-full text-left px-2 py-2 rounded text-sm transition"
+          class="w-full text-left px-2 py-2 rounded text-sm transition group/room relative"
           :class="r.id === bot.currentRoomId ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
           @click="handleSelect(r.id)"
         >
-          <div class="font-medium truncate">{{ r.title || r.id }}</div>
+          <div class="font-medium truncate pr-6">{{ r.title || r.id }}</div>
           <div v-if="r.tasks" class="text-[11px] opacity-70 truncate">📋 {{ r.tasks }}</div>
+          <!-- ⚙️ 2026-09-07 解散群：悬停显示，防误触 -->
+          <span
+            class="absolute right-1 top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[10px] opacity-0 group-hover/room:opacity-100 transition cursor-pointer"
+            :class="r.id === bot.currentRoomId ? 'text-white/80 hover:text-red-200' : 'text-gray-400 hover:text-red-500'"
+            title="解散群"
+            @click.stop="confirmDeleteRoom(r.id)"
+          >✕</span>
         </button>
       </div>
     </aside>
@@ -556,6 +574,13 @@ onUnmounted(() => {
             <div class="text-xs text-gray-400">输入 @ 唤起补全 · 不 @ 则默认 Agent 应答</div>
           </div>
           <div class="flex items-center gap-1">
+            <!-- ⚙️ 2026-09-07 解散群 -->
+            <button
+              v-if="currentRoom"
+              class="px-2 py-1 text-xs rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition"
+              title="解散当前群（删群 + 清成员/消息/组织）"
+              @click="confirmDeleteRoom(currentRoom.id)"
+            >解散群</button>
             <!-- 群公告/群任务入口 -->
             <button
               v-if="currentRoom"
