@@ -37,20 +37,24 @@
 
         <!-- 底部按钮 -->
         <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 justify-end">
-          <!-- 非下载态：主操作 = 下载并安装（Electron/Web 分支内部自行处理下载+应用） -->
+          <!-- 非下载态：主操作（Win=下载并安装 / mac桌面=前往官网下载 / Web=SSE下载） -->
           <button
             v-if="!update.updating && !justDownloaded"
             @click="startUpdate"
             class="px-3 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 transition font-medium">
-            下载并安装
+            {{ isMacDesktop ? '前往下载' : '下载并安装' }}
           </button>
-          <!-- Electron：下载完成 → 显式「安装并重启」 -->
+          <!-- Win Electron：下载完成 → 显式「安装并重启」(mac 降级无此步骤) -->
           <button
-            v-if="!update.updating && justDownloaded && isDesktop"
+            v-if="!update.updating && justDownloaded && canNativeUpdater"
             @click="installNow"
             class="px-3 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 transition font-medium">
             安装并重启
           </button>
+          <!-- mac 降级：提示手动安装 -->
+          <p v-if="isMacDesktop && !update.updating" class="text-xs text-gray-400 dark:text-gray-500 self-center mr-auto">
+            下载 DMG 后手动安装（无签名自动更新）
+          </p>
 
           <button
             v-if="!update.updating"
@@ -76,11 +80,16 @@ import { useUpdateStore } from '../stores/update'
 
 const update = useUpdateStore()
 const isDesktop = typeof window !== 'undefined' && !!window.vermes?.isDesktop
+// mac 桌面：无签名自动更新跑不通，降级走官网下载 DMG
+const isMacDesktop = isDesktop &&
+  (navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac'))
+// Win 桌面才走 electron-updater 安装并重启
+const canNativeUpdater = isDesktop && !isMacDesktop
 
 // 本会话内「稍后」隐藏标记（不写持久化，下次启动仍会再提示）
 const sessionDismissed = ref(false)
 
-// Electron：下载完成（status=done）后需用户点「安装并重启」才 quitAndInstall
+// Electron(Win)：下载完成（status=done）后需用户点「安装并重启」才 quitAndInstall
 const justDownloaded = computed(() => update.updateStatus === 'done')
 
 const visible = computed(() => update.hasUpdate && !sessionDismissed.value)

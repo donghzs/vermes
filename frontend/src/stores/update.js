@@ -16,6 +16,12 @@ const AGENT_DISMISS_KEY = 'vermes_agent_update_dismissed'
 
 // 是否为 Electron 桌面环境
 const isDesktop = typeof window !== 'undefined' && window.vermes?.isDesktop
+// macOS Electron 壳：无 Apple 开发者签名，Squirrel.Mac 自动更新跑不通，
+// 降级为 version.json 轮询 + 官网 DMG 下载（仅 Win 桌面走 electron-updater）
+const isMacDesktop = isDesktop &&
+  (navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac'))
+// Win 桌面（或未来有签名后的 mac）才走 electron-updater 全链路
+const canNativeUpdater = isDesktop && !isMacDesktop && !!window.vermes?.checkForUpdates
 
 /** 获取 session token，用于 Agent 更新 API 认证 */
 function getAgentToken() {
@@ -70,15 +76,15 @@ export const useUpdateStore = defineStore('update', () => {
     if (checked.value) return
     checked.value = true
 
-    // Electron 桌面模式：使用 electron-updater + Agent 框架更新
-    if (isDesktop && window.vermes?.checkForUpdates) {
+    // Win 桌面（Electron + electron-updater）原生检查；mac 桌面降级 web 分支
+    if (canNativeUpdater) {
       await checkUpdateElectron()
       // 桌面端也要检查 Agent 框架更新
       await checkAgentUpdate()
       return
     }
 
-    // Web 模式：并行检查壳更新 + Agent 框架更新
+    // Web 模式 / mac 桌面降级：并行检查壳更新(version.json) + Agent 框架更新
     return Promise.all([
       checkUpdateWeb(),
       checkAgentUpdate(),
@@ -294,8 +300,8 @@ export const useUpdateStore = defineStore('update', () => {
     updateError.value = ''
     updateProgress.value = 0
 
-    // Electron 桌面模式
-    if (isDesktop && window.vermes?.downloadUpdate) {
+    // Win 桌面：electron-updater 后台下载
+    if (canNativeUpdater) {
       updateStatus.value = 'downloading'
       updateMessage.value = '准备下载...'
       try {
@@ -310,6 +316,29 @@ export const useUpdateStore = defineStore('update', () => {
         updateStatus.value = 'error'
         updateError.value = e.message
         updateMessage.value = `❌ ${e.message || '更新失败'}`
+        updating.value = false
+      }
+      return
+    }
+
+    // mac 桌面：无签名不能自动装，打开官网下载页让用户手动下载 DMG
+    if (isMacDesktop) {
+      updateStatus.value = 'opening'
+      updateMessage.value = '正在打开下载页…'
+      const url = downloadUrl.value || 'https://vbit.top/vermes/#downloads'
+      try {
+        if (window.vermes?.openExternalBrowser) {
+          await window.vermes.openExternalBrowser(url)
+        } else {
+          window.open(url, '_blank')
+        }
+        updateStatus.value = 'idle'
+        updateMessage.value = ''
+      } catch (e) {
+        updateStatus.value = 'error'
+        updateError.value = e.message
+        updateMessage.value = `❌ 打开下载页失败: ${e.message || ''}`
+      } finally {
         updating.value = false
       }
       return
@@ -651,8 +680,9 @@ export const useUpdateStore = defineStore('update', () => {
     etaSeconds,
     startUpdate,
     // Electron: 安装已下载的更新并重启
+    // Win 桌面：electron-updater 安装重启；mac 桌面/web 无此能力
     installUpdate: () => {
-      if (isDesktop && window.vermes?.installUpdate) {
+      if (canNativeUpdater && window.vermes?.installUpdate) {
         window.vermes.installUpdate()
       }
     },
