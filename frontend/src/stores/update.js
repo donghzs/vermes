@@ -85,6 +85,13 @@ export const useUpdateStore = defineStore('update', () => {
     ])
   }
 
+  /** 手动检查更新（设置页「检查更新」按钮）：重置去重标记后重新检查 */
+  async function manualCheck() {
+    checked.value = false
+    hasUpdate.value = false
+    return checkUpdate()
+  }
+
   /** Electron 原生更新检查 */
   async function checkUpdateElectron() {
     try {
@@ -619,6 +626,7 @@ export const useUpdateStore = defineStore('update', () => {
     sha256,
     minDataVersion,
     checkUpdate,
+    manualCheck,
     dismissUpdate,
     checked,
     // Agent 框架更新

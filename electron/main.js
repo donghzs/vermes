@@ -1118,7 +1118,10 @@ if (!gotLock) {
   });
 
   // ── App 生命周期 ──
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => {
+    createWindow();
+    setupAutoUpdater();
+  });
 }
 
 app.on('window-all-closed', () => {
@@ -1241,3 +1244,69 @@ ipcMain.handle('agent:download', async (event, opts) => {
     return { error: err.message };
   }
 });
+
+// ── 应用自动更新（electron-updater，双平台统一）─────────────────────
+// Win + Mac 均为 Electron 壳，electron-updater 负责完整闭环：
+// 启动检查 → 主进程广播事件 → 前端弹窗 → 用户确认 → 后台下载 →
+// 下载完成 → 用户点「安装并重启」→ quitAndInstall → 重启生效。
+// autoDownload=false：不在后台静默下载，等用户在弹窗里点确认再下。
+function sendUpdateEvent(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send(channel, payload); } catch (_) {}
+  }
+}
+
+function setupAutoUpdater() {
+  if (!app.isPackaged) {
+    console.log('[Vermes] 开发模式：跳过自动更新检查');
+    return;
+  }
+  let autoUpdater;
+  try {
+    autoUpdater = require('electron-updater').autoUpdater;
+  } catch (e) {
+    console.error('[Vermes] electron-updater 未打包进 app，跳过自动更新:', e && e.message);
+    return;
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = console;
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[Vermes] 发现新版本:', (info && info.version) || '?');
+    sendUpdateEvent('update:available', info || {});
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    sendUpdateEvent('update:not-available', info || {});
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateEvent('update:progress', progress || {});
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[Vermes] 更新已下载，等待用户安装:', (info && info.version) || '?');
+    sendUpdateEvent('update:downloaded', info || {});
+  });
+  autoUpdater.on('error', (err) => {
+    console.error('[Vermes] 自动更新错误:', err && err.message);
+    sendUpdateEvent('update:error', { message: (err && err.message) || String(err) });
+  });
+
+  // IPC：前端 update.js 的 Electron 分支调用
+  ipcMain.handle('update:check', async () => {
+    try { return await autoUpdater.checkForUpdates(); }
+    catch (e) { return { error: e && e.message }; }
+  });
+  ipcMain.handle('update:download', async () => {
+    try { await autoUpdater.downloadUpdate(); return { success: true }; }
+    catch (e) { return { error: e && e.message }; }
+  });
+  ipcMain.handle('update:install', () => {
+    // false=显示安装进度，true=安装后强制重启
+    autoUpdater.quitAndInstall(false, true);
+  });
+
+  // 注意：不在此处主动 checkForUpdates()。统一由前端 update.js（App.vue 挂载时
+  // 调 checkUpdate → 经 preload 'update:check' 到这里）作为唯一触发点，
+  // 避免与前端并发检查撞车导致 electron-updater 抛 "Already checking"。
+}

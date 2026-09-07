@@ -25,7 +25,7 @@
   },
   "version": "2.4.8",
   "build": {
-    "appId": "top.vbit.vermes",
+    "appId": "com.vermes.desktop",
     "productName": "Vermes",
     "directories": {
       "output": "dist-electron"

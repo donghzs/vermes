@@ -21,12 +21,11 @@
     "directories": {
       "output": "../dist-electron"
     },
-    "files": [
-      "main.js",
-      "preload.js",
-      "splash.html",
-      "package.json",
-      "assets/**"
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://vbit.top/vermes"
+      }
     ],
     "extraResources": [
       {

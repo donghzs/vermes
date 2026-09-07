@@ -20,6 +20,12 @@ function envHeaders() {
 
 const chat = useChatStore()
 const update = useUpdateStore()
+async function onCheckUpdate() {
+  await update.manualCheck()
+  if (!update.hasUpdate) {
+    toast.info('已是最新版本')
+  }
+}
 const router = useRouter()
 const route = useRoute()
 
@@ -2740,6 +2746,7 @@ async function toggleChannel(platformKey) {
           <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">Vermes</h3>
           <p class="text-sm text-gray-500 dark:text-gray-400">AI Agent by vbit.top</p>
           <p class="text-xs text-gray-400">版本 {{ update.currentVersion }} · 基于 Vermes Agent</p>
+          <button @click="onCheckUpdate" class="mt-2 px-3 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 transition font-medium">检查更新</button>
           <a href="https://vbit.top" target="_blank" class="text-sm text-green-600 dark:text-green-400 hover:underline">访问 vbit.top →</a>
         </div>
 
