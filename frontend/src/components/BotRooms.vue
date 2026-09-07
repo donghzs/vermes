@@ -127,6 +127,9 @@ const orgBoard = ref({
   statusLabels: {},
   expandedTask: null, // 当前展开的任务 id
   polling: null,      // 轮询定时器
+  reviewing: false,   // 验收/打回提交中
+  rejectingId: null,  // 正在打回的任务 id（展开打回意见输入框）
+  rejectComment: '',  // 打回意见
 })
 
 const ORG_TYPE_LABELS = { dispatcher: '分派', executor: '执行', auditor: '审计', aggregator: '汇总' }
@@ -231,6 +234,41 @@ function orgTaskRoleName(roleId) {
 
 function orgProfileName(pid) {
   return (orgBoard.value.profileNames && orgBoard.value.profileNames[pid]) || pid || ''
+}
+
+// 老板验收/打回（按钮化，复用后端文字触发语义）
+async function reviewTask(t, action) {
+  if (!bot.currentRoomId || orgBoard.value.reviewing) return
+  if (action === 'accept') {
+    orgBoard.value.reviewing = true
+    try {
+      await bot.sendMessage('验收通过')
+      toast('已验收通过')
+      await loadOrgBoard()
+    } finally {
+      orgBoard.value.reviewing = false
+    }
+  } else {
+    // 打回：先展开意见输入框
+    orgBoard.value.rejectingId = orgBoard.value.rejectingId === t.id ? null : t.id
+    orgBoard.value.rejectComment = ''
+  }
+}
+
+async function confirmReject(t) {
+  if (!bot.currentRoomId || orgBoard.value.reviewing) return
+  const comment = (orgBoard.value.rejectComment || '').trim()
+  const msg = comment ? `打回: ${comment}` : '打回'
+  orgBoard.value.reviewing = true
+  try {
+    await bot.sendMessage(msg)
+    toast(comment ? '已打回重做' : '已打回重做')
+    orgBoard.value.rejectingId = null
+    orgBoard.value.rejectComment = ''
+    await loadOrgBoard()
+  } finally {
+    orgBoard.value.reviewing = false
+  }
 }
 
 function toggleTaskDetail(t) {
@@ -1219,6 +1257,36 @@ onUnmounted(() => {
                     <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">📦 交付物</div>
                     <div class="deliverable-md text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 rounded p-2 max-h-48 overflow-y-auto" v-html="renderMarkdown(t.final_output)"></div>
                     <button class="mt-1.5 text-[11px] px-2 py-0.5 rounded bg-emerald-500 text-white hover:bg-emerald-600 transition" @click="openDeliverable(t.final_output, t.title || '交付物')">📄 全屏查看</button>
+                  </div>
+
+                  <!-- 老板验收/打回（2026-09-07：按钮化，不用手打文字） -->
+                  <div v-if="t.status === 'delivered'" class="pt-1">
+                    <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">老板验收</div>
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="flex-1 px-3 py-1.5 text-xs rounded-lg bg-green-500 hover:bg-green-600 text-white transition disabled:opacity-50"
+                        :disabled="orgBoard.reviewing"
+                        @click="reviewTask(t, 'accept')"
+                      >✅ 验收通过</button>
+                      <button
+                        class="flex-1 px-3 py-1.5 text-xs rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition disabled:opacity-50"
+                        :disabled="orgBoard.reviewing"
+                        @click="reviewTask(t, 'reject')"
+                      >🔁 打回重做</button>
+                    </div>
+                    <input
+                      v-if="orgBoard.rejectingId === t.id"
+                      v-model="orgBoard.rejectComment"
+                      type="text"
+                      placeholder="打回意见（可选，回车确认）"
+                      class="mt-1.5 w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-orange-400"
+                      @keydown.enter="confirmReject(t)"
+                      @keydown.esc="orgBoard.rejectingId = null"
+                    />
+                    <div v-if="orgBoard.rejectingId === t.id" class="mt-1.5 flex gap-1.5">
+                      <button class="px-2 py-1 text-[11px] rounded bg-orange-500 text-white hover:bg-orange-600 transition" @click="confirmReject(t)">确认打回</button>
+                      <button class="px-2 py-1 text-[11px] rounded bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 transition" @click="orgBoard.rejectingId = null">取消</button>
+                    </div>
                   </div>
                 </div>
               </div>
