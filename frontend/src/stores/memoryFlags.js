@@ -104,5 +104,24 @@ export const useMemoryFlagsStore = defineStore('memoryFlags', () => {
     }
   }
 
-  return { flags, resolvedFlags, resolvedTotal, loading, resolvedLoading, fetchFlags, fetchResolved, resolveFlag, restoreFlag }
+  // 一键批量处理全部 open flag（降低逐条确认打扰）；
+  // 默认 false_positive（仅改 flag 状态，不降权/不改记忆），可传 demote/merge。
+  async function batchResolveAll(resolution = 'false_positive') {
+    try {
+      const data = await api.resolveFlagsBatch(resolution)
+      if (data && data.ok) {
+        await fetchFlags()
+        await fetchResolved()
+        showToast(`已批量处理 ${data.resolved ?? 0} 条记忆问题 ✓`)
+        return true
+      }
+      showToast(data?.error || '批量处理失败', 'error')
+      return false
+    } catch (e) {
+      showToast('批量处理失败：' + (e.message || '未知错误'), 'error')
+      return false
+    }
+  }
+
+  return { flags, resolvedFlags, resolvedTotal, loading, resolvedLoading, fetchFlags, fetchResolved, resolveFlag, restoreFlag, batchResolveAll }
 })

@@ -232,6 +232,7 @@ watch(() => chat.sessions.length, async () => {
 onMounted(async () => {
   await loadAllSessionMeta()
   chat.loadChannelSessions().catch(() => {})
+  loadBackgroundSessions().catch(() => {})
   chat.initChannelSync()
 })
 
@@ -240,11 +241,75 @@ let _channelPollTimer = null
 onMounted(() => {
   _channelPollTimer = setInterval(() => {
     chat.loadChannelSessions().catch(() => {})
+    // 仅当用户已展开后台任务区时刷新，避免无谓请求
+    if (showBackground.value) loadBackgroundSessions().catch(() => {})
   }, 5000)
 })
 onUnmounted(() => {
   if (_channelPollTimer) { clearInterval(_channelPollTimer); _channelPollTimer = null }
 })
+
+// ── 后台任务视图（curator 等系统会话，默认不进「我的对话」）──
+const backgroundSessions = ref([])
+const showBackground = ref(false)
+async function loadBackgroundSessions() {
+  try {
+    const data = await api.getBackgroundSessions(200)
+    backgroundSessions.value = (data && data.sessions) || []
+  } catch (e) {
+    backgroundSessions.value = []
+  }
+}
+function toggleBackground() {
+  showBackground.value = !showBackground.value
+  if (showBackground.value) loadBackgroundSessions().catch(() => {})
+}
+async function cleanupBackground() {
+  if (!(await confirm({ title: '清空后台任务', message: '确定删除所有 curator 后台审查会话？此操作不可恢复。', confirmText: '清空', danger: true }))) return
+  try {
+    const data = await api.cleanupSessionsBySource('curator')
+    backgroundSessions.value = []
+    toast.success(`已清空 ${data?.deleted ?? 0} 个后台会话`)
+    chat.loadChannelSessions().catch(() => {})
+  } catch (e) {
+    toast.error('清空失败：' + (e.message || '未知错误'))
+  }
+}
+
+// ── 多选批量删除 ──
+const selectMode = ref(false)
+const selectedIds = ref(new Set())
+function toggleSelect(id) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+const mainSessionIds = computed(() => mergedSessions.value.map(s => s.id))
+const allMainSelected = computed(() =>
+  mainSessionIds.value.length > 0 && mainSessionIds.value.every(id => selectedIds.value.has(id))
+)
+function toggleSelectAll() {
+  selectedIds.value = allMainSelected.value ? new Set() : new Set(mainSessionIds.value)
+}
+function handleSessionClick(s) {
+  if (selectMode.value) { toggleSelect(s.id); return }
+  switchAndGoChat(s.id)
+}
+async function batchDeleteSelected() {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  if (!(await confirm({ title: '批量删除会话', message: `确定删除选中的 ${ids.length} 个会话？此操作不可恢复。`, confirmText: '删除', danger: true }))) return
+  try {
+    await chat.deleteSessionsBatch(ids)
+    selectedIds.value = new Set()
+    selectMode.value = false
+    toast.success(`已删除 ${ids.length} 个会话`)
+    if (showBackground.value) loadBackgroundSessions().catch(() => {})
+  } catch (e) {
+    toast.error('删除失败：' + (e.message || '未知错误'))
+  }
+}
 
 // ── 右键菜单 ──
 const contextMenu = ref({ show: false, x: 0, y: 0, session: null })
@@ -433,6 +498,44 @@ async function handleImportFile(e) {
         </div>
       </div>
 
+      <!-- 批量管理开关 / 工具条 -->
+      <div class="px-3 pb-2 shrink-0" v-if="selectMode">
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+            <input type="checkbox" :checked="allMainSelected" @change="toggleSelectAll" class="accent-green-500" /> 全选
+          </label>
+          <span class="text-xs text-gray-400">已选 {{ selectedIds.size }}</span>
+          <button @click="batchDeleteSelected" class="ml-auto px-2.5 py-1 text-xs rounded-lg bg-red-500 hover:bg-red-600 text-white transition font-medium">删除选中</button>
+          <button @click="selectMode = false; selectedIds = new Set()" class="px-2.5 py-1 text-xs rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition">取消</button>
+        </div>
+      </div>
+      <div class="px-3 pb-1 shrink-0" v-else>
+        <button @click="selectMode = true" class="w-full px-2 py-1 text-[11px] rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 transition">
+          ☑ 多选管理（批量删除会话）
+        </button>
+      </div>
+
+      <!-- 后台任务（curator 等系统会话，默认不污染「我的对话」） -->
+      <div v-if="backgroundSessions.length > 0 || showBackground" class="px-3 pb-1 shrink-0">
+        <div class="flex items-center justify-between cursor-pointer select-none" @click="toggleBackground">
+          <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider flex items-center gap-1">
+            ⚙️ 后台任务 <span class="text-gray-400">({{ backgroundSessions.length }})</span>
+          </span>
+          <div class="flex items-center gap-1" @click.stop>
+            <button v-if="showBackground && backgroundSessions.length > 0" @click="cleanupBackground" class="text-[10px] px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900 text-red-500 hover:bg-red-100 dark:hover:bg-red-800 transition" title="清空全部后台任务">清空</button>
+            <span class="text-gray-400 text-xs transition-transform" :class="showBackground ? 'rotate-90' : ''">▸</span>
+          </div>
+        </div>
+        <div v-if="showBackground" class="mt-1 space-y-0.5">
+          <div v-for="bg in backgroundSessions" :key="'bg-' + bg.id"
+               class="px-3 py-1.5 mx-1 rounded-lg text-xs text-gray-500 dark:text-gray-400 bg-gray-100/60 dark:bg-gray-700/40 flex items-center justify-between">
+            <span class="truncate">⚙️ {{ bg.name || 'curator 审查' }} <span class="text-gray-400 ml-1">#{{ (bg.id || '').slice(0, 8) }}</span></span>
+            <button @click.stop="handleDelete(bg.id)" class="text-red-400 hover:text-red-600 transition ml-2 shrink-0" title="删除">×</button>
+          </div>
+          <div v-if="backgroundSessions.length === 0" class="text-[10px] text-gray-400 px-1 py-1">暂无后台任务</div>
+        </div>
+      </div>
+
       <!-- 会话列表 -->
       <div class="flex-1 overflow-y-auto" @click="closeContextMenu()">
 
@@ -441,7 +544,7 @@ async function handleImportFile(e) {
           <div class="px-4 pt-1 pb-0.5 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">📌 已置顶</div>
           <div
             v-for="s in groupedSessions.pinned" :key="'p-' + s.id"
-            @click="switchAndGoChat(s.id)"
+            @click="handleSessionClick(s)"
             @contextmenu.prevent="onContextMenu($event, s)"
             class="px-3 py-2 mx-2 mb-0.5 rounded-lg cursor-pointer text-sm transition-all duration-200 group relative"
             :class="s.id === chat.currentSessionId
@@ -461,6 +564,7 @@ async function handleImportFile(e) {
             </div>
             <template v-else>
               <div class="flex items-center gap-1">
+                <input v-if="selectMode" type="checkbox" :checked="selectedIds.has(s.id)" @click.stop="toggleSelect(s.id)" class="accent-green-500 shrink-0" />
                 <span class="text-[10px] shrink-0">📌</span>
                 <span class="truncate font-medium flex-1">{{ s.name || '新会话' }}</span>
                 <span v-if="chat.sessionLoading[s.id]" class="shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" title="运行中"></span>
@@ -499,7 +603,7 @@ async function handleImportFile(e) {
           <!-- 会话项 -->
           <div
             v-else-if="item.type === 'session'"
-            @click="switchAndGoChat(item.data.id)"
+            @click="handleSessionClick(item.data)"
             @contextmenu.prevent="onContextMenu($event, item.data)"
             class="px-3 py-2 mx-2 mb-0.5 rounded-lg cursor-pointer text-sm transition-all duration-200 group relative"
             :class="item.data.id === chat.currentSessionId
@@ -519,6 +623,7 @@ async function handleImportFile(e) {
             </div>
             <template v-else>
               <div class="flex items-center gap-1">
+                <input v-if="selectMode" type="checkbox" :checked="selectedIds.has(item.data.id)" @click.stop="toggleSelect(item.data.id)" class="accent-green-500 shrink-0" />
                 <span class="truncate font-medium flex-1">{{ item.data.name || '新会话' }}</span>
                 <span v-if="item.data.channel" class="shrink-0 text-[9px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300" :title="'来自渠道: ' + item.data.source">{{ sourceBadge(item.data) }}</span>
                 <span v-if="chat.channelUnread[item.data.id] > 0" class="shrink-0 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-semibold rounded-full bg-red-500 text-white" :title="chat.channelUnread[item.data.id] + ' 条未读'">{{ chat.channelUnread[item.data.id] > 99 ? '99+' : chat.channelUnread[item.data.id] }}</span>

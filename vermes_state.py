@@ -4284,6 +4284,42 @@ class SessionDB:
             self._remove_session_files(sessions_dir, session_id)
         return deleted
 
+    def bulk_delete_sessions(self, ids: List[str]) -> int:
+        """Batch-delete sessions and cascade their messages/gui_messages.
+
+        Child sessions are orphaned (parent_session_id set to NULL) rather
+        than cascade-deleted, mirroring :meth:`delete_session`.  Returns the
+        number of session rows actually deleted.  Safe to call with an empty
+        list (returns 0, no-op).
+        """
+        if not ids:
+            return 0
+        ids = [str(i) for i in ids]
+        placeholders = ",".join("?" for _ in ids)
+
+        def _do(conn):
+            # Orphan child sessions so the FK / NOT-IN self-reference stays valid
+            conn.execute(
+                f"UPDATE sessions SET parent_session_id = NULL "
+                f"WHERE parent_session_id IN ({placeholders})",
+                ids,
+            )
+            conn.execute(f"DELETE FROM messages WHERE session_id IN ({placeholders})", ids)
+            # gui_messages 表由 web_server 侧创建，可能不存在于纯 CLI 运行时；
+            # 用 try/except 兜底，避免批量删除因缺表而失败。
+            try:
+                conn.execute(
+                    f"DELETE FROM gui_messages WHERE session_id IN ({placeholders})", ids
+                )
+            except Exception:
+                pass
+            cursor = conn.execute(
+                f"DELETE FROM sessions WHERE id IN ({placeholders})", ids
+            )
+            return cursor.rowcount
+
+        return self._execute_write(_do) or 0
+
     def prune_sessions(
         self,
         older_than_days: int = 90,

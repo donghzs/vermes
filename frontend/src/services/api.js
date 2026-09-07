@@ -310,6 +310,18 @@ const api = {
 
   // 会话
   getSessions() { return this.get('/sessions') },
+  // 后台任务视图（curator 等系统任务会话，不污染「我的对话」）
+  getBackgroundSessions(limit = 200) { return this.get(`/sessions?background=1&limit=${limit}`) },
+  // 批量删除会话（DELETE + body，绕过 this.delete 不支持 body 的限制）
+  deleteSessionsBatch(ids) {
+    return request('/sessions/batch', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }).then(r => r.json())
+  },
+  // 一键清理某来源的全部会话（如 curator 审查产生的会话）
+  cleanupSessionsBySource(source) { return this.post('/sessions/cleanup', { source }) },
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
   exportSession(sessionId, format = 'md') {
     return fetch(`${this.baseURL}/sessions/${sessionId}/export?format=${format}`, {
@@ -557,6 +569,12 @@ const api = {
   },
   restoreFlag(flagId) {
     return this.post('/restore_flag', { flag_id: flagId })
+  },
+  // 一键批量处理全部 open flag（降低逐条确认打扰）；可指定 flag_type 过滤
+  resolveFlagsBatch(resolution = 'false_positive', flagType = null) {
+    const body = { resolution }
+    if (flagType) body.flag_type = flagType
+    return this.post('/batch_resolve_flags', body)
   },
   listMemories(params = {}) {
     const qs = new URLSearchParams(params).toString()

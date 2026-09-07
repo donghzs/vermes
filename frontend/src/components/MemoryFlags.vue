@@ -72,6 +72,11 @@ onMounted(() => {
                 class="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors ml-1">
           批量降级重复 ({{ skillDuplicateCount }})
         </button>
+        <button v-if="store.flags.length > 0"
+                @click="store.batchResolveAll('false_positive')"
+                class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors ml-1" title="一键将全部待处理标记误报（仅改 flag 状态，不降权/不改记忆）">
+          全部标记误报
+        </button>
       </div>
       <div class="flex items-center gap-2">
         <button v-if="store.resolvedTotal > 0"

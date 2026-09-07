@@ -19,18 +19,42 @@ from vermes_cli.blueprints.helpers import _session_latest_descendant
 session_bp = APIRouter(tags=["session"])
 _log = logging.getLogger(__name__)
 
+# 后台型会话来源：由系统任务（如 curator 技能审查 / 记忆反射）产生，
+# 不应污染用户「我的对话」列表，仅在「后台任务」折叠区可见。
+_BACKGROUND_SOURCES = {"curator"}
+
 
 # ── route handlers ─────────────────────────────────────────────
 
-async def get_sessions(limit: int = 20, offset: int = 0):
+async def get_sessions(limit: int = 20, offset: int = 0, background: bool = False, exclude_source: str = ""):
     try:
         from vermes_state import SessionDB
 
         db = SessionDB()
         try:
-            # 取足够大的窗口，在内存中按“有消息优先、再按最近活动”重排，
-            # 避免空壳会话（如批量产生的 telegram 空 session）淹没真实聊天。
-            all_sessions = db.list_sessions_rich(limit=100000, offset=0, exclude_sources=["web"])
+            if background:
+                # 后台任务视图：只返回后台型来源（如 curator 审查），
+                # 不污染用户的「我的对话」列表。
+                all_sessions = db.list_sessions_rich(
+                    limit=100000, offset=0, exclude_sources=[]
+                )
+                all_sessions = [
+                    s for s in all_sessions if s.get("source") in _BACKGROUND_SOURCES
+                ]
+            else:
+                # 取足够大的窗口，在内存中按“有消息优先、再按最近活动”重排，
+                # 避免空壳会话（如批量产生的 telegram 空 session）淹没真实聊天。
+                # 默认排除 web（本地 web 会话走前端 localStorage）与 curator
+                # （后台审查任务），其余渠道(telegram/discord/cli…)照常展示。
+                _exclude = ["web", "curator"]
+                if exclude_source:
+                    for _s in exclude_source.split(","):
+                        _s = _s.strip()
+                        if _s and _s not in _exclude:
+                            _exclude.append(_s)
+                all_sessions = db.list_sessions_rich(
+                    limit=100000, offset=0, exclude_sources=_exclude
+                )
             all_sessions.sort(
                 key=lambda s: (
                     (s.get("message_count") or 0) > 0,
@@ -470,8 +494,100 @@ async def session_recovery_check(session_id: str = ""):
 
 # ── registration ───────────────────────────────────────────────
 
+async def delete_sessions_batch(request: Request):
+    """DELETE /api/sessions/batch — 批量删除会话（body: {"ids": [...]}）。
+
+    级联清理 messages / gui_messages，并逐个释放会话级缓存与计划态，
+    避免批量删除后的内存泄漏（与单条 delete_session_endpoint 对齐）。
+    """
+    from vermes_cli.blueprints.agent_cache import clean_agent_for_session
+    from vermes_state import SessionDB
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+    ids = body.get("ids") if isinstance(body, dict) else None
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=400, detail="ids must be a non-empty array")
+    # 规范化 + 去重，避免 SQL 拼接出错
+    ids = list({str(i) for i in ids})
+    if len(ids) > 500:
+        raise HTTPException(status_code=400, detail="too many ids (max 500)")
+
+    db = SessionDB()
+    try:
+        for sid in ids:
+            try:
+                clean_agent_for_session(sid)
+            except Exception:
+                pass
+            try:
+                from vermes_cli.blueprints.chat import clean_session_plan_state
+
+                clean_session_plan_state(sid)
+            except Exception:
+                pass
+        deleted = db.bulk_delete_sessions(ids)
+        return {"ok": True, "deleted": deleted}
+    finally:
+        db.close()
+
+
+async def cleanup_sessions_by_source(request: Request):
+    """POST /api/sessions/cleanup — 一键清理某来源的全部会话。
+
+    body: {"source": "curator"}。用于把后台任务（如 curator 审查）产生的
+    会话一次性清掉，不必逐条选择。
+    """
+    from vermes_cli.blueprints.agent_cache import clean_agent_for_session
+    from vermes_state import SessionDB
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+    source = (body.get("source") if isinstance(body, dict) else None) or ""
+    source = source.strip()
+    if not source:
+        raise HTTPException(status_code=400, detail="source required")
+
+    db = SessionDB()
+    try:
+        # include_empty=True：后台任务会话可能 message_count=0（预创建壳），也要清理
+        all_sessions = db.list_sessions_rich(
+            limit=100000, offset=0, source=source, include_empty=True
+        )
+        ids = [s["id"] for s in all_sessions]
+        if not ids:
+            return {"ok": True, "deleted": 0, "source": source}
+        for sid in ids:
+            try:
+                clean_agent_for_session(sid)
+            except Exception:
+                pass
+            try:
+                from vermes_cli.blueprints.chat import clean_session_plan_state
+
+                clean_session_plan_state(sid)
+            except Exception:
+                pass
+        deleted = db.bulk_delete_sessions(ids)
+        return {"ok": True, "deleted": deleted, "source": source}
+    finally:
+        db.close()
+
+
 def register_to(app):
     """Register session routes on the FastAPI app."""
+    # 注意：/batch 与 /cleanup 必须在 /{session_id} 之前注册，
+    # 否则 "batch"/"cleanup" 会被 {session_id} 路径参数吞掉。
+    app.add_api_route(
+        "/api/sessions/batch", delete_sessions_batch, methods=["DELETE"], name="delete_sessions_batch"
+    )
+    app.add_api_route(
+        "/api/sessions/cleanup", cleanup_sessions_by_source, methods=["POST"], name="cleanup_sessions_by_source"
+    )
     app.add_api_route("/api/sessions", get_sessions, methods=["GET"], name="get_sessions")
     app.add_api_route(
         "/api/sessions/search", search_sessions, methods=["GET"], name="search_sessions"

@@ -379,6 +379,38 @@ export async function listChannelSessionsFromAPI(limit = 200) {
   return data.sessions || []
 }
 
+/** 批量删除 state.db 会话（DELETE /api/sessions/batch，body: {ids:[...]}） */
+export async function deleteSessionsBatchFromAPI(ids) {
+  try {
+    const resp = await fetch('/api/sessions/batch', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...stateDBHeaders() },
+      body: JSON.stringify({ ids }),
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    return await resp.json()
+  } catch (e) {
+    logger.warn('[Vermes] 批量删除会话失败:', e)
+    throw e
+  }
+}
+
+/** 一键清理某来源的全部会话（POST /api/sessions/cleanup，body: {source}） */
+export async function cleanupSessionsBySourceFromAPI(source) {
+  try {
+    const resp = await fetch('/api/sessions/cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...stateDBHeaders() },
+      body: JSON.stringify({ source }),
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    return await resp.json()
+  } catch (e) {
+    logger.warn('[Vermes] 清理后台会话失败:', e)
+    throw e
+  }
+}
+
 /** 读取 state.db 某会话的消息（渠道会话续看） */
 export async function loadChannelMessagesFromAPI(sessionId) {
   try {

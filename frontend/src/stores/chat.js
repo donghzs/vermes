@@ -27,7 +27,7 @@ import {
   getFirstMessage as _getFirstMessage,
   evictOldSessions as _evictOldSessions,
 } from './chat-session'
-import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64, listChannelSessionsFromAPI, loadChannelMessagesFromAPI, deleteChannelSessionFromAPI, sendFromDesktopAPI, getRelayStateAPI, loadMessagesFromAPI, listSessionsFromAPI } from './chat-storage'
+import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64, listChannelSessionsFromAPI, loadChannelMessagesFromAPI, deleteChannelSessionFromAPI, sendFromDesktopAPI, getRelayStateAPI, loadMessagesFromAPI, listSessionsFromAPI, deleteSessionsBatchFromAPI } from './chat-storage'
 import { uid, persistMessages } from './chat-session'
 import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import { flushStorageWrites } from './chat-storage'
@@ -615,6 +615,29 @@ export const useChatStore = defineStore('chat', () => {
       } else {
         await createSession('新会话')
       }
+    }
+  }
+
+  /**
+   * 批量删除会话：本地立即移除（web 本地 + 渠道）+ 持久化，再调后端
+   * DELETE /api/sessions/batch 级联清理。比逐条 deleteSession 少 N 次请求。
+   */
+  async function deleteSessionsBatch(ids) {
+    if (!ids || !ids.length) return { ok: true, deleted: 0 }
+    const set = new Set(ids)
+    sessions.value = sessions.value.filter(s => !set.has(s.id))
+    channelSessions.value = channelSessions.value.filter(s => !set.has(s.id))
+    for (const sid of ids) {
+      try { localStorage.removeItem(MESSAGES_KEY_PREFIX + sid) } catch {}
+    }
+    persistSessions()
+    try {
+      const data = await deleteSessionsBatchFromAPI(ids)
+      return data
+    } catch (e) {
+      // 后端失败：回滚——重新拉取渠道会话恢复列表
+      loadChannelSessions().catch(() => {})
+      throw e
     }
   }
 
@@ -1691,7 +1714,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingApproval, resolveApproval,
     pendingModel, appendModelChange,
     init, initOnce,
-    createSession, switchSession, deleteSession, renameSession, pinSession,
+    createSession, switchSession, deleteSession, deleteSessionsBatch, renameSession, pinSession,
     searchAllSessions, exportSession, importSession,
     startChannelMessagePolling, stopChannelMessagePolling,
     refreshChannelMessages, initChannelSync, markChannelRead, channelUnread,
