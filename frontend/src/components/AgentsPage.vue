@@ -72,6 +72,7 @@
                 @click="openForge(n)"
                 class="px-2.5 py-1 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
               >✏️ 编辑</button>
+              <span v-if="n.editable === 0" class="text-[11px] text-red-400">🔒 已锁定</span>
               <span class="text-[11px] text-gray-400">进「诸神会晤」@{{ n.id }} 即可对话</span>
             </div>
           </div>
@@ -292,6 +293,13 @@
             <label class="text-xs text-gray-500 mb-1 block">专属 API Key（留空 = 用全局 Key）</label>
             <input v-model="forgeModal.apiKey" type="password" :placeholder="forgeModal.editing && forgeModal.editing.has_api_key ? '已配置（留空保持不变）' : 'sk-...'" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
             <p v-if="forgeModal.editing && forgeModal.editing.has_api_key" class="text-[11px] text-gray-400 mt-1">已绑专属 Key，留空保持不变；输入新值则覆盖。</p>
+          </div>
+          <div class="border-t border-gray-100 dark:border-gray-700 pt-2 mt-1">
+            <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+              <input type="checkbox" v-model="forgeModal.editable" :true-value="1" :false-value="0" class="accent-indigo-500" />
+              <span>允许编辑此联系人（取消勾选 = 锁定，仅可在此重新勾选解锁）</span>
+            </label>
+            <p v-if="forgeModal.editing && forgeModal.editable === 0" class="text-[11px] text-amber-500 mt-1">已锁定：其他字段修改提交将被后端拒绝，仅允许把开关重新勾选以解锁。</p>
           </div>
           <div>
             <label class="text-xs text-gray-500 mb-1 block">系统提示词（人设）</label>
@@ -672,11 +680,13 @@ function openForge(editing = null) {
         provider: editing.provider || '', model: editing.model || '', customProvider: '',
         apiKey: '', systemPrompt: editing.system_prompt || '',
         hue: editing.hue || 0, toolsets: Array.isArray(editing.toolsets) ? [...editing.toolsets] : [],
+        editable: editing.editable ?? 1,
       }
     : {
         open: true, editing: null, error: '',
         name: '', description: '', provider: '', model: '', customProvider: '',
         apiKey: '', systemPrompt: '', hue: 0, toolsets: [],
+        editable: 1,
       }
 }
 
@@ -703,6 +713,7 @@ async function submitForge() {
       system_prompt: m.systemPrompt,
       hue: m.hue,
       toolsets: m.toolsets || [],
+      editable: m.editable ? 1 : 0,
     })
     if (data && data.ok) {
       forgeModal.value = { ...forgeModal.value, open: false }

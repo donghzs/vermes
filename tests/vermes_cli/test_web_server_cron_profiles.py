@@ -24,13 +24,13 @@ def isolated_profiles(tmp_path, monkeypatch):
 
 def test_call_cron_for_profile_routes_storage_and_restores_globals(isolated_profiles):
     from cron import jobs as cron_jobs
-    from vermes_cli import web_server
+    from vermes_cli.blueprints import cron_jobs as cron_jobs_bp
 
     old_cron_dir = cron_jobs.CRON_DIR
     old_jobs_file = cron_jobs.JOBS_FILE
     old_output_dir = cron_jobs.OUTPUT_DIR
 
-    job = web_server._call_cron_for_profile(
+    job = cron_jobs_bp._call_cron_for_profile(
         "worker_alpha",
         "create_job",
         prompt="run scheduled task",
@@ -52,16 +52,16 @@ def test_call_cron_for_profile_routes_storage_and_restores_globals(isolated_prof
 
 @pytest.mark.asyncio
 async def test_list_cron_jobs_all_includes_default_and_named_profiles(isolated_profiles):
-    from vermes_cli import web_server
+    from vermes_cli.blueprints import cron_jobs as cron_jobs_bp
 
-    default_job = web_server._call_cron_for_profile(
+    default_job = cron_jobs_bp._call_cron_for_profile(
         "default",
         "create_job",
         prompt="default heartbeat",
         schedule="every 2h",
         name="default-heartbeat",
     )
-    worker_job = web_server._call_cron_for_profile(
+    worker_job = cron_jobs_bp._call_cron_for_profile(
         "worker_alpha",
         "create_job",
         prompt="worker heartbeat",
@@ -69,7 +69,7 @@ async def test_list_cron_jobs_all_includes_default_and_named_profiles(isolated_p
         name="worker-alpha-heartbeat",
     )
 
-    jobs = await web_server.list_cron_jobs(profile="all")
+    jobs = await cron_jobs_bp.list_cron_jobs(profile="all")
     by_id = {job["id"]: job for job in jobs}
 
     assert set(by_id) >= {default_job["id"], worker_job["id"]}
@@ -83,16 +83,16 @@ async def test_list_cron_jobs_all_includes_default_and_named_profiles(isolated_p
 
 @pytest.mark.asyncio
 async def test_list_cron_jobs_specific_profile_filters_results(isolated_profiles):
-    from vermes_cli import web_server
+    from vermes_cli.blueprints import cron_jobs as cron_jobs_bp
 
-    web_server._call_cron_for_profile(
+    cron_jobs_bp._call_cron_for_profile(
         "default",
         "create_job",
         prompt="default only",
         schedule="every 2h",
         name="default-only",
     )
-    worker_job = web_server._call_cron_for_profile(
+    worker_job = cron_jobs_bp._call_cron_for_profile(
         "worker_alpha",
         "create_job",
         prompt="worker only",
@@ -100,7 +100,7 @@ async def test_list_cron_jobs_specific_profile_filters_results(isolated_profiles
         name="worker-only",
     )
 
-    jobs = await web_server.list_cron_jobs(profile="worker_alpha")
+    jobs = await cron_jobs_bp.list_cron_jobs(profile="worker_alpha")
 
     assert [job["id"] for job in jobs] == [worker_job["id"]]
     assert jobs[0]["profile"] == "worker_alpha"
@@ -108,9 +108,9 @@ async def test_list_cron_jobs_specific_profile_filters_results(isolated_profiles
 
 @pytest.mark.asyncio
 async def test_cron_mutation_without_profile_finds_named_profile_job(isolated_profiles):
-    from vermes_cli import web_server
+    from vermes_cli.blueprints import cron_jobs as cron_jobs_bp
 
-    worker_job = web_server._call_cron_for_profile(
+    worker_job = cron_jobs_bp._call_cron_for_profile(
         "worker_alpha",
         "create_job",
         prompt="managed by named profile",
@@ -118,12 +118,12 @@ async def test_cron_mutation_without_profile_finds_named_profile_job(isolated_pr
         name="named-profile-job",
     )
 
-    paused = await web_server.pause_cron_job(worker_job["id"])
+    paused = await cron_jobs_bp.pause_cron_job(worker_job["id"])
     assert paused["profile"] == "worker_alpha"
     assert paused["enabled"] is False
 
-    default_jobs = await web_server.list_cron_jobs(profile="default")
-    worker_jobs = await web_server.list_cron_jobs(profile="worker_alpha")
+    default_jobs = await cron_jobs_bp.list_cron_jobs(profile="default")
+    worker_jobs = await cron_jobs_bp.list_cron_jobs(profile="worker_alpha")
 
     assert default_jobs == []
     assert len(worker_jobs) == 1
@@ -133,16 +133,16 @@ async def test_cron_mutation_without_profile_finds_named_profile_job(isolated_pr
 
 @pytest.mark.asyncio
 async def test_cron_delete_with_profile_deletes_only_target_profile(isolated_profiles):
-    from vermes_cli import web_server
+    from vermes_cli.blueprints import cron_jobs as cron_jobs_bp
 
-    default_job = web_server._call_cron_for_profile(
+    default_job = cron_jobs_bp._call_cron_for_profile(
         "default",
         "create_job",
         prompt="same-ish default",
         schedule="every 1h",
         name="shared-name",
     )
-    worker_job = web_server._call_cron_for_profile(
+    worker_job = cron_jobs_bp._call_cron_for_profile(
         "worker_alpha",
         "create_job",
         prompt="same-ish worker",
@@ -150,23 +150,23 @@ async def test_cron_delete_with_profile_deletes_only_target_profile(isolated_pro
         name="shared-name-worker",
     )
 
-    deleted = await web_server.delete_cron_job(worker_job["id"], profile="worker_alpha")
+    deleted = await cron_jobs_bp.delete_cron_job(worker_job["id"], profile="worker_alpha")
     assert deleted == {"ok": True}
 
-    remaining_default = await web_server.list_cron_jobs(profile="default")
-    remaining_worker = await web_server.list_cron_jobs(profile="worker_alpha")
+    remaining_default = await cron_jobs_bp.list_cron_jobs(profile="default")
+    remaining_worker = await cron_jobs_bp.list_cron_jobs(profile="worker_alpha")
     assert [job["id"] for job in remaining_default] == [default_job["id"]]
     assert remaining_worker == []
 
 
 @pytest.mark.asyncio
 async def test_cron_profile_validation_errors(isolated_profiles):
-    from vermes_cli import web_server
+    from vermes_cli.blueprints import cron_jobs as cron_jobs_bp
 
     with pytest.raises(HTTPException) as bad_name:
-        await web_server.list_cron_jobs(profile="../bad")
+        await cron_jobs_bp.list_cron_jobs(profile="../bad")
     assert bad_name.value.status_code == 400
 
     with pytest.raises(HTTPException) as missing:
-        await web_server.list_cron_jobs(profile="missing_profile")
+        await cron_jobs_bp.list_cron_jobs(profile="missing_profile")
     assert missing.value.status_code == 404

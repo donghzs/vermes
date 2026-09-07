@@ -4350,6 +4350,7 @@ async def api_native_agent_profiles(request: Request):
                     "is_default": p.get("is_default", 0),
                     "capability_tags": p.get("capability_tags", []),
                     "has_api_key": bool(p.get("api_key")),
+                    "editable": int(p.get("editable", 1) or 1),
                 })
             return {"ok": True, "agents": out}
         finally:
@@ -4385,6 +4386,7 @@ async def api_agent_contacts(request: Request):
                     "capability_tags": p.get("capability_tags", []),
                     "transport": p.get("transport", "native"),
                     "has_api_key": bool(p.get("api_key")),
+                    "editable": int(p.get("editable", 1) or 1),
                 })
             return {"ok": True, "contacts": out}
         finally:
@@ -4606,6 +4608,12 @@ async def api_native_agent_upsert(request: Request):
         db = _bot_room_db()
         try:
             existing = db.get_agent_profile(pid)
+            # ⑭ 联系人可编辑开关（handoff ①）：锁定保护——editable=0 时仅允许解锁（editable->1），
+            # 禁止改其他字段；解锁后正常编辑。默认 editable=1（向后兼容老库与 seed agent）。
+            ex_editable = int((existing or {}).get("editable", 1) or 1)
+            req_editable = int(body.get("editable", ex_editable) or 0)
+            if ex_editable == 0 and req_editable != 1:
+                return {"ok": False, "error": "该联系人已锁定（editable=0），仅允许把开关切回「可编辑」以解锁", "locked": True}
             api_key = body.get("api_key", "")
             if api_key == "__KEEP__":
                 api_key = (existing or {}).get("api_key", "") if existing else ""
@@ -4623,6 +4631,7 @@ async def api_native_agent_upsert(request: Request):
                 "is_default": int(body.get("is_default", 0) or 0),
                 "transport": "native",
                 "api_key": api_key or "",
+                "editable": int(req_editable),
             })
             return {"ok": True, "id": pid, "has_api_key": bool(api_key)}
         finally:

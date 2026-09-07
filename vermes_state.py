@@ -648,6 +648,10 @@ CREATE TABLE IF NOT EXISTS agent_profiles (
     -- ~/.vermes/agent_auth.json（凭据库，见 vermes_cli/a2a/credentials.py）。
     -- 空串 = 回退全局 provider key（_resolve_model_provider）。
     api_key TEXT DEFAULT '',
+    -- ⑭ 联系人可编辑开关（handoff ①）：1=允许用户编辑此原生 agent（默认），
+    -- 0=锁定（仅可把开关切回 1 解锁，禁止改其他字段）。位置在 api_key 之后，
+    -- 走声明式 _reconcile_columns 自动 ALTER 老库。
+    editable INTEGER DEFAULT 1,
     created_at REAL
 );
 
@@ -2016,12 +2020,23 @@ class SessionDB:
             return []
 
         def _do(conn):
+            # editable 语义：显式传入即用传入值（含 0=锁定）；未传则保留既有值
+            # （新行默认 1=可编辑）。禁止因「键缺失」回退默认 1 而覆盖已有 0。
+            _existing = conn.execute(
+                "SELECT editable FROM agent_profiles WHERE id = ?",
+                (profile.get("id", ""),),
+            ).fetchone()
+            _existing_editable = int(_existing[0]) if _existing and _existing[0] is not None else 1
+            if "editable" in profile and profile["editable"] is not None:
+                _editable = int(profile["editable"])
+            else:
+                _editable = _existing_editable
             conn.execute(
                 "INSERT INTO agent_profiles "
                 "(id, name, description, system_prompt, toolsets, avatar_seed, "
                 " hue, is_default, provider, model, skill_set, transport, "
-                " transport_ref, capability_tags, api_key, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " transport_ref, capability_tags, api_key, editable, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET "
                 "name = excluded.name, description = excluded.description, "
                 "system_prompt = excluded.system_prompt, "
@@ -2031,7 +2046,7 @@ class SessionDB:
                 "skill_set = excluded.skill_set, transport = excluded.transport, "
                 "transport_ref = excluded.transport_ref, "
                 "capability_tags = excluded.capability_tags, "
-                "api_key = excluded.api_key, "
+                "api_key = excluded.api_key, editable = excluded.editable, "
                 "created_at = excluded.created_at",
                 (
                     profile.get("id", ""),
@@ -2049,6 +2064,7 @@ class SessionDB:
                     profile.get("transport_ref", "") or "",
                     _json.dumps(_norm_list(profile.get("capability_tags")), ensure_ascii=False),
                     profile.get("api_key", "") or "",
+                    _editable,
                     profile.get("created_at", time.time()),
                 ),
             )
@@ -2060,10 +2076,10 @@ class SessionDB:
         try:
             with self._lock:
                 row = self._conn.execute(
-                    "SELECT id, name, description, system_prompt, toolsets, "
-                    "avatar_seed, hue, is_default, provider, model, skill_set, "
-                    "transport, transport_ref, capability_tags, api_key, created_at "
-                    "FROM agent_profiles WHERE id = ?", (profile_id,)
+                "SELECT id, name, description, system_prompt, toolsets, "
+                "avatar_seed, hue, is_default, provider, model, skill_set, "
+                "transport, transport_ref, capability_tags, api_key, editable, created_at "
+                "FROM agent_profiles WHERE id = ?", (profile_id,)
                 ).fetchone()
         except sqlite3.OperationalError as exc:
             logger.debug("get_agent_profile skipped: %s", exc)
@@ -2085,7 +2101,8 @@ class SessionDB:
             "transport": R(11), "transport_ref": R(12),
             "capability_tags": _load(R(13), "[]"),
             "api_key": R(14),
-            "created_at": R(15),
+            "editable": int(R(15)) if R(15) is not None else 1,
+            "created_at": R(16),
         }
 
     def list_agent_profiles(self) -> List[dict]:
