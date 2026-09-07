@@ -543,6 +543,8 @@ Vermes 现有记忆层次（本轮实跑确认）：
 | **vFINAL.6** | **2026-09-05** | **⑭ B 部分：ACP Registry → recipe 批量 dump（P2 起步器）**。在 T0–T5 泛型化基础上，落实 recipe「A+B 混合」的 B 侧：新增 `generate_from_registry.py` 把 ACP Registry（39 agents）dump 成 38 条 recipe（跳过手写核心 `codex-acp` 避免覆盖 `@1.8.0`）；分发映射 npx(20)/uvx(2)/binary(16)；`loader.py` 加 `recursive` 参数（默认 False 向后兼容 T1 测试），端点 `api_list_agent_recipes` 改 `recursive=True` 把生成食谱与手写 3 条一起端上前端。registry 真源事实核读：无 auth 字段（`authors` 子串误报）、无 capabilities、binary 无 spawn 命令需下载解包。新增 `tests/a2a/test_registry_recipes.py`（5 用例）。回归 a2a 20 / botmode 21 / T0+鉴权守护 23 全绿。提交 `ea43af61cf`（ahead 29，§12 冻结）。**附（2026-09-05 独立审计裁决）：登堂端点 `/api/agents/register-profile` 公开写操作经审计维持现状**——清单内早有 `/api/config`、`/api/provider/add`、`/api/update/apply`、`/api/claim` 等公开写端点，设计哲学为「loopback 绑定信任本机操作者 + session token 防跨站」，非「写操作必须鉴权」；单独收紧此端点 = 补一洞留一堆同类洞，不一致。统一收紧所有写端点留待 ⑨ 隐私硬化一并处理 | 用户「继续未完成任务」（B 部分）+ 审计裁决 |
 | **vFINAL.7** | **2026-09-06** | **⑭ 造神 / 神魔堂整轮落地 + 9 个新 commit 审计 + ⑪ 状态纠偏**。① **审计通过**（9 commit `b5cdccec06`→`438606cade`，`+1464/-256`，ahead 41）：**未重复造轮子**（原生 agent 走 `agent_profiles.api_key` 列，外部 ACP agent 仍走 `~/.vermes/agent_auth.json` 凭据库，`vermes_state.py:27` 注释显式引用 `vermes_cli/a2a/credentials.py`，职责清晰划分）、**`api_key` 不回传前端**（`GET /api/agents/native` 只返 `has_api_key` 布尔，chat.py L4292/L4327/L4567）、**无 DB 泄露**（`git ls-files` 无 `.db`，DB 在用户目录不进 git）、**toast bug 真修**（`import { toast }` → `import { showToast as toast }`，原是真实运行时崩 `Pe is not a function`、群聊创建/发送直接挂）、**零回归实跑**（botmode+a2a **86 passed**；hermes_state **204 passed + 9 failed**，9 failed 与基线一致属既有失败）。② **审计问题留痕（待补）**：后端新增 750 行（chat.py +560 / vermes_state.py +190）仅 55 行测试改动（只改 `tests/botmode/test_room_routes.py`），**造神 CRUD / 技能集裁剪 / 记忆 scope 隔离 / 群聊踢人·群公告·群任务均无直接测试**，grep tests/ 命中 `api_key\|__KEEP__` 的**全是别的功能**的测试（honcho_plugin / live_system_guard / copilot_token_exchange）；commit message 称"验证通过"疑为手动验证未落成测试 → 命中「诚实披露 ≠ 免责」纪律。**前端未经运行时验证**（toast 导入错误能被提交，`build 绿 ≠ 前端正确`再命中）。③ **⑪ 状态纠偏（实证）**：源码仓 `channel_push\|channelPush\|push_channel` **零命中**；前端 `botRoom.js`/`BotRooms.vue` 仅 `loadRooms/loadTimeline/loadMembers` 主动拉取、**无 SSE / WS / 轮询**；后端 `chat.py:1962` 的 `StreamingResponse(text/event-stream)` 是 chat 消息流式输出非渠道同步 → **⑪ 未实现**，群聊当前**靠手动刷新**。且 §1/§5 标其为「**③ Bot Mode 群聊前的 P0 先决条件**（~150 行 SSE）」，现 ③ 群聊（`0572856075`）已落地而 ⑪ 未做 → **顺序倒置**（先决条件未做、依赖它的功能已上线）。④ **④ 状态更正（同一轮实证发现，重要）**：2026-09-05 汇报曾称「④ Cron monitor-mode **未实现**」——**系误判**。根因：grep 只搜 `agent/` + `vermes_cli/` **漏了 `cron/` 目录**，属「**否定性结论的搜索范围必须覆盖整个模块目录**」纪律的**第 9 次**违反（此前 7 次见工作记忆）。实证 `794a774616`（`feat(cron): ④ monitor-mode — hash 短路 + 记忆加载（零回归）`）已落地核心逻辑：`cron/scheduler.py:1743` `skip_memory` 条件化 + `_resolve_monitor_target()`(L100) / `_get_monitor_hash()`(L155) / `_store_monitor_hash()`(L168) 三 helper + `vermes_state.py` 两表（`cron_monitor_state` L592 / `cron_notepad` L598）+ 索引 L1117 + 方法 L1832 + `cron/jobs.py:528-529` 参数链路与 L779-784 更新归一化。**真实缺口是两个**：① **零测试覆盖**（grep tests/ 中 `monitor_mode\|monitor_target\|_resolve_monitor_target\|cron_notepad` 全零命中）；② **前端/API 未暴露 `monitor_mode` 开关**（grep `frontend/src` 零命中，spec §5 口径中 API/UI 那 ~50–80 行未做）→ **用户目前无法在界面上开启 monitor-mode**。另：spec 锚点已漂移（记 `scheduler.py:1622`，实跑现为 `:1743`），按契约③ 每次引用重新实跑。⑤ **本文档同步**：升 **vFINAL.7**，§1 ④/⑪/⑭ 三行补实证状态标记（历史说法按契约⑤保留不删，标"已纠偏"）；WorkBuddy `outputs/Vermes-catchup-roadmap-final.md` 为**只读镜像**，仅差弃用横幅 | 用户「记待办 + 审计新 commit + 收尾待办」 |
 
+| **vFINAL.8** | **2026-09-07** | **2.4.8 收口发版：闭合 UX 债 + editable 开关 + 版本 bump 2.4.7→2.4.8 + DMG 重打**。① **UX 三项已收口并提交**（`bff7b67c87`，+460/-9，9 文件）：curator 会话不再进「我的对话」（`get_sessions` 默认排除 `source=curator`，收进可折叠「后台任务」区 + 一键清空 `POST /api/sessions/cleanup`）、侧栏多选批量删除（`DELETE /api/sessions/batch` + `SessionDB.bulk_delete_sessions` 级联清 `messages`/`gui_messages`/孤儿化子会话）、记忆问题「全部标记误报」一键处理（复用既有 `batch_resolve_flags`）；前端 `npm run build` 832 模块无错，新增 `test_session_bulk_delete.py` 3 passed。② **editable 开关**（前轮 `7105ac5f7a` 已完成）：`agent_profiles` 加 `editable` 列 + 两处 falsy 陷阱修复 + 锁定保护 + `test_agent_profile_editable.py` 5 passed。③ **DMG 重打**：`build-macos.sh` → `dist-electron/Vermes-2.4.8-arm64.dmg`，拆 PYZ 验真 editable/curator/session 改动已进 PYZ（非仅 datas 影子）。④ **① A2A / ② Grounded Citations 基线复核**：`vermes_cli/a2a/transport.py:26 _PROVIDER_TRANSPORT_REGISTRY` 与 `scholarforge/citation_verifier.py`+`citation_matcher.py`+`quality_gate.py:114 run_citation_gate` 均在盘，无回归。⑤ **§12 冻结守纪**：全部本地 commit、未 push（ahead 50），tag `v2.4.8` 仅本地。**🔴 显式递延债（非静默遗留，归 v2.5.0+ 路线图）**：A. ⑭ 测试债——造神 CRUD/技能集裁剪/记忆 scope 隔离/群聊踢人·群公告·群任务 **无直接测试**（后端新增 750 行仅 55 行测试改动，命中「诚实披露≠免责」）；B. ⑭ binary recipe 16 条（cursor/kimi/junie 等）需下载解包；C. ⑨ 鉴权统一收紧（留隐私硬化一并）；D. ⑪ channel_push SSE **未实现**（顺序倒置，P0 先决未做）；E. ④ monitor-mode API/UI 暴露 + 测试；F. ⑤ MCP 指挥中心 / ⑦ hermes peer / ⑮ 文档记忆层三条腿（v2.5.0+ 未启动）；G. `uv.lock` 未 `uv lock` 再生（依赖未变不影响 .venv 构建，仅 CI 复现性） | 用户「全面收尾 准备发版 2.4.8 不要遗留债」 |
+
 ### 13.1 本轮（vFINAL.2）修复的 14 项一致性问题
 
 | # | 位置 | 问题 | 级别 | 处置 |
@@ -628,3 +630,31 @@ Vermes 现有记忆层次（本轮实跑确认）：
 | **monitor-mode（④）** | Cron 的监控模式：加载记忆 + hash 短路 + notepad | §6 ④ |
 | **开工节奏 vs 依赖图** | §3 是"先易后难的施工顺序"，§2 是"技术依赖"——二者**不等价**，引用时勿混 | §2 / §3 |
 | **数字口径** | 行数/工期以 §1 总览表为唯一权威；配套子集口径须显式标注换算 | 文档契约 第 2 条 |
+
+---
+
+## 16. 2.4.8 收口状态（2026-09-07 · 发版闭环）
+
+> 本節是 vFINAL.8 的「快照视图」：哪些债在本发版内**已闭合**，哪些**显式递延**到 v2.5.0+ 路线图（绝不静默遗留）。全部改动仅本地 commit、未 push（§12 冻结）。
+
+### 16.1 本发版已闭合（无遗留）
+- **UX 三项**（`bff7b67c87`）：curator 会话隔离进「后台任务」区 + 会话多选批量删除 + 记忆问题一键处理。前端 build 通过，新增 `test_session_bulk_delete.py`（3 passed）。
+- **联系人可编辑开关 editable**（前轮 `7105ac5f7a`）：列 + falsy 陷阱修复 + 锁定保护 + `test_agent_profile_editable.py`（5 passed）。
+- **版本 bump 2.4.7→2.4.8** + **DMG 重打**（`dist-electron/Vermes-2.4.8-arm64.dmg`，拆 PYZ 验真）。
+- **①② 基线复核**：A2A transport adapter registry / Grounded Citations 底座均在盘，无回归。
+- **回归测试**：`test_session_bulk_delete` + `test_agent_profile_editable` 合并 **8 passed**。
+
+### 16.2 显式递延债（归 v2.5.0+ 路线图，非本发版范围）
+| # | 债 | 归属 | 备注 |
+|---|---|---|---|
+| A | ⑭ 测试债：造神 CRUD / 技能集裁剪 / 记忆 scope 隔离 / 群聊踢人·群公告·群任务无直接测试 | ⑭ | 后端新增 750 行仅 55 行测试改动，命中「诚实披露≠免责」 |
+| B | ⑭ binary recipe 16 条（cursor/kimi/junie 等）下载解包 | ⑭ | registry 真源无 spawn 命令，需下载 |
+| C | ⑨ 鉴权统一收紧（所有写端点） | ⑨ | 留隐私硬化一并处理 |
+| D | ⑪ channel_push SSE 实时同步 | ⑪ | **未实现**，且顺序倒置（P0 先决未做、③ 群聊已上） |
+| E | ④ monitor-mode API/UI 暴露 + 测试 | ④ | 核心逻辑已落地，仅缺界面开关与测试 |
+| F | ⑤ MCP 指挥中心 / ⑦ hermes peer / ⑮ 文档记忆层三条腿 | ⑤⑦⑮ | v2.5.0+/v3.0.0 未启动 |
+| G | `uv.lock` 未 `uv lock` 再生 | 工程 | 依赖未变，.venv 构建不受影响，仅 CI 复现性 |
+
+### 16.3 发布纪律
+- **不 push**（§12 冻结，用户 2026-09-02 拍板）——tag `v2.4.8` 仅本地，push/开源待用户放行。
+- **DMG 为交付物**：`dist-electron/Vermes-2.4.8-arm64.dmg`；后端改动必须进 PYZ（热补 `_internal/*.py` 无效，路线图约束 #4）。
