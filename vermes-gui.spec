@@ -22,6 +22,11 @@ for src, dst in [
     ('vermes_cli/adapters', 'vermes_cli/adapters'),
     ('vermes_cli/modules', 'vermes_cli/modules'),
     ('vermes_cli/proxy', 'vermes_cli/proxy'),
+    # ⑭ 请神收尾：a2a 食谱目录（含 registry/*.yaml 数据文件，必须显式 datas，
+    # 否则重打 DMG 后 load_all_recipes(RECIPES_DIR, recursive=True) 读空目录，登堂功能全废）
+    ('vermes_cli/a2a', 'vermes_cli/a2a'),
+    # ③ Bot Mode P1：房间/会话密钥/@mention 解析纯函数 helper 包
+    ('vermes_cli/botmode', 'vermes_cli/botmode'),
     ('vermes_cli/capabilities', 'vermes_cli/capabilities'),
     ('locales', 'locales'),
     ('skills', 'skills'),
@@ -125,6 +130,13 @@ hiddenimports = [
     'vermes_cli.update_manager',
     'vermes_cli.shutdown_signal',
     'vermes_cli.win_adapter',
+    # ⑭ 请神收尾：a2a 食谱 loader/schema/transport + botmode core（登堂/群聊运行必需）
+    'vermes_cli.a2a', 'vermes_cli.a2a.recipes', 'vermes_cli.a2a.recipes.loader',
+    'vermes_cli.a2a.recipes.schema', 'vermes_cli.a2a.credentials', 'vermes_cli.a2a.transport',
+    'vermes_cli.botmode', 'vermes_cli.botmode.core',
+    'agent.a2a', 'agent.a2a.registry', 'agent.a2a.types',
+    'agent.a2a.transports', 'agent.a2a.transports_acp', 'agent.a2a.transports_subprocess',
+    'agent.a2a.transports_local', 'agent.a2a.transports_http', 'agent.a2a.transports_mcp',
     'gateway', 'gateway.status', 'gateway.config', 'gateway.session_context',
     # Gateway mixins + slash_handlers (split from run.py in 2.3.x)
     'gateway.gateway_utils',
