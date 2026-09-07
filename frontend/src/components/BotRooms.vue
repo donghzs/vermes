@@ -155,6 +155,91 @@ async function loadTaskDetail(taskId) {
 
 onUnmounted(stopOrgPolling)
 
+// ── 🏢 从模板搭组织（⑭ 2026-09-07）：模板只是岗位骨架，指派现有联系人坐岗 ──
+const orgModal = ref({
+  open: false,
+  loading: false,
+  applying: false,
+  templates: [],
+  selectedKey: null,
+  contacts: [],       // 联系人（可指派坐岗的全量 agent）
+  loadingContacts: false,
+})
+
+const ORG_TYPE_BADGE = { dispatcher: '分派', executor: '执行', auditor: '审计', aggregator: '汇总' }
+
+function orgTypeBadge(t) { return ORG_TYPE_BADGE[t] || t || '' }
+
+// 当前模板的角色列表
+const orgModalRoles = computed(() => {
+  const t = orgModal.templates.find(x => x.key === orgModal.value.selectedKey)
+  return (t && t.roles) || []
+})
+
+// 已被其他岗位选走的联系人（下拉不可重复指派）
+function orgAssignedIds() {
+  const ids = []
+  for (const r of orgModalRoles.value) {
+    if (r.profile_id) ids.push(r.profile_id)
+  }
+  return ids
+}
+
+function orgContactName(c) { return c.name || c.id || '' }
+
+async function openOrgModal() {
+  orgModal.value.open = true
+  orgModal.value.loading = true
+  try {
+    const [tr, ct] = await Promise.all([api.getBotOrgTemplates(), api.listAgentContacts()])
+    if (tr && tr.ok) {
+      orgModal.value.templates = tr.templates || []
+      if (!orgModal.value.selectedKey && orgModal.value.templates.length) {
+        orgModal.value.selectedKey = orgModal.value.templates[0].key
+      }
+    }
+    orgModal.value.contacts = (ct && ct.contacts) || (ct && ct.profiles) || []
+  } catch (e) {
+    toast('组织模板加载失败')
+  } finally {
+    orgModal.value.loading = false
+  }
+}
+
+function orgPickTemplate(key) {
+  orgModal.value.selectedKey = key
+  // 换模板时清掉已指派（岗位骨架不同）
+  for (const r of orgModalRoles.value) r.profile_id = null
+}
+
+// 指派 / 取消指派联系人坐岗
+function orgAssign(role, pid) {
+  role.profile_id = pid || null
+}
+
+async function orgApply() {
+  const roles = orgModalRoles.value.filter(r => r.profile_id)
+  if (!roles.length) {
+    toast('至少给一个岗位指派联系人')
+    return
+  }
+  orgModal.value.applying = true
+  try {
+    const res = await api.applyBotOrg(bot.currentRoomId, roles)
+    if (res && res.ok) {
+      toast(`组织已搭建，拉入 ${res.pulled ? res.pulled.length : 0} 个 agent`)
+      orgModal.value.open = false
+      await Promise.all([bot.loadMembers(bot.currentRoomId), loadOrgBoard()])
+    } else {
+      toast((res && res.error) || '组织搭建失败')
+    }
+  } catch (e) {
+    toast('组织搭建失败')
+  } finally {
+    orgModal.value.applying = false
+  }
+}
+
 // ── 输入 ──
 const inputText = ref('')
 const timelineRef = ref(null)
@@ -401,6 +486,14 @@ function onKeydown(e) {
 function vis(refId) {
   const hit = bot.memberByRef[refId]
   if (hit) return hit
+  // ⑭ 组织流水线虚拟作者（非群成员，映射为人读名）
+  const ORG_AUTHORS = {
+    'org:aggregator': '📦 交付物',
+    'org:boss': '老板',
+    'org:secretary': '秘书',
+  }
+  const label = ORG_AUTHORS[refId]
+  if (label) return { name: label, hue: 260, initial: label.slice(0, 1) }
   let h = 0
   for (const ch of String(refId || '')) h = (h * 31 + ch.charCodeAt(0)) % 360
   return { name: refId, hue: h, initial: String(refId || '?').slice(0, 1) }
@@ -804,15 +897,28 @@ onUnmounted(() => {
 
         <div class="flex-1 overflow-y-auto p-3 space-y-3">
           <!-- 空组织引导 -->
-          <div v-if="!orgBoard.roles.length && !orgBoard.tasks.length" class="text-center py-8 text-sm text-gray-400">
+          <div v-if="!orgBoard.roles.length && !orgBoard.tasks.length" class="text-center py-6 text-sm text-gray-400">
             <div class="text-3xl mb-2">🏗️</div>
-            这个群还没有组织架构。<br/>
-            <span class="text-xs">群里有 1 个 Agent 时直接发需求，秘书会自动搭组织并派活；<br/>或用「👥 拉人」拉多个 Agent 后在此看到流水线。</span>
+            <div class="px-2">
+              这个群还没有组织架构。两种搭法：<br/>
+              <span class="text-xs">① 群里有 1 个 Agent → 直接发需求，秘书自动搭组织并派活；<br/>
+              ② 点下方按钮，用「岗位模板」从现有 Agent 里指派各岗位。</span>
+            </div>
+            <button
+              class="mt-3 px-3 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition"
+              @click="openOrgModal"
+            >🏢 用模板搭组织（岗位骨架，指派现有 Agent 坐岗）</button>
+            <div class="mt-2 text-[11px] text-gray-400 px-4">
+              模板只定「谁拆解 / 谁执行 / 谁审计 / 谁汇总」，人从你现有 Agent 里选 —— 不用为每个场景预设一堆角色。
+            </div>
           </div>
 
           <!-- 岗位表 -->
           <div v-if="orgBoard.roles.length">
-            <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">岗位表（组织架构）</div>
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="text-xs font-semibold text-gray-500 dark:text-gray-400">岗位表（组织架构）</div>
+              <button class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-300 transition" title="重新指派岗位（换人/换模板）" @click="openOrgModal">✏️ 调整</button>
+            </div>
             <div class="space-y-1">
               <div
                 v-for="r in orgBoard.roles"
@@ -896,6 +1002,83 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+    <!-- 🏢 用模板搭组织弹窗（⑭ 2026-09-07：岗位骨架 + 指派现有联系人坐岗） -->
+    <div
+      v-if="orgModal.open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="orgModal.open = false"
+    >
+      <div class="w-[34rem] max-w-[94vw] max-h-[88vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-800 p-5 shadow-xl">
+        <h3 class="text-base font-semibold">🏢 搭组织（岗位骨架）</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-3">
+          模板只定义分工骨架（谁拆解/执行/审计/汇总），每个岗位从你现有的 Agent 联系人里指派 —— 无需预设一堆角色 Agent。
+        </p>
+
+        <!-- 模板选择 -->
+        <div v-if="orgModal.loading" class="text-sm text-gray-400 py-4 text-center">加载模板…</div>
+        <template v-else>
+          <div class="flex gap-2 flex-wrap mb-3">
+            <button
+              v-for="t in orgModal.templates"
+              :key="t.key"
+              class="px-3 py-1.5 text-xs rounded-lg border transition"
+              :class="orgModal.selectedKey === t.key
+                ? 'bg-emerald-600 border-emerald-600 text-white'
+                : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-emerald-500'"
+              @click="orgPickTemplate(t.key)"
+            >
+              {{ t.name }}
+              <span class="opacity-70">（{{ t.roles.length }} 岗）</span>
+            </button>
+          </div>
+
+          <!-- 选中模板描述 -->
+          <div v-if="orgModal.templates.find(t => t.key === orgModal.selectedKey)" class="text-[11px] text-gray-400 mb-3">
+            {{ orgModal.templates.find(t => t.key === orgModal.selectedKey).description }}
+          </div>
+
+          <!-- 岗位指派 -->
+          <div class="space-y-2">
+            <div v-if="!orgModal.contacts.length" class="text-xs text-gray-400 text-center py-3">
+              暂无联系人，请先到「🔥 神魔架」造神 / 登堂。
+            </div>
+            <div
+              v-for="(r, i) in orgModalRoles"
+              :key="r.role_id || i"
+              class="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-900"
+            >
+              <span class="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300">{{ orgTypeBadge(r.type) }}</span>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-medium truncate">{{ r.name }}</div>
+                <div class="text-[10px] text-gray-400 truncate" :title="r.description">{{ r.description }}</div>
+              </div>
+              <select
+                class="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 outline-none max-w-[10rem]"
+                :value="r.profile_id || ''"
+                @change="orgAssign(r, $event.target.value)"
+              >
+                <option value="">（指派 Agent）</option>
+                <option
+                  v-for="c in orgModal.contacts"
+                  :key="c.id"
+                  :value="c.id"
+                  :disabled="orgAssignedIds().includes(c.id)"
+                >{{ orgContactName(c) }}（{{ c.transport === 'acp' ? '登堂' : '原生' }}）</option>
+              </select>
+            </div>
+          </div>
+        </template>
+
+        <div class="mt-4 flex justify-end gap-2">
+          <button @click="orgModal.open = false" class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">取消</button>
+          <button
+            @click="orgApply"
+            :disabled="orgModal.applying"
+            class="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+          >{{ orgModal.applying ? '搭建中…' : '✅ 搭好组织' }}</button>
         </div>
       </div>
     </div>

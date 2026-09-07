@@ -663,6 +663,12 @@ const api = {
   getBotRoomOrgTask(roomId, taskId) {
     return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/org/tasks/${encodeURIComponent(taskId)}`)
   },
+  getBotOrgTemplates() {
+    return this.get('/bot/org/templates')
+  },
+  applyBotOrg(roomId, roles) {
+    return this.post(`/bot/rooms/${encodeURIComponent(roomId)}/org/apply`, { roles })
+  },
 
   // ── ⑭ 请神收尾：外部 ACP agent「登堂」 ──
   // 路径不带 /api 前缀：request() 会按在线/离线模式拼 /v1 或 /api。

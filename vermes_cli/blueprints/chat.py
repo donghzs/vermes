@@ -49,6 +49,8 @@ from vermes_cli.botmode.org_engine import (
     build_candidate_list,
     parse_secretary_plan,
     SECRETARY_INSTRUCTION,
+    ORG_TEMPLATES,
+    ROLE_TYPE_LABELS as ORG_ROLE_TYPE_LABELS,
     ST_DISPATCHED,
     ST_DELIVERED,
     ST_DONE,
@@ -3613,7 +3615,9 @@ def _build_room_prompt(room, self_profile, all_profiles, timeline, user_text: st
     for p in all_profiles or []:
         if not isinstance(p, dict):
             continue
-        nm = _agent_display_name(p)
+        # ⑭ 组织岗位名优先：组织成立后成员以岗位/职位互相称呼（产品经理/QA/丞相）
+        role_nm = (p.get("role_name") or "").strip()
+        nm = role_nm or _agent_display_name(p)
         if nm == me and p.get("id") == self_id:
             roster_lines.append(f"- @{nm}（{_agent_role_desc(p)}）← 这是你自己")
         else:
@@ -3676,6 +3680,96 @@ def _extract_relay_targets(reply: str, profiles: list, self_id: str) -> list:
     except Exception:
         return []
     return [t for t in targets if t != self_id]
+
+
+async def bot_org_templates_get(request: Request):
+    """GET /api/bot/org/templates — 组织模板（岗位骨架，⑭）。
+
+    模板只定义「岗位分工骨架」（谁拆解/谁执行/谁审计/谁汇总），
+    profile_id 为空，由前端从联系人池指派具体 agent 坐岗 ——
+    不需要为每个场景预设一堆「角色 agent」。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    out = []
+    for key, t in ORG_TEMPLATES.items():
+        out.append({
+            "key": key,
+            "name": t.get("name", key),
+            "description": t.get("description", ""),
+            "roles": [
+                {"role_id": r["role_id"], "name": r["name"], "type": r["type"],
+                 "description": r.get("description", ""), "profile_id": None}
+                for r in t.get("roles", [])
+            ],
+        })
+    return {"ok": True, "templates": out}
+
+
+async def bot_org_apply(request: Request, room_id: str):
+    """POST /api/bot/rooms/{room_id}/org/apply
+    body: {"roles": [{"role_id","name","type","profile_id",...}]}
+
+    用模板/自定义岗位表搭建组织：set_org_roles + 自动拉绑定 agent 进群。
+    roles 里 profile_id 为空的岗位会被剔除（缺人岗位不占位）。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    raw_roles = body.get("roles") or []
+    if not isinstance(raw_roles, list) or not raw_roles:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "roles required"})
+    try:
+        db = _bot_room_db()
+        try:
+            room = db.get_bot_room(room_id) or {}
+            if not room:
+                return {"ok": False, "error": "room not found"}
+            # 只保留绑定了 profile 的岗位
+            roles = []
+            for r in raw_roles:
+                pid = (r.get("profile_id") or "").strip()
+                if not pid:
+                    continue
+                roles.append({
+                    "role_id": (r.get("role_id") or "").strip() or f"r{len(roles)+1}",
+                    "name": (r.get("name") or "").strip()[:30] or f"岗位{len(roles)+1}",
+                    "type": (r.get("type") or "executor").strip(),
+                    "profile_id": pid,
+                    "description": (r.get("description") or "").strip()[:200],
+                })
+            if not roles:
+                return {"ok": False, "error": "no role has profile_id assigned"}
+            db.set_org_roles(room_id, roles)
+            # 自动拉绑定 agent 进群（幂等）
+            existing = {m["ref_id"] for m in db.list_bot_room_members(room_id)
+                        if m["member_type"] == "agent"}
+            pulled = []
+            for r in roles:
+                if r["profile_id"] not in existing:
+                    db.add_bot_room_member(room_id, "agent", r["profile_id"])
+                    pulled.append(r["profile_id"])
+            role_repr = "、".join(f"{r['name']}({r['profile_id']})" for r in roles)
+            line = f"[组织流水线] 🏢 组织架构已搭建：{role_repr}。直接发需求即按岗位流水线执行。"
+            if pulled:
+                line += f" 已自动拉入 {len(pulled)} 个 agent。"
+            db.append_bot_room_message(room_id, "system", None, line)
+            await _bot_broadcast_room_update(
+                room_id, "room_message",
+                message={"author_type": "system", "author_ref": None, "content": line},
+            )
+            return {"ok": True, "roles": roles, "pulled": pulled,
+                    "timeline": db.get_bot_room_timeline(room_id)}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 async def _org_message_orchestrate(db, room: dict, room_id: str, norm,
@@ -4142,6 +4236,17 @@ async def bot_room_message_send(request: Request, room_id: str):
                 transport = profile.get("transport") if isinstance(profile, dict) else None
                 # 协作上下文：roster + 最新时间线 + 本次指令
                 ctx_timeline = db.get_bot_room_timeline(room_id)
+                # ⑭ 注入岗位名（组织成员以岗位互相称呼）
+                try:
+                    _roles = db.get_org_roles(room_id)
+                    _role_map = {r.get("profile_id"): r for r in _roles if r.get("profile_id")}
+                except Exception:
+                    _role_map = {}
+                for _p in profiles:
+                    if isinstance(_p, dict):
+                        _r = _role_map.get(_p.get("id"))
+                        _p["role_name"] = (_r or {}).get("name", "")
+                        _p["role_type"] = (_r or {}).get("type", "")
                 prompt = _build_room_prompt(room, profile, profiles, ctx_timeline, prompt_text)
                 reply = None
                 # 广播流式开始（前端显示「正在输入」气泡）
@@ -6048,6 +6153,18 @@ def register_to(app):
             bot_room_org_task_get,
             methods=["GET"],
             name="bot_room_org_task_get",
+        )
+        app.add_api_route(
+            "/api/bot/org/templates",
+            bot_org_templates_get,
+            methods=["GET"],
+            name="bot_org_templates_get",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/org/apply",
+            bot_org_apply,
+            methods=["POST"],
+            name="bot_org_apply",
         )
     app.add_api_route(
         "/api/emergence/status",

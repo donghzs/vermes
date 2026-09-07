@@ -30,7 +30,9 @@ export const useBotRoomStore = defineStore('botRoom', {
     mentionCandidates: (s) => (s.members || [])
       .filter(m => m.member_type === 'agent')
       .map((m) => {
-        const name = m.name || m.ref_id || ''
+        // ⑭ 组织岗位名优先：组织成立后成员以「岗位/职位」示人（产品经理/QA），
+        // 无岗位才回落 agent 本名。insert 同步用岗位名，群里 @产品经理 即命中。
+        const name = m.role_name || m.name || m.ref_id || ''
         const insert = /\s/.test(name) ? (m.ref_id || name) : name
         let hue = Number(m.hue) || 0
         if (!hue) {
@@ -45,14 +47,15 @@ export const useBotRoomStore = defineStore('botRoom', {
     memberByRef: (s) => {
       const map = {}
       for (const m of s.members || []) {
-        const name = m.name || m.ref_id || ''
+        // ⑭ 岗位名优先（与 mentionCandidates 一致）
+        const name = m.role_name || m.name || m.ref_id || ''
         let hue = Number(m.hue) || 0
         if (!hue) {
           let h = 0
           for (const ch of String(m.ref_id || '')) h = (h * 31 + ch.charCodeAt(0)) % 360
           hue = h
         }
-        map[m.ref_id] = { name, hue, initial: String(name || '?').slice(0, 1), member_type: m.member_type }
+        map[m.ref_id] = { name, hue, initial: String(name || '?').slice(0, 1), member_type: m.member_type, role_name: m.role_name }
       }
       return map
     },

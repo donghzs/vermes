@@ -2404,9 +2404,11 @@ class SessionDB:
                 rows = self._conn.execute(
                     "SELECT m.member_type, m.ref_id, m.joined_at, "
                     " p.name, p.hue, p.avatar_seed, p.description, "
-                    " p.provider, p.model, p.is_default "
+                    " p.provider, p.model, p.is_default, "
+                    " r.role_id, r.name AS role_name, r.type AS role_type "
                     "FROM bot_room_members m "
                     "LEFT JOIN agent_profiles p ON p.id = m.ref_id "
+                    "LEFT JOIN org_roles r ON r.room_id = m.room_id AND r.profile_id = m.ref_id "
                     "WHERE m.room_id = ? "
                     "ORDER BY m.member_type DESC, m.joined_at ASC",
                     (room_id,),
@@ -2427,6 +2429,10 @@ class SessionDB:
                 "provider": r[7] or "",
                 "model": r[8] or "",
                 "is_default": int(r[9] or 0),
+                # 组织岗位（⑭）：该成员在本房间 org_roles 里的岗位（可能无）
+                "role_id": r[10],
+                "role_name": r[11],
+                "role_type": r[12],
             })
         return out
 
