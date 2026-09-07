@@ -7,11 +7,14 @@ import ApprovalDialog from './components/ApprovalDialog.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import ToolSkillDrawer from './components/ToolSkillDrawer.vue'
 import ArtifactPanel from './components/ArtifactPanel.vue'
+import UpdateDialog from './components/UpdateDialog.vue'
 import { useChatStore } from './stores/chat'
 import { useBackendConnectionStore } from './stores/backendConnection'
+import { useUpdateStore } from './stores/update'
 
 const chat = useChatStore()
 const backendConn = useBackendConnectionStore()
+const update = useUpdateStore()
 const theme = computed(() => chat.theme)
 const loading = ref(true)
 
@@ -47,6 +50,9 @@ onMounted(async () => {
   }
   // G5：主界面加载后判定（splash 阶段已判定 corrupt/missing 阻断，此处仅横幅）
   checkProfileMismatch()
+  // ── 应用自动更新：启动即检查（桌面端走 electron-updater，Web 走 version.json 轮询）──
+  // checkUpdate 内部已做去重（checked）与桌面/Web 分支分流，失败静默不打断用户。
+  update.checkUpdate().catch(() => {})
 })
 </script>
 
@@ -82,6 +88,7 @@ onMounted(async () => {
       <ToastContainer />
       <ApprovalDialog />
       <ConfirmDialog />
+      <UpdateDialog />
       <ToolSkillDrawer />
     </ErrorBoundary>
   </div>
