@@ -203,6 +203,130 @@ def run_cli_room(env):
     return results
 
 
+def run_collab(env):
+    """⑭ 群聊真协作（2026-09-07 董董拍板：非并行单聊）四层验证：
+
+    1. roster/时间线注入：agent 收到的 prompt 含群名 + 成员名单 + 最近记录；
+    2. @ 接力：agent 回复中 @ 其他成员 → 自动派发给被点名者（带上下文）；
+    3. 防死循环：互 @ 不无限循环（MAX_COLLAB_ROUNDS / spoke 去重）；
+    4. 全链路时间线呈现协作链（多人发言）。
+    用记录式 fake 替换原生 agent.chat 与 acp/cli dispatch，不触网。
+    """
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    # 再造一个「分析师」原生 profile（描述标明角色，供 roster 断言）
+    db.upsert_agent_profile({
+        "id": "analyst", "name": "分析师",
+        "description": "数据分析/洞察专家", "provider": "deepseek",
+        "model": "deepseek-chat", "is_default": 0, "transport": "native",
+        "editable": 1,
+    })
+    db.close()
+
+    # 记录式 fake：原生 agent 记录收到的 msg；可编程返回（默认带 @ 接力或纯文本）
+    messages = []
+    class _Recorder:
+        tools = ["dummy"]
+        def __init__(self, **kw):
+            self.kwargs = kw
+            self.session_id = kw.get("session_id")
+            env.captured.append(self)
+        def chat(self, msg, stream_callback=None):
+            messages.append((self.session_id, msg))
+            # 研究助手 → 回复点名分析师；分析师 → 纯文本（终结接力）
+            sid = self.session_id or ""
+            if "researcher" in sid:
+                return "我负责调研。@分析师 请补充数据分析部分。"
+            return "收到，数据分析如下：... 任务闭环。"
+    run_agent.AIAgent = _Recorder
+
+    r = client.post("/api/bot/rooms", json={"name": "协作房"})
+    room_id = r.json().get("room_id")
+    check("create room ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    for pid in ("researcher", "coder", "analyst"):
+        r = client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": pid})
+        check(f"add {pid} ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "@研究助手 调研一下市场"})
+    check("send ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:300])
+
+    # 1. roster/上下文注入：研究助手收到的 prompt 应含群名+自己是研究助手+成员名单
+    rese_msgs = [m for s, m in messages if "researcher" in s]
+    check("researcher invoked", len(rese_msgs) == 1, f"msgs={len(rese_msgs)}")
+    if rese_msgs:
+        body = rese_msgs[0]
+        check("roster: 群名", "协作房" in body, body[:150])
+        check("roster: 自己身份", "你是 @研究助手" in body, body[:300])
+        check("roster: 成员名单含分析师", "@分析师" in body, body[:400])
+        check("任务注入", "调研一下市场" in body, body[-150:])
+    # 2. @ 接力：研究助手回复 @分析师 → 分析师被自动派发
+    ana_msgs = [m for s, m in messages if "analyst" in s]
+    check("analyst relayed", len(ana_msgs) == 1, f"msgs={len(ana_msgs)}")
+    if ana_msgs:
+        check("relay carries context", "接力" in ana_msgs[0] or "@" in ana_msgs[0], ana_msgs[0][:200])
+        check("relay cites researcher reply", "我负责调研" in ana_msgs[0], ana_msgs[0][:200])
+    # coder 未被点名不应发言
+    coder_msgs = [m for s, m in messages if "coder" in s]
+    check("coder not invoked (no fan-out to all)", len(coder_msgs) == 0, f"msgs={len(coder_msgs)}")
+    # 3. 时间线呈现协作链
+    tl = client.get(f"/api/bot/rooms/{room_id}/timeline").json().get("timeline", [])
+    agents_spoke = {t["author_ref"] for t in tl if t["author_type"] == "agent"}
+    check("timeline has both speakers", {"researcher", "analyst"} <= agents_spoke, str(agents_spoke))
+    return results
+
+
+def run_collab_loop_guard(env):
+    """防死循环：两个 agent 互相 @ 对方 → 不无限循环，轮次有上限。"""
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    db.upsert_agent_profile({
+        "id": "a1", "name": "A甲", "description": "", "provider": "deepseek",
+        "model": "deepseek-chat", "is_default": 0, "transport": "native", "editable": 1,
+    })
+    db.upsert_agent_profile({
+        "id": "a2", "name": "B乙", "description": "", "provider": "deepseek",
+        "model": "deepseek-chat", "is_default": 0, "transport": "native", "editable": 1,
+    })
+    db.close()
+
+    call_count = {"n": 0}
+    class _LoopAgent:
+        tools = ["dummy"]
+        def __init__(self, **kw):
+            self.session_id = kw.get("session_id")
+        def chat(self, msg, stream_callback=None):
+            call_count["n"] += 1
+            sid = self.session_id or ""
+            # 双方永远互 @：考验防死循环
+            if "a1" in sid:
+                return "@B乙 你继续"
+            return "@A甲 你继续"
+    run_agent.AIAgent = _LoopAgent
+
+    r = client.post("/api/bot/rooms", json={"name": "死循环房"})
+    room_id = r.json().get("room_id")
+    for pid in ("a1", "a2"):
+        client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": pid})
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "开始"})
+    check("send ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    # fan-out 首轮 2 次 + 接力有上限：绝不能无限（此处硬上限 3*2=6 次内）
+    check("bounded calls", call_count["n"] <= 8, f"calls={call_count['n']}")
+    check("at least started", call_count["n"] >= 2, f"calls={call_count['n']}")
+    return results
+
+
 # ─────────────────────────── 核心断言逻辑（pytest 与 __main__ 共用） ───────────────────────────
 
 def run_e2e(env):
@@ -573,6 +697,18 @@ def test_cli_agent_room_dispatch(env):
     failed = [n for n, c in results if not c]
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
+def test_collab_room_relay(env):
+    results = run_collab(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
+def test_collab_room_loop_guard(env):
+    results = run_collab_loop_guard(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
 
 # ─────────────────────────── 独立运行入口 ───────────────────────────
 
@@ -691,6 +827,8 @@ if __name__ == "__main__":
     all_results += run_acp_room(e)
     all_results += run_acp_room(e)
     all_results += run_acp_room(e)
+    all_results += run_collab(e)
+    all_results += run_collab_loop_guard(e)
     all_results += run_cli_room(e)
     all_results += run_cli_room(e)
     all_results += run_cli_room(e)

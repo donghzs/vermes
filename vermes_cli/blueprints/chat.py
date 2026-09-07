@@ -3550,8 +3550,122 @@ async def bot_room_members_list(request: Request, room_id: str):
         return {"ok": False, "error": str(e)}
 
 
+# ════════════════════════════════════════════════════════════════════
+# 群聊协作 orchestrator（2026-09-07 董董拍板：真群聊，非并行单聊）
+#
+# 此前 bot_room_message_send 是「for 循环 fan-out 同一句话」：每个 agent
+# 只收到用户当前文本，不知道自己在哪个群、群里有谁、别人说了什么——
+# 只能叫「多 agent 同房间并行单聊」。WorkBuddy 实锤（chat.py 审计）
+# 四层缺口：共享 transcript / roster system prompt / @ 接力 / turn
+# orchestrator。此处落地全部四层：
+#   1. _build_room_prompt —— 注入群名 + 成员名单（roster）+ 最近时间线；
+#   2. 目标 agent 收到「你是谁 / 群里有谁 / 可 @ 接力」的完整上下文；
+#   3. 回复含 @成员 → 自动接力派发给被点名者（带前文，真协作链）；
+#   4. 回合制 orchestrator：MAX_COLLAB_ROUNDS 防死循环 + 每 agent 每轮只响一次。
+MAX_COLLAB_ROUNDS = 3     # 单条用户消息触发的接力总轮次上限（防死循环）
+MAX_ROOM_TRANSCRIPT = 12  # 注入时间线的最近消息条数
+
+
+def _agent_display_name(profile) -> str:
+    """profile → 人读名（@ 可点名）：name 优先，退 id。"""
+    if isinstance(profile, dict):
+        return profile.get("name") or profile.get("id") or "?"
+    return "?"
+
+
+def _agent_role_desc(profile) -> str:
+    """profile → 角色描述（description 或 transport/模型，供 roster 展示）。"""
+    if isinstance(profile, dict):
+        desc = (profile.get("description") or "").strip()
+        if desc:
+            return desc[:80]
+        t = profile.get("transport")
+        if t and t != "native":
+            return f"[{t}] {profile.get('model') or profile.get('transport_ref') or ''}".strip()
+        return profile.get("model") or "群聊成员"
+    return "群聊成员"
+
+
+def _build_room_prompt(room, self_profile, all_profiles, timeline, user_text: str) -> str:
+    """构造发给单个 agent 的完整消息（四层协作第 1+2 层）。
+
+    - roster：群名 + 我是谁 + 群里还有谁（可 @ 谁，各带角色）；
+    - transcript：最近时间线（形成共享上下文，agent 能看见别人说了什么）；
+    - 末尾是本次实际要响应的指令。
+    """
+    room_title = (room or {}).get("title") or "未命名群"
+    me = _agent_display_name(self_profile)
+    self_id = self_profile.get("id") if isinstance(self_profile, dict) else None
+    roster_lines = []
+    for p in all_profiles or []:
+        if not isinstance(p, dict):
+            continue
+        nm = _agent_display_name(p)
+        if nm == me and p.get("id") == self_id:
+            roster_lines.append(f"- @{nm}（{_agent_role_desc(p)}）← 这是你自己")
+        else:
+            roster_lines.append(f"- @{nm}（{_agent_role_desc(p)}）")
+    lines = [
+        f"[群聊协作 · {room_title}]",
+        f"你是 @{me}。本群当前成员：",
+        *roster_lines,
+        "",
+        "协作规则：",
+        "1. 只回答与你职责相关、或直接 @ 了你的部分；",
+        "2. 若任务需要其他成员的专业能力，在回复末尾用 @名字 点名接力，说明需要对方做什么；",
+        "3. 不要替其他成员回答，把话留给对应专家；",
+        "4. 如果任务已完成或与你无关，简短说明即可，不要强行接力。",
+    ]
+    if timeline:
+        lines.append("")
+        lines.append("[最近群聊记录]")
+        for msg in timeline[-MAX_ROOM_TRANSCRIPT:]:
+            atype = msg.get("author_type")
+            content = (msg.get("content") or "").strip()
+            if not content:
+                continue
+            if atype == "user":
+                who = "群主/用户"
+            elif atype == "agent":
+                ref = msg.get("author_ref") or ""
+                # ref 形如 a2a:codex / local:aider / researcher — 取最后段
+                who = "@" + (ref.split(":")[-1] if ref else "某成员")
+            elif atype == "system":
+                who = "[系统]"
+            else:
+                who = atype or "?"
+            lines.append(f"{who}: {content[:500]}")
+    lines.append("")
+    lines.append("[你的任务]")
+    lines.append(user_text)
+    return "\n".join(lines)
+
+
+def _extract_relay_targets(reply: str, profiles: list, self_id: str) -> list:
+    """从 agent 回复解析 @接力目标（四层协作第 3 层）。
+
+    复用 parse_room_mentions 的 name/id 匹配；排除「自己 @ 自己」
+    （防止 agent 自嗨循环）。返回去重后的目标 profile_id 列表。
+    """
+    if not reply:
+        return []
+    try:
+        targets = parse_room_mentions(reply, profiles)
+    except Exception:
+        return []
+    return [t for t in targets if t != self_id]
+
+
 async def bot_room_message_send(request: Request, room_id: str):
-    """POST /api/bot/rooms/{room_id}/messages  body: {"text": str}"""
+    """POST /api/bot/rooms/{room_id}/messages  body: {"text": str}
+
+    回合制群聊 orchestrator（四层协作，2026-09-07）：
+      轮 0：用户消息 → 按 @mention / default / fan-out 派发首轮；
+      轮 N：agent 回复含 @其他成员 → 接力派发（带该回复作为上下文）；
+      终止：无新 @ 目标 / 达 MAX_COLLAB_ROUNDS / 无人响应。
+    每轮回复均落库 + WS 广播，前端呈现的是**有来有回的协作链**，
+    而非「并行单聊各说各话」。
+    """
     if not _bot_mode_enabled():
         raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
     room_id = (room_id or "").strip()
@@ -3570,12 +3684,8 @@ async def bot_room_message_send(request: Request, room_id: str):
         try:
             # 1) 规范化房间 id（⑫ 薄壳，P1 desktop 直通）
             norm = RoomIdNormalizer.normalize("desktop", room_id)
-            # 2) 解析 @mention → 目标 profile 列表
-            #
-            # ⚙️ 微信式（2026-09-05）：候选池 = **当前房间成员**（想拉谁进群才
-            # 能 @ 谁），不再用全局 profile 池。这解决了此前「全局池 vs 房间成员」
-            # 口径不一致的观察（董董审计，2026-09-04）：现在前端 @ 补全与后端
-            # 解析同一口径，均以房间成员为准。
+            room = db.get_bot_room(room_id) or {}
+            # 2) 房间成员（协作候选池 = 当前房间成员，微信式口径）
             member_ids = [
                 m["ref_id"] for m in db.list_bot_room_members(room_id)
                 if m["member_type"] == "agent"
@@ -3592,12 +3702,12 @@ async def bot_room_message_send(request: Request, room_id: str):
                              "content": "[群里还没有 Agent，点「👥 拉人」拉一个进群再聊]"},
                 )
                 return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
+            # 3) 解析 @mention → 首轮目标（无则 default agent，再无则 fan-out）
             target_ids = parse_room_mentions(text, profiles)
             if not target_ids:
-                # 空 → default agent（房间成员中），无则 fan-out 全员
                 defaults = [p["id"] for p in profiles if p.get("is_default")]
                 target_ids = defaults or [p["id"] for p in profiles]
-            # 3) 写用户消息（turn_session_id 关联房间派生 key，供 G4 清理）
+            # 写用户消息（turn_session_id 关联房间派生 key，供 G4 清理）
             db.append_bot_room_message(room_id, "user", None, text,
                                        turn_session_id=_session_key_for_room(norm, target_ids[0]) if target_ids else None)
             # 广播用户消息（其它客户端即时看到）
@@ -3605,38 +3715,38 @@ async def bot_room_message_send(request: Request, room_id: str):
                 room_id, "room_message",
                 message={"author_type": "user", "author_ref": None, "content": text},
             )
-            # 4) 每个目标派生 session → 取/建 agent → 跑 → 流式写回复
-            # 流式：先广播 phase=start，逐 delta 广播，最终落库完整回复
+
+            # 4) 回合制协作派发
             _main_loop = asyncio.get_running_loop()
-            for agent_id in target_ids:
+            full_timeline = db.get_bot_room_timeline(room_id)
+            spoke: set = set()      # 本回合链中已发言者（每 agent 每轮只响一次）
+            queue: list = [(tid, text, 0) for tid in target_ids]  # (agent_id, 指令, 轮次)
+            relay_round = 0
+
+            # 单 agent 响应（原生/acp/cli 三通路）+ 落库广播；返回 (reply, new_targets)
+            async def _run_one(agent_id: str, prompt_text: str, round_no: int):
                 profile = db.get_agent_profile(agent_id)
                 if not profile:
-                    continue
-                # ⚠️ G4：session_id 必须是**完整**房间 key（room:{norm}:agent:{id}）
+                    return None, []
                 session_key = _session_key_for_room(norm, agent_id)
-                # ⑭ 请神群聊协作（2026-09-07 董董收口）：transport="acp" 的
-                # 登堂异构 agent 走 ACP dispatch（真实 spawn 外部 agent 单轮对话），
-                # 不走原生 AIAgent 路径——_resolve_room_agent_identity 对 acp
-                # profile 会因 provider 不在已配置列表而 base_url="" 构建失败。
-                if (profile.get("transport") if isinstance(profile, dict) else None) == "acp":
-                    # 广播流式开始（前端显示「正在输入」气泡）
-                    await _bot_broadcast_room_update(
-                        room_id, "room_message_delta",
-                        message={"agent_id": agent_id, "phase": "start", "delta": ""},
-                    )
+                transport = profile.get("transport") if isinstance(profile, dict) else None
+                # 协作上下文：roster + 最新时间线 + 本次指令
+                ctx_timeline = db.get_bot_room_timeline(room_id)
+                prompt = _build_room_prompt(room, profile, profiles, ctx_timeline, prompt_text)
+                reply = None
+                # 广播流式开始（前端显示「正在输入」气泡）
+                await _bot_broadcast_room_update(
+                    room_id, "room_message_delta",
+                    message={"agent_id": agent_id, "phase": "start", "delta": ""},
+                )
+                if transport == "acp":
+                    # ⑭ 登堂异构 agent：ACP dispatch（真实 spawn 外部 agent）
                     try:
-                        reply = await asyncio.to_thread(_acp_agent_chat_sync, profile, text)
+                        reply = await asyncio.to_thread(_acp_agent_chat_sync, profile, prompt)
                     except Exception as e:
                         _log.warning("[BotMode] acp agent run failed %s: %s", agent_id, e)
                         reply = None
-                    if reply:
-                        db.append_bot_room_message(room_id, "agent", agent_id, reply,
-                                                   turn_session_id=session_key)
-                        await _bot_broadcast_room_update(
-                            room_id, "room_message",
-                            message={"author_type": "agent", "author_ref": agent_id, "content": reply},
-                        )
-                    else:
+                    if not reply:
                         db.append_bot_room_message(
                             room_id, "system", None,
                             f"[@{profile.get('name', agent_id)} 未产生回复：ACP agent 不可用（已登堂但 spawn 失败，检查对应 CLI/鉴权）]",
@@ -3647,28 +3757,14 @@ async def bot_room_message_send(request: Request, room_id: str):
                             message={"author_type": "system", "author_ref": None,
                                       "content": f"[@{profile.get('name', agent_id)} 未产生回复：ACP agent 不可用（已登堂但 spawn 失败，检查对应 CLI/鉴权）]"},
                         )
-                    continue
-                # ⑭ 本机直连（2026-09-07 董董拍板）：transport="cli" 的本机已装
-                # agent（无 ACP recipe 但发现层给了 CLI）走 CLI print 单轮直连，
-                # 不经原生 AIAgent——它没有 provider/model 配置，构建必失败。
-                if (profile.get("transport") if isinstance(profile, dict) else None) == "cli":
-                    await _bot_broadcast_room_update(
-                        room_id, "room_message_delta",
-                        message={"agent_id": agent_id, "phase": "start", "delta": ""},
-                    )
+                elif transport == "cli":
+                    # ⑭ 本机直连：CLI print 单轮
                     try:
-                        reply = await asyncio.to_thread(_cli_agent_chat_sync, profile, text)
+                        reply = await asyncio.to_thread(_cli_agent_chat_sync, profile, prompt)
                     except Exception as e:
                         _log.warning("[BotMode] cli agent run failed %s: %s", agent_id, e)
                         reply = None
-                    if reply:
-                        db.append_bot_room_message(room_id, "agent", agent_id, reply,
-                                                   turn_session_id=session_key)
-                        await _bot_broadcast_room_update(
-                            room_id, "room_message",
-                            message={"author_type": "agent", "author_ref": agent_id, "content": reply},
-                        )
-                    else:
+                    if not reply:
                         db.append_bot_room_message(
                             room_id, "system", None,
                             f"[@{profile.get('name', agent_id)} 未产生回复：本机 {profile.get('transport_ref', '?')} CLI 调用失败（检查登录态/安装）]",
@@ -3679,57 +3775,76 @@ async def bot_room_message_send(request: Request, room_id: str):
                             message={"author_type": "system", "author_ref": None,
                                       "content": f"[@{profile.get('name', agent_id)} 未产生回复：本机 {profile.get('transport_ref', '?')} CLI 调用失败（检查登录态/安装）]"},
                         )
-                    continue
-                agent = await _bot_build_agent(session_key, profile)
-                reply = None
-                if agent is not None:
-                    # 广播流式开始（前端据此显示「正在输入」气泡）
-                    await _bot_broadcast_room_update(
-                        room_id, "room_message_delta",
-                        message={"agent_id": agent_id, "phase": "start", "delta": ""},
-                    )
-
-                    def _make_stream_cb(ag_id: str):
-                        # stream_callback 在 agent 子线程被调（每次一个文本 delta），
-                        # 需经 run_coroutine_threadsafe 回事件循环广播，保证 WS 线程安全。
-                        def _cb(delta):
-                            if delta is None:
-                                return
-                            try:
-                                asyncio.run_coroutine_threadsafe(
-                                    _bot_broadcast_room_update(
-                                        room_id, "room_message_delta",
-                                        message={"agent_id": ag_id, "phase": "delta", "delta": delta},
-                                    ),
-                                    _main_loop,
-                                )
-                            except Exception:
-                                pass
-                        return _cb
-
-                    try:
-                        reply = await asyncio.to_thread(agent.chat, text, _make_stream_cb(agent_id))
-                    except Exception as e:
-                        _log.warning("[BotMode] agent run failed %s: %s", agent_id, e)
+                else:
+                    # 原生 AIAgent（带工具/记忆/进化隔离）
+                    agent = await _bot_build_agent(session_key, profile)
+                    if agent is not None:
+                        def _make_stream_cb(ag_id: str):
+                            def _cb(delta):
+                                if delta is None:
+                                    return
+                                try:
+                                    asyncio.run_coroutine_threadsafe(
+                                        _bot_broadcast_room_update(
+                                            room_id, "room_message_delta",
+                                            message={"agent_id": ag_id, "phase": "delta", "delta": delta},
+                                        ),
+                                        _main_loop,
+                                    )
+                                except Exception:
+                                    pass
+                            return _cb
+                        try:
+                            reply = await asyncio.to_thread(agent.chat, prompt, _make_stream_cb(agent_id))
+                        except Exception as e:
+                            _log.warning("[BotMode] agent run failed %s: %s", agent_id, e)
+                            reply = None
+                    if not reply:
+                        db.append_bot_room_message(
+                            room_id, "system", None,
+                            f"[@{profile.get('name', agent_id)} 未产生回复：agent 不可用]",
+                            turn_session_id=session_key,
+                        )
+                        await _bot_broadcast_room_update(
+                            room_id, "room_message",
+                            message={"author_type": "system", "author_ref": None,
+                                      "content": f"[@{profile.get('name', agent_id)} 未产生回复：agent 不可用]"},
+                        )
                 if reply:
                     db.append_bot_room_message(room_id, "agent", agent_id, reply,
                                                turn_session_id=session_key)
-                    # 广播 agent 回复（其它客户端即时看到；前端据此清 streaming 气泡 + 重拉）
                     await _bot_broadcast_room_update(
                         room_id, "room_message",
                         message={"author_type": "agent", "author_ref": agent_id, "content": reply},
                     )
-                else:
-                    db.append_bot_room_message(
-                        room_id, "system", None,
-                        f"[@{profile.get('name', agent_id)} 未产生回复：agent 不可用]",
-                        turn_session_id=session_key,
-                    )
-                    await _bot_broadcast_room_update(
-                        room_id, "room_message",
-                        message={"author_type": "system", "author_ref": None,
-                                  "content": f"[@{profile.get('name', agent_id)} 未产生回复：agent 不可用]"},
-                    )
+                    # ④ 接力：解析回复中的 @mention（排除自指）
+                    if round_no < MAX_COLLAB_ROUNDS:
+                        new_targets = _extract_relay_targets(reply, profiles, agent_id)
+                        return reply, new_targets
+                return reply, []
+
+            # 处理队列（BFS：先完成首轮全部点名者，再逐层接力）
+            while queue and relay_round <= MAX_COLLAB_ROUNDS:
+                agent_id, prompt_text, round_no = queue.pop(0)
+                if agent_id in spoke:
+                    continue  # 每 agent 每轮只响一次，防互 @ 死循环
+                spoke.add(agent_id)
+                reply, new_targets = await _run_one(agent_id, prompt_text, round_no)
+                relay_round = max(relay_round, round_no)
+                if reply and new_targets:
+                    # 接力：新指令 = 「上一位 @ 了你，请接力」+ 其回复全文（含点名原因）
+                    for nt in new_targets:
+                        if nt not in spoke:
+                            # 指明谁在 @ 你，避免被接力者不知道为何被点名
+                            relay_prompt = (
+                                f"（接力）@{_agent_display_name(db.get_agent_profile(agent_id) or {})} "
+                                f"在回复中点名了你，请接力处理相关部分。其回复如下：\n\n{reply}"
+                            )
+                            queue.append((nt, relay_prompt, round_no + 1))
+                # 防呆：单次用户消息总轮次硬上限
+                if len(spoke) >= MAX_COLLAB_ROUNDS * 3:
+                    break
+
             timeline = db.get_bot_room_timeline(room_id)
         finally:
             db.close()
