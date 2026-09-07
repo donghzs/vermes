@@ -262,9 +262,16 @@
           为「{{ authModal.recipe && authModal.recipe.name }}」配置鉴权
         </h3>
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          登堂需要环境变量
-          <code class="px-1 rounded bg-gray-100 dark:bg-gray-700">{{ authModal.authEnv }}</code>。
-          填入后仅在<b>当前 Vermes 进程内</b>生效，重启后需重新填写。
+          本机未检测到
+          <code class="px-1 rounded bg-gray-100 dark:bg-gray-700">{{ authModal.authEnv }}</code>
+          登录态。两条路任选：
+        </p>
+        <div class="mb-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
+          💡 <b>推荐免配置</b>：在终端登录它的官方 CLI（如 <code>claude</code> / <code>codex login</code> / <code>gemini</code>），
+          登录态会存进本机 Keychain/凭据文件，Vermes 登堂时自动复用，无需任何 Key。
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+          或直接填 API Key（安全持久化到本机凭据库，重启后仍生效）：
         </p>
         <input
           v-model="authModal.value"

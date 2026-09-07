@@ -5802,15 +5802,21 @@ async def api_agent_local_connect(request: Request):
             break
     # 2a) 命中 recipe → 复用 register-profile 的 recipe 登堂逻辑（建 acp 联系人）
     if recipe is not None:
-        # 鉴权：需要 env 但没给且环境无 → 返回 need_auth（前端弹授权框）
+        # 鉴权：需要 env 但没给且环境无 → 先探测本机 CLI 登录态（降门槛）。
+        # ACP adapter 会复用本机 CLI 的 OAuth 登录态（Keychain/凭据文件），
+        # 已登录则免配置直接登堂；未登录/未知才退 need_auth 弹框。
         auth_env = recipe.auth.env_var
         if auth_env and not os.environ.get(auth_env):
-            return {
-                "ok": True, "status": "need_auth",
-                "recipe": recipe.name, "provider": recipe.provider,
-                "auth_env": auth_env, "spawn_command": recipe.spawn_command,
-                "via": "acp",
-            }
+            from vermes_cli.a2a.login_probe import probe_login
+            _lp = probe_login(recipe.name, recipe.provider or "")
+            if not _lp.is_logged_in:
+                return {
+                    "ok": True, "status": "need_auth",
+                    "recipe": recipe.name, "provider": recipe.provider,
+                    "auth_env": auth_env, "spawn_command": recipe.spawn_command,
+                    "via": "acp",
+                    "login_probe": {"logged_in": _lp.logged_in, "detail": _lp.detail},
+                }
         try:
             transport = build_acp_transport(recipe)
         except Exception as e:
@@ -5916,18 +5922,23 @@ async def api_register_agent_profile(request: Request):
             status_code=400,
             detail={"ok": False, "error": f"recipe '{recipe.name}' is not an ACP transport"},
         )
-    # 鉴权读取：recipe 要求 env 鉴权但未提供且环境未设置 → 需前端弹授权框
+    # 鉴权读取：recipe 要求 env 鉴权但未提供且环境未设置 → 先探测本机登录态。
+    # 已登录（Keychain/凭据文件/CLI 登录态）→ 免配置登堂；未登录/未知才 need_auth。
     auth_env = recipe.auth.env_var
     auth_value = (body.get("auth_value") or "").strip()
     if auth_env and not auth_value and not os.environ.get(auth_env):
-        return {
-            "ok": True,
-            "status": "need_auth",
-            "recipe": recipe.name,
-            "provider": recipe.provider,
-            "auth_env": auth_env,
-            "spawn_command": recipe.spawn_command,
-        }
+        from vermes_cli.a2a.login_probe import probe_login
+        _lp = probe_login(recipe.name, recipe.provider or "")
+        if not _lp.is_logged_in:
+            return {
+                "ok": True,
+                "status": "need_auth",
+                "recipe": recipe.name,
+                "provider": recipe.provider,
+                "auth_env": auth_env,
+                "spawn_command": recipe.spawn_command,
+                "login_probe": {"logged_in": _lp.logged_in, "detail": _lp.detail},
+            }
     # 用户在前端授权框填的 key → 注入当前进程环境 + 持久化到凭据库。
     # - os.environ：当次会话有效，使后续 spawn 的 ACP 子进程继承
     #   （_build_subprocess_env 透传 os.environ）。
