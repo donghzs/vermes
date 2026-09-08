@@ -2232,6 +2232,17 @@ class SessionDB:
                 continue  # 已存在（含用户自造同名）→ 不覆盖用户自定义
             self.upsert_agent_profile(d)
 
+        # ⑭ 存量迁移：老库的 secretary 若 is_avatar 未设（0），补成分身标记。
+        # 分身语义（共享全局记忆 + 进化 + SOUL 身份）需对存量用户生效；
+        # 幂等（已 1 不再改），只改「保留 id + 仍是原生秘书」这一条，不碰用户
+        # 自定义 profile 的其它字段。
+        def _upgrade_avatar(conn):
+            conn.execute(
+                "UPDATE agent_profiles SET is_avatar = 1 "
+                "WHERE id = 'secretary' AND is_avatar = 0"
+            )
+        self._execute_write(_upgrade_avatar)
+
     def create_bot_room(self, room_id: str, title: str,
                         channel: str = "desktop",
                         source_group_id: Optional[str] = None,
