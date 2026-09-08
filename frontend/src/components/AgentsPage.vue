@@ -648,14 +648,39 @@ const recipeIndex = computed(() => {
   return m
 })
 
-/** agent 是否有匹配的 ACP 食谱（按 id → name 顺序匹配）。 */
+/** 从 entry_point 取 bin 名：``claude`` / ``/usr/local/bin/aider`` → ``claude``/``aider``。 */
+function binOf(ep) {
+  if (!ep) return ''
+  const first = String(ep).trim().split(/[\s/]+/)[0]
+  return first.toLowerCase()
+}
+
+/** agent 是否有匹配的 ACP 食谱。
+ *  匹配优先级（与后端 find_recipe_for_discovery 对齐）：
+ *   1. id/name 精确命中 recipe name（封神榜卡片 + 本机发现同名）
+ *   2. 本机发现：entry_point 的 bin 命中 recipe.fingerprint.cli（如 claude/codex/hermes）
+ *   3. 本机发现：entry_point 路径命中 recipe.fingerprint.config_dirs（如 ~/.claude/.hermes）
+ */
 function recipeFor(a) {
+  if (!a) return null
   const idx = recipeIndex.value
-  return (
-    idx.get(String(a.id || '').toLowerCase()) ||
-    idx.get(String(a.name || '').toLowerCase()) ||
-    null
-  )
+  // 1) 精确命中（封神榜卡片按 name；本机发现 id/name 同名）
+  const direct = idx.get(String(a.id || '').toLowerCase()) || idx.get(String(a.name || '').toLowerCase())
+  if (direct) return direct
+  // 2/3) 本机发现用 fingerprint 反向匹配
+  if (a.source !== 'remote') {
+    const bin = binOf(a.entry_point)
+    const epLower = String(a.entry_point || '').toLowerCase()
+    for (const r of recipes.value) {
+      const fp = r.fingerprint || {}
+      if (bin && (fp.cli || []).some(c => String(c).toLowerCase() === bin)) return r
+      if (epLower && (fp.config_dirs || []).some(d => {
+        const dd = String(d).toLowerCase().replace(/\/$/, '')
+        return epLower.endsWith(dd) || dd.endsWith(epLower)
+      })) return r
+    }
+  }
+  return null
 }
 
 function stateOf(key) {

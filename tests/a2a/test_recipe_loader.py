@@ -9,6 +9,7 @@ from vermes_cli.a2a.recipes.loader import (
     load_recipe,
     load_all_recipes,
     find_recipe,
+    find_recipe_for_discovery,
     RECIPES_DIR,
 )
 
@@ -133,3 +134,40 @@ def test_find_recipe_default_non_recursive_matches_top_level_only() -> None:
     assert find_recipe("codebuddy", RECIPES_DIR) is not None
     # registry/ 里的 cursor 默认不递归时找不到（与旧语义一致）
     assert find_recipe("cursor", RECIPES_DIR) is None
+
+
+def test_find_recipe_for_discovery_matches_by_cli_fingerprint() -> None:
+    # 本机发现的 claude/codex/hermes/codebuddy 按 fingerprint.cli 反向匹配到 ACP recipe
+    # （回归守卫：此前靠 name 硬编码别名，agent:claude vs claude-agent-acp 匹配不上 → 无登堂按钮）
+    cases = {
+        ("agent:claude", "Claude Code", "claude"): "claude-agent-acp",
+        ("agent:codex", "OpenAI Codex", "codex"): "codex-acp",
+        ("agent:openclaw", "OpenClaw", "openclaw"): "openclaw",
+        ("agent:hermes", "Hermes Agent", "hermes"): "hermes",
+        ("agent:codebuddy", "CodeBuddy Code", "codebuddy"): "codebuddy",
+    }
+    for (aid, aname, ep), expected in cases.items():
+        r = find_recipe_for_discovery(
+            discovery_id=aid, name=aname, entry_point=ep, config_dir=ep,
+            directory=RECIPES_DIR, recursive=True,
+        )
+        assert r is not None and r.name == expected, f"{aid} 应匹配 {expected}，实际 {r}"
+
+
+def test_find_recipe_for_discovery_matches_config_dir() -> None:
+    # 配置目录发现（entry_point=绝对路径 ~/.claude）按 fingerprint.config_dirs 匹配
+    r = find_recipe_for_discovery(
+        discovery_id="agent:cfg_.claude", name="Claude",
+        entry_point="/Users/dongzusheng/.claude", config_dir="/Users/dongzusheng/.claude",
+        directory=RECIPES_DIR, recursive=True,
+    )
+    assert r is not None and r.name == "claude-agent-acp"
+
+
+def test_find_recipe_for_discovery_no_recipe_for_aider() -> None:
+    # aider 无 ACP recipe（走 CLI 直连）→ 应返回 None
+    r = find_recipe_for_discovery(
+        discovery_id="agent:aider", name="Aider", entry_point="aider", config_dir="aider",
+        directory=RECIPES_DIR, recursive=True,
+    )
+    assert r is None

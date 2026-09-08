@@ -5759,6 +5759,12 @@ async def api_list_agent_recipes(request: Request):
                 "auth_scheme": r.auth.scheme,
                 # 傻瓜式安装引导：未装 CLI 时前端展示「怎么装」（官网/命令）
                 "install_hint": r.install_hint,
+                # fingerprint：本机发现反向匹配用（cli/config_dirs/app_bundles）
+                "fingerprint": {
+                    "cli": list(r.fingerprint.cli),
+                    "config_dirs": list(r.fingerprint.config_dirs),
+                    "app_bundles": list(r.fingerprint.app_bundles),
+                },
             }
             for r in recipes
             if r.is_acp
@@ -5829,30 +5835,20 @@ async def api_agent_local_connect(request: Request):
     if found is None:
         return {"ok": False, "status": "error",
                 "error": f"本机未发现该 agent: {agent_id}（可能已卸载，刷新后重试）"}
-    # 2) 通路选优：先看有没有 ACP recipe
+    # 2) 通路选优：先看有没有 ACP recipe（用 fingerprint 反向匹配本机发现条目）
     recipe = None
-    _name_aliases = {}
     try:
-        # discovery name → recipe 候选别名（本机发现的品牌名 vs recipe 文件名）
-        _nm = (found.name or "").strip()
-        _name_aliases = {
-            "claude": "claude-agent-acp", "claude code": "claude-agent-acp",
-            "claude-code": "claude-agent-acp",
-            "codex": "codex-acp", "openai codex": "codex-acp",
-            "gemini": "gemini", "cursor": "cursor", "copilot": "copilot",
-            "goose": "goose",
-            "openclaw": "openclaw",
-            "codebuddy": "codebuddy", "codebuddy code": "codebuddy",
-        }
+        from vermes_cli.a2a.recipes.loader import find_recipe_for_discovery
+        recipe = find_recipe_for_discovery(
+            discovery_id=found.id,
+            name=found.name or "",
+            entry_point=found.entry_point or "",
+            config_dir=(found.entry_point or ""),  # config 类发现 entry_point=绝对路径（如 ~/.claude）
+            directory=RECIPES_DIR,
+            recursive=True,
+        )
     except Exception:
-        pass
-    for cand in (found.id, found.name, _name_aliases.get((found.name or "").strip().lower())):
-        if not cand:
-            continue
-        r = find_recipe(cand, RECIPES_DIR, recursive=True)
-        if r is not None and r.is_acp:
-            recipe = r
-            break
+        recipe = None
     # 2a) 命中 recipe → 复用 register-profile 的 recipe 登堂逻辑（建 acp 联系人）
     if recipe is not None:
         # 鉴权：需要 env 但没给且环境无 → 先探测本机 CLI 登录态（降门槛）。
