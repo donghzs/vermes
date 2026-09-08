@@ -91,7 +91,25 @@ def test_login_command_for():
     assert lp.login_command_for("gemini", "acp-gemini") == "gemini login"
     assert lp.login_command_for("copilot", "copilot-acp") == "gh auth login"
     assert lp.login_command_for("hermes", "acp-hermes") == "hermes acp --setup"
+    assert lp.login_command_for("openclaw", "acp-openclaw") == "openclaw gateway status"
     assert lp.login_command_for("qwen-code", "acp-qwen-code") == ""
+
+
+def test_probe_openclaw_no_cli(monkeypatch):
+    monkeypatch.setattr(lp.shutil, "which", lambda name: None)
+    p = lp.probe_login("openclaw", "acp-openclaw")
+    assert p.logged_in is None
+
+
+def test_probe_openclaw_has_acp(monkeypatch):
+    # acp 子命令可识别 → 视为可登堂（Gateway 免 token 或需 --token）
+    def fake_run(cmd, **kw):
+        out = "Usage: openclaw acp [options]" if cmd[1] == "acp" else ""
+        return type("R", (), {"stdout": out, "stderr": ""})()
+    monkeypatch.setattr(lp.shutil, "which", lambda name: "/usr/bin/openclaw")
+    monkeypatch.setattr(lp.subprocess, "run", fake_run)
+    p = lp.probe_login("openclaw", "acp-openclaw")
+    assert p.is_logged_in
 
 
 def test_probe_hermes_env_file(monkeypatch):

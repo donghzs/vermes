@@ -1,0 +1,33 @@
+# OpenClaw（开源原版 / QClaw 内置）— native ACP bridge via `openclaw acp`（手写核心 recipe）。
+# OpenClaw 的 `acp` 子命令是标准 ACP 桥（stdio JSON-RPC），把提示转发给 Gateway，
+# 再按 session key 路由到具体 agent。开源原版（npm i -g openclaw）与 QClaw 内置
+# wrapper 均支持此命令（wrapper 透传 acp 子命令）。
+# 鉴权：本机 Gateway 免 token（authMethods: []）；远程 Gateway 才需 --token。
+# → auth.env_var = null，登堂即用。
+name: openclaw
+version: 1.0.0
+description: OpenClaw Agent — ACP bridge backed by its Gateway, spawned via
+  `openclaw acp`. 复用本机 OpenClaw Gateway 会话（按 session key 路由到具体 agent）。
+transport: acp
+provider: acp-openclaw
+entry_point: openclaw
+args:
+- acp
+auth:
+  scheme: none
+  env_var: null
+capabilities:
+- code
+- search
+- refactor
+- writing
+- research
+fingerprint:
+  cli:
+  - openclaw
+  config_dirs:
+  - .openclaw
+  - .qclaw
+  app_bundles: []
+  mcp_config: []
+install_hint: https://openclaw.ai （开源 OpenClaw：npm install -g openclaw@latest）

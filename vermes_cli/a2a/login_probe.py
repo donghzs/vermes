@@ -170,12 +170,45 @@ def _probe_hermes() -> LoginProbe:
     return LoginProbe(None, "unknown", "无法判定 Hermes 初始化态")
 
 
+def _probe_openclaw() -> LoginProbe:
+    """OpenClaw 是 gateway 型 ACP 桥（openclaw acp），本机 Gateway 免 token。
+
+    有 `openclaw acp` 命令且 Gateway 在跑 → 免配置登堂；
+    否则引导用户先 `openclaw gateway status`/启动 Gateway。
+    """
+    if shutil.which("openclaw") is None:
+        return LoginProbe(None, "unknown", "未检测到 openclaw CLI")
+    try:
+        # acp 子命令可识别 = 具备 ACP 桥能力
+        proc = subprocess.run(
+            ["openclaw", "acp", "--help"], capture_output=True, text=True, timeout=15, check=False,
+        )
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if "ACP" not in out and "acp" not in out.lower():
+            return LoginProbe(False, "cli status", "openclaw 无 acp 子命令（非开源原版/旧版 wrapper）")
+    except Exception:  # noqa: BLE001
+        return LoginProbe(None, "unknown", "无法判定 OpenClaw ACP 能力")
+    # 本机 Gateway 在跑（进程/端口）→ 免 token；否则需启动 Gateway
+    try:
+        proc = subprocess.run(
+            ["openclaw", "gateway", "status"], capture_output=True, text=True, timeout=15, check=False,
+        )
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if "running" in out.lower() or "ready" in out.lower() or "connected" in out.lower():
+            return LoginProbe(True, "gateway status", "openclaw Gateway 运行中，本机免 token")
+    except Exception:  # noqa: BLE001
+        pass
+    # Gateway 状态未知，但 acp 桥存在 → 视为可登堂（远程可能需 token，交由登堂时再探测）
+    return LoginProbe(True, "cli status", "openclaw acp 桥可用（Gateway 免 token 或需 --token）")
+
+
 _PROBE_FUNCS = {
     "claude": _probe_claude,
     "codex": _probe_codex,
     "gemini": _probe_gemini,
     "copilot": _probe_copilot,
     "hermes": _probe_hermes,
+    "openclaw": _probe_openclaw,
 }
 
 # 家族 → 登录引导命令（前端「未登录」弹窗展示 + 一键打开终端预置）
@@ -185,13 +218,14 @@ LOGIN_COMMANDS = {
     "gemini": "gemini login",
     "copilot": "gh auth login",
     "hermes": "hermes acp --setup",
+    "openclaw": "openclaw gateway status",
 }
 
 
 def _match_family(recipe_name: str, provider: str) -> Optional[str]:
     """recipe name/provider → 探测家族（claude/codex/gemini/copilot）。"""
     blob = f"{recipe_name} {provider}".lower()
-    for family in ("claude", "codex", "gemini", "copilot", "hermes"):
+    for family in ("claude", "codex", "gemini", "copilot", "hermes", "openclaw"):
         if family in blob:
             return family
     return None

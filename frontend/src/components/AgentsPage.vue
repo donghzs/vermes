@@ -693,8 +693,9 @@ function stateClass(st) {
  */
 const localCli = ref(new Set())
 
-/** gateway 服务型 agent（有 CLI 但非 print 模式，无法 CLI 直连）。 */
-const GATEWAY_BINS = ['openclaw', 'qclaw']
+/** gateway 服务型 agent（有 CLI 但非 print 模式，且无 ACP recipe）。
+ *  openclaw 已补 ACP recipe（openclaw acp 桥）→ 走登堂，不在本表；仅 qclaw 是真 gateway。 */
+const GATEWAY_BINS = ['qclaw']
 
 /** 本机 CLI agent 是否可本地直连（entry_point 在 PATH / 是已知 CLI 名）。 */
 function canLocalConnect(a) {

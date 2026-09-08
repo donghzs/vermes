@@ -77,7 +77,7 @@ def test_unsafe_tag_rejected(tmp_path: Path) -> None:
 def test_load_all_recipes_finds_three() -> None:
     recipes = load_all_recipes(RECIPES_DIR)
     names = {r.name for r in recipes}
-    assert {"copilot", "codex-acp", "claude-agent-acp", "hermes"} <= names
+    assert {"copilot", "codex-acp", "claude-agent-acp", "hermes", "openclaw"} <= names
 
 
 def test_hermes_recipe_native_acp() -> None:
@@ -88,6 +88,16 @@ def test_hermes_recipe_native_acp() -> None:
     # hermes 用本机 ~/.hermes/.env 的 custom runtime credentials，Vermes 不注入 key
     assert rc.auth.env_var is None
     assert rc.provider == "acp-hermes"
+
+
+def test_openclaw_recipe_native_acp() -> None:
+    rc = find_recipe("openclaw", RECIPES_DIR, recursive=True)
+    assert rc is not None
+    assert rc.is_acp
+    assert rc.spawn_command == ["openclaw", "acp"]
+    # 本机 Gateway 免 token（authMethods: []），Vermes 不注入 key
+    assert rc.auth.env_var is None
+    assert rc.provider == "acp-openclaw"
 
 
 def test_find_recipe_by_name() -> None:
@@ -106,8 +116,9 @@ def test_find_recipe_recursive_finds_registry_recipes() -> None:
 
 
 def test_find_recipe_default_non_recursive_matches_top_level_only() -> None:
-    # 默认行为保持向后兼容：不递归时只扫顶层（手写 4 条：copilot/codex-acp/claude-agent-acp/hermes）。
+    # 默认行为保持向后兼容：不递归时只扫顶层（手写 5 条：copilot/codex-acp/claude-agent-acp/hermes/openclaw）。
     assert find_recipe("copilot", RECIPES_DIR) is not None
     assert find_recipe("hermes", RECIPES_DIR) is not None
+    assert find_recipe("openclaw", RECIPES_DIR) is not None
     # registry/ 里的 cursor 默认不递归时找不到（与旧语义一致）
     assert find_recipe("cursor", RECIPES_DIR) is None

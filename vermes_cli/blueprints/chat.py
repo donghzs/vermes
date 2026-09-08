@@ -5793,6 +5793,7 @@ async def api_agent_local_connect(request: Request):
             "codex": "codex-acp", "openai codex": "codex-acp",
             "gemini": "gemini", "cursor": "cursor", "copilot": "copilot",
             "goose": "goose",
+            "openclaw": "openclaw",
         }
     except Exception:
         pass
