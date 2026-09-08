@@ -28,6 +28,7 @@ import json
 import os
 import queue
 import re
+import signal
 import shlex
 import subprocess
 import threading
@@ -415,6 +416,16 @@ class AcpAgentTransportBase:
         if self._auth_env and self._auth_value and self._auth_env not in env:
             env = dict(env)
             env[self._auth_env] = self._auth_value
+        # 通用 wrapper 运行时补齐：厂商 Electron 壳包出来的 CLI（各家 openclaw
+        # 系/桌面 agent 常见）依赖宿主主进程注入的 env，第三方 spawn 会秒退。
+        # 这里按「模式」解析补齐，不绑定任何厂商。run 与 handshake 两个 Popen
+        # 点共用本方法，故补一处即全覆盖。
+        try:
+            from vermes_cli.adapters.cli_env import resolve_cli_env
+
+            env = resolve_cli_env(self._acp_command, env)
+        except Exception:  # noqa: BLE001 — 环境补齐失败不影响原有行为
+            pass
         return env
 
     def _check_deprecation(self, stderr_text: str) -> "RuntimeError | None":
@@ -525,6 +536,10 @@ class AcpAgentTransportBase:
                 bufsize=1,
                 cwd=self._acp_cwd,
                 env=self._apply_auth_env(_build_subprocess_env()),
+                # 独立进程组：清理时能 killpg 整组（含 bridge 起的 node 孙进程）。
+                # 否则孙进程会一直持有 stdout 写端 → 读线程等不到 EOF 并死握
+                # TextIOWrapper 锁 → 主线程 close() 等同一把锁 → 互锁挂起（实测 45s+）。
+                start_new_session=True,
             )
         except FileNotFoundError:
             return False, f"command not found: {self._acp_command!r}"
@@ -601,22 +616,71 @@ class AcpAgentTransportBase:
         except Exception as exc:  # 兜底：健康检查不该抛
             return False, f"handshake failed: {exc}"
         finally:
-            # 硬清理：kill + 关 stdio。握手进程无复用价值，留着就是孤儿。
-            self._cleanup_handshake_process(proc)
+            # 硬清理：kill 整个进程组 + 关 stdio。握手进程无复用价值，留着就是孤儿。
+            self._cleanup_handshake_process(proc, threads=(out_thread, err_thread))
 
-    def _cleanup_handshake_process(self, proc: "subprocess.Popen[str] | None") -> None:
-        """终止握手子进程并关闭管道（幂等，任何异常都吞掉）。"""
+    def _cleanup_handshake_process(
+        self,
+        proc: "subprocess.Popen[str] | None",
+        threads: "tuple[threading.Thread, ...]" = (),
+    ) -> None:
+        """终止握手子进程（含其进程组）并关闭管道（幂等，任何异常都吞掉）。
+
+        死锁防线（2026-09-08 实测，勿退回旧写法）：
+        若只 ``proc.kill()``，bridge 起的 node **孙进程会继续持有 stdout 写端** →
+        ``for line in proc.stdout`` 的读线程永远等不到 EOF，并死握 TextIOWrapper 锁；
+        主线程随后 ``stream.close()`` 要抢同一把锁 → **双向互锁，挂起 45s+**
+        （faulthandler 抓到：主线程卡 close、读线程卡 readline）。
+        故必须三层齐下：
+          ① spawn 时 ``start_new_session=True`` 建立独立进程组；
+          ② 清理时 ``killpg`` 杀整组，让孙进程一起死、写端关闭、读线程自然 EOF；
+          ③ ``join`` 读线程（1s）确认释放锁后再 close；**join 失败就放弃 close**
+             —— fd 泄漏远轻于死锁。
+
+        安全护栏（P0）：``os.getpgid`` 若返回**本进程自己的组**（未独立成组或
+        取 pid 失败），绝不能 killpg —— 那会连同 Vermes 自身一起杀掉。
+        """
         if proc is None:
             return
         try:
             if proc.poll() is None:
-                proc.kill()
+                killed_group = False
+                try:
+                    pgid = os.getpgid(proc.pid)
+                    # 护栏：只杀「不是自己」的进程组
+                    if pgid != os.getpgrp():
+                        os.killpg(pgid, signal.SIGKILL)
+                        killed_group = True
+                except Exception:
+                    # 取 pgid 失败 / 进程已退出 / 无 pid 属性 → 一律退化为 kill 父进程。
+                    # 注意：必须是 Exception 而非具体异常类型——否则漏捕（如
+                    # AttributeError）会让异常逃到外层 except 被吞，
+                    # 连「退化 kill 父进程」都不会执行，清理彻底失效。
+                    killed_group = False
+                if not killed_group:
+                    proc.kill()
                 try:
                     proc.wait(timeout=3)
                 except Exception:
                     pass
         except Exception:
             pass
+
+        # 等读线程退出（拿到 EOF 释放锁）后再 close；超时则放弃 close 以避险
+        stuck: "list[threading.Thread]" = []
+        for th in threads:
+            try:
+                th.join(timeout=1.0)
+                if th.is_alive():
+                    stuck.append(th)
+            except Exception:
+                pass
+        if stuck:
+            logger.debug(
+                "copilot_acp_client.py: handshake 读线程未退出(%d)，跳过 stdio close 以避免死锁",
+                len(stuck),
+            )
+            return
         for stream in (proc.stdin, proc.stdout, proc.stderr):
             try:
                 if stream is not None:
