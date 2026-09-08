@@ -652,6 +652,11 @@ CREATE TABLE IF NOT EXISTS agent_profiles (
     -- 0=锁定（仅可把开关切回 1 解锁，禁止改其他字段）。位置在 api_key 之后，
     -- 走声明式 _reconcile_columns 自动 ALTER 老库。
     editable INTEGER DEFAULT 1,
+    -- ⑭ 分身（avatar）：1=主 agent 在神魔堂的常驻分身（秘书/丞相/大管家），
+    -- 与单聊主 agent 同构——共享全局记忆（memory_scope=None）+ 全局进化
+    -- （agent_id=None）+ SOUL.md 身份，不注入独立人格；职责（组队/造神/拉群/
+    -- 派活/汇总）由 ephemeral 职责提示叠加。走 _reconcile_columns 自动 ALTER。
+    is_avatar INTEGER DEFAULT 0,
     created_at REAL
 );
 
@@ -2073,12 +2078,23 @@ class SessionDB:
                 _editable = int(profile["editable"])
             else:
                 _editable = _existing_editable
+            # ⑭ 分身（is_avatar）幂等语义同 editable：显式传入即用；未传则保留既有值
+            # （新行默认 0）。禁止普通 upsert（未提 is_avatar）把分身标记清零。
+            _existing_avatar = conn.execute(
+                "SELECT is_avatar FROM agent_profiles WHERE id = ?",
+                (profile.get("id", ""),),
+            ).fetchone()
+            _existing_avatar = int(_existing_avatar[0]) if _existing_avatar and _existing_avatar[0] is not None else 0
+            if "is_avatar" in profile and profile["is_avatar"] is not None:
+                _is_avatar = int(profile["is_avatar"])
+            else:
+                _is_avatar = _existing_avatar
             conn.execute(
                 "INSERT INTO agent_profiles "
                 "(id, name, description, system_prompt, toolsets, avatar_seed, "
                 " hue, is_default, provider, model, skill_set, transport, "
-                " transport_ref, capability_tags, api_key, editable, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " transport_ref, capability_tags, api_key, editable, is_avatar, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET "
                 "name = excluded.name, description = excluded.description, "
                 "system_prompt = excluded.system_prompt, "
@@ -2089,6 +2105,7 @@ class SessionDB:
                 "transport_ref = excluded.transport_ref, "
                 "capability_tags = excluded.capability_tags, "
                 "api_key = excluded.api_key, editable = excluded.editable, "
+                "is_avatar = excluded.is_avatar, "
                 "created_at = excluded.created_at",
                 (
                     profile.get("id", ""),
@@ -2107,6 +2124,7 @@ class SessionDB:
                     _json.dumps(_norm_list(profile.get("capability_tags")), ensure_ascii=False),
                     profile.get("api_key", "") or "",
                     _editable,
+                    _is_avatar,
                     profile.get("created_at", time.time()),
                 ),
             )
@@ -2120,7 +2138,7 @@ class SessionDB:
                 row = self._conn.execute(
                 "SELECT id, name, description, system_prompt, toolsets, "
                 "avatar_seed, hue, is_default, provider, model, skill_set, "
-                "transport, transport_ref, capability_tags, api_key, editable, created_at "
+                "transport, transport_ref, capability_tags, api_key, editable, is_avatar, created_at "
                 "FROM agent_profiles WHERE id = ?", (profile_id,)
                 ).fetchone()
         except sqlite3.OperationalError as exc:
@@ -2144,7 +2162,8 @@ class SessionDB:
             "capability_tags": _load(R(13), "[]"),
             "api_key": R(14),
             "editable": int(R(15)) if R(15) is not None else 1,
-            "created_at": R(16),
+            "is_avatar": int(R(16)) if R(16) is not None else 0,
+            "created_at": R(17),
         }
 
     def list_agent_profiles(self) -> List[dict]:
@@ -2185,14 +2204,17 @@ class SessionDB:
             existing_ids = set()
         defaults = [
             # ── 秘书（默认）：一句话调度——组队/造神/拉群/派活/汇总 ──
+            # ⑭ 分身（avatar）：主 agent 在神魔堂的常驻分身，共享全局记忆+进化+
+            # SOUL.md 身份；职责由 ephemeral 提示叠加（不写死独立人格）。
             {
                 "id": "secretary", "name": "秘书",
                 "description": "老板的秘书：按需组队、自动造神、拉群派活、汇总交付",
                 "capability_tags": ["orchestrate", "planning"],
                 "is_default": 1, "hue": 160, "avatar_seed": "secretary",
                 "provider": "", "model": "", "toolsets": [],
-                "system_prompt": "你是老板的秘书。老板提需求，你负责把它落地：判断需要哪些角色（执行/审计/汇总等），现有 agent 不够就临时造，然后组队、派活、跟进、汇总成果交付。讲究经济-质量-效率三平衡（执行用快/便宜模型，审计汇总用强模型）。",
+                "system_prompt": "",
                 "transport": "native", "transport_ref": "", "skill_set": "",
+                "is_avatar": 1,
             },
             # ── 通用助手（默认）：单聊兜底 ──
             {

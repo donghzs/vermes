@@ -3306,7 +3306,12 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
         # H3 进化硬隔离：agent_id=profile_id（strategies/v_outcomes 写入标 agent_id，
         # 读取仅见自己），self_model 软共享（仍写全局聚合快照）。
         _pid = profile.get("id") if isinstance(profile, dict) else None
-        _memory_scope = f"role:{_pid}" if _pid else None
+        # ⑭ 分身（avatar）：主 agent 在神魔堂的常驻分身 → 与单聊主 agent 同构：
+        # memory_scope=None（全局共享记忆）+ agent_id=None（全局进化底座），
+        # 不隔离、不注入独立人格；职责由 ephemeral 提示叠加（SECRETARY_INSTRUCTION）。
+        _is_avatar = bool((profile or {}).get("is_avatar"))
+        _memory_scope = None if _is_avatar else (f"role:{_pid}" if _pid else None)
+        _agent_id = None if _is_avatar else _pid
         # H3 读取侧接线（2026-09-07 审计 #3 修复）：群聊 agent 此前**从不注入**进化
         # 上下文，导致 agent_id=_pid 只作用于写入侧，"per-agent 硬隔离"名不副实。
         # 现注入 build_evolution_prompt(_pid)：该 agent 只看自己的进化 + 行为准则。
@@ -3317,12 +3322,13 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
         # 与单聊 _evo_base_prompt 既有语义一致，属有意（避免每轮对话重算进化提示），
         # 非 bug；调用方应知悉该延迟窗口。fail-open：异常则不注入。
         _evo_prompt = None
-        if _pid:
-            try:
-                from agent.evolution_manager import build_evolution_prompt
-                _evo_prompt = build_evolution_prompt(_pid) or None
-            except Exception:
-                _evo_prompt = None
+        try:
+            from agent.evolution_manager import build_evolution_prompt
+            # 分身（_agent_id=None）→ 全局聚合底座（与单聊主 agent 同构）；
+            # 普通角色（_agent_id=_pid）→ per-agent 进化隔离。
+            _evo_prompt = build_evolution_prompt(_agent_id) or None
+        except Exception:
+            _evo_prompt = None
         agent = AIAgent(
             base_url=base_url,
             api_key=api_key,
@@ -3333,7 +3339,7 @@ async def _bot_build_agent(session_key: str, profile) -> Optional[object]:
             verbose_logging=False,
             platform="web",
             memory_scope=_memory_scope,
-            agent_id=_pid,
+            agent_id=_agent_id,
             ephemeral_system_prompt=_evo_prompt,
             enabled_toolsets=enabled_toolsets,
             # ⚠️ P1（T4 交叉审计）：session_id 绑定房间派生 key，而非让 agent 内部
@@ -3862,6 +3868,12 @@ async def _org_message_orchestrate(db, room: dict, room_id: str, norm,
             t["status"] = "done"
             t["updated_at"] = time.time()
             db.update_org_task(t["id"], **t)
+            # ⑭ 结论回写：验收通过即任务完结，把结论进全局记忆（只结论不过程）
+            _index_org_conclusion(
+                f"org-task:{t['id']}",
+                f"[神魔堂] 任务「{t.get('title') or t['id']}」老板已验收通过（done）。"
+                f"成果：{(t.get('final_output') or '')[:500]}",
+            )
             line = f"[组织流水线] ✅ 老板验收通过，任务 {t['id']} 完结（done）。"
             db.append_bot_room_message(room_id, "system", None, line)
             await _bot_broadcast_room_update(
@@ -3949,6 +3961,21 @@ def _org_runner_factory(db, room_id: str, norm):
     return _runner
 
 
+def _index_org_conclusion(target: str, summary: str) -> None:
+    """⑭ 分身结论回写（B 方案）：把神魔堂组织任务的「结论」写进全局记忆底座
+    （scope=""，与单聊主 agent 同源）。只写结论不写过程——单聊/移动渠道能
+    按需溯源「神魔堂干了啥、造了哪些神、建了哪些群、交付了什么」，但中间
+    拆解/审计流水（plan/audit_log）不进全局记忆，避免膨胀。
+
+    fail-open：写失败只告警，不阻断流水线。
+    """
+    try:
+        from agent.memory_fabric import index_note
+        index_note(target, summary, scope="")
+    except Exception as e:
+        _log.warning("[Org] conclusion index failed: %s", e)
+
+
 def _org_deliver_line(db, room_id: str, norm, final_task: dict) -> None:
     """任务跑完后的交付/状态落房间。"""
     output = final_task.get("final_output") or ""
@@ -3970,6 +3997,14 @@ def _org_deliver_line(db, room_id: str, norm, final_task: dict) -> None:
             )
         except Exception:
             pass
+    # ⑭ 结论回写：交付/完结时把「结论」进全局记忆（只结论，不过程）
+    if status in ("delivered", "done"):
+        _title = final_task.get("title") or final_task.get("id", "任务")
+        _summary = (
+            f"[神魔堂] 任务「{_title}」已完成（{status}）。"
+            f"成果：{output[:500]}"
+        )
+        _index_org_conclusion(f"org-task:{final_task.get('id', _title)}", _summary)
     tail = f"[组织流水线] 任务 {final_task.get('id', '?')} 状态：{status}。"
     if status == "delivered":
         tail += " 等待老板验收（回复「验收通过」或「打回: 意见」）。"
@@ -4158,6 +4193,16 @@ async def _secretary_orchestrate(db, room: dict, room_id: str, norm,
     )
     _log.info("[BotMode] secretary org assembled room=%s roles=%d members=%s",
               room_id, len(plan["roles"]), names)
+
+    # ⑭ 结论回写：造神 + 搭组织也进全局记忆（单聊/移动渠道可溯源）
+    _forged_names = [r["name"] for r in plan["roles"] if r.get("forged")]
+    _org_summary = (
+        f"[神魔堂] 群「{room.get('title') or room_id}」秘书搭建了组织「{plan['title'] or '未命名'}」"
+        f"（{role_desc}），准备执行老板任务「{text[:200]}」。"
+    )
+    if _forged:
+        _org_summary += f" 本次秘书自动造神 {_forged} 个。"
+    _index_org_conclusion(f"org-room:{room_id}", _org_summary)
 
     # 6) 自动建任务并驱动流水线（secretary 模式一条龙）
     try:
