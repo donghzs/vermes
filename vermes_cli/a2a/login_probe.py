@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -44,6 +45,31 @@ class LoginProbe:
 
 def _home() -> Path:
     return Path.home()
+
+
+def _resolve_bin(bin_name: str) -> Optional[str]:
+    """找 CLI 二进制：PATH 优先，落空遍历额外目录兜底（与 agent_discovery
+    _extra_cli_dirs 同源）——WorkBuddy 内置 codebuddy / QClaw openclaw 不在 PATH。"""
+    p = shutil.which(bin_name)
+    if p:
+        return p
+    home = Path.home()
+    qclaw_root = home / "Library" / "Application Support" / "QClaw"
+    for d in (
+        Path("/opt/homebrew/bin"),
+        Path("/usr/local/bin"),
+        qclaw_root / "npm-global" / "bin",
+        home / ".npm-global" / "bin",
+        home / ".local" / "bin",
+        home / ".cargo" / "bin",
+        qclaw_root / "openclaw" / "config" / "bin",
+        home / ".config" / "openclaw" / "config" / "bin",
+        Path("/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/bin"),
+    ):
+        cand = d / bin_name
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    return None
 
 
 def _file_exists(path: str) -> bool:
@@ -202,6 +228,27 @@ def _probe_openclaw() -> LoginProbe:
     return LoginProbe(True, "cli status", "openclaw acp 桥可用（Gateway 免 token 或需 --token）")
 
 
+def _probe_codebuddy() -> LoginProbe:
+    """CodeBuddy Code（WorkBuddy 底层）— 有 `--acp` 能力即可登堂，本机已登录免配置。
+
+    authMethods 返回 iOA/微信/Google/企业域，但本机 print 直连成功 = 已登录态可用。
+    故：有 --acp 能力 → 视为可登堂（未登录时 ACP 握手会引导，前端提示先登录）。
+    """
+    cb = _resolve_bin("codebuddy")
+    if cb is None:
+        return LoginProbe(None, "unknown", "未检测到 codebuddy CLI")
+    try:
+        proc = subprocess.run(
+            [cb, "--version"], capture_output=True, text=True, timeout=15, check=False,
+        )
+        out = (proc.stdout or "").strip()
+        if not out:
+            return LoginProbe(None, "unknown", "无法判定 CodeBuddy 版本")
+    except Exception:  # noqa: BLE001
+        return LoginProbe(None, "unknown", "无法判定 CodeBuddy 能力")
+    return LoginProbe(True, "cli status", f"CodeBuddy Code {out}（ACP 模式可用，已登录免配置）")
+
+
 _PROBE_FUNCS = {
     "claude": _probe_claude,
     "codex": _probe_codex,
@@ -209,6 +256,7 @@ _PROBE_FUNCS = {
     "copilot": _probe_copilot,
     "hermes": _probe_hermes,
     "openclaw": _probe_openclaw,
+    "codebuddy": _probe_codebuddy,
 }
 
 # 家族 → 登录引导命令（前端「未登录」弹窗展示 + 一键打开终端预置）
@@ -219,13 +267,14 @@ LOGIN_COMMANDS = {
     "copilot": "gh auth login",
     "hermes": "hermes acp --setup",
     "openclaw": "openclaw gateway status",
+    "codebuddy": "codebuddy",
 }
 
 
 def _match_family(recipe_name: str, provider: str) -> Optional[str]:
     """recipe name/provider → 探测家族（claude/codex/gemini/copilot）。"""
     blob = f"{recipe_name} {provider}".lower()
-    for family in ("claude", "codex", "gemini", "copilot", "hermes", "openclaw"):
+    for family in ("claude", "codex", "gemini", "copilot", "hermes", "openclaw", "codebuddy"):
         if family in blob:
             return family
     return None

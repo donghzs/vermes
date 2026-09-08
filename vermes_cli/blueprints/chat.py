@@ -3213,6 +3213,9 @@ _CLI_PRINT_ARGS: dict[str, tuple[list[str], str]] = {
     # Hermes 上游：-z 单轮非交互（复用本机 .hermes 登录态/模型配置）
     "hermes": (["-z", "{prompt}"],
                 "Hermes 不可用或未配置模型，请先 `hermes` 完成初始化"),
+    # CodeBuddy Code（WorkBuddy 底层）：-p 非交互 print 直连（已登录态直接可用）
+    "codebuddy": (["-p", "{prompt}", "--output-format", "text"],
+                "CodeBuddy 不可用或未登录，请先运行 `codebuddy` 完成登录"),
 }
 
 
@@ -5794,6 +5797,7 @@ async def api_agent_local_connect(request: Request):
             "gemini": "gemini", "cursor": "cursor", "copilot": "copilot",
             "goose": "goose",
             "openclaw": "openclaw",
+            "codebuddy": "codebuddy", "codebuddy code": "codebuddy",
         }
     except Exception:
         pass

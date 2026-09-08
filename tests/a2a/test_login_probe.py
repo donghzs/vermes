@@ -123,3 +123,23 @@ def test_probe_hermes_unknown(monkeypatch):
     monkeypatch.setattr(lp.shutil, "which", lambda name: None)
     p = lp.probe_login("hermes", "acp-hermes")
     assert p.logged_in is None
+
+
+def test_probe_codebuddy_no_bin(monkeypatch):
+    monkeypatch.setattr(lp, "_resolve_bin", lambda name: None)
+    p = lp.probe_login("codebuddy", "acp-codebuddy")
+    assert p.logged_in is None
+
+
+def test_probe_codebuddy_has_bin(monkeypatch):
+    def fake_run(cmd, **kw):
+        return type("R", (), {"stdout": "2.137.1\n", "stderr": ""})()
+    monkeypatch.setattr(lp, "_resolve_bin", lambda name: "/Applications/WorkBuddy.app/.../codebuddy")
+    monkeypatch.setattr(lp.subprocess, "run", fake_run)
+    p = lp.probe_login("codebuddy", "acp-codebuddy")
+    assert p.is_logged_in
+    assert "2.137.1" in p.detail
+
+
+def test_login_command_codebuddy():
+    assert lp.login_command_for("codebuddy", "acp-codebuddy") == "codebuddy"

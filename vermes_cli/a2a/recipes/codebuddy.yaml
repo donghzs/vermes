@@ -1,0 +1,39 @@
+# CodeBuddy Code（WorkBuddy 内置 / 腾讯云独立 CLI）— 双通路接入（手写核心 recipe）。
+#
+# 腾讯 CodeBuddy Code 是 WorkBuddy 桌面底层的编码 agent，同时支持：
+#   1. `--acp`：标准 ACP 模式（stdio），可登堂（authMethods 含 iOA/微信/Google/企业域）
+#   2. `-p/--print`：非交互 print 直连（已登录态可直接用）
+#
+# 本 recipe 走 ACP 登堂（transport=acp）。entry_point 取 `codebuddy`（WorkBuddy 内置
+# 的 app.asar.unpacked/cli/bin/codebuddy 已进 discovery 兜底目录；独立安装的
+# `npm i -g @tencent-ai/codebuddy-code` 也在 PATH）。args 加 `--acp` 启动 ACP 模式。
+#
+# 鉴权：本机已登录（iOA/微信等）→ ACP 握手后直接可用，Vermes 不注入 key；
+# 未登录时 authMethods 返回登录方式，前端弹框引导用户先 `codebuddy` 登录。
+name: codebuddy
+version: 1.0.0
+description: CodeBuddy Code — 腾讯智能编码 agent（WorkBuddy 底层），`--acp` 标准 ACP
+  登堂 + `-p` print 直连双通路，已登录态免配置。
+transport: acp
+provider: acp-codebuddy
+entry_point: codebuddy
+args:
+- --acp
+auth:
+  scheme: none
+  env_var: null
+capabilities:
+- code
+- search
+- refactor
+- writing
+- research
+fingerprint:
+  cli:
+  - codebuddy
+  config_dirs:
+  - .codebuddy
+  app_bundles:
+  - WorkBuddy.app
+  mcp_config: []
+install_hint: WorkBuddy.app 内置；或独立安装 https://www.codebuddy.cn/cli/

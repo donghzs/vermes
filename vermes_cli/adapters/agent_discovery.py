@@ -41,6 +41,8 @@ def _extra_cli_dirs(home: Path) -> List[Path]:
         qclaw_root / "openclaw" / "config" / "bin",  # QClaw/openclaw CLI
         home / ".config" / "openclaw" / "config" / "bin",
         home / "Library" / "Python" / "3.9" / "bin",
+        # WorkBuddy 内置 CodeBuddy CLI（app.asar.unpacked/cli/bin）
+        Path("/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/bin"),
     ]
     out: List[Path] = []
     for d in candidates:
@@ -63,6 +65,8 @@ _KNOWN_CLI_AGENTS: Dict[str, Tuple[str, List[str]]] = {
     # 同生态 agent（Hermes 上游 / Vermes 自身），有 print 直连能力
     "hermes": ("Hermes Agent", ["--version"]),
     "vermes": ("Vermes", ["--help"]),
+    # WorkBuddy 内置的腾讯 CodeBuddy Code（app.asar.unpacked/cli/bin/codebuddy）
+    "codebuddy": ("CodeBuddy Code", ["--version"]),
 }
 
 # 已知 agent 配置目录（home 相对）：存在即视为已装（home-dir based agent）
@@ -74,6 +78,7 @@ _KNOWN_AGENT_CONFIG_DIRS: Dict[str, Tuple[str, str]] = {
     ".config/aider": ("Aider", "config"),
     ".gemini": ("Gemini CLI", "config"),
     ".goose": ("Goose", "config"),
+    ".codebuddy": ("CodeBuddy Code", "config"),
 }
 
 # macOS app bundle 候选（/Applications 下）

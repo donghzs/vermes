@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+from pathlib import Path
 from typing import Any
 
 from agent.copilot_acp_client import AcpAgentTransportBase, CopilotACPClient
@@ -26,6 +28,41 @@ from .recipes.schema import RecipeConfig
 _PROVIDER_TRANSPORT_REGISTRY: dict[str, type[AcpAgentTransportBase]] = {
     "copilot-acp": CopilotACPClient,
 }
+
+
+def _resolve_entry_point(entry_point: str) -> str:
+    """把 recipe 的 entry_point 解析成可 spawn 的路径。
+
+    若 entry_point 已是绝对路径或 PATH 可命中则原样返回；否则遍历额外 CLI
+    目录（与 agent_discovery._extra_cli_dirs 一致）兜底——WorkBuddy 内置的
+    codebuddy 藏在 app.asar.unpacked/cli/bin，PATH 不含但需能 spawn。
+    """
+    ep = (entry_point or "").strip()
+    if not ep:
+        return ep
+    if ep.startswith("/") or ep.startswith("~") or "/" in ep:
+        return os.path.expanduser(ep)
+    if shutil.which(ep):
+        return ep
+    # PATH 落空 → 遍历已知额外目录直查（与 discovery 的 _extra_cli_dirs 同源）
+    home = Path.home()
+    qclaw_root = home / "Library" / "Application Support" / "QClaw"
+    extra_dirs = [
+        Path("/opt/homebrew/bin"),
+        Path("/usr/local/bin"),
+        qclaw_root / "npm-global" / "bin",
+        home / ".npm-global" / "bin",
+        home / ".local" / "bin",
+        home / ".cargo" / "bin",
+        qclaw_root / "openclaw" / "config" / "bin",
+        home / ".config" / "openclaw" / "config" / "bin",
+        Path("/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/bin"),
+    ]
+    for d in extra_dirs:
+        cand = d / ep
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    return ep
 
 
 def build_acp_transport(recipe: RecipeConfig, **kwargs: Any) -> AcpAgentTransportBase:
@@ -59,7 +96,7 @@ def build_acp_transport(recipe: RecipeConfig, **kwargs: Any) -> AcpAgentTranspor
         if not auth_value:
             auth_value = get_credential(recipe.name)
     return cls(
-        acp_command=recipe.entry_point,
+        acp_command=_resolve_entry_point(recipe.entry_point),
         acp_args=list(recipe.args),
         auth_env=auth_env,
         auth_value=auth_value,
