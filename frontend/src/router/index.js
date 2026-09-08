@@ -7,7 +7,6 @@ import ThreeDStudio from '../components/ThreeDStudio.vue'
 import SkillManager from '../components/SkillManager.vue'
 import BricksPage from '../components/BricksPage.vue'
 import BenchmarkDashboard from '../components/BenchmarkDashboard.vue'
-import KanbanBoard from '../components/KanbanBoard.vue'
 import WorkflowsPage from '../components/WorkflowsPage.vue'
 import GrowthPage from '../components/GrowthPage.vue'
 import Shenmotang from '../components/Shenmotang.vue'
@@ -27,8 +26,8 @@ const routes = [
   // 是内嵌于 App.vue 的全局抽屉（非路由），不在本次重定向范围，仍独立可用。
   { path: '/module-store', redirect: '/bricks' },
   { path: '/skill-market', redirect: '/bricks' },
-  // 蜂群协作看板：Vermes 任务图可视化（多 Agent 并行执行）
-  { path: '/kanban', component: KanbanBoard },
+  // 蜂群协作看板已收编进神魔堂（🐝 蜂群看板 tab）——保留重定向避免旧外链/书签 404
+  { path: '/kanban', redirect: '/shenmotang' },
   // A2 工作流编排：可视化 DAG 编辑器 + 触发器配置
   { path: '/workflows', component: WorkflowsPage },
   // G13：成长页 —— 成长/能力自检/我懂你 全宽呈现（原侧栏底部 EvolutionPanel + modal 提级）

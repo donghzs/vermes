@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import BotRooms from './BotRooms.vue'
 import AgentsPage from './AgentsPage.vue'
+import KanbanBoard from './KanbanBoard.vue'
 
 // ⛩️ 神魔堂：单一入口，融合「诸神会晤（群聊）」与「神魔架（请神/造神）」。
 // 用户定调（2026-09-05 董董）：群聊与智能体市场本就是神魔堂一体两面，
@@ -11,7 +12,7 @@ import AgentsPage from './AgentsPage.vue'
 const chat = useChatStore()
 const route = useRoute()
 const router = useRouter()
-const tab = ref('hall') // 'hall' = 诸神会晤 · 'roster' = 神魔架
+const tab = ref('hall') // 'hall' = 诸神会晤 · 'roster' = 神魔架 · 'swarm' = 蜂群看板
 
 // ── 全局侧栏（单聊会话列表）联动 ──
 // 神魔堂是群聊/多 agent 实验场，默认收起全局左栏让群聊区更宽裕；
@@ -77,13 +78,20 @@ onUnmounted(() => {
           :class="tab === 'roster' ? 'bg-indigo-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
           @click="tab = 'roster'"
         >🔥 神魔架</button>
+        <button
+          class="px-3 py-1.5 text-sm rounded-md transition"
+          :class="tab === 'swarm' ? 'bg-indigo-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
+          @click="tab = 'swarm'"
+          title="蜂群看板：多 Agent 任务图的工程执行视图（workspace + git + 心跳回收）"
+        >🐝 蜂群看板</button>
       </div>
     </div>
 
-    <!-- 内容：两个 tab 复用现有组件 -->
+    <!-- 内容：三个 tab 复用现有组件 -->
     <div class="flex-1 min-h-0">
       <BotRooms v-show="tab === 'hall'" class="h-full" />
       <AgentsPage v-show="tab === 'roster'" class="h-full" />
+      <KanbanBoard v-show="tab === 'swarm'" class="h-full" />
     </div>
   </div>
 </template>
