@@ -146,11 +146,36 @@ def _probe_copilot() -> LoginProbe:
     return LoginProbe(None, "unknown", "无法判定 GitHub Copilot 登录态")
 
 
+def _probe_hermes() -> LoginProbe:
+    """Hermes 鉴权 = ~/.hermes/.env 的模型/凭据配置（custom runtime credentials）。
+
+    已初始化（.env 存在且 hermes status 报告了 model）→ 免配置登堂；
+    否则引导 `hermes acp --setup`。
+    """
+    if _file_exists(".hermes/.env"):
+        return LoginProbe(True, "credential file", "~/.hermes/.env（已配置模型/凭据）")
+    if shutil.which("hermes") is not None:
+        try:
+            proc = subprocess.run(
+                ["hermes", "status"], capture_output=True, text=True, timeout=15, check=False,
+            )
+            out = (proc.stdout or "") + (proc.stderr or "")
+            low = out.lower()
+            if "model:" in low and (".env file" in low or "✓" in out):
+                return LoginProbe(True, "cli status", "hermes status 报告已配置模型")
+            if "not set" in low and ".env" in low:
+                return LoginProbe(False, "cli status", "hermes 未初始化模型/凭据")
+        except Exception:  # noqa: BLE001
+            pass
+    return LoginProbe(None, "unknown", "无法判定 Hermes 初始化态")
+
+
 _PROBE_FUNCS = {
     "claude": _probe_claude,
     "codex": _probe_codex,
     "gemini": _probe_gemini,
     "copilot": _probe_copilot,
+    "hermes": _probe_hermes,
 }
 
 # 家族 → 登录引导命令（前端「未登录」弹窗展示 + 一键打开终端预置）
@@ -159,13 +184,14 @@ LOGIN_COMMANDS = {
     "codex": "codex login",
     "gemini": "gemini login",
     "copilot": "gh auth login",
+    "hermes": "hermes acp --setup",
 }
 
 
 def _match_family(recipe_name: str, provider: str) -> Optional[str]:
     """recipe name/provider → 探测家族（claude/codex/gemini/copilot）。"""
     blob = f"{recipe_name} {provider}".lower()
-    for family in ("claude", "codex", "gemini", "copilot"):
+    for family in ("claude", "codex", "gemini", "copilot", "hermes"):
         if family in blob:
             return family
     return None

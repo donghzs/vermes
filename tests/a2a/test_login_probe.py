@@ -90,4 +90,18 @@ def test_login_command_for():
     assert lp.login_command_for("codex-acp", "acp-codex") == "codex login"
     assert lp.login_command_for("gemini", "acp-gemini") == "gemini login"
     assert lp.login_command_for("copilot", "copilot-acp") == "gh auth login"
+    assert lp.login_command_for("hermes", "acp-hermes") == "hermes acp --setup"
     assert lp.login_command_for("qwen-code", "acp-qwen-code") == ""
+
+
+def test_probe_hermes_env_file(monkeypatch):
+    monkeypatch.setattr(lp, "_file_exists", lambda path: path == ".hermes/.env")
+    p = lp.probe_login("hermes", "acp-hermes")
+    assert p.is_logged_in
+
+
+def test_probe_hermes_unknown(monkeypatch):
+    monkeypatch.setattr(lp, "_file_exists", lambda path: False)
+    monkeypatch.setattr(lp.shutil, "which", lambda name: None)
+    p = lp.probe_login("hermes", "acp-hermes")
+    assert p.logged_in is None

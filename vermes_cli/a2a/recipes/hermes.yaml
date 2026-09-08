@@ -1,0 +1,33 @@
+# Hermes Agent（上游）— native ACP mode via `hermes acp`（手写核心 recipe）。
+# 与 copilot 同类：原生支持 ACP，直接 spawn `hermes acp` 走 stdio JSON-RPC，
+# 无需 npx 适配器包。
+# 鉴权：hermes 用「custom runtime credentials」——即 ~/.hermes/.env 里已配好的
+# provider/model（hermes status 可见），Vermes 无需注入 API key（env_var: null）。
+# 未初始化时（.env 缺失/未配模型）才引导用户 `hermes acp --setup`。
+name: hermes
+version: 1.0.0
+description: Hermes Agent (upstream) — native ACP agent spawned via `hermes acp`
+  stdio. 复用本机 ~/.hermes 的模型/凭据配置，异构 agent 直登神魔堂。
+transport: acp
+provider: acp-hermes
+entry_point: hermes
+args:
+- acp
+auth:
+  scheme: none
+  env_var: null
+capabilities:
+- code
+- search
+- refactor
+- writing
+- research
+fingerprint:
+  cli:
+  - hermes
+  config_dirs:
+  - .hermes
+  app_bundles: []
+  mcp_config: []
+install_hint: https://github.com/agentics-org/hermes-agent （Hermes Agent：pip install
+  hermes-agent，或 git 装到 ~/.hermes/hermes-agent）
