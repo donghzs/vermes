@@ -2581,6 +2581,21 @@ class SessionDB:
             )
         self._execute_write(_do)
 
+    def set_org_task_model_override(self, task_id: str, value: Optional[str]) -> None:
+        """设置/清除任务级 LLM 覆盖（P0-2/D2）。
+
+        value=None 或空串 = 清除覆盖（回到执行者默认模型）；
+        否则覆盖为指定 model id（仅 native/CLI 通路生效，ACP 自持）。
+        """
+        val = (value or "").strip() if value is not None else ""
+        params = [val or None, time.time(), task_id]
+        def _do(conn):
+            conn.execute(
+                "UPDATE org_tasks SET model_override = ?, updated_at = ? WHERE id = ?",
+                params,
+            )
+        self._execute_write(_do)
+
     def get_org_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """取任务详情（JSON 列解析回 dict/list）。"""
         try:

@@ -779,9 +779,50 @@ def test_secretary_org_flow(env):
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
 
+def test_org_task_patch_model_override(env):
+    """D2 回归守卫：PATCH /api/bot/rooms/{id}/org/tasks/{tid} 设置/清除任务级 LLM 覆盖。"""
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    db.seed_default_profiles()
+    # 直接建一个房间 + 组织任务（不走 LLM 拆解）
+    r = client.post("/api/bot/rooms", json={"name": "D2测试房"})
+    room_id = r.json().get("room_id")
+    check("create room ok", r.status_code == 200 and bool(room_id), r.text[:200])
+    db2 = vermes_state.SessionDB(env.db_path)
+    tid = db2.create_org_task(room_id, "测试任务", "老板指令")
+    db2.close()
+    check("task created", bool(tid), tid)
+
+    # 设覆盖
+    r = client.patch(f"/api/bot/rooms/{room_id}/org/tasks/{tid}", json={"model_override": "deepseek-v4-pro"})
+    check("patch set ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    db3 = vermes_state.SessionDB(env.db_path)
+    t = db3.get_org_task(tid)
+    check("override persisted", t and t.get("model_override") == "deepseek-v4-pro", str(t and t.get("model_override")))
+    db3.close()
+
+    # 清除覆盖
+    r = client.patch(f"/api/bot/rooms/{room_id}/org/tasks/{tid}", json={"model_override": None})
+    check("patch clear ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    db4 = vermes_state.SessionDB(env.db_path)
+    t2 = db4.get_org_task(tid)
+    check("override cleared", t2 and t2.get("model_override") in (None, ""), str(t2 and t2.get("model_override")))
+    db4.close()
+
+    # 跨房间校验：错误 room_id 应 404（task not found）
+    r = client.patch(f"/api/bot/rooms/wrong_room/org/tasks/{tid}", json={"model_override": "x"})
+    check("cross-room rejected", r.json().get("ok") is False, r.text[:200])
+
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
 def test_native_upsert_marks_capability_source_official(env):
-    """P2-a 回归守卫：造神（POST /api/agents/native）落库 capability_source=official，
-    而非塌缩成 unknown——用户手写能力即权威真值。"""
     results = []
     def check(name, cond, extra=""):
         results.append((name, cond))

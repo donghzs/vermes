@@ -132,12 +132,56 @@ const orgBoard = ref({
   rejectComment: '',  // 打回意见
 })
 
+// ── 任务级 LLM 覆盖（D2）：模型下拉选项（复用 /model/options） ──
+const modelOptions = ref([])   // [{ value: "provider/model", label: "显示名" }]
+const taskModelDirty = ref(null)  // 正在保存覆盖的任务 id
+
+async function loadModelOptions() {
+  try {
+    const data = await api.getModels()
+    const rows = (data && data.providers) || []
+    const opts = []
+    for (const p of rows) {
+      const cur = p.is_current ? ' · 当前' : ''
+      for (const m of (p.models || [])) {
+        opts.push({ value: `${p.slug}/${m}`, label: `${p.name} / ${m}${cur}` })
+      }
+    }
+    modelOptions.value = opts
+  } catch (e) {
+    console.warn('[BotRooms] 加载模型列表失败', e)
+    modelOptions.value = []
+  }
+}
+
+async function setTaskModel(t, val) {
+  if (!bot.currentRoomId || taskModelDirty.value) return
+  const override = val || null
+  taskModelDirty.value = t.id
+  try {
+    const res = await api.patchBotRoomOrgTask(bot.currentRoomId, t.id, { model_override: override })
+    if (res && res.ok) {
+      t.model_override = override || null
+      toast(override ? '已设置任务级模型' : '已恢复执行者默认模型')
+    } else {
+      toast((res && res.error) || '设置失败')
+      await loadOrgBoard()
+    }
+  } catch (e) {
+    toast('设置失败，请重试')
+    await loadOrgBoard()
+  } finally {
+    taskModelDirty.value = null
+  }
+}
+
 const ORG_TYPE_LABELS = { dispatcher: '分派', executor: '执行', auditor: '审计', aggregator: '汇总' }
 
 async function openOrgBoard() {
   orgBoard.value.open = true
   await loadOrgBoard()
   startOrgPolling()
+  if (!modelOptions.value.length) loadModelOptions()
 }
 
 function closeOrgBoard() {
@@ -1220,6 +1264,23 @@ onUnmounted(() => {
                   <div>
                     <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">老板指令</div>
                     <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ t.brief }}</div>
+                  </div>
+
+                  <!-- 任务级 LLM 覆盖（D2）：只对 native/CLI 执行者生效，ACP 模型自持 -->
+                  <div class="rounded-lg border border-dashed border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-800/60 p-2">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-xs font-semibold text-gray-500 dark:text-gray-400">🎛️ 任务级模型覆盖</span>
+                      <span v-if="taskModelDirty === t.id" class="text-[10px] text-indigo-500">保存中…</span>
+                    </div>
+                    <select
+                      :value="t.model_override || ''"
+                      @change="setTaskModel(t, $event.target.value)"
+                      class="w-full px-2 py-1.5 text-xs rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500"
+                    >
+                      <option value="">用执行者默认模型</option>
+                      <option v-for="m in modelOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
+                    </select>
+                    <p class="text-[10px] text-gray-400 mt-1">仅对原生/CLI 执行者生效；登堂的 ACP agent 模型自持，此覆盖不作用于它们。</p>
                   </div>
 
                   <!-- 子任务（plan） -->

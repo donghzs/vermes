@@ -4602,7 +4602,37 @@ async def bot_room_org_task_get(request: Request, room_id: str, task_id: str):
         return {"ok": False, "error": str(e)}
 
 
-def _build_config_diff(target_path: str, new_content: str) -> str:
+async def bot_room_org_task_patch(request: Request, room_id: str, task_id: str):
+    """PATCH /api/bot/rooms/{room_id}/org/tasks/{task_id} —— 任务级 LLM 覆盖（D2）。
+
+    body: {model_override: str | null}。null/空串 = 清除覆盖（回到执行者默认模型）；
+    否则覆盖为指定 model id（仅 native/CLI 通路生效，ACP agent 模型自持、运行时忽略）。
+    覆盖作用于「任务级」，对任务内所有 native/CLI 子任务执行者生效。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    task_id = (task_id or "").strip()
+    if not room_id or not task_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id and task_id required"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if "model_override" not in body:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "model_override field required"})
+    try:
+        db = _bot_room_db()
+        try:
+            task = db.get_org_task(task_id)
+            if task is None or task.get("room_id") != room_id:
+                return {"ok": False, "error": "task not found"}
+            db.set_org_task_model_override(task_id, body.get("model_override"))
+        finally:
+            db.close()
+        return {"ok": True, "task_id": task_id}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
     """Unified diff of new_content vs current config file (for approval UI)."""
     import difflib
     import os
@@ -6318,6 +6348,12 @@ def register_to(app):
             bot_room_org_task_get,
             methods=["GET"],
             name="bot_room_org_task_get",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/org/tasks/{task_id}",
+            bot_room_org_task_patch,
+            methods=["PATCH"],
+            name="bot_room_org_task_patch",
         )
         app.add_api_route(
             "/api/bot/org/templates",

@@ -666,6 +666,9 @@ const api = {
   getBotRoomOrgTask(roomId, taskId) {
     return this.get(`/bot/rooms/${encodeURIComponent(roomId)}/org/tasks/${encodeURIComponent(taskId)}`)
   },
+  patchBotRoomOrgTask(roomId, taskId, body) {
+    return this.patch(`/bot/rooms/${encodeURIComponent(roomId)}/org/tasks/${encodeURIComponent(taskId)}`, body)
+  },
   getBotOrgTemplates() {
     return this.get('/bot/org/templates')
   },
