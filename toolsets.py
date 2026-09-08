@@ -59,6 +59,8 @@ _vermes_CORE_TOOLS = [
     "execute_code", "delegate_task",
     # Cronjob management
     "cronjob",
+    # 神魔堂调度（⑭ 单聊/移动渠道 → 秘书分身 → 多 Agent 协作编排）
+    "shenmotang",
     # Cross-platform messaging (gated on gateway running via check_fn)
     "send_message",
     # Home Assistant smart home control (gated on HASS_TOKEN via check_fn)
@@ -116,6 +118,12 @@ TOOLSETS = {
     "vision": {
         "description": "Image analysis and vision tools",
         "tools": ["vision_analyze"],
+        "includes": []
+    },
+
+    "shenmotang": {
+        "description": "神魔堂多 Agent 协作调度（⑭ 单聊/移动渠道 → 秘书分身 → 组队/造神/拉群/派活/交付）",
+        "tools": ["shenmotang"],
         "includes": []
     },
 
