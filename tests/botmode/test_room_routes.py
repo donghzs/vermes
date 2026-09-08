@@ -778,6 +778,38 @@ def test_secretary_org_flow(env):
     failed = [n for n, c in results if not c]
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
+
+def test_native_upsert_marks_capability_source_official(env):
+    """P2-a 回归守卫：造神（POST /api/agents/native）落库 capability_source=official，
+    而非塌缩成 unknown——用户手写能力即权威真值。"""
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    db.seed_default_profiles()
+    db.close()
+
+    r = client.post("/api/agents/native", json={
+        "name": "财务分析师", "description": "深扒财报",
+        "provider": "deepseek", "model": "deepseek-chat",
+        "capability_tags": ["research", "writing"],
+    })
+    check("upsert ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    pid = r.json().get("id")
+    check("id returned", bool(pid), r.text[:200])
+
+    db2 = vermes_state.SessionDB(env.db_path)
+    p = db2.get_agent_profile(pid)
+    db2.close()
+    check("capability_tags persisted", p and p.get("capability_tags") == ["research", "writing"], str(p))
+    check("capability_source=official", p and p.get("capability_source") == "official",
+          f"source={p and p.get('capability_source')!r}")
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
 def test_collab_room_relay(env):
     results = run_collab(env)
     failed = [n for n, c in results if not c]

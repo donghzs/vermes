@@ -201,7 +201,13 @@ def _exec_capability_line(p: Dict) -> str:
     """
     name = p.get("name") or p.get("id") or "?"
     caps = p.get("capability_tags") or []
-    cap_str = f"能力(推测)：{', '.join(caps)}" if caps else "能力：未标注"
+    src = p.get("capability_source") or "unknown"
+    if caps and src != "official":
+        cap_str = f"能力(推测)：{', '.join(caps)}"
+    elif caps:
+        cap_str = f"能力：{', '.join(caps)}"
+    else:
+        cap_str = "能力：未标注"
     desc = (p.get("description") or "").strip()
     desc_str = f"｜简介：{desc[:60]}" if desc else ""
     return f"{name}({cap_str}{desc_str})"
@@ -214,7 +220,13 @@ def build_candidate_list(profiles: Dict[str, Dict]) -> str:
     rows = []
     for pid, p in profiles.items():
         caps = p.get('capability_tags') or []
-        cap_str = f"能力(推测)：{', '.join(caps)}" if caps else "能力：未标注"
+        src = p.get('capability_source') or 'unknown'
+        if caps and src != 'official':
+            cap_str = f"能力(推测)：{', '.join(caps)}"
+        elif caps:
+            cap_str = f"能力：{', '.join(caps)}"
+        else:
+            cap_str = "能力：未标注"
         desc = (p.get('description') or '').strip()
         desc_str = f"｜简介：{desc[:60]}" if desc else ""
         rows.append(

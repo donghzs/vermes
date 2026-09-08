@@ -34,6 +34,28 @@ def test_exec_capability_line_unlabeled_is_honest():
     assert "能力：未标注" in line
 
 
+def test_exec_capability_line_official_not_marked_inferred():
+    """official（用户手写/手工钉死）→ 直显『能力：X』，不标(推测)。"""
+    p = {"name": "财务分析师", "capability_tags": ["research", "writing"],
+         "capability_source": "official",
+         "description": "深扒财报"}
+    line = oe._exec_capability_line(p)
+    assert "能力：research, writing" in line
+    assert "(推测)" not in line, "official 真值不应标(推测)"
+
+
+def test_build_candidate_list_official_not_marked_inferred():
+    """build_candidate_list：official 候选直显能力，不标(推测)。"""
+    profiles = {
+        "财务": {"name": "财务分析师", "transport": "native", "provider": "p",
+                 "model": "m", "capability_tags": ["research"],
+                 "capability_source": "official"},
+    }
+    out = oe.build_candidate_list(profiles)
+    assert "能力：research" in out
+    assert "(推测)" not in out
+
+
 def test_build_candidate_list_marks_inferred():
     """build_candidate_list（秘书拉人）：候选行标注(推测) 且带简介。"""
     profiles = {

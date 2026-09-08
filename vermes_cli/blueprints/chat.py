@@ -39,9 +39,6 @@ from vermes_cli.blueprints.agent_cache import (
 from vermes_state import SessionDB
 from vermes_cli.a2a.recipes.loader import find_recipe, load_all_recipes, RECIPES_DIR
 from vermes_cli.a2a.recipes.schema import CAPABILITY_VOCAB, CAPABILITY_LABELS
-from vermes_cli.a2a.recipes.schema import CAPABILITY_VOCAB, CAPABILITY_LABELS
-from vermes_cli.a2a.recipes.schema import CAPABILITY_VOCAB, CAPABILITY_LABELS
-from vermes_cli.a2a.recipes.schema import CAPABILITY_VOCAB, CAPABILITY_LABELS
 from vermes_cli.a2a.credentials import save_credential
 from vermes_cli.a2a.transport import build_acp_transport
 from vermes_cli.botmode import (
@@ -5729,6 +5726,7 @@ async def api_native_agent_upsert(request: Request):
                 "model": body.get("model", "") or "",
                 "toolsets": body.get("toolsets", []) or [],
                 "capability_tags": body.get("capability_tags", []) or [],
+                "capability_source": "official",
                 "avatar_seed": body.get("avatar_seed", pid) or pid,
                 "hue": int(body.get("hue", 0) or 0),
                 "is_default": int(body.get("is_default", 0) or 0),
