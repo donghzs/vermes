@@ -19,7 +19,8 @@ provider: acp-agoragentic-acp
 auth:
   scheme: apikey
   env_var: null
-capabilities: [code, search, refactor, writing, research]
+capabilities: [code, planning, refactor, research, search]
+capability_source: inferred
 fingerprint:
   cli:
   - npx

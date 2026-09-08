@@ -76,6 +76,7 @@ def test_p0_1_dispatcher_prompt_carries_capability_profile():
     assert pm_calls, "dispatcher 未被调用"
     pm_inst = pm_calls[0][1]
     assert "能力画像" in pm_inst, "分派指令缺少能力画像段"
+    assert "能力(推测)" in pm_inst, "推断标签未标注(推测)，LLM 可能过度信任雷同标签"
     assert "code" in pm_inst and "refactor" in pm_inst, "eng1 能力标签未透传"
     assert "writing" in pm_inst and "research" in pm_inst, "eng2 能力标签未透传"
 

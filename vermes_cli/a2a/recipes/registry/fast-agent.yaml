@@ -18,7 +18,8 @@ provider: acp-fast-agent
 auth:
   scheme: apikey
   env_var: null
-capabilities: [code, refactor, search, devops, research]
+capabilities: [code, devops, edit, refactor, search]
+capability_source: inferred
 fingerprint:
   cli:
   - uvx

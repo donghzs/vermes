@@ -42,6 +42,13 @@ class RecipeConfig:
     args: list[str] = field(default_factory=list)
     auth: RecipeAuth = field(default_factory=RecipeAuth)
     capabilities: list[str] = field(default_factory=list)
+    # 能力标签的来源标记（神魔堂大升级·诚实标注 2026-09-08）：
+    #   "official"  —— 用户/社区手工钉死的真值标签（如手写 6 条核心 recipe）
+    #   "inferred"  —— 由描述启发式推断（registry 38 条，上游无 capabilities 字段）
+    #   "unknown"   —— 未标注（generator 默认留空，不瞎编）
+    # 该标记用于提示 dispatcher LLM：inferred/unknown 的标签是「推测」而非权威，
+    # 分派时还应结合 description 判断，避免被雷同标签误导。
+    capability_source: str = "inferred"
     fingerprint: RecipeFingerprint = field(default_factory=RecipeFingerprint)
     provider: str | None = None
     # 傻瓜式安装引导（神魔堂公开版收口 2026-09-07）：用户电脑没装对应 CLI 时，
@@ -106,6 +113,7 @@ class RecipeConfig:
                 fallback_settings=(auth_raw.get("fallback_settings") or None),
             ),
             capabilities=list(raw_caps),
+            capability_source=str(data.get("capability_source") or "inferred").strip(),
             fingerprint=RecipeFingerprint(
                 cli=list(fp_raw.get("cli") or []),
                 config_dirs=list(fp_raw.get("config_dirs") or []),

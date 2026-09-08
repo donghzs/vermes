@@ -17,7 +17,8 @@ provider: acp-qoder
 auth:
   scheme: apikey
   env_var: null
-capabilities: [code, refactor, search]
+capabilities: [code, planning, refactor, search]
+capability_source: inferred
 fingerprint:
   cli:
   - npx

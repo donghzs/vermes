@@ -22,6 +22,7 @@ capabilities:
 - refactor
 - writing
 - research
+capability_source: official
 fingerprint:
   cli:
   - openclaw

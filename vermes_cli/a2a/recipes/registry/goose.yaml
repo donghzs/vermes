@@ -18,7 +18,8 @@ provider: acp-goose
 auth:
   scheme: apikey
   env_var: null
-capabilities: [code, refactor, search, research]
+capabilities: [code, refactor, search]
+capability_source: inferred
 fingerprint:
   cli: []
 install_hint: https://block.github.io/goose/

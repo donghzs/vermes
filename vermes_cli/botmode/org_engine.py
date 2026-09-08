@@ -192,17 +192,36 @@ def parse_secretary_plan(raw: str, candidates: Dict[str, Dict]) -> Dict:
     return out
 
 
+def _exec_capability_line(p: Dict) -> str:
+    """单执行者的「能力(推测)+简介」画像行，供 dispatcher LLM 分派参考。
+
+    标签来自 recipe.capabilities——registry 38 条为描述推断值（capability_source
+    = inferred），雷同度高，故统一标注「(推测)」并附简介，让 LLM 结合简介做真实区分，
+    而非盲信雷同标签。详见 schema.RecipeConfig.capability_source。
+    """
+    name = p.get("name") or p.get("id") or "?"
+    caps = p.get("capability_tags") or []
+    cap_str = f"能力(推测)：{', '.join(caps)}" if caps else "能力：未标注"
+    desc = (p.get("description") or "").strip()
+    desc_str = f"｜简介：{desc[:60]}" if desc else ""
+    return f"{name}({cap_str}{desc_str})"
+
+
 def build_candidate_list(profiles: Dict[str, Dict]) -> str:
     """候选人员清单文本（供秘书设计时挑选；profile 含 provider/model/transport）。"""
     if not profiles:
         return "(暂无其他 agent 可调用——若群内只有你，可如实说明无法组队)"
     rows = []
     for pid, p in profiles.items():
+        caps = p.get('capability_tags') or []
+        cap_str = f"能力(推测)：{', '.join(caps)}" if caps else "能力：未标注"
+        desc = (p.get('description') or '').strip()
+        desc_str = f"｜简介：{desc[:60]}" if desc else ""
         rows.append(
             f"{pid}: {p.get('name') or pid} | "
             f"{p.get('transport') or 'native'} | "
             f"{p.get('provider') or '?'}/{(p.get('model') or '?')} | "
-            f"能力：{', '.join(p.get('capability_tags') or []) or '未标注'}"
+            f"{cap_str}{desc_str}"
         )
     return "\n".join(rows)
 
@@ -328,9 +347,11 @@ async def run_org_task(
         # P0-1 能力画像：把每个执行者的 capability_tags 透传给分派 LLM，
         # 让它按能力匹配最合适者——Vermes 是中介层，语义决策留在 LLM 手里，
         # 代码只给信号 + 白名单兜底（_parse_plan 的 assignee 校验）。
+        # 大升级修正(2026-09-08)：标签为「推测」——registry 38 条由描述推断，
+        # 雷同度高，故同时透传 description 供 LLM 做真实区分，并标注(推测)防过度信任。
         exec_profile = "、".join(
-            f"{r['name']}(能力：{', '.join(p.get('capability_tags') or []) or '未标注'})"
-            for r, p in exec_roles
+            _exec_capability_line(p)
+            for _, p in exec_roles
         ) or "（无执行者）"
         inst = (
             f"[组织流水线 · 分派] 你是{role['name']}。老板任务：{task.get('brief', '')}\n"

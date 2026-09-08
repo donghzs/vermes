@@ -19,7 +19,12 @@ agent 批量 dump 成 recipe，作为 P2 起步器——用户拿到的不是 39
 - 同时含 binary+npx 的 agent（kilo / sigit）：优先 npx（更便携）。
 - registry **无 auth 字段**（"auth" 命中只是 ``authors`` 子串误报），故 auth
   留空，由「登堂」授权弹窗按 agent 要求填。
-- registry **无 capabilities**，留空（诚实，不瞎编）。
+- registry **无 capabilities 字段**——上游不提供结构化能力标签。为打通「能力匹配」总开关，
+  本脚本按 agent 名称 + description 做**轻量启发式推断**（基线 code/search/refactor，
+  再按写作/研究/devops/规划/推理/编辑关键词加区分项），并显式标
+  ``capability_source: inferred``。标签是「推测」非权威——dispatcher LLM 分派时还应结合
+  description 判断，不可盲信雷同标签（详见 schema.RecipeConfig.capability_source）。
+  这是「诚实留空」立场的演进：空着总开关关死（6→44 全不可见），推断着总开关开但标注推测。
 - 手写 3 条的 name（copilot / codex-acp / claude-agent-acp）会被跳过，避免覆盖
   用户定版；其余以 registry ``id`` 为 recipe name，provider = ``acp-<id>``
   （保证走 T0 泛型路由 ``acp-*`` → AcpAgentTransportBase）。
@@ -108,6 +113,35 @@ def _build_spawn(agent: dict[str, Any]) -> tuple[str, list[str], str]:
     return "", [], "unknown"
 
 
+def infer_capabilities(name: str, description: str) -> list[str]:
+    """按 agent 名称 + description 做的轻量能力推断（启发式，非权威）。
+
+    ACP Registry 本就编码 agent 主导，故基线恒为 code/search/refactor（真值）；
+    仅当描述有清晰信号时才加写作/研究/devops/规划/推理/编辑等区分项。生成的 recipe
+    一律 ``capability_source: inferred``，提示 dispatcher LLM 这些是推测、需结合简介判断。
+    """
+    s = (name + " " + (description or "")).lower()
+    caps = {"code", "search", "refactor"}
+    if any(k in s for k in ["write", "写作", "doc", "文档", "content", "文章", "文案",
+                            "general purpose", "general-purpose"]):
+        caps.add("writing")
+    if any(k in s for k in ["research", "研究", "检索", "分析", "report", "browse", "marketplace"]):
+        caps.add("research")
+    if any(k in s for k in ["devops", "deploy", "部署", "ci/cd", "infra", "运维",
+                            "kubernetes", "k8s", "docker", "build agents", "rust partner",
+                            "devops agent"]):
+        caps.add("devops")
+    if any(k in s for k in ["plan", "规划", "architect", "架构", "agentic", "design", "设计"]):
+        caps.add("planning")
+    if name in {"claude-acp", "gemini", "glm-acp-agent", "deepagents"} or any(
+        k in s for k in ["reason", "推理", "think", "logic"]
+    ):
+        caps.add("reasoning")
+    if name == "cursor" or any(k in s for k in ["editor", "ide"]):
+        caps.add("edit")
+    return sorted(caps)
+
+
 def _recipe_dict(agent: dict[str, Any], reg_version: str) -> dict[str, Any]:
     entry_point, args, dist_type = _build_spawn(agent)
     description = (agent.get("description") or "").strip()
@@ -122,7 +156,8 @@ def _recipe_dict(agent: dict[str, Any], reg_version: str) -> dict[str, Any]:
         "args": args,
         "provider": f"acp-{agent['id']}",
         "auth": {"scheme": "apikey", "env_var": None},
-        "capabilities": [],
+        "capabilities": infer_capabilities(agent["id"], description),
+        "capability_source": "inferred",
         # 傻瓜式安装引导：把 ACP Registry 的官网/repo 带进 recipe，前端登堂
         # 失败（未装 CLI）时可一键跳转官网下载（神魔堂公开版收口 2026-09-07）。
         "install_hint": (agent.get("website") or agent.get("repository") or "") or None,

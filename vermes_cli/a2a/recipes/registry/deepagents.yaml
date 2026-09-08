@@ -17,7 +17,8 @@ provider: acp-deepagents
 auth:
   scheme: apikey
   env_var: null
-capabilities: [code, search, refactor, writing, research]
+capabilities: [code, reasoning, refactor, search, writing]
+capability_source: inferred
 fingerprint:
   cli:
   - npx

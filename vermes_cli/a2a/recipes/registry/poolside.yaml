@@ -17,7 +17,8 @@ provider: acp-poolside
 auth:
   scheme: apikey
   env_var: null
-capabilities: [code, refactor, search]
+capabilities: [code, edit, refactor, search]
+capability_source: inferred
 fingerprint:
   cli: []
 install_hint: https://poolside.ai

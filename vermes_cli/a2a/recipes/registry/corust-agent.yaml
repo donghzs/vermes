@@ -17,7 +17,8 @@ provider: acp-corust-agent
 auth:
   scheme: apikey
   env_var: null
-capabilities: [code, refactor, search, devops]
+capabilities: [code, devops, refactor, search]
+capability_source: inferred
 fingerprint:
   cli: []
 install_hint: https://corust.ai/

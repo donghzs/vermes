@@ -20,6 +20,7 @@ auth:
   scheme: apikey
   env_var: null
 capabilities: [code, refactor, search]
+capability_source: inferred
 fingerprint:
   cli: []
 install_hint: https://github.com/vinhnx/VTCode/blob/main/docs/guides/zed-acp.md
