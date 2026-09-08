@@ -16,7 +16,7 @@ provider: acp-claude-acp
 auth:
   scheme: apikey
   env_var: null
-capabilities: []
+capabilities: [code, refactor, search, writing]
 fingerprint:
   cli:
   - npx

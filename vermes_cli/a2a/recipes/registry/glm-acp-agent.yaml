@@ -19,7 +19,7 @@ provider: acp-glm-acp-agent
 auth:
   scheme: apikey
   env_var: null
-capabilities: []
+capabilities: [code, refactor, search]
 fingerprint:
   cli:
   - npx

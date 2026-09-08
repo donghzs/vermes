@@ -16,7 +16,7 @@ provider: acp-pi-acp
 auth:
   scheme: apikey
   env_var: null
-capabilities: []
+capabilities: [code, refactor, search]
 fingerprint:
   cli:
   - npx

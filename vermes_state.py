@@ -724,6 +724,7 @@ CREATE TABLE IF NOT EXISTS org_tasks (
     audit_log TEXT DEFAULT '[]',
     final_output TEXT DEFAULT '',
     current_round INTEGER DEFAULT 1,
+    model_override TEXT,
     created_at REAL,
     updated_at REAL
 );
@@ -2517,8 +2518,13 @@ class SessionDB:
         } for r in rows]
 
     def create_org_task(self, room_id: str, title: str, brief: str,
-                        task_id: Optional[str] = None) -> str:
-        """创建任务（状态 dispatched，待拆解）。返回任务 id。"""
+                        task_id: Optional[str] = None,
+                        model_override: Optional[str] = None) -> str:
+        """创建任务（状态 dispatched，待拆解）。返回任务 id。
+
+        model_override：任务级 LLM 覆盖（P0-2，仅 native/CLI 通路生效；
+        ACP agent 模型由自身管控，覆盖被忽略——见 org_engine.run_org_task）。
+        """
         import uuid as _uuid
         tid = task_id or f"t_{int(time.time())}_{_uuid.uuid4().hex[:6]}"
         def _do(conn):
@@ -2526,9 +2532,9 @@ class SessionDB:
             conn.execute(
                 "INSERT INTO org_tasks "
                 "(id, room_id, title, brief, status, plan, artifacts, "
-                " audit_log, final_output, current_round, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, 'dispatched', '[]', '{}', '[]', '', 1, ?, ?)",
-                (tid, room_id, title, brief, now, now),
+                " audit_log, final_output, current_round, model_override, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, 'dispatched', '[]', '{}', '[]', '', 1, ?, ?, ?)",
+                (tid, room_id, title, brief, model_override, now, now),
             )
         self._execute_write(_do)
         return tid
@@ -2563,7 +2569,8 @@ class SessionDB:
             with self._lock:
                 row = self._conn.execute(
                     "SELECT id, room_id, title, brief, status, plan, artifacts, "
-                    "audit_log, final_output, current_round, created_at, updated_at "
+                    "audit_log, final_output, current_round, model_override, "
+                    "created_at, updated_at "
                     "FROM org_tasks WHERE id = ?",
                     (task_id,),
                 ).fetchone()
@@ -2584,7 +2591,8 @@ class SessionDB:
             "plan": _loads(row[5], []), "artifacts": _loads(row[6], {}),
             "audit_log": _loads(row[7], []), "final_output": row[8] or "",
             "current_round": row[9] or 1,
-            "created_at": row[10], "updated_at": row[11],
+            "model_override": row[10],
+            "created_at": row[11], "updated_at": row[12],
         }
 
     def list_org_tasks(self, room_id: str) -> List[Dict[str, Any]]:

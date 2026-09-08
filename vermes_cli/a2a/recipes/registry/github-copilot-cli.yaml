@@ -18,7 +18,7 @@ provider: acp-github-copilot-cli
 auth:
   scheme: apikey
   env_var: null
-capabilities: []
+capabilities: [code, refactor, search]
 fingerprint:
   cli:
   - npx

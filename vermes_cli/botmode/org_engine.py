@@ -201,7 +201,8 @@ def build_candidate_list(profiles: Dict[str, Dict]) -> str:
         rows.append(
             f"{pid}: {p.get('name') or pid} | "
             f"{p.get('transport') or 'native'} | "
-            f"{p.get('provider') or '?'}/{(p.get('model') or '?')}"
+            f"{p.get('provider') or '?'}/{(p.get('model') or '?')} | "
+            f"能力：{', '.join(p.get('capability_tags') or []) or '未标注'}"
         )
     return "\n".join(rows)
 
@@ -324,10 +325,19 @@ async def run_org_task(
     if dispatcher_roles:
         role, prof = dispatcher_roles[0]
         exec_names = "、".join(r["name"] for r, _ in exec_roles) or "（无执行者）"
+        # P0-1 能力画像：把每个执行者的 capability_tags 透传给分派 LLM，
+        # 让它按能力匹配最合适者——Vermes 是中介层，语义决策留在 LLM 手里，
+        # 代码只给信号 + 白名单兜底（_parse_plan 的 assignee 校验）。
+        exec_profile = "、".join(
+            f"{r['name']}(能力：{', '.join(p.get('capability_tags') or []) or '未标注'})"
+            for r, p in exec_roles
+        ) or "（无执行者）"
         inst = (
             f"[组织流水线 · 分派] 你是{role['name']}。老板任务：{task.get('brief', '')}\n"
             f"团队执行者：{exec_names}\n"
-            f"请把任务拆解为 1-{max(1, len(exec_roles))} 个明确子任务，逐个分配给执行者。\n"
+            f"各执行者能力画像：{exec_profile}\n"
+            f"请把任务拆解为 1-{max(1, len(exec_roles))} 个明确子任务，逐个分配给执行者；"
+            f"优先把子任务派给能力画像最匹配的执行者。\n"
             f"严格按以下 JSON 数组格式输出（不要多余文字）：\n"
             f'[{{"assignee": "<执行者profile_id>", "instruction": "<给该执行者的明确指令>", '
             f'"acceptance": "<可验收标准>"}}]\n'
@@ -375,11 +385,15 @@ async def run_org_task(
 
     async def _exec_audit_chain(sub: Dict, sub_idx: int) -> None:
         """一条子任务的执行→审计链（独立轮次，打回只重做本子任务）。"""
-        prof = ctx.profiles.get(sub.get("assignee") or "")
+        prof = dict(ctx.profiles.get(sub.get("assignee") or "") or {})
         if not prof:
             artifacts[sub["sub_id"]] = f"[无绑定 agent，子任务未执行] {sub.get('instruction','')}"
             _announce(ctx, f"⏭️ [{tid}] 子任务{sub['sub_id']} 无绑定 agent，跳过。", None)
             return
+        # P0-2 任务级 LLM 覆盖：仅 native/CLI 通路生效（ACP agent 模型自持，忽略）。
+        # 复制 profile 以免污染 ctx.profiles（审计链内多次读取）。
+        if task.get("model_override") and prof.get("transport") != "acp":
+            prof["model"] = task["model_override"]
         role_name = next((r["name"] for r in ctx.roles
                           if r.get("profile_id") == sub.get("assignee")), sub.get("assignee"))
         round_no = 1

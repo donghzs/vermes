@@ -17,7 +17,7 @@ provider: acp-cortex-code
 auth:
   scheme: apikey
   env_var: null
-capabilities: []
+capabilities: [code, refactor, search]
 fingerprint:
   cli: []
 install_hint: https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code
