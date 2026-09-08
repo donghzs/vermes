@@ -19,6 +19,7 @@ import secrets
 import shutil
 import hashlib
 import time
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -63,6 +64,21 @@ from vermes_cli.botmode.org_engine import (
 # ── Session plan state store (for SSE reconnect snapshot) ──────────
 # session_id → {"plan": dict|None, "todo_states": dict, "plan_emitted": bool}
 _session_plan_store: dict[str, dict] = {}
+
+# ── ⑭ 主事件循环引用（后台化广播投递用） ──
+# 组织/秘书编排跑在后台线程独立 loop，但 WS 广播必须投回主 loop（WS 连接
+# 挂在主 loop）。首条房间消息广播时懒捕获，供 _org_announce_ws 线程安全投递。
+_main_loop_ref: Optional[asyncio.AbstractEventLoop] = None
+
+
+def _capture_main_loop() -> None:
+    """捕获当前运行中的主事件循环（请求线程调用，懒初始化，幂等）。"""
+    global _main_loop_ref
+    if _main_loop_ref is None or _main_loop_ref.is_closed():
+        try:
+            _main_loop_ref = asyncio.get_running_loop()
+        except RuntimeError:
+            _main_loop_ref = None
 
 
 def _persist_session_plan(session_id: str, state: dict) -> None:
@@ -3822,21 +3838,94 @@ async def bot_org_apply(request: Request, room_id: str):
         return {"ok": False, "error": str(e)}
 
 
+def _org_announce_ws(room_id: str, content: str,
+                     author_type: str = "system", author_ref: Optional[str] = None) -> None:
+    """把组织流水线节点文字实时广播到 WS（room_message）。
+
+    与 _announce 落库解耦：落库已由 ctx.append_message 完成，此处只补实时推送。
+    编排跑在后台线程独立 loop，故必须用 run_coroutine_threadsafe 投递回主 loop
+    （WS 连接所在），否则跨 loop await ws.send_text 会因 attached-to-different-loop
+    失败。fail-open：无主 loop 或广播失败只静默，靠 4s 轮询兜底。
+    """
+    import asyncio as _asyncio
+    try:
+        if _main_loop_ref is None or _main_loop_ref.is_closed():
+            return
+        _asyncio.run_coroutine_threadsafe(
+            _bot_broadcast_room_update(
+                room_id, "room_message",
+                message={"author_type": author_type, "author_ref": author_ref,
+                          "content": content},
+            ),
+            _main_loop_ref,
+        )
+    except Exception:
+        pass
+
+
+def _run_org_in_background(db_factory, fn, args: tuple, kwargs: dict = None) -> None:
+    """⑭ 体验改善：组织/秘书编排后台化容器。
+
+    用独立线程 + 独立事件循环跑编排（对齐 delegate_tool 后台模式，TestClient 与
+    真实 uvicorn 均可靠推进），请求内秒回。
+    - 用独立 db 连接（请求 db 在 finally 里 close，不能复用）
+    - 异常兜底写一条系统提示（不静默吞）
+    - 跑完关闭独立连接与循环
+    """
+    kwargs = kwargs or {}
+
+    def _bg_run():
+        _bg_db = None
+        _bg_loop = None
+        try:
+            _bg_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(_bg_loop)
+            _bg_db = db_factory()
+            _bg_loop.run_until_complete(fn(_bg_db, *args, **kwargs))
+        except Exception as e:
+            _log.exception("[Org] background orchestrate failed")
+            try:
+                if _bg_db is not None:
+                    _bg_db.append_bot_room_message(
+                        args[1], "system", None,
+                        f"[组织流水线] 后台执行异常：{e}",
+                    )
+            except Exception:
+                pass
+        finally:
+            if _bg_db is not None:
+                try:
+                    _bg_db.close()
+                except Exception:
+                    pass
+            if _bg_loop is not None:
+                try:
+                    _bg_loop.close()
+                except Exception:
+                    pass
+
+    threading.Thread(target=_bg_run, daemon=True, name="org-bg").start()
+
+
 async def _org_message_orchestrate(db, room: dict, room_id: str, norm,
-                                     text: str, roles: list) -> dict:
+                                     text: str, roles: list,
+                                     *, skip_user_write: bool = False) -> dict:
     """组织模式消息处理（⑭ 群=组织）：用户消息即老板指令。
 
     - 有 delivered（待验收）任务：以「验收通过 / 通过 / ok」→ done；
       「打回: 意见」→ 回 dispatched 带意见重跑
     - 有进行中任务（dispatched/planning/executing/auditing/...）→ 提示等待
     - 否则 → 建新任务跑标准流水线
+
+    skip_user_write：后台化时由请求内先写用户消息 + 广播，此处跳过（避免重复）。
     """
-    db.append_bot_room_message(room_id, "user", None, text,
-                               turn_session_id=_session_key_for_room(norm, "org:boss"))
-    await _bot_broadcast_room_update(
-        room_id, "room_message",
-        message={"author_type": "user", "author_ref": None, "content": text},
-    )
+    if not skip_user_write:
+        db.append_bot_room_message(room_id, "user", None, text,
+                                   turn_session_id=_session_key_for_room(norm, "org:boss"))
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "user", "author_ref": None, "content": text},
+        )
     try:
         tasks = db.list_org_tasks(room_id) or []
     except Exception:
@@ -3866,6 +3955,7 @@ async def _org_message_orchestrate(db, room: dict, room_id: str, norm,
                 rid, atype, aref, content,
                 turn_session_id=_session_key_for_room(norm, aref) if aref else None,
             ),
+            broadcast=lambda content: _org_announce_ws(room_id, content),
             log=lambda s: _log.info("[Org] %s", s),
         )
 
@@ -3994,18 +4084,7 @@ def _org_deliver_line(db, room_id: str, norm, final_task: dict) -> None:
             room_id, "agent", "org:aggregator", output,
             turn_session_id=_session_key_for_room(norm, "org:aggregator"),
         )
-        import asyncio as _asyncio
-        try:
-            asyncio.run_coroutine_threadsafe(
-                _bot_broadcast_room_update(
-                    room_id, "room_message",
-                    message={"author_type": "agent", "author_ref": "org:aggregator",
-                              "content": output},
-                ),
-                _asyncio.get_event_loop(),
-            )
-        except Exception:
-            pass
+        _org_announce_ws(room_id, output, author_type="agent", author_ref="org:aggregator")
     # ⑭ 结论回写：交付/完结时把「结论」进全局记忆（只结论，不过程）
     if status in ("delivered", "done"):
         _title = final_task.get("title") or final_task.get("id", "任务")
@@ -4025,7 +4104,8 @@ def _org_deliver_line(db, room_id: str, norm, final_task: dict) -> None:
 
 
 async def _secretary_orchestrate(db, room: dict, room_id: str, norm,
-                                    text: str, secretary_profile: dict) -> dict:
+                                    text: str, secretary_profile: dict,
+                                    *, skip_user_write: bool = False) -> dict:
     """秘书模式（⑭ 傻瓜式懒人路径，2026-09-07 董董拍板）：
 
     群里只有 1 个 agent（= 老板秘书）+ 群尚无岗位表 → 用户直接提需求：
@@ -4037,12 +4117,13 @@ async def _secretary_orchestrate(db, room: dict, room_id: str, norm,
     auditor/aggregator 用强模型、人数精干）。
     """
     # 1) 落用户消息 + 广播（与正常路径一致，前端立即可见）
-    db.append_bot_room_message(room_id, "user", None, text,
-                               turn_session_id=_session_key_for_room(norm, secretary_profile["id"]))
-    await _bot_broadcast_room_update(
-        room_id, "room_message",
-        message={"author_type": "user", "author_ref": None, "content": text},
-    )
+    if not skip_user_write:
+        db.append_bot_room_message(room_id, "user", None, text,
+                                   turn_session_id=_session_key_for_room(norm, secretary_profile["id"]))
+        await _bot_broadcast_room_update(
+            room_id, "room_message",
+            message={"author_type": "user", "author_ref": None, "content": text},
+        )
 
     # 2) 候选池 = 全量联系人（秘书可摇人入群）
     candidates = {}
@@ -4236,6 +4317,7 @@ async def _secretary_orchestrate(db, room: dict, room_id: str, norm,
             append_message=lambda rid, atype, aref, content: db.append_bot_room_message(
                 rid, atype, aref, content, turn_session_id=_session_key_for_room(norm, aref) if aref else None
             ),
+            broadcast=lambda content: _org_announce_ws(room_id, content),
             log=lambda s: _log.info("[Org] %s", s),
         )
         final_task = await run_org_task(
@@ -4293,6 +4375,8 @@ async def bot_room_message_send(request: Request, room_id: str):
     """
     if not _bot_mode_enabled():
         raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    # ⑭ 捕获主事件循环（后台线程编排的 WS 广播需线程安全投递回主 loop）
+    _capture_main_loop()
     room_id = (room_id or "").strip()
     # ⚠️ 空 id 校验
     if not room_id:
@@ -4334,16 +4418,45 @@ async def bot_room_message_send(request: Request, room_id: str):
             except Exception:
                 room_roles = []
             if not room_roles and len(profiles) == 1:
-                return await _secretary_orchestrate(
-                    db, room, room_id, norm, text, profiles[0],
+                # ⑭ 体验改善：秘书模式后台化——请求秒回，流水线在后台跑，
+                #    进度经 WS room_update（_announce 已加 broadcast）实时推送。
+                #    用户消息在请求内即时写库+广播，避免前端多等一轮。
+                #    后台任务用独立 db 连接（请求 db 会在 finally 里 close）。
+                db.append_bot_room_message(
+                    room_id, "user", None, text,
+                    turn_session_id=_session_key_for_room(norm, profiles[0]["id"]),
                 )
+                await _bot_broadcast_room_update(
+                    room_id, "room_message",
+                    message={"author_type": "user", "author_ref": None, "content": text},
+                )
+                _run_org_in_background(
+                    db_factory=_bot_room_db,
+                    fn=_secretary_orchestrate,
+                    args=(room, room_id, norm, text, profiles[0]),
+                    kwargs={"skip_user_write": True},
+                )
+                return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
             # 2c) 组织任务分流：群已有岗位表（组织模式）→ 用户消息即老板指令
             #     进行中任务未完成 → 提示等待；delivered 待验收 → 验收/打回；
             #     否则 → 建新任务跑流水线
             if room_roles:
-                return await _org_message_orchestrate(
-                    db, room, room_id, norm, text, room_roles,
+                # ⑭ 体验改善：组织流水线后台化——请求秒回，进度经 WS 实时推送。
+                db.append_bot_room_message(
+                    room_id, "user", None, text,
+                    turn_session_id=_session_key_for_room(norm, "org:boss"),
                 )
+                await _bot_broadcast_room_update(
+                    room_id, "room_message",
+                    message={"author_type": "user", "author_ref": None, "content": text},
+                )
+                _run_org_in_background(
+                    db_factory=_bot_room_db,
+                    fn=_org_message_orchestrate,
+                    args=(room, room_id, norm, text, room_roles),
+                    kwargs={"skip_user_write": True},
+                )
+                return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
             # 3) 解析 @mention → 首轮目标（无则 default agent，再无则 fan-out）
             target_ids = parse_room_mentions(text, profiles)
             if not target_ids:

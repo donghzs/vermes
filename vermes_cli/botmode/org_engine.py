@@ -250,6 +250,7 @@ class OrgContext:
                  profiles: Dict[str, Dict], room: Optional[Dict] = None,
                  store: Callable[[str, Dict], None],
                  append_message: Optional[Callable[[str, str, Optional[str], str], None]] = None,
+                 broadcast: Optional[Callable[[str], None]] = None,
                  log: Optional[Callable[[str], None]] = None):
         self.task = task
         self.roles = roles
@@ -257,6 +258,7 @@ class OrgContext:
         self.room = room or {}
         self.store = store                # store(task_id, updated_task)
         self.append_message = append_message or (lambda *a, **k: None)
+        self.broadcast = broadcast or (lambda s: None)  # 实时推流水线节点文字（fail-open）
         self.log = log or (lambda s: None)
 
     # 便捷：按岗位类型取第一个有 profile 的岗位
@@ -282,9 +284,17 @@ class OrgContext:
 # ─────────────────────────── 编排 helpers ───────────────────────────
 
 def _announce(ctx: OrgContext, content: str, author_ref: Optional[str] = None) -> None:
-    """流程节点留痕（落到房间消息 = 前端看到生产流水线）。"""
+    """流程节点留痕（落到房间消息 = 前端看到生产流水线）。
+
+    双写：① 落库（append_message，持久化）；② 实时广播（broadcast，前端无需
+    等 4s 轮询即可看到流水线推进）。两者均 fail-open，失败不阻断流水线。
+    """
     try:
         ctx.append_message(ctx.task["room_id"], "system", author_ref, content)
+    except Exception:
+        pass
+    try:
+        ctx.broadcast(content)
     except Exception:
         pass
 

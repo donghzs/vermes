@@ -28,6 +28,7 @@ _resolve_model_provider 用确定性映射；_agent_cache 每用例全新实例�
 import sys
 import tempfile
 import sqlite3
+import time
 from pathlib import Path
 
 sys.path.insert(0, "/Users/dongzusheng/Projects/vermes-electron")
@@ -87,6 +88,26 @@ def _client():
 
 def _seed(db):
     db.seed_default_profiles()  # 幂等：空库才插 researcher/coder
+
+
+def _wait_until(cond, timeout=5.0, interval=0.05, desc=""):
+    """⑭ 后台化后时序适配：轮询等待条件成立（组织/秘书流水线在后台 task 跑）。
+
+    后台任务在 TestClient 的 portal loop（独立线程）上推进，主线程需 sleep 让出
+    时间片，随后重新查 DB 判定。返回是否在超时内满足条件。
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if cond():
+                return True
+        except Exception:
+            pass
+        time.sleep(interval)
+    try:
+        return bool(cond())
+    except Exception:
+        return False
 
 
 def run_acp_room(env):
@@ -189,7 +210,11 @@ def run_cli_room(env):
     r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "@Aider 列出三个设计模式"})
     check("send @cli message ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:300])
 
-    check("cli dispatch invoked", len(calls) == 1 and calls[0][0] == "local:aider", str(calls)[:200])
+    # ⑭ 后台化：单 agent 群走秘书模式（后台线程），秘书设计阶段才会调 _cli_agent_chat_sync，
+    #    轮询等待 CLI dispatch 被调用。
+    check("cli dispatch invoked",
+          _wait_until(lambda: len(calls) == 1 and calls[0][0] == "local:aider", timeout=8.0, desc="cli dispatch"),
+          str(calls)[:200])
     check("native agent NOT built for cli member", len(env.captured) == n_before,
           f"captured={len(env.captured)}")
 
@@ -249,11 +274,17 @@ def run_secretary_org_flow(env):
     # 发需求 → 秘书模式应自动触发（非普通群聊）
     r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "帮我写一份周报"})
     check("send demand ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:300])
-    tl = r.json().get("timeline", [])
-    joined = "\n".join(f"[{m['author_type']}|{m.get('author_ref')}] {m['content']}" for m in tl)
+
+    # ⑭ 后台化：流水线在后台 task 跑，轮询等待 delivered（不阻塞 HTTP），
+    #    岗位表落地/自动拉人/建任务都发生在后台，需在 delivered 之后断言。
+    db2 = vermes_state.SessionDB(env.db_path)
+    def _delivered():
+        ts = db2.list_org_tasks(room_id)
+        return bool(ts) and ts[-1].get("status") == "delivered"
+    check("task delivered awaiting boss", _wait_until(_delivered, timeout=8.0, desc="delivered"),
+          str(db2.list_org_tasks(room_id))[:300])
 
     # 组织岗位表落地（含自动拉入的 secretary 做审计）
-    db2 = vermes_state.SessionDB(env.db_path)
     roles = db2.get_org_roles(room_id)
     check("org roles persisted", len(roles) >= 2, str(roles)[:300])
     types = {r["type"] for r in roles}
@@ -262,16 +293,18 @@ def run_secretary_org_flow(env):
     check("auto-pulled secretary into room", "secretary" in members, str(members))
     tasks = db2.list_org_tasks(room_id)
     check("task auto-created", len(tasks) >= 1, str(tasks)[:200])
-    check("task delivered awaiting boss", bool(tasks) and tasks[-1].get("status") == "delivered",
-          str(tasks)[:300])
-    # timeline 应有流水线留痕（执行→审计→交付）
+    # timeline 应有流水线留痕（执行→审计→交付）——轮询后重拉
+    tl_now = client.get(f"/api/bot/rooms/{room_id}/timeline").json().get("timeline", [])
+    joined = "\n".join(f"[{m['author_type']}|{m.get('author_ref')}] {m['content']}" for m in tl_now)
     check("pipeline traces in timeline", "审计" in joined and "已交付" in joined, joined[-400:])
 
-    # 老板验收 → done
+    # 老板验收 → done（后台化：验收也是后台 task，轮询等 done）
     r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "验收通过"})
-    tl2 = r.json().get("timeline", [])
-    joined2 = "\n".join(m["content"] for m in tl2)
-    check("accept -> done", "验收通过，任务" in joined2 and "done" in joined2, joined2[-300:])
+    def _done():
+        ts = db2.list_org_tasks(room_id)
+        return bool(ts) and ts[-1].get("status") == "done"
+    check("accept -> done", _wait_until(_done, timeout=8.0, desc="done"),
+          str(db2.list_org_tasks(room_id))[:300])
     tasks2 = db2.list_org_tasks(room_id)
     status = tasks2[-1].get("status") if tasks2 else None
     check("final status done", status == "done", str(tasks2[-1])[:200] if tasks2 else "")
@@ -446,6 +479,12 @@ def run_e2e(env):
     tl = r.json().get("timeline", [])
     check("timeline non-empty", len(tl) >= 1, str(tl)[:400])
     check("timeline has user msg", any(t["author_type"] == "user" for t in tl))
+    # ⑭ 后台化：单 agent 无岗位表 → 秘书模式后台 task 跑，轮询等 agent 回复
+    def _has_agent_reply():
+        tll = client.get(f"/api/bot/rooms/{room_id}/timeline").json().get("timeline", [])
+        return any(t["author_type"] == "agent" for t in tll)
+    _wait_until(_has_agent_reply, timeout=5.0, desc="agent reply")
+    tl = client.get(f"/api/bot/rooms/{room_id}/timeline").json().get("timeline", [])
     check("timeline has agent reply", any(t["author_type"] == "agent" for t in tl), str(tl)[:400])
 
     sess_ids = [t.get("turn_session_id") for t in tl]
