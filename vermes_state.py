@@ -643,6 +643,10 @@ CREATE TABLE IF NOT EXISTS agent_profiles (
     transport TEXT DEFAULT 'native',
     transport_ref TEXT,
     capability_tags TEXT,
+    -- ⑭ 诚实标注：能力标签来源（official=用户/社区手工钉死真值；inferred=描述启发式推断；
+    -- unknown=未标注）。登堂时从 recipe.capability_source 带入，前端据此给「(推测)」徽标。
+    -- 走 _reconcile_columns 自动 ALTER 老库。
+    capability_source TEXT DEFAULT 'unknown',
     -- ⑭ 造神：per-agent 专属 API key（原生 agent 各绑各厂商 key，真正协同作战）。
     -- 仅对 transport=native 的 Vermes 原生 agent 生效；外部 ACP agent 走
     -- ~/.vermes/agent_auth.json（凭据库，见 vermes_cli/a2a/credentials.py）。
@@ -2090,12 +2094,23 @@ class SessionDB:
                 _is_avatar = int(profile["is_avatar"])
             else:
                 _is_avatar = _existing_avatar
+            # ⑭ 诚实标注（capability_source）幂等语义同 editable/is_avatar：
+            # 显式传入即用；未传则保留既有值（新行默认 unknown）。
+            _existing_csrc = conn.execute(
+                "SELECT capability_source FROM agent_profiles WHERE id = ?",
+                (profile.get("id", ""),),
+            ).fetchone()
+            _existing_csrc = _existing_csrc[0] if _existing_csrc and _existing_csrc[0] else "unknown"
+            if "capability_source" in profile and profile["capability_source"]:
+                _capability_source = str(profile["capability_source"])
+            else:
+                _capability_source = _existing_csrc
             conn.execute(
                 "INSERT INTO agent_profiles "
                 "(id, name, description, system_prompt, toolsets, avatar_seed, "
                 " hue, is_default, provider, model, skill_set, transport, "
-                " transport_ref, capability_tags, api_key, editable, is_avatar, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " transport_ref, capability_tags, capability_source, api_key, editable, is_avatar, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET "
                 "name = excluded.name, description = excluded.description, "
                 "system_prompt = excluded.system_prompt, "
@@ -2105,6 +2120,7 @@ class SessionDB:
                 "skill_set = excluded.skill_set, transport = excluded.transport, "
                 "transport_ref = excluded.transport_ref, "
                 "capability_tags = excluded.capability_tags, "
+                "capability_source = excluded.capability_source, "
                 "api_key = excluded.api_key, editable = excluded.editable, "
                 "is_avatar = excluded.is_avatar, "
                 "created_at = excluded.created_at",
@@ -2123,6 +2139,7 @@ class SessionDB:
                     profile.get("transport", "native") or "native",
                     profile.get("transport_ref", "") or "",
                     _json.dumps(_norm_list(profile.get("capability_tags")), ensure_ascii=False),
+                    _capability_source,
                     profile.get("api_key", "") or "",
                     _editable,
                     _is_avatar,
@@ -2139,7 +2156,7 @@ class SessionDB:
                 row = self._conn.execute(
                 "SELECT id, name, description, system_prompt, toolsets, "
                 "avatar_seed, hue, is_default, provider, model, skill_set, "
-                "transport, transport_ref, capability_tags, api_key, editable, is_avatar, created_at "
+                "transport, transport_ref, capability_tags, capability_source, api_key, editable, is_avatar, created_at "
                 "FROM agent_profiles WHERE id = ?", (profile_id,)
                 ).fetchone()
         except sqlite3.OperationalError as exc:
@@ -2161,10 +2178,11 @@ class SessionDB:
             "provider": R(8), "model": R(9), "skill_set": R(10),
             "transport": R(11), "transport_ref": R(12),
             "capability_tags": _load(R(13), "[]"),
-            "api_key": R(14),
-            "editable": int(R(15)) if R(15) is not None else 1,
-            "is_avatar": int(R(16)) if R(16) is not None else 0,
-            "created_at": R(17),
+            "capability_source": R(14) or "unknown",
+            "api_key": R(15),
+            "editable": int(R(16)) if R(16) is not None else 1,
+            "is_avatar": int(R(17)) if R(17) is not None else 0,
+            "created_at": R(18),
         }
 
     def list_agent_profiles(self) -> List[dict]:

@@ -38,6 +38,10 @@ from vermes_cli.blueprints.agent_cache import (
 )
 from vermes_state import SessionDB
 from vermes_cli.a2a.recipes.loader import find_recipe, load_all_recipes, RECIPES_DIR
+from vermes_cli.a2a.recipes.schema import CAPABILITY_VOCAB, CAPABILITY_LABELS
+from vermes_cli.a2a.recipes.schema import CAPABILITY_VOCAB, CAPABILITY_LABELS
+from vermes_cli.a2a.recipes.schema import CAPABILITY_VOCAB, CAPABILITY_LABELS
+from vermes_cli.a2a.recipes.schema import CAPABILITY_VOCAB, CAPABILITY_LABELS
 from vermes_cli.a2a.credentials import save_credential
 from vermes_cli.a2a.transport import build_acp_transport
 from vermes_cli.botmode import (
@@ -5446,6 +5450,7 @@ async def api_native_agent_profiles(request: Request):
                     "hue": p.get("hue", 0),
                     "is_default": p.get("is_default", 0),
                     "capability_tags": p.get("capability_tags", []),
+                    "capability_source": p.get("capability_source") or "unknown",
                     "has_api_key": bool(p.get("api_key")),
                     "editable": int(p.get("editable", 1) or 1),
                 })
@@ -5481,6 +5486,7 @@ async def api_agent_contacts(request: Request):
                     "hue": p.get("hue", 0),
                     "is_default": p.get("is_default", 0),
                     "capability_tags": p.get("capability_tags", []),
+                    "capability_source": p.get("capability_source") or "unknown",
                     "transport": p.get("transport", "native"),
                     "has_api_key": bool(p.get("api_key")),
                     "editable": int(p.get("editable", 1) or 1),
@@ -5753,6 +5759,10 @@ async def api_list_agent_recipes(request: Request):
         return {"ok": False, "error": str(e), "recipes": []}
     return {
         "ok": True,
+        "capability_vocab": [
+            {"value": v, "label": CAPABILITY_LABELS.get(v, v)}
+            for v in CAPABILITY_VOCAB
+        ],
         "recipes": [
             {
                 "name": r.name,
@@ -5760,6 +5770,7 @@ async def api_list_agent_recipes(request: Request):
                 "transport": r.transport,
                 "description": r.description,
                 "capabilities": list(r.capabilities),
+                "capability_source": getattr(r, "capability_source", "unknown") or "unknown",
                 "entry_point": r.entry_point,
                 "args": list(r.args),
                 "spawn_command": r.spawn_command,
@@ -5887,6 +5898,7 @@ async def api_agent_local_connect(request: Request):
             "provider": recipe.provider or "", "model": recipe.provider or "",
             "transport": "acp", "transport_ref": " ".join(recipe.spawn_command),
             "capability_tags": list(recipe.capabilities),
+            "capability_source": getattr(recipe, "capability_source", "unknown") or "unknown",
             "system_prompt": "", "toolsets": [], "skill_set": "",
             "created_at": now,
         }
@@ -6038,6 +6050,7 @@ async def api_register_agent_profile(request: Request):
         "transport": "acp",
         "transport_ref": " ".join(recipe.spawn_command),
         "capability_tags": list(recipe.capabilities),
+        "capability_source": getattr(recipe, "capability_source", "unknown") or "unknown",
         "system_prompt": "",
         "toolsets": [],
         "skill_set": "",

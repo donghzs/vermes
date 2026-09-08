@@ -16,6 +16,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# ── 能力标签受控词表（神魔堂·能力匹配，与 generate_from_registry.infer_capabilities 对齐） ──
+# 前端造神能力多选、封神榜徽标、dispatcher LLM 画像都用这套词表，避免各端硬编码。
+CAPABILITY_VOCAB: tuple[str, ...] = (
+    "code",      # 编码
+    "search",    # 搜索/检索
+    "refactor",  # 重构
+    "writing",   # 写作/文案
+    "research",  # 研究/分析
+    "devops",    # 运维/部署
+    "planning",  # 规划/设计
+    "reasoning", # 推理
+    "edit",      # 编辑/IDE
+)
+CAPABILITY_LABELS: dict[str, str] = {
+    "code": "编码", "search": "搜索", "refactor": "重构",
+    "writing": "写作", "research": "研究", "devops": "运维",
+    "planning": "规划", "reasoning": "推理", "edit": "编辑",
+}
+
 
 @dataclass
 class RecipeAuth:
@@ -48,7 +67,7 @@ class RecipeConfig:
     #   "unknown"   —— 未标注（generator 默认留空，不瞎编）
     # 该标记用于提示 dispatcher LLM：inferred/unknown 的标签是「推测」而非权威，
     # 分派时还应结合 description 判断，避免被雷同标签误导。
-    capability_source: str = "inferred"
+    capability_source: str = "unknown"
     fingerprint: RecipeFingerprint = field(default_factory=RecipeFingerprint)
     provider: str | None = None
     # 傻瓜式安装引导（神魔堂公开版收口 2026-09-07）：用户电脑没装对应 CLI 时，
@@ -113,7 +132,7 @@ class RecipeConfig:
                 fallback_settings=(auth_raw.get("fallback_settings") or None),
             ),
             capabilities=list(raw_caps),
-            capability_source=str(data.get("capability_source") or "inferred").strip(),
+            capability_source=str(data.get("capability_source") or "unknown").strip(),
             fingerprint=RecipeFingerprint(
                 cli=list(fp_raw.get("cli") or []),
                 config_dirs=list(fp_raw.get("config_dirs") or []),

@@ -112,7 +112,8 @@
             <div class="flex flex-wrap gap-1.5">
               <span v-if="r.version" class="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">v{{ r.version }}</span>
               <span class="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">鉴权：{{ authLabel(r.auth_scheme) }}</span>
-              <span v-for="c in (r.capabilities || []).slice(0, 3)" :key="c" class="px-2 py-0.5 text-[11px] rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300">{{ c }}</span>
+              <span v-for="c in (r.capabilities || []).slice(0, 3)" :key="c" class="px-2 py-0.5 text-[11px] rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300">{{ capLabel(c) }}</span>
+              <span v-if="(r.capability_source || 'unknown') === 'inferred'" class="px-2 py-0.5 text-[11px] rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300" title="能力标签由描述启发式推断，非官方标注">(推测)</span>
             </div>
             <div v-if="r.spawn_command && r.spawn_command.length" class="text-[11px] text-gray-400 truncate font-mono">↳ {{ r.spawn_command.join(' ') }}</div>
             <div class="mt-auto pt-1 flex items-center gap-2">
@@ -394,6 +395,19 @@
           </div>
           <div>
             <label class="text-xs text-gray-500 mb-1 flex items-center justify-between">
+              <span>能力标签（神魔堂能力匹配用）</span>
+            </label>
+            <p class="text-[11px] text-gray-400 mb-2">勾选它的擅长领域，秘书组队时按能力分派。造神的能力由你钉死（官方）；封神榜登堂的为推断（推测）。</p>
+            <div v-if="capabilityVocab.length" class="grid grid-cols-3 gap-1.5">
+              <label v-for="c in capabilityVocab" :key="c.value" class="flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-gray-700">
+                <input type="checkbox" :value="c.value" v-model="forgeModal.capabilityTags" class="accent-indigo-500" />
+                <span class="truncate">{{ c.label }}</span>
+              </label>
+            </div>
+            <p v-else class="text-[11px] text-gray-400">能力词表加载中/不可用，可跳过。</p>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 flex items-center justify-between">
               <span>技能集（工具集）</span>
               <button @click="recommendToolsets" class="text-[11px] text-indigo-500 hover:text-indigo-600">✨ 按角色推荐</button>
             </label>
@@ -464,11 +478,16 @@ const query = ref('')
 // ⑭ 造神：原生 agent 列表（transport=native 的 Vermes 原生 agent）
 const nativeAgents = ref([])
 // 造神弹窗状态
-const forgeModal = ref({ open: false, editing: null, name: '', description: '', provider: '', model: '', customProvider: '', apiKey: '', systemPrompt: '', hue: 0, toolsets: [] })
+const forgeModal = ref({ open: false, editing: null, name: '', description: '', provider: '', model: '', customProvider: '', apiKey: '', systemPrompt: '', hue: 0, toolsets: [], capabilityTags: [] })
 
 // ── 造神：厂商/模型下拉（复用设置页 /api/model/options 已配厂商+精选模型） ──
 const modelProviders = ref([])   // [{ slug, name, is_current, models: [] }]
 const allToolsets = ref([])      // [{ name, label, description }]（/api/tools/toolsets）
+const capabilityVocab = ref([])  // [{ value, label }]（/agents/recipes 下发的受控词表）
+const capabilityLabels = {}       // value → label（快速查）
+function capLabel(v) {
+  return capabilityLabels[v] || v
+}
 const forgeModels = computed(() => {
   if (!forgeModal.value.provider || forgeModal.value.provider === '__custom__') return []
   const p = modelProviders.value.find(x => x.slug === forgeModal.value.provider)
@@ -797,6 +816,11 @@ async function loadRecipes() {
   try {
     const data = await api.listAgentRecipes()
     recipes.value = (data && data.recipes) || []
+    // 能力受控词表（造神多选 + 封神榜徽标用，后端统一下发）
+    if (data && Array.isArray(data.capability_vocab)) {
+      capabilityVocab.value = data.capability_vocab
+      data.capability_vocab.forEach(c => { capabilityLabels[c.value] = c.label })
+    }
   } catch (e) {
     console.error('ACP 食谱加载失败', e)
     recipes.value = []
@@ -902,12 +926,14 @@ function openForge(editing = null) {
         provider: editing.provider || '', model: editing.model || '', customProvider: '',
         apiKey: '', systemPrompt: editing.system_prompt || '',
         hue: editing.hue || 0, toolsets: Array.isArray(editing.toolsets) ? [...editing.toolsets] : [],
+        capabilityTags: Array.isArray(editing.capability_tags) ? [...editing.capability_tags] : [],
         editable: editing.editable ?? 1,
       }
     : {
         open: true, editing: null, error: '',
         name: '', description: '', provider: '', model: '', customProvider: '',
         apiKey: '', systemPrompt: '', hue: 0, toolsets: [],
+        capabilityTags: [],
         editable: 1,
       }
 }
@@ -935,6 +961,7 @@ async function submitForge() {
       system_prompt: m.systemPrompt,
       hue: m.hue,
       toolsets: m.toolsets || [],
+      capability_tags: m.capabilityTags || [],
       editable: m.editable ? 1 : 0,
     })
     if (data && data.ok) {
