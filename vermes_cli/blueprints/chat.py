@@ -3254,9 +3254,17 @@ def _cli_agent_chat_sync(profile, text: str, timeout_seconds: float = 180.0) -> 
         raise RuntimeError(f"{cli_type} 不在 PATH：{fail_hint}")
     cmd = [cli_type, *[a.replace("{prompt}", text) for a in argv]]
     try:
+        # wrapper 型 CLI 运行时 env 补齐（通用，不绑定厂商）
+        try:
+            from vermes_cli.adapters.cli_env import resolve_cli_env
+
+            _cli_env = resolve_cli_env(cmd[0])
+        except Exception:  # noqa: BLE001 — 补齐失败回退继承父进程环境
+            _cli_env = None
         proc = _subprocess.run(
             cmd,
             capture_output=True, text=True, timeout=timeout_seconds,
+            **({"env": _cli_env} if _cli_env else {}),
         )
     except _subprocess.TimeoutExpired:
         raise RuntimeError(f"{cli_type} 响应超时（>{timeout_seconds}s），已中止本次调用") from None

@@ -141,16 +141,22 @@ class LocalAgentScanner:
                 name=disp,
                 kind="cli",
                 auth_scheme="local",
-                version=self._probe_version(bin_name, ver_args),
-                entry_point=bin_name,
+                version=self._probe_version(path, ver_args),
+                entry_point=path,
             )
 
     @staticmethod
     def _probe_version(bin_name: str, ver_args: List[str]) -> str:
         try:
+            # 版本探测同样要经过 wrapper 运行时补齐：否则 wrapper 型 CLI
+            # 会以「缺 env → exit 1」被误判为「已安装但版本未知」。
+            from vermes_cli.adapters.cli_env import resolve_cli_env
+
+            env = resolve_cli_env(bin_name, extra_dirs=_extra_cli_dirs(Path.home()))
             proc = subprocess.run(
                 [bin_name, *ver_args],
                 capture_output=True, text=True, timeout=10, check=False,
+                env=env,
             )
             out = (proc.stdout or proc.stderr).strip().splitlines()
             return out[0][:60] if out else ""
