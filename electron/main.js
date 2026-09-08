@@ -1046,6 +1046,34 @@ ipcMain.handle('shell:openExternal', (e, url) => {
   safeOpenExternal(url);
 });
 
+// IPC: 在系统终端打开并预置命令（登堂降门槛：引导用户登录官方 CLI）。
+// command 会被写入终端，但不自动执行（避免安全风险，用户手动回车确认）。
+ipcMain.handle('shell:openTerminal', (e, command) => {
+  if (!command || typeof command !== 'string') return { ok: false, err: 'invalid command' }
+  try {
+    // macOS：用 AppleScript 打开 Terminal.app 并输入命令（不自动回车执行）
+    if (process.platform === 'darwin') {
+      const esc = command.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const script = `tell application "Terminal"
+  activate
+  do script "${esc}"
+end tell`
+      spawn('osascript', ['-e', script])
+      return { ok: true }
+    }
+    // Windows：打开 cmd 并预置命令
+    if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', 'cmd', '/k', command], { shell: true })
+      return { ok: true }
+    }
+    // Linux：打开 x-terminal-emulator
+    spawn('x-terminal-emulator', ['-e', command])
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, err: String(err) }
+  }
+});
+
 // IPC: 打开文件所在文件夹（WorkBuddy 风格）
 ipcMain.handle('shell:showItemInFolder', (e, fullPath) => {
   if (!fullPath || typeof fullPath !== 'string') return { ok: false, err: 'invalid path' }

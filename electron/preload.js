@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('vermes', {
   restartGateway: () => ipcRenderer.invoke('gateway:restart'),
   wechatLogin: (state) => ipcRenderer.invoke('wechat-login', state),
   openExternalBrowser: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  openTerminal: (command) => ipcRenderer.invoke('shell:openTerminal', command),
   showItemInFolder: (fullPath) => ipcRenderer.invoke('shell:showItemInFolder', fullPath),
   saveAs: (srcPath, defaultName) => ipcRenderer.invoke('shell:saveAs', srcPath, defaultName),
   version: appVersion,

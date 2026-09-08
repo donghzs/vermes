@@ -3210,6 +3210,9 @@ _CLI_PRINT_ARGS: dict[str, tuple[list[str], str]] = {
                 "Gemini CLI 未登录或不可用，请先 `gemini login`"),
     "goose": (["run", "{prompt}"],
                "Goose 不可用，请先安装并登录 goose"),
+    # Hermes 上游：-z 单轮非交互（复用本机 .hermes 登录态/模型配置）
+    "hermes": (["-z", "{prompt}"],
+                "Hermes 不可用或未配置模型，请先 `hermes` 完成初始化"),
 }
 
 
@@ -5807,7 +5810,7 @@ async def api_agent_local_connect(request: Request):
         # 已登录则免配置直接登堂；未登录/未知才退 need_auth 弹框。
         auth_env = recipe.auth.env_var
         if auth_env and not os.environ.get(auth_env):
-            from vermes_cli.a2a.login_probe import probe_login
+            from vermes_cli.a2a.login_probe import probe_login, login_command_for
             _lp = probe_login(recipe.name, recipe.provider or "")
             if not _lp.is_logged_in:
                 return {
@@ -5816,6 +5819,7 @@ async def api_agent_local_connect(request: Request):
                     "auth_env": auth_env, "spawn_command": recipe.spawn_command,
                     "via": "acp",
                     "login_probe": {"logged_in": _lp.logged_in, "detail": _lp.detail},
+                    "login_command": login_command_for(recipe.name, recipe.provider or ""),
                 }
         try:
             transport = build_acp_transport(recipe)
@@ -5927,7 +5931,7 @@ async def api_register_agent_profile(request: Request):
     auth_env = recipe.auth.env_var
     auth_value = (body.get("auth_value") or "").strip()
     if auth_env and not auth_value and not os.environ.get(auth_env):
-        from vermes_cli.a2a.login_probe import probe_login
+        from vermes_cli.a2a.login_probe import probe_login, login_command_for
         _lp = probe_login(recipe.name, recipe.provider or "")
         if not _lp.is_logged_in:
             return {
@@ -5938,6 +5942,7 @@ async def api_register_agent_profile(request: Request):
                 "auth_env": auth_env,
                 "spawn_command": recipe.spawn_command,
                 "login_probe": {"logged_in": _lp.logged_in, "detail": _lp.detail},
+                "login_command": login_command_for(recipe.name, recipe.provider or ""),
             }
     # 用户在前端授权框填的 key → 注入当前进程环境 + 持久化到凭据库。
     # - os.environ：当次会话有效，使后续 spawn 的 ACP 子进程继承

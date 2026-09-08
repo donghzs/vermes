@@ -266,9 +266,16 @@
           <code class="px-1 rounded bg-gray-100 dark:bg-gray-700">{{ authModal.authEnv }}</code>
           登录态。两条路任选：
         </p>
-        <div class="mb-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
-          💡 <b>推荐免配置</b>：在终端登录它的官方 CLI（如 <code>claude</code> / <code>codex login</code> / <code>gemini</code>），
-          登录态会存进本机 Keychain/凭据文件，Vermes 登堂时自动复用，无需任何 Key。
+        <div v-if="authModal.loginCommand" class="mb-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
+          <div class="mb-1.5">💡 <b>推荐免配置</b>：在终端登录官方 CLI，登录态存本机 Keychain/凭据文件，Vermes 登堂自动复用：</div>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 font-mono text-[11px]">{{ authModal.loginCommand }}</code>
+            <button
+              @click="openTerminalLogin"
+              class="shrink-0 px-2 py-1 text-xs rounded-lg bg-amber-600 hover:bg-amber-700 text-white whitespace-nowrap"
+            >▶ 打开终端</button>
+          </div>
+          <div class="mt-1 text-[11px] opacity-70">登录完成后回到这里重新点「⛩️ 登堂」即可免配置接入。</div>
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
           或直接填 API Key（安全持久化到本机凭据库，重启后仍生效）：
@@ -629,7 +636,7 @@ const recipes = ref([])
 // 每个 agent 的登堂状态：idle / loading / success / fail / need_auth
 const ascendState = ref({})
 // 鉴权弹窗
-const authModal = ref({ open: false, key: '', recipe: null, authEnv: '', value: '', error: '' })
+const authModal = ref({ open: false, key: '', recipe: null, authEnv: '', value: '', error: '', loginCommand: '' })
 // 安装引导弹窗（神魔堂公开版收口 2026-09-07：登堂失败=本机没装 CLI → 引导去官网下载）
 const installModal = ref({ open: false, recipe: null, hint: '', entryPoint: '', spawn: '' })
 
@@ -798,6 +805,7 @@ async function _doAscend(key, recipe, authValue = '') {
       authModal.value = {
         open: true, key, recipe,
         authEnv: data.auth_env || '', value: '', error: '',
+        loginCommand: data.login_command || '',
       }
       return
     }
@@ -833,6 +841,19 @@ async function submitAuth() {
   }
   const a = agents.value.find(x => x._key === key)
   if (a) await ascend(a, m.value.trim())
+}
+
+/** 一键打开系统终端，预置登录命令（不自动执行，用户手动回车确认）。 */
+function openTerminalLogin() {
+  const cmd = authModal.value.loginCommand
+  if (!cmd) return
+  if (window.vermes && window.vermes.openTerminal) {
+    window.vermes.openTerminal(cmd)
+  } else {
+    // 浏览器/无 Electron 环境：复制到剪贴板并提示
+    navigator.clipboard && navigator.clipboard.writeText(cmd)
+    authModal.value = { ...authModal.value, error: `已复制命令到剪贴板，请在终端粘贴运行：${cmd}` }
+  }
 }
 
 /* ── ⑭ 造神：原生 agent CRUD（per-agent 专属 API） ─────────────── */

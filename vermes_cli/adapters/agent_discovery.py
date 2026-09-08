@@ -60,6 +60,9 @@ _KNOWN_CLI_AGENTS: Dict[str, Tuple[str, List[str]]] = {
     "goose": ("Goose", ["--version"]),
     "cursor": ("Cursor", ["--version"]),
     "copilot": ("GitHub Copilot CLI", ["--version"]),
+    # 同生态 agent（Hermes 上游 / Vermes 自身），有 print 直连能力
+    "hermes": ("Hermes Agent", ["--version"]),
+    "vermes": ("Vermes", ["--help"]),
 }
 
 # 已知 agent 配置目录（home 相对）：存在即视为已装（home-dir based agent）

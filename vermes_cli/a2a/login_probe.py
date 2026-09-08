@@ -153,6 +153,14 @@ _PROBE_FUNCS = {
     "copilot": _probe_copilot,
 }
 
+# 家族 → 登录引导命令（前端「未登录」弹窗展示 + 一键打开终端预置）
+LOGIN_COMMANDS = {
+    "claude": "claude",
+    "codex": "codex login",
+    "gemini": "gemini login",
+    "copilot": "gh auth login",
+}
+
 
 def _match_family(recipe_name: str, provider: str) -> Optional[str]:
     """recipe name/provider → 探测家族（claude/codex/gemini/copilot）。"""
@@ -177,3 +185,9 @@ def probe_login(recipe_name: str, provider: str = "") -> LoginProbe:
     except Exception as exc:  # noqa: BLE001 - 探测失败 fail-open
         logger.debug("login probe failed for %s: %s", family, exc)
         return LoginProbe(None, "unknown", f"探测失败：{exc}")
+
+
+def login_command_for(recipe_name: str, provider: str = "") -> str:
+    """返回该 agent 的终端登录引导命令（未登录时前端展示 + 一键打开终端）。"""
+    family = _match_family(recipe_name, provider)
+    return LOGIN_COMMANDS.get(family or "", "")

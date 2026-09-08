@@ -83,3 +83,11 @@ def test_probe_gemini_unknown(monkeypatch):
     monkeypatch.setattr(lp, "_file_exists", lambda path: False)
     p = lp.probe_login("gemini", "acp-gemini")
     assert p.logged_in is None
+
+
+def test_login_command_for():
+    assert lp.login_command_for("claude-agent-acp", "acp-claude-agent") == "claude"
+    assert lp.login_command_for("codex-acp", "acp-codex") == "codex login"
+    assert lp.login_command_for("gemini", "acp-gemini") == "gemini login"
+    assert lp.login_command_for("copilot", "copilot-acp") == "gh auth login"
+    assert lp.login_command_for("qwen-code", "acp-qwen-code") == ""
