@@ -254,11 +254,6 @@ markers = [
     "stress: stress/concurrency tests (tests/stress/)",
 ]
 addopts = "-m 'not integration' -n auto"
-collect_ignore = [
-    "tests/acp",
-    "tests/acp_adapter",
-    "tests/skills/test_fetch_transcript.py",
-]
 
 [tool.ty.environment]
 python-version = "3.11"
