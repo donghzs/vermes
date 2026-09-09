@@ -84,6 +84,12 @@ def _ensure_kanban_profile(assignee: str) -> bool:
 
     本函数在投递前补建缺失的 profile 目录（clone 默认 profile 的
     config.yaml/.env/SOUL.md + skills），让 worker 拿到 provider key 正常跑 LLM。
+
+    ⚠️ 密钥扩散：clone_config=True 会把 default profile 的 ``.env``（含
+    provider API key）复制到桥接 profile 目录。这是设计使然——worker 必须
+    有 key 才能跑 LLM；桥接 profile 与 default 持有相同 key，复用同一
+    provider 配额。若后续要隔离配额/密钥，需改为按岗位独立配置 key。
+
     fail-open：任何异常只记 warning 返回 False，不阻断 org 主流程。
     """
     try:
@@ -165,6 +171,9 @@ def dispatch_org_subtask_to_sandbox(
         title=f"[神魔堂] {assignee} · {instruction[:60]}",
         body=instruction,
         assignee=sandbox_assignee,
+        # 展示层保留原始岗位名（如 local:aider），assignee 列是 slug。
+        # 仅在 slug 与原始名不同时写（避免合法名出现冗余重复）。
+        assignee_display=(assignee if assignee != sandbox_assignee else None),
         created_by="shenmotang-org",
         workspace_kind=workspace_kind,
         workspace_path=workspace_path,

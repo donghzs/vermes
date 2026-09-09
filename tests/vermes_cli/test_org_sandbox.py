@@ -125,6 +125,32 @@ def test_dispatch_passthrough_workspace_and_timeout(kanban_home):
     assert task.status == "ready"
 
 
+def test_dispatch_writes_assignee_display_for_invalid_name(kanban_home):
+    """非法岗位 id（带冒号/中文）→ assignee 列是 slug，assignee_display 保留原始名。"""
+    with kb.connect() as conn:
+        tid = dispatch_org_subtask_to_sandbox(
+            conn, org_task_id="org:AD", profile={"id": "local:aider"},
+            instruction="x", transport="cli",
+        )
+        task = kb.get_task(conn, tid)
+    from vermes_cli.org_sandbox import _sandbox_assignee
+    assert task.assignee == _sandbox_assignee("local:aider")  # slug
+    assert task.assignee.startswith("org-")
+    assert task.assignee_display == "local:aider"  # 原始名
+
+
+def test_dispatch_omits_assignee_display_for_valid_name(kanban_home):
+    """合法岗位 id → assignee 原样，assignee_display 为 None（不冗余）。"""
+    with kb.connect() as conn:
+        tid = dispatch_org_subtask_to_sandbox(
+            conn, org_task_id="org:VD", profile={"id": "researcher"},
+            instruction="x", transport="native",
+        )
+        task = kb.get_task(conn, tid)
+    assert task.assignee == "researcher"
+    assert task.assignee_display is None
+
+
 # ---------------------------------------------------------------------------
 # 4) 状态单向回填映射：kanban 终态 → org 子任务状态
 # ---------------------------------------------------------------------------

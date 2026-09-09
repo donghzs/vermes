@@ -662,6 +662,8 @@ class Task:
     # set the env var. Lets clients render a per-session board without
     # relying on tenant + time-window heuristics.
     session_id: Optional[str] = None
+    # Human-readable assignee label; NULL = render ``assignee`` instead.
+    assignee_display: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Task":
@@ -680,6 +682,9 @@ class Task:
             title=row["title"],
             body=row["body"],
             assignee=row["assignee"],
+            assignee_display=(
+                row["assignee_display"] if "assignee_display" in keys else None
+            ),
             status=row["status"],
             priority=row["priority"],
             created_by=row["created_by"],
@@ -817,6 +822,12 @@ CREATE TABLE IF NOT EXISTS tasks (
     title                TEXT NOT NULL,
     body                 TEXT,
     assignee             TEXT,
+    -- Human-readable assignee label for display. When the worker profile
+    -- name (``assignee``) is a machine slug (e.g. ``org-<md5>`` bridged
+    -- from an org 岗位 with an invalid profile id like ``local:aider``),
+    -- this holds the original human-facing id so views render it instead
+    -- of the slug. NULL = fall back to ``assignee``.
+    assignee_display     TEXT,
     status               TEXT NOT NULL,
     priority             INTEGER DEFAULT 0,
     created_by           TEXT,
@@ -1165,6 +1176,12 @@ def _migrate_add_optional_columns(conn: sqlite3.Connection) -> None:
     if "model_override" not in cols:
         conn.execute("ALTER TABLE tasks ADD COLUMN model_override TEXT")
 
+    if "assignee_display" not in cols:
+        # Human-readable assignee label (see SCHEMA_SQL). NULL = fall back
+        # to ``assignee``. Added for org-sandbox bridging where ``assignee``
+        # is a machine slug but the original org 岗位 id should still render.
+        _add_column_if_missing(conn, "tasks", "assignee_display", "assignee_display TEXT")
+
     if "session_id" not in cols:
         # Originating agent/chat session id, populated when the task is
         # created from within an agent loop that propagated
@@ -1350,6 +1367,7 @@ def create_task(
     title: str,
     body: Optional[str] = None,
     assignee: Optional[str] = None,
+    assignee_display: Optional[str] = None,
     created_by: Optional[str] = None,
     workspace_kind: str = "scratch",
     workspace_path: Optional[str] = None,
@@ -1519,17 +1537,18 @@ def create_task(
                 conn.execute(
                     """
                     INSERT INTO tasks (
-                        id, title, body, assignee, status, priority,
+                        id, title, body, assignee, assignee_display, status, priority,
                         created_by, created_at, workspace_kind, workspace_path,
                         branch_name, tenant, idempotency_key, max_runtime_seconds,
                         skills, max_retries, session_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task_id,
                         title.strip(),
                         body,
                         assignee,
+                        assignee_display,
                         task_status,
                         priority,
                         created_by,

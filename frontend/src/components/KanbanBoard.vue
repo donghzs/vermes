@@ -564,7 +564,7 @@ function goChat() { router.push('/') }
               <div class="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400 flex-wrap">
                 <span class="font-mono">#{{ t.id }}</span>
                 <span v-if="priorityBadge(t)" :class="priorityBadge(t).cls">{{ priorityBadge(t).icon }}</span>
-                <span v-if="t.assignee" class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600">@{{ t.assignee }}</span>
+                <span v-if="t.assignee" class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600">@{{ t.assignee_display || t.assignee }}</span>
                 <span v-if="t.comment_count" class="flex items-center gap-0.5">💬 {{ t.comment_count }}</span>
                 <span v-if="failText(t)" class="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300">{{ failText(t) }}</span>
                 <span v-if="warnBadge(t.warnings)" class="px-1.5 py-0.5 rounded" :class="warnBadge(t.warnings).cls">{{ warnBadge(t.warnings).text }}</span>
@@ -611,7 +611,7 @@ function goChat() { router.push('/') }
                 </div>
                 <!-- 元数据 -->
                 <div class="grid grid-cols-2 gap-2 text-sm">
-                  <div><span class="text-gray-400">负责人:</span> {{ taskDetail.task?.assignee || '—' }}</div>
+                  <div><span class="text-gray-400">负责人:</span> {{ taskDetail.task?.assignee_display || taskDetail.task?.assignee || '—' }}</div>
                   <div><span class="text-gray-400">优先级:</span> {{ taskDetail.task?.priority ?? 0 }}</div>
                   <div><span class="text-gray-400">创建:</span> {{ fmtTime(taskDetail.task?.created_at) }}</div>
                   <div><span class="text-gray-400">更新:</span> {{ fmtTime(taskDetail.task?.updated_at) }}</div>
