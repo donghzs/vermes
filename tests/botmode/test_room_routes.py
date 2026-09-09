@@ -1125,3 +1125,73 @@ if __name__ == "__main__":
     print(f"\n{len(all_results) - len(fails)}/{len(all_results)} passed" +
           (f" | FAILED: {fails}" if fails else " | ALL PASS"))
     raise SystemExit(1 if fails else 0)
+
+
+def test_native_upsert_transport_cli(env):
+    """Sprint C：造神支持 transport=cli（不硬编码 native）。"""
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    db.seed_default_profiles()
+    db.close()
+
+    r = client.post("/api/agents/native", json={
+        "name": "CLI助手",
+        "description": "自定义 CLI agent",
+        "transport": "cli",
+        "transport_ref": "aider",
+        "capability_tags": ["coding"],
+    })
+    check("upsert ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    pid = r.json().get("id")
+
+    db2 = vermes_state.SessionDB(env.db_path)
+    p = db2.get_agent_profile(pid)
+    db2.close()
+    check("transport=cli persisted", p and p.get("transport") == "cli", str(p))
+    check("transport_ref=aider", p and p.get("transport_ref") == "aider", str(p))
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
+def test_native_upsert_transport_acp(env):
+    """Sprint C：造神支持 transport=acp。"""
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    db.seed_default_profiles()
+    db.close()
+
+    r = client.post("/api/agents/native", json={
+        "name": "ACP助手",
+        "transport": "acp",
+        "transport_ref": "npx @agentclientprotocol/codex-acp",
+    })
+    assert r.status_code == 200
+    pid = r.json().get("id")
+    db2 = vermes_state.SessionDB(env.db_path)
+    p = db2.get_agent_profile(pid)
+    db2.close()
+    assert p.get("transport") == "acp"
+    assert p.get("transport_ref") == "npx @agentclientprotocol/codex-acp"
+
+
+def test_native_upsert_transport_default_native(env):
+    """Sprint C：不传 transport 时默认 native（向后兼容）。"""
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    db.seed_default_profiles()
+    db.close()
+
+    r = client.post("/api/agents/native", json={
+        "name": "默认助手",
+    })
+    assert r.status_code == 200
+    pid = r.json().get("id")
+    db2 = vermes_state.SessionDB(env.db_path)
+    p = db2.get_agent_profile(pid)
+    db2.close()
+    assert p.get("transport") == "native"

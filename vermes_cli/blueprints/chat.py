@@ -5985,7 +5985,8 @@ async def api_native_agent_upsert(request: Request):
                 "avatar_seed": body.get("avatar_seed", pid) or pid,
                 "hue": int(body.get("hue", 0) or 0),
                 "is_default": int(body.get("is_default", 0) or 0),
-                "transport": "native",
+                "transport": (body.get("transport") or "native").strip(),
+                "transport_ref": (body.get("transport_ref") or "").strip(),
                 "api_key": api_key or "",
                 "editable": int(req_editable),
             })
