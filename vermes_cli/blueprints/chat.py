@@ -4457,37 +4457,47 @@ async def bot_room_message_send(request: Request, room_id: str):
             # 1) 规范化房间 id（⑫ 薄壳，P1 desktop 直通）
             norm = RoomIdNormalizer.normalize("desktop", room_id)
             room = db.get_bot_room(room_id) or {}
-            # 2) 房间成员（协作候选池 = 当前房间成员，微信式口径）
-            member_ids = [
-                m["ref_id"] for m in db.list_bot_room_members(room_id)
-                if m["member_type"] == "agent"
+            # 2) 房间成员（微信式口径）：一次取出，分别派生 agent 池与秘书池
+            members = db.list_bot_room_members(room_id)
+            member_ids = [m["ref_id"] for m in members if m.get("member_type") == "agent"]
+            profiles = [p for p in (db.get_agent_profile(pid) for pid in member_ids) if p]
+            secretary_profiles = [
+                p for p in (db.get_agent_profile(m["ref_id"]) for m in members
+                            if m.get("member_type") == "secretary")
+                if p
             ]
-            profiles = [db.get_agent_profile(pid) for pid in member_ids]
-            profiles = [p for p in profiles if p]
-            if not profiles:
-                # 空群：没有可应答的 agent → 写一条系统提示
+            if not profiles and not secretary_profiles:
+                # 空群：没有可应答的 agent / 秘书 → 写一条系统提示
                 db.append_bot_room_message(room_id, "system", None,
-                                           "[群里还没有 Agent，点「👥 拉人」拉一个进群再聊]")
+                                           "[群里还没有 Agent 或秘书，点「👥 拉人」拉一个进群再聊]")
                 await _bot_broadcast_room_update(
                     room_id, "room_message",
                     message={"author_type": "system", "author_ref": None,
-                             "content": "[群里还没有 Agent，点「👥 拉人」拉一个进群再聊]"},
+                             "content": "[群里还没有 Agent 或秘书，点「👥 拉人」拉一个进群再聊]"},
                 )
                 return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
-            # 2b) 秘书模式（⑭ 傻瓜式懒人路径）：群无岗位表 + 只有 1 个 agent
-            #     → 该 agent 即老板秘书，按用户需求搭组织、摇人、派活、交付
+            # 2b) 秘书模式（⑭ 傻瓜式懒人路径）：群无岗位表即触发，满足：
+            #     (i) 恰 1 个 agent → 该 agent 当老板秘书（既有路径，test_secretary_org_flow 覆盖）；
+            #     (ii) 含 secretary 成员 且 用户消息 @ 到该秘书（决策 A：@ 护栏，
+            #          避免纯闲聊误组队；贴合「自建群拉秘书、@秘书即触发」心智）。
             try:
                 room_roles = db.get_org_roles(room_id) if hasattr(db, "get_org_roles") else []
             except Exception:
                 room_roles = []
-            if not room_roles and len(profiles) == 1:
+            sec = None
+            if not room_roles:
+                if len(profiles) == 1:
+                    sec = profiles[0]
+                elif secretary_profiles and parse_room_mentions(text, secretary_profiles):
+                    sec = secretary_profiles[0]
+            if sec is not None:
                 # ⑭ 体验改善：秘书模式后台化——请求秒回，流水线在后台跑，
                 #    进度经 WS room_update（_announce 已加 broadcast）实时推送。
                 #    用户消息在请求内即时写库+广播，避免前端多等一轮。
                 #    后台任务用独立 db 连接（请求 db 会在 finally 里 close）。
                 db.append_bot_room_message(
                     room_id, "user", None, text,
-                    turn_session_id=_session_key_for_room(norm, profiles[0]["id"]),
+                    turn_session_id=_session_key_for_room(norm, sec["id"]),
                 )
                 await _bot_broadcast_room_update(
                     room_id, "room_message",
@@ -4496,7 +4506,7 @@ async def bot_room_message_send(request: Request, room_id: str):
                 _run_org_in_background(
                     db_factory=_bot_room_db,
                     fn=_secretary_orchestrate,
-                    args=(room, room_id, norm, text, profiles[0]),
+                    args=(room, room_id, norm, text, sec),
                     kwargs={"skip_user_write": True},
                 )
                 return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}

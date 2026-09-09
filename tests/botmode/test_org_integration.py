@@ -282,6 +282,44 @@ def test_message_send_routes_secretary_mode_to_background(monkeypatch, testenv):
         f"单 agent 房应路由到秘书模式后台 org；triggered={[f.__name__ for f,_ in triggered]}"
 
 
+def test_message_send_secretary_member_at_mention_triggers(testenv, monkeypatch):
+    """决策 A：群内仅 secretary 成员（role=secretary，无其它 agent）+ 消息 @秘书 → 触发秘书模式；
+    无 @ 的纯闲聊不触发（避免误组队）。对应 chat.py:4416-4460 触发条件 (ii)。
+    """
+    triggered = []
+
+    def _fake_bg(db_factory, fn, args, kwargs=None):
+        triggered.append((fn, args))
+
+    monkeypatch.setattr(chat_bp, "_run_org_in_background", _fake_bg)
+    chat_bp._bot_mode_enabled = lambda: True
+    client = _client()
+
+    r = client.post("/api/bot/rooms", json={"name": "秘书only房"})
+    room_id = r.json().get("room_id")
+    assert r.status_code == 200 and room_id, r.text[:200]
+    # 加秘书成员：role=secretary → member_type=secretary（被 agent 池过滤排除，正是触发 gotcha 场景）
+    r = client.post(f"/api/bot/rooms/{room_id}/members",
+                    json={"ref_id": "secretary", "role": "secretary"})
+    assert r.status_code == 200 and r.json().get("ok") is True, r.text[:200]
+
+    # 纯闲聊（无 @）→ 不触发秘书模式（避免纯闲聊误组队）
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "在吗"})
+    assert r.status_code == 200 and r.json().get("ok") is True, r.text[:200]
+    assert not any(fn is chat_bp._secretary_orchestrate for fn, _ in triggered), \
+        "无 @ 的纯闲聊不应触发秘书模式；triggered=" + str([f.__name__ for f, _ in triggered])
+
+    # @秘书 → 触发秘书模式，orchestrator 应为 secretary profile
+    r = client.post(f"/api/bot/rooms/{room_id}/messages",
+                    json={"text": "@秘书 帮我写一份周报"})
+    assert r.status_code == 200 and r.json().get("ok") is True, r.text[:300]
+    sec_triggers = [a for fn, a in triggered if fn is chat_bp._secretary_orchestrate]
+    assert sec_triggers, \
+        "群含 secretary 成员 + @秘书 应触发秘书模式；triggered=" + str([f.__name__ for f, _ in triggered])
+    assert sec_triggers[-1][4]["id"] == "secretary", \
+        f"orchestrator 应为 secretary profile；args={sec_triggers[-1]}"
+
+
 if __name__ == "__main__":
     import pytest as _pytest
     _pytest.main([__file__, "-p", "no:xdist", "-o", "addopts="])

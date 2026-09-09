@@ -28,7 +28,7 @@ export const useBotRoomStore = defineStore('botRoom', {
     //    为 0 或缺失时按 ref_id 哈希兜底，保证每个 agent 颜色稳定且可区分。
     //  - initial：头像首字（中文取首字 / 英文取首字母）。
     mentionCandidates: (s) => (s.members || [])
-      .filter(m => m.member_type === 'agent')
+      .filter(m => m.member_type === 'agent' || m.member_type === 'secretary')
       .map((m) => {
         // ⑭ 组织岗位名优先：组织成立后成员以「岗位/职位」示人（产品经理/QA），
         // 无岗位才回落 agent 本名。insert 同步用岗位名，群里 @产品经理 即命中。
