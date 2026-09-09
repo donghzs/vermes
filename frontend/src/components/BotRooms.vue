@@ -115,7 +115,7 @@ const inviteModal = ref({ open: false, selected: [], submitting: false })
 const memberModal = ref({ open: false })
 
 // ── 群公告/群任务编辑弹窗 ──
-const editModal = ref({ open: false, title: '', announcement: '', tasks: '' })
+const editModal = ref({ open: false, title: '', announcement: '', tasks: '', use_sandbox: false })
 
 // ── 组织任务看板（2026-09-07 ⑭ 秘书模式/组织流水线）：右侧滑出面板 ──
 const orgBoard = ref({
@@ -645,11 +645,12 @@ function openEdit() {
     title: r.title || r.id,
     announcement: r.announcement || '',
     tasks: r.tasks || '',
+    use_sandbox: !!(r.use_sandbox),
   }
 }
 async function handleEditSave() {
   const m = editModal.value
-  const r = await bot.updateRoom({ title: m.title, announcement: m.announcement, tasks: m.tasks })
+  const r = await bot.updateRoom({ title: m.title, announcement: m.announcement, tasks: m.tasks, use_sandbox: m.use_sandbox })
   if (r && r.ok) {
     editModal.value = { open: false }
     toast('已保存', 'success')
@@ -1192,6 +1193,13 @@ onUnmounted(() => {
           <div>
             <label class="text-xs text-gray-500 mb-1 block">群任务</label>
             <textarea v-model="editModal.tasks" rows="3" placeholder="群任务，成员可见" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-blue-500 resize-none"></textarea>
+          </div>
+          <div class="flex items-start gap-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 px-3 py-2.5">
+            <input id="sandbox-toggle" type="checkbox" v-model="editModal.use_sandbox" class="mt-0.5 accent-blue-500" />
+            <div class="flex-1">
+              <label for="sandbox-toggle" class="text-sm font-medium block cursor-pointer">🐝 执行沙箱（蜂群隔离工作区）</label>
+              <p class="text-[11px] text-gray-400 leading-snug mt-0.5">开启后，本群 native/CLI 执行者子任务下沉到蜂群工程沙箱跑（隔离 workspace + git branch + 心跳回收 + 失败重试）。默认关=内联直跑。ACP 异构 agent 不受影响（永不进沙箱）。</p>
+            </div>
           </div>
         </div>
         <div class="mt-4 flex justify-end gap-2">

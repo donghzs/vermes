@@ -903,6 +903,54 @@ def test_org_task_patch_model_override(env):
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
 
+def test_room_use_sandbox_toggle(env):
+    """⑤ R3 UI 开关：PATCH /api/bot/rooms/{id} 设置 use_sandbox → 落库 + 读回。"""
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    db.seed_default_profiles()
+
+    r = client.post("/api/bot/rooms", json={"name": "沙箱开关测试房"})
+    room_id = r.json().get("room_id")
+    check("create room ok", r.status_code == 200 and bool(room_id), r.text[:200])
+
+    # 默认 off
+    db1 = vermes_state.SessionDB(env.db_path)
+    room0 = db1.get_bot_room(room_id)
+    check("default use_sandbox off", room0 is not None and room0.get("use_sandbox") is False, str(room0 and room0.get("use_sandbox")))
+    db1.close()
+
+    # 开 → 落库
+    r = client.patch(f"/api/bot/rooms/{room_id}", json={"use_sandbox": True})
+    check("patch sandbox on ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    db2 = vermes_state.SessionDB(env.db_path)
+    room1 = db2.get_bot_room(room_id)
+    check("use_sandbox persisted True", room1 is not None and room1.get("use_sandbox") is True, str(room1 and room1.get("use_sandbox")))
+    db2.close()
+
+    # 关 → 落库
+    r = client.patch(f"/api/bot/rooms/{room_id}", json={"use_sandbox": False})
+    check("patch sandbox off ok", r.status_code == 200 and r.json().get("ok") is True, r.text[:200])
+    db3 = vermes_state.SessionDB(env.db_path)
+    room2 = db3.get_bot_room(room_id)
+    check("use_sandbox persisted False", room2 is not None and room2.get("use_sandbox") is False, str(room2 and room2.get("use_sandbox")))
+    db3.close()
+
+    # list 也带上 use_sandbox 字段
+    db4 = vermes_state.SessionDB(env.db_path)
+    rooms = db4.list_bot_rooms()
+    target = [x for x in rooms if x["id"] == room_id]
+    check("list carries use_sandbox", bool(target) and "use_sandbox" in target[0], str(target))
+    db4.close()
+
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
 def test_native_upsert_marks_capability_source_official(env):
     results = []
     def check(name, cond, extra=""):

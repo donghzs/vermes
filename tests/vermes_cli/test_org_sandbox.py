@@ -224,3 +224,35 @@ def test_org_sandbox_enabled_triple_fallback():
     assert org_sandbox_enabled(SimpleNamespace(use_sandbox=True)) is True
     # dict ctx
     assert org_sandbox_enabled({"use_sandbox": True}) is True
+
+
+def test_runner_delegates_via_dict_ctx_use_sandbox(monkeypatch, tmp_path):
+    """UI 开关链路：OrgContext.use_sandbox → runner dict ctx → org_sandbox_enabled 命中。
+
+    模拟房间级开关开启（不依赖 env）：runner 拿到的 _ctx 是 dict，含 use_sandbox=True
+    → 应委派沙箱。这钉死 _run_agent 把 ctx.use_sandbox 透传进 dict 的那一行。
+    """
+    _factory_with_sandbox_connect(monkeypatch, tmp_path)
+    monkeypatch.delenv("VERMES_ORG_SANDBOX", raising=False)
+    monkeypatch.setattr(
+        chat_bp.org_sandbox, "poll_sandbox_outcome",
+        lambda *a, **k: SimpleNamespace(status="done", result="SANDBOX_OUT"),
+    )
+    runner = chat_bp._org_runner_factory(MagicMock(), "room-x", "room-x")
+    # 模拟 _run_agent 传进来的 dict ctx（含 use_sandbox=True，来自 OrgContext 房间开关）
+    out = asyncio.run(runner(
+        {"id": "p1", "transport": "native"}, "instr",
+        {"task": {"id": "org-1"}, "use_sandbox": True},
+    ))
+    assert out == "SANDBOX_OUT"
+
+
+def test_org_context_carries_use_sandbox():
+    """OrgContext 新增 use_sandbox 属性：显式传入即真，默认 False。"""
+    from vermes_cli.botmode.org_engine import OrgContext
+    mk = lambda **kw: OrgContext(
+        task={"id": "t1"}, roles=[], profiles={},
+        store=lambda tid, t: None, **kw,
+    )
+    assert mk().use_sandbox is False
+    assert mk(use_sandbox=True).use_sandbox is True

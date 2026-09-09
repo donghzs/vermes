@@ -252,7 +252,8 @@ class OrgContext:
                  append_message: Optional[Callable[[str, str, Optional[str], str], None]] = None,
                  broadcast: Optional[Callable[[str], None]] = None,
                  stream: Optional[Callable[..., None]] = None,
-                 log: Optional[Callable[[str], None]] = None):
+                 log: Optional[Callable[[str], None]] = None,
+                 use_sandbox: bool = False):
         self.task = task
         self.roles = roles
         self.profiles = profiles          # profile_id -> profile
@@ -264,6 +265,8 @@ class OrgContext:
         # 仅 native 通路会产生 delta；ACP/CLI 为阻塞往返无 token 流（不伪造）。
         self.stream = stream
         self.log = log or (lambda s: None)
+        # ⑤ R3 沙箱委派：房间级 opt-in（org_sandbox_enabled 第二路读取）。
+        self.use_sandbox = bool(use_sandbox)
 
     # 便捷：按岗位类型取第一个有 profile 的岗位
     def _first_bound(self, role_type: str) -> Optional[Dict]:
@@ -337,6 +340,7 @@ async def _run_agent(ctx: OrgContext, profile: Dict, instruction: str,
     try:
         out = await runner(profile, instruction, {
             "task": ctx.task, "room": ctx.room, "roles": ctx.roles,
+            "use_sandbox": getattr(ctx, "use_sandbox", False),
             "stream_callback": (lambda d: _emit(d)) if stream_cb is not None else None,
         })
     except Exception as exc:  # fail-open：单岗位失败不拖垮整条流水线

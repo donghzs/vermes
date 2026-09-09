@@ -3556,10 +3556,10 @@ async def bot_room_members_remove(request: Request, room_id: str, ref_id: str):
 
 
 async def bot_room_update(request: Request, room_id: str):
-    """PATCH /api/bot/rooms/{room_id} — 编辑群名/群公告/群任务。
+    """PATCH /api/bot/rooms/{room_id} — 编辑群名/群公告/群任务/沙箱开关。
 
     ⚙️ 微信式：群公告/群任务用户可编辑（想怎么命名怎么命名，想设什么任务设什么）。
-    body: {title?, announcement?, tasks?}（只改传入字段）
+    body: {title?, announcement?, tasks?, use_sandbox?}（只改传入字段）
     """
     if not _bot_mode_enabled():
         raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
@@ -3573,7 +3573,8 @@ async def bot_room_update(request: Request, room_id: str):
     title = body.get("title")
     announcement = body.get("announcement")
     tasks = body.get("tasks")
-    if title is None and announcement is None and tasks is None:
+    use_sandbox = body.get("use_sandbox")
+    if title is None and announcement is None and tasks is None and use_sandbox is None:
         raise HTTPException(status_code=400, detail={"ok": False, "error": "nothing to update"})
     try:
         db = _bot_room_db()
@@ -3583,6 +3584,7 @@ async def bot_room_update(request: Request, room_id: str):
                 title=(title or "").strip() if title is not None else None,
                 announcement=(announcement or "").strip() if announcement is not None else None,
                 tasks=(tasks or "").strip() if tasks is not None else None,
+                use_sandbox=bool(use_sandbox) if use_sandbox is not None else None,
             )
         finally:
             db.close()
@@ -4019,6 +4021,7 @@ async def _org_message_orchestrate(db, room: dict, room_id: str, norm,
             roles=roles,
             profiles=prof_map,
             room={"id": room_id, "title": room.get("title") or ""},
+            use_sandbox=bool((room or {}).get("use_sandbox")),
             store=lambda tid_, updated: db.update_org_task(tid_, **updated),
             append_message=lambda rid, atype, aref, content: db.append_bot_room_message(
                 rid, atype, aref, content,
@@ -4408,6 +4411,7 @@ async def _secretary_orchestrate(db, room: dict, room_id: str, norm,
             roles=roles,
             profiles=prof_map,
             room={"id": room_id, "title": room.get("title") or ""},
+            use_sandbox=bool((room or {}).get("use_sandbox")),
             store=lambda tid_, updated: db.update_org_task(tid_, **updated),
             append_message=lambda rid, atype, aref, content: db.append_bot_room_message(
                 rid, atype, aref, content, turn_session_id=_session_key_for_room(norm, aref) if aref else None

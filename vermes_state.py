@@ -671,6 +671,9 @@ CREATE TABLE IF NOT EXISTS bot_rooms (
     source_group_id TEXT,
     announcement TEXT DEFAULT '',
     tasks TEXT DEFAULT '',
+    -- ⑤ R3 沙箱委派（Sprint D 后续）：房间级 opt-in 开关，0=内联（默认）
+    -- 1=下沉蜂群执行沙箱。走 _reconcile_columns 自动 ALTER。
+    use_sandbox INTEGER DEFAULT 0,
     created_at REAL,
     updated_at REAL
 );
@@ -2266,28 +2269,31 @@ class SessionDB:
                         channel: str = "desktop",
                         source_group_id: Optional[str] = None,
                         announcement: str = "",
-                        tasks: str = "") -> None:
+                        tasks: str = "",
+                        use_sandbox: bool = False) -> None:
         """创建一个房间（幂等：已存在则忽略）。
 
         ⚙️ 微信式建群（2026-09-05）：不再自动把全员拉进房——成员由
         调用方在创建后按需 add_bot_room_member() 手动拉入（用户想拉谁拉谁）。
         群公告/群任务为可编辑文本字段，建群时可一并给定。
+        ⚙️ ⑤ R3 沙箱委派：use_sandbox 房间级开关（默认 False=内联）。
         """
         def _do(conn):
             conn.execute(
                 "INSERT OR IGNORE INTO bot_rooms "
                 "(id, title, channel, source_group_id, announcement, tasks, "
-                " created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " use_sandbox, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (room_id, title, channel, source_group_id, announcement, tasks,
-                 time.time(), time.time()),
+                 int(bool(use_sandbox)), time.time(), time.time()),
             )
         self._execute_write(_do)
 
     def update_bot_room(self, room_id: str, *, title: Optional[str] = None,
                         announcement: Optional[str] = None,
-                        tasks: Optional[str] = None) -> None:
-        """更新房间元信息（标题/群公告/群任务）。None 表示不改动该字段。"""
+                        tasks: Optional[str] = None,
+                        use_sandbox: Optional[bool] = None) -> None:
+        """更新房间元信息（标题/群公告/群任务/沙箱开关）。None 表示不改动该字段。"""
         def _do(conn):
             sets, params = [], []
             if title is not None:
@@ -2299,6 +2305,9 @@ class SessionDB:
             if tasks is not None:
                 sets.append("tasks = ?")
                 params.append(tasks)
+            if use_sandbox is not None:
+                sets.append("use_sandbox = ?")
+                params.append(int(bool(use_sandbox)))
             if not sets:
                 return
             sets.append("updated_at = ?")
@@ -2337,7 +2346,7 @@ class SessionDB:
             with self._lock:
                 rows = self._conn.execute(
                     "SELECT id, title, channel, source_group_id, "
-                    "announcement, tasks, created_at, updated_at FROM bot_rooms "
+                    "announcement, tasks, use_sandbox, created_at, updated_at FROM bot_rooms "
                     "ORDER BY created_at DESC"
                 ).fetchall()
         except sqlite3.OperationalError as exc:
@@ -2348,7 +2357,8 @@ class SessionDB:
             out.append({
                 "id": r[0], "title": r[1], "channel": r[2],
                 "source_group_id": r[3], "announcement": r[4] or "",
-                "tasks": r[5] or "", "created_at": r[6], "updated_at": r[7],
+                "tasks": r[5] or "", "use_sandbox": bool(r[6]),
+                "created_at": r[7], "updated_at": r[8],
             })
         return out
 
@@ -2358,7 +2368,7 @@ class SessionDB:
             with self._lock:
                 row = self._conn.execute(
                     "SELECT id, title, channel, source_group_id, "
-                    "announcement, tasks, created_at, updated_at FROM bot_rooms "
+                    "announcement, tasks, use_sandbox, created_at, updated_at FROM bot_rooms "
                     "WHERE id = ?", (room_id,),
                 ).fetchone()
         except sqlite3.OperationalError as exc:
@@ -2369,7 +2379,8 @@ class SessionDB:
         return {
             "id": row[0], "title": row[1], "channel": row[2],
             "source_group_id": row[3], "announcement": row[4] or "",
-            "tasks": row[5] or "", "created_at": row[6], "updated_at": row[7],
+            "tasks": row[5] or "", "use_sandbox": bool(row[6]),
+            "created_at": row[7], "updated_at": row[8],
         }
 
     def add_bot_room_member(self, room_id: str, member_type: str,
