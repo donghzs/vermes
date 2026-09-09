@@ -93,7 +93,7 @@ def _require_tty(command_name: str) -> None:
     This guard prevents accidental non-interactive invocation.
     """
     if not sys.stdin.isatty():
-        logger.info(
+        print(
             f"Error: 'vermes {command_name}' requires an interactive terminal.\n"
             f"It cannot be run through a pipe or non-interactive subprocess.\n"
             f"Run it directly in your terminal instead.",
@@ -179,11 +179,11 @@ def _apply_profile_override() -> None:
 
             VERMES_home = resolve_profile_env(profile_name)
         except (ValueError, FileNotFoundError) as exc:
-            logger.warning(f"Error: {exc}")
+            print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
         except Exception as exc:
             # A bug in profiles.py must NEVER prevent vermes from starting
-            logger.info(
+            print(
                 f"Warning: profile override failed ({exc}), using default",
                 file=sys.stderr,
             )
