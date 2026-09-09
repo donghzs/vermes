@@ -260,6 +260,14 @@ import threading
 import time as _time
 from datetime import datetime
 
+# F1 stopgap：让 logger.info()（无参）安全。Vermes fork 把上游 print() 分隔符
+# 批量替换成 logger.info()，引入数百处无参调用（TypeError: msg is required）。
+# cli.py / gateway.py 各自内联装了同款 shim，但 main.py 的子命令路径（如
+# `vermes profile create` 的 cmd_profile）既不 import cli 也不 import gateway，
+# 导致无参 logger.info() 在真实 CLI 下崩溃（测试套件靠 conftest shim 才绿）。
+# 必须在 logger 定义前、任何 logger.info() 调用前导入，覆盖全部子命令路径。
+import vermes_cli._log_shim  # noqa: F401  (idempotent no-arg logger.info() shim)
+
 from vermes_cli import __version__, __release_date__
 from vermes_constants import AI_GATEWAY_BASE_URL, OPENROUTER_BASE_URL
 
