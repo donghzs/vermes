@@ -233,6 +233,25 @@ try:
 except Exception as _e:
     print(f"[Vermes GUI] collect_submodules(vermes_cli.capabilities) SKIP: {_e}")
 
+# 腿B：Vermes 作为 ACP server（acp_adapter/*.py import 第三方 acp 包）。
+# ⑭ 登堂是「腿A」：copilot_acp_client.AcpAgentTransportBase 纯 subprocess spawn
+# 外部 CLI，不 import 第三方 acp；那条腿早已通（spec datas 已收 'agent' 目录 +
+# 真机 openclaw/hermes 握手成功）。此处补的是「腿B」：`vermes acp` 子命令 →
+# acp_adapter.entry → import acp（agent-client-protocol==0.9.0，纯 Python 包）。
+# 之前 venv 没装 [acp] extra + 未 collect 该包 → 打包版 `vermes acp` 必 ImportError。
+try:
+    _acp_sub = collect_submodules('acp')
+    hiddenimports.extend(_acp_sub)
+    print(f"[Vermes GUI] collect_submodules(acp) → {len(_acp_sub)} submodules")
+except Exception as _e:
+    print(f"[Vermes GUI] collect_submodules(acp) SKIP: {_e}")
+try:
+    _acpa_sub = collect_submodules('acp_adapter')
+    hiddenimports.extend(_acpa_sub)
+    print(f"[Vermes GUI] collect_submodules(acp_adapter) → {_acpa_sub}")
+except Exception as _e:
+    print(f"[Vermes GUI] collect_submodules(acp_adapter) SKIP: {_e}")
+
 a = Analysis(
     ['vermes_cli/gui_app.py'],
     pathex=[],

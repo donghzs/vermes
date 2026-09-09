@@ -388,6 +388,20 @@ try:
 except Exception as _e:
     print(f"[Vermes Backend] collect_submodules(vermes_cli.capabilities) SKIP: {_e}")
 
+# 腿B：Vermes 作为 ACP server（acp_adapter import 第三方 acp 包）
+try:
+    _acp_sub = collect_submodules('acp')
+    hiddenimports.extend(_acp_sub)
+    print(f"[Vermes Backend] collect_submodules(acp) → {len(_acp_sub)} submodules")
+except Exception as _e:
+    print(f"[Vermes Backend] collect_submodules(acp) SKIP: {_e}")
+try:
+    _acpa_sub = collect_submodules('acp_adapter')
+    hiddenimports.extend(_acpa_sub)
+    print(f"[Vermes Backend] collect_submodules(acp_adapter) → {_acpa_sub}")
+except Exception as _e:
+    print(f"[Vermes Backend] collect_submodules(acp_adapter) SKIP: {_e}")
+
 # experts_catalog.json 和 adapters 目录已在主 datas 列表中，无需追加
 
 a = Analysis(
