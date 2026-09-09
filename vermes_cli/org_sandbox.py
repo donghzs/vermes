@@ -21,11 +21,18 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+import re
 import time
 from typing import Optional
 
 from vermes_cli import kanban_db as kb
+
+_log = logging.getLogger(__name__)
+
+# 与 profiles.validate_profile_name 的 _PROFILE_ID_RE 对齐（避免循环 import，此处独立声明）。
+_PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 # --- org 子任务状态（kanban 终态 → org 子任务状态，严格子集） -------------
@@ -66,6 +73,61 @@ def _derive_idempotency_key(profile: object, instruction: str) -> str:
     return f"org:{pid}:{digest}"
 
 
+def _ensure_kanban_profile(assignee: str) -> bool:
+    """确保 assignee 有对应的 kanban worker profile 目录（桥接层）。
+
+    桥接背景：org 岗位 profile（``agent_profiles`` 表的 researcher/secretary 等
+    native agent）与 kanban worker 的 ``-p`` profile（``~/.vermes/profiles/<id>/``
+    目录）是**两套体系**。沙箱委派时 dispatcher ``_default_spawn`` 用
+    ``resolve_profile_env(assignee)`` 解析 profile 目录，目录不存在则
+    FileNotFoundError 被 pass 掉 → worker spawn 即死（exit 1「Profile not exist」）。
+
+    本函数在投递前补建缺失的 profile 目录（clone 默认 profile 的
+    config.yaml/.env/SOUL.md + skills），让 worker 拿到 provider key 正常跑 LLM。
+    fail-open：任何异常只记 warning 返回 False，不阻断 org 主流程。
+    """
+    try:
+        from vermes_cli import profiles as _profiles
+    except Exception as e:  # noqa: BLE001 -- 桥接失败不阻断投递
+        _log.warning("[org-sandbox] profile bridge unavailable: %s", e)
+        return False
+    try:
+        canon = _profiles.normalize_profile_name(assignee)
+        if canon == "default":
+            return True  # default = ~/.vermes 恒存在
+        if _profiles.profile_exists(canon):
+            return True
+        # clone_config=True：复制 default profile 的 config.yaml/.env/SOUL.md
+        # + skills，worker 拿到 provider key 正常跑 LLM。no_alias 避免污染 PATH。
+        _profiles.create_profile(
+            name=canon, clone_config=True, no_alias=True,
+        )
+        _log.info("[org-sandbox] bridged kanban profile for assignee %r", canon)
+        return True
+    except FileExistsError:
+        return True  # 并发竞态：已被别处建好
+    except Exception as e:  # noqa: BLE001 -- fail-open
+        _log.warning("[org-sandbox] profile bridge failed for %r: %s", assignee, e)
+        return False
+
+
+def _sandbox_assignee(assignee: str) -> str:
+    """把 org 岗位 id 规范化为合法的 kanban profile 名。
+
+    org 岗位 id 可能带前缀/中文（如 ``local:aider``、``sec:汇报总编``、
+    ``a2a:codex``），而 kanban profile 名要求 ``[a-z0-9][a-z0-9_-]{0,63}``。
+    合法名原样返回；非法名映射为稳定的 ``org-<md5前12>`` slug，保证：
+    1) worker ``-p <assignee>`` 能过 validate；2) 幂等（md5 稳定）；
+    3) 展示层不受影响（title/idempotency_key 仍保留原始岗位名）。
+    """
+    canon = assignee.strip().lower()
+    if _PROFILE_ID_RE.match(canon) and canon != "default":
+        return canon
+    # 非法名（带冒号/中文/前缀）→ 稳定 slug
+    digest = hashlib.md5(assignee.encode("utf-8")).hexdigest()[:12]
+    return f"org-{digest}"
+
+
 def dispatch_org_subtask_to_sandbox(
     conn,
     *,
@@ -92,13 +154,17 @@ def dispatch_org_subtask_to_sandbox(
     if transport == "acp":
         raise ValueError("ACP agents must not enter the sandbox")
     assignee = profile.get("id") if isinstance(profile, dict) else str(profile)
+    # 桥接：确保 assignee 有 kanban worker profile 目录，否则 worker -p <assignee> spawn 即死。
+    # 非法名（带冒号/中文/前缀）先规范化为稳定 slug，再桥接 profile。
+    sandbox_assignee = _sandbox_assignee(assignee)
+    _ensure_kanban_profile(sandbox_assignee)
     # branch_name 仅 worktree 态合法；其余态不传，避免 create_task 校验报错。
     effective_branch = branch_name if workspace_kind == "worktree" else None
     task_id = kb.create_task(
         conn,
         title=f"[神魔堂] {assignee} · {instruction[:60]}",
         body=instruction,
-        assignee=assignee,
+        assignee=sandbox_assignee,
         created_by="shenmotang-org",
         workspace_kind=workspace_kind,
         workspace_path=workspace_path,

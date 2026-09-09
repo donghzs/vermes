@@ -67,6 +67,47 @@ def test_dispatch_rejects_acp(kanban_home):
             )
 
 
+def test_ensure_kanban_profile_bridges_missing_profile(kanban_home):
+    """桥接：org 岗位 profile.id 无对应 kanban profile 目录时，
+    投递前补建（clone default config 拿 key），worker 才不至于 spawn 即死。"""
+    from vermes_cli.org_sandbox import _ensure_kanban_profile
+    from vermes_cli import profiles as _profiles
+    assignee = "researcher"
+    # 隔离环境初始无该 profile 目录
+    assert not _profiles.profile_exists(assignee)
+    ok = _ensure_kanban_profile(assignee)
+    assert ok is True
+    assert _profiles.profile_exists(assignee)
+    # 幂等：再次调用不抛错
+    assert _ensure_kanban_profile(assignee) is True
+
+
+def test_ensure_kanban_profile_default_short_circuits(kanban_home):
+    """default 是 ~/.vermes 恒存在，桥接直接 True 不建目录。"""
+    from vermes_cli.org_sandbox import _ensure_kanban_profile
+    assert _ensure_kanban_profile("default") is True
+
+
+def test_sandbox_assignee_normalizes_invalid_names():
+    """非法岗位 id（带冒号/中文/前缀）→ 稳定 slug；合法名原样返回。"""
+    from vermes_cli.org_sandbox import _sandbox_assignee
+    # 合法名原样
+    assert _sandbox_assignee("researcher") == "researcher"
+    assert _sandbox_assignee("coder") == "coder"
+    # 非法名 → 稳定 slug（幂等 + 可过 validate）
+    s1 = _sandbox_assignee("local:aider")
+    s2 = _sandbox_assignee("local:aider")
+    assert s1 == s2
+    assert s1.startswith("org-") and len(s1) == len("org-") + 12
+    # 中文岗位名
+    s3 = _sandbox_assignee("sec:汇报总编")
+    assert s3.startswith("org-")
+    # default 特殊：不 sloted，但 assignee 不会传 default（org 岗位无 default）
+    from vermes_cli.profiles import validate_profile_name
+    for s in (s1, s3):
+        validate_profile_name(s)  # 不抛 ValueError 即合法
+
+
 # ---------------------------------------------------------------------------
 # 3) 透传：workspace_kind / max_runtime_seconds 落到 kanban task
 # ---------------------------------------------------------------------------
