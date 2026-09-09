@@ -83,3 +83,55 @@ def test_delegate_requires_task():
 def test_truncate():
     assert orchestrate_tool._truncate("abc") == "abc"
     assert orchestrate_tool._truncate("x" * 3000).endswith("…(截断)")
+
+
+# ---------------------------------------------------------------------------
+# action=onboard（Sprint B）
+# ---------------------------------------------------------------------------
+def test_onboard_schema_has_action():
+    enum = orchestrate_tool._SHENMOTANG_SCHEMA["parameters"]["properties"]["action"]["enum"]
+    assert "onboard" in enum
+    assert "agent_name" in orchestrate_tool._SHENMOTANG_SCHEMA["parameters"]["properties"]
+
+
+def test_onboard_requires_agent_name():
+    import asyncio
+    r = asyncio.run(orchestrate_tool.shenmotang_tool(action="onboard", agent_name=""))
+    d = json.loads(r)
+    assert d["ok"] is False
+    assert "agent_name" in d.get("error", "")
+
+
+def test_onboard_success_message(monkeypatch):
+    """success 回报：含 profile_id + transport + 引导语。"""
+    import asyncio
+    fake_r = {
+        "ok": True, "status": "success", "agent": "codex-acp",
+        "profile_id": "a2a:acp-codex", "transport": "acp",
+        "health": {"healthy": True, "detail": "ok"},
+    }
+    import tools.orchestrate_tool as ot
+    monkeypatch.setattr(
+        "vermes_cli.a2a.onboarding.onboard_agent", lambda name, auth="": fake_r
+    )
+    r = asyncio.run(ot._onboard_agent("codex-acp", ""))
+    d = json.loads(r)
+    assert d["ok"] is True
+    assert d["status"] == "success"
+    assert d["profile_id"] == "a2a:acp-codex"
+    assert "@它" in d["message"]
+
+
+def test_onboard_not_found_message(monkeypatch):
+    """not_found 回报：引导装 CLI 或去封神榜。"""
+    import asyncio
+    fake_r = {"ok": False, "status": "not_found", "error": "本机未发现 'xxx'"}
+    import tools.orchestrate_tool as ot
+    monkeypatch.setattr(
+        "vermes_cli.a2a.onboarding.onboard_agent", lambda name, auth="": fake_r
+    )
+    r = asyncio.run(ot._onboard_agent("xxx", ""))
+    d = json.loads(r)
+    assert d["ok"] is False
+    assert d["status"] == "not_found"
+    assert "封神榜" in d["message"]

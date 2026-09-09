@@ -45,6 +45,7 @@ _SHENMOTANG_SCHEMA = {
 - action='delegate'：下达新任务。秘书会按需组队（可自动造神）、拉群、驱动流水线，跑完后把交付物摘要回给你。
 - action='review'：对已交付（delivered）的任务验收或打回。approve=true 验收通过；approve=false 需给 feedback（打回意见）。
 - action='status'：查某个任务/群的进度。
+- action='onboard'：接入一个外部 agent（如 Codex/Claude Code/OpenClaw 等）。你负责探测本机安装、匹配封神榜 recipe、接 ACP/CLI 通路。若缺 API key，返回 need_auth——此时**不要**在群聊里展示或索要 key，而是引导用户去设置页（前端弹窗）填写，key 永不进群聊。
 
 关于 topic：默认复用/创建「秘书群」房间并按 topic 分组，同一话题的任务会落在同一个群（可复用组织岗位）。topic 用简短中文短语概括任务主题即可。
 
@@ -54,8 +55,16 @@ delegate 模式会阻塞直到流水线跑完（拆解→执行→审计→汇�
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["delegate", "review", "status"],
-                "description": "delegate=下达任务；review=验收/打回；status=查进度",
+                "enum": ["delegate", "review", "status", "onboard"],
+                "description": "delegate=下达任务；review=验收/打回；status=查进度；onboard=接入外部 agent",
+            },
+            "agent_name": {
+                "type": "string",
+                "description": "onboard 时必填：要接入的 agent 名（官方 recipe 名/通用名/本机 discovery id 均可，如 Codex/Claude Code/OpenClaw）",
+            },
+            "auth_value": {
+                "type": "string",
+                "description": "onboard 时可选：用户已授权的 API key。缺 key 时返回 need_auth，引导用户去设置页填（key 永不进群聊）",
             },
             "task": {
                 "type": "string",
@@ -100,6 +109,62 @@ def _import_chat_orchestrate():
         return RoomIdNormalizer.normalize("desktop", raw_room_id)
 
     return SessionDB, _secretary_orchestrate, _org_message_orchestrate, _norm
+
+
+async def _onboard_agent(agent_name: str, auth_value: str) -> str:
+    """action=onboard：懒加载服务层，把探测结果转成给秘书看的自然语言回报。
+
+    安全：need_auth 时**不返回明文 key**，只回引导语，让用户去设置页填。
+    """
+    if not agent_name or not agent_name.strip():
+        return json.dumps({"ok": False, "error": "onboard 需要 agent_name"}, ensure_ascii=False)
+    try:
+        from vermes_cli.a2a.onboarding import onboard_agent
+
+        r = onboard_agent(agent_name.strip(), auth_value or "")
+    except Exception as e:  # noqa: BLE001 - 接入失败不阻断主流程，回错误文案
+        logger.exception("shenmotang onboard error")
+        return json.dumps(
+            {"ok": False, "status": "error", "error": f"接入探测失败: {e}"}, ensure_ascii=False
+        )
+
+    st = r.get("status")
+    if st == "success":
+        return json.dumps({
+            "ok": True,
+            "status": "success",
+            "agent": r.get("agent"),
+            "profile_id": r.get("profile_id"),
+            "transport": r.get("transport"),
+            "health": r.get("health"),
+            "message": f"已接入 {r.get('agent')}（profile_id={r.get('profile_id')}，通路={r.get('transport')}）。"
+                       f"在群里 @它 就能拉进组织干活。",
+        }, ensure_ascii=False)
+    if st == "need_auth":
+        return json.dumps({
+            "ok": True,
+            "status": "need_auth",
+            "agent": r.get("agent"),
+            "auth_env": r.get("auth_env"),
+            "message": f"接入 {r.get('agent')} 需要 API key（环境变量 {r.get('auth_env')}）。"
+                       f"请引导用户去设置页的密钥弹窗填写（key 不要发在群聊里）。"
+                       f"登录命令参考: {r.get('login_command')}",
+        }, ensure_ascii=False)
+    if st == "not_found":
+        return json.dumps({
+            "ok": False,
+            "status": "not_found",
+            "error": r.get("error"),
+            "message": f"本机没发现 {agent_name}，封神榜也无同名 recipe。"
+                       f"可提醒用户：1) 确认已安装其 CLI；2) 或去封神榜用官方 recipe 登堂。",
+        }, ensure_ascii=False)
+    # error / fail
+    return json.dumps({
+        "ok": False,
+        "status": st or "error",
+        "error": r.get("error"),
+        "message": r.get("error") or f"接入 {agent_name} 失败",
+    }, ensure_ascii=False)
 
 
 def _resolve_secretary(db) -> Optional[Dict[str, Any]]:
@@ -192,6 +257,8 @@ async def shenmotang_tool(
     task_id: str = "",
     approve: bool = True,
     feedback: str = "",
+    agent_name: str = "",
+    auth_value: str = "",
 ) -> str:
     """神魔堂调度入口（async，registry dispatch 经 _run_async 桥接）。"""
     action = (action or "").strip().lower()
@@ -199,6 +266,9 @@ async def shenmotang_tool(
     db = SessionDB()
     try:
         db.seed_default_profiles()
+
+        if action == "onboard":
+            return await _onboard_agent(agent_name, auth_value)
 
         if action == "status":
             if task_id:
@@ -313,6 +383,8 @@ registry.register(
         task_id=args.get("task_id", ""),
         approve=bool(args.get("approve", True)),
         feedback=args.get("feedback", ""),
+        agent_name=args.get("agent_name", ""),
+        auth_value=args.get("auth_value", ""),
     ),
     is_async=True,
     emoji="⛩️",
