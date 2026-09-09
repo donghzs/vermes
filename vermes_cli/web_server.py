@@ -107,7 +107,17 @@ except Exception as _probe_exc:  # probe 自身失败绝不阻断启动（fail-o
     _startup_integrity = {"state_db": "probe_error", "detail": str(_probe_exc)}
     _log.warning("[G1] integrity probe failed (non-fatal): %s", _probe_exc)
 
-app = FastAPI(title="Vermes", version=__version__)
+# G4 (2026-09-09): 打包版默认关闭交互式 API 文档，避免 /openapi.json 暴露全部
+# 路由清单（含插件、神魔堂、内部端点）。开发模式（源码运行）保留 docs 供调试；
+# 打包（PyInstaller frozen）或显式 env VERMES_DISABLE_API_DOCS=1 时关闭。
+_DISABLE_API_DOCS = bool(getattr(sys, "frozen", False)) or os.environ.get("VERMES_DISABLE_API_DOCS") == "1"
+app = FastAPI(
+    title="Vermes",
+    version=__version__,
+    docs_url=None if _DISABLE_API_DOCS else "/docs",
+    redoc_url=None if _DISABLE_API_DOCS else "/redoc",
+    openapi_url=None if _DISABLE_API_DOCS else "/openapi.json",
+)
 
 
 # ---------------------------------------------------------------------------
