@@ -113,14 +113,20 @@ def dispatch_org_subtask_to_sandbox(
     return task_id
 
 
-def map_sandbox_outcome_to_org(kanban_task) -> tuple[str, str]:
+def map_sandbox_outcome_to_org(kanban_task, conn=None) -> tuple[str, str]:
     """把 kanban task 的终态单向回填映射为 (org_status, output)。
 
     只消费沙箱状态，绝不回写 kanban 行（无双写竞争）。
-    output 取自 task.result（worker 产出文本）；缺省回退到 status 枚举。
+    output 优先取 task.result；为空时回退 kb.latest_summary(conn, task_id)
+    （kanban-worker 用 complete_task(summary=...) 写交付物，tasks.result 留空，
+    见 kanban_db.latest_summary 文档）；仍空则回退 status 枚举。
     """
     status = kanban_task.status
     output = (getattr(kanban_task, "result", None) or "").strip()
+    if not output and conn is not None:
+        tid = getattr(kanban_task, "id", None)
+        if tid:
+            output = (kb.latest_summary(conn, tid) or "").strip()
     if not output:
         output = status
     org_status = _STATUS_TO_ORG.get(status, SANDBOX_ORG_BLOCKED)
@@ -192,7 +198,7 @@ def run_org_subtask_in_sandbox(
         )
         if task is None:
             return "[沙箱执行失败] 任务不存在（可能被回收）"
-        org_status, output = map_sandbox_outcome_to_org(task)
+        org_status, output = map_sandbox_outcome_to_org(task, conn=conn)
         if org_status == SANDBOX_ORG_DONE:
             return output or ""
         return f"[沙箱执行未完成: {org_status}] {output}"

@@ -111,6 +111,30 @@ def test_map_outcome_falls_back_to_blocked_on_unknown():
     assert out == "weird"
 
 
+def test_map_outcome_reads_latest_summary_when_result_empty(kanban_home):
+    """回归守卫：worker 用 complete_task(summary=...) 写交付物，tasks.result 留空；
+    map 必须经 kb.latest_summary 回退取回真实产出，而非退化成 status 枚举。"""
+    with kb.connect() as conn:
+        tid = dispatch_org_subtask_to_sandbox(
+            conn, org_task_id="org:S", profile={"id": "p1"},
+            instruction="x", transport="native",
+        )
+        conn.execute(
+            "UPDATE tasks SET status='done', result=NULL WHERE id=?", (tid,)
+        )
+        conn.execute(
+            "INSERT INTO task_runs (task_id, profile, status, outcome, summary, "
+            "started_at, ended_at) VALUES (?, 'p1', 'done', 'completed', '沙箱OK', "
+            "1, 2)",
+            (tid,),
+        )
+        task = kb.get_task(conn, tid)
+        assert task.result is None
+        org_status, out = map_sandbox_outcome_to_org(task, conn=conn)
+    assert org_status == SANDBOX_ORG_DONE
+    assert out == "沙箱OK"
+
+
 # ---------------------------------------------------------------------------
 # 5) 有界轮询：预置 done 任务立即返回（不超时挂死）
 # ---------------------------------------------------------------------------
