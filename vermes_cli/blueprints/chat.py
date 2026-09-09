@@ -3467,13 +3467,30 @@ async def bot_rooms_create(request: Request):
 
 
 async def bot_rooms_list(request: Request):
-    """GET /api/bot/rooms"""
+    """GET /api/bot/rooms
+
+    ?member_ref=xxx → 成员视角只读通道（G5）：仅返回该成员所在的群。
+    复用 list_bot_rooms / list_bot_room_members，不新开数据访问；仍受
+    _bot_mode_enabled 守卫（与无参查询同源），不新增鉴权暴露面。房间 dict
+    不含成员列表（成员走独立 /members 端点），过滤不会泄露其他成员数据。
+    """
     if not _bot_mode_enabled():
         raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    member_ref = (request.query_params.get("member_ref") or "").strip()
     try:
         db = _bot_room_db()
         try:
             rooms = db.list_bot_rooms()
+            if member_ref:
+                filtered = []
+                for room in rooms:
+                    rid = room.get("id") or room.get("room_id")
+                    if not rid:
+                        continue
+                    members = db.list_bot_room_members(rid)
+                    if any((m.get("ref_id") or "") == member_ref for m in members):
+                        filtered.append(room)
+                rooms = filtered
         finally:
             db.close()
         return {"ok": True, "rooms": rooms}

@@ -758,6 +758,42 @@ def run_members(env):
     return results
 
 
+def run_member_view(env):
+    """③ G5：GET /api/bot/rooms?member_ref= 成员视角只读通道。
+
+    断言：带 member_ref 仅返回该成员所在群；不带返回全部；不存在成员返回空。
+    复用 list_bot_rooms / list_bot_room_members，不新增鉴权暴露面。
+    """
+    results = []
+    def check(name, cond, extra=""):
+        results.append((name, cond))
+        return cond
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    _seed(db)
+    db.create_bot_room("rmA", "群A")
+    db.create_bot_room("rmB", "群B")
+    db.add_bot_room_member("rmA", "secretary", "secretary")
+    db.add_bot_room_member("rmB", "agent", "researcher")
+    db.close()
+
+    r_all = client.get("/api/bot/rooms")
+    check("无参返回全部群", r_all.status_code == 200 and len(r_all.json().get("rooms", [])) == 2, r_all.text[:200])
+
+    r_sec = client.get("/api/bot/rooms?member_ref=secretary")
+    rooms_sec = r_sec.json().get("rooms", [])
+    check("member_ref=secretary 仅返回所在群", r_sec.status_code == 200 and {x["id"] for x in rooms_sec} == {"rmA"}, str(rooms_sec)[:200])
+
+    r_res = client.get("/api/bot/rooms?member_ref=researcher")
+    rooms_res = r_res.json().get("rooms", [])
+    check("member_ref=researcher 仅返回所在群", {x["id"] for x in rooms_res} == {"rmB"}, str(rooms_res)[:200])
+
+    r_none = client.get("/api/bot/rooms?member_ref=nobody")
+    check("不存在成员返回空", r_none.status_code == 200 and len(r_none.json().get("rooms", [])) == 0, r_none.text[:200])
+    return results
+
+
 # ─────────────────────────── pytest 入口 ───────────────────────────
 
 @pytest.fixture
@@ -797,6 +833,12 @@ def test_bot_mode_disabled_short_circuits(env):
 
 def test_room_members_endpoint(env):
     results = run_members(env)
+    failed = [n for n, c in results if not c]
+    assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
+
+
+def test_room_list_member_ref(env):
+    results = run_member_view(env)
     failed = [n for n, c in results if not c]
     assert not failed, f"FAILED: {failed}\n" + "\n".join(f"  {'PASS' if c else 'FAIL'} {n}" for n, c in results)
 
