@@ -684,11 +684,18 @@ def _extract_json(raw: str) -> str:
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         s = "\n".join(lines).strip()
-    # 定位第一个 { 或 [ 到最后匹配
+    # 定位第一个 { 或 [ 到最后匹配。
+    # 2026-09-09 修复：原实现只在字符串「以 [ 开头」时才按数组解析，
+    # 于是 "好的，结果如下：[{...},{...}]" 这种带前后杂文的数组会被截成
+    # "{...},{...}"（少了中括号 → 不是合法 JSON）→ 上游 json.loads 失败 →
+    # 静默退化成均分兜底，LLM 精心拆解的子任务被丢弃且无任何报错。
+    # 改为：取「先出现的那个起始符」决定按对象还是数组解析。
     try:
-        if s.startswith("["):
+        start_curly = s.find("{")
+        start_brack = s.find("[")
+        if start_brack >= 0 and (start_curly < 0 or start_brack < start_curly):
             end = s.rindex("]")
-            return s[: end + 1]
+            return s[start_brack : end + 1]
         start = s.index("{")
         end = s.rindex("}")
         return s[start : end + 1]

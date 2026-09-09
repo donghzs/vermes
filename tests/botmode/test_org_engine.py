@@ -504,6 +504,164 @@ def test_run_agent_without_stream_is_noop():
     assert seen["cb"] is None
 
 
+# ─────────────────────────── LLM 输出解析层（2026-09-09 补覆盖）───────────────────────────
+# 背景：run_org_task 的全部决策都建立在这几个解析函数上，但它们此前 0 直接覆盖。
+# 这些函数的共同契约是 **fail-open**（坏输入不抛异常、默认 pass），故测试重点在
+# 「坏输入不炸 + 好输入不失真 + 越界数据被过滤」，而非只测 happy path。
+
+class TestExtractJson:
+    """_extract_json：从 LLM 输出中抠出 JSON（容忍围栏/杂文）。"""
+
+    def test_fenced_json_block(self):
+        raw = '```json\n{"verdict": "pass"}\n```'
+        assert oe._extract_json(raw) == '{"verdict": "pass"}'
+
+    def test_surrounded_by_prose(self):
+        # 前后杂文：LLM 最爱说"好的，结果如下：... 希望对您有帮助"
+        raw = '好的，结果如下：\n{"verdict": "reject", "comment": "改A"}\n希望对您有帮助'
+        assert oe._extract_json(raw) == '{"verdict": "reject", "comment": "改A"}'
+
+    def test_array_form(self):
+        raw = '说明文字 [{"a": 1}, {"a": 2}] 结束'
+        assert oe._extract_json(raw) == '[{"a": 1}, {"a": 2}]'
+
+    def test_no_json_returns_empty(self):
+        assert oe._extract_json("这里没有任何 json") == ""
+
+    def test_empty_input_returns_empty(self):
+        assert oe._extract_json("") == ""
+        assert oe._extract_json(None) == ""
+
+
+class TestParseAudit:
+    """_parse_audit：整批审计 → (verdict, comments)，comments 必须落在 plan 内。"""
+
+    def test_filters_comments_outside_plan(self):
+        # plan 只有 s1/s2 → s9 的意见必须被丢弃（否则会拿去改不存在的子任务）
+        plan = [{"sub_id": "s1"}, {"sub_id": "s2"}]
+        raw = '{"verdict": "reject", "comments": {"s1": "数据不准", "s9": "越界意见"}}'
+        verdict, comments = oe._parse_audit(raw, plan)
+        assert verdict == "reject"
+        assert comments == {"s1": "数据不准"}
+
+    def test_bad_json_fails_open_to_pass(self):
+        plan = [{"sub_id": "s1"}]
+        assert oe._parse_audit("这不是 json", plan) == ("pass", {})
+
+    def test_unknown_verdict_normalized_to_pass(self):
+        plan = [{"sub_id": "s1"}]
+        verdict, _ = oe._parse_audit('{"verdict": "maybe"}', plan)
+        assert verdict == "pass"
+
+    def test_comments_not_dict_becomes_empty(self):
+        plan = [{"sub_id": "s1"}]
+        verdict, comments = oe._parse_audit('{"verdict": "reject", "comments": ["a"]}', plan)
+        assert verdict == "reject"
+        assert comments == {}
+
+
+class TestParseSingleAudit:
+    """_parse_single_audit：单子任务交叉审计 → (verdict, comment)。"""
+
+    def test_plain_comment_field(self):
+        assert oe._parse_single_audit('{"verdict": "reject", "comment": "改A"}') == ("reject", "改A")
+
+    def test_legacy_comments_dict_takes_first(self):
+        # 旧格式用 comments dict → 取第一条非空值
+        verdict, comment = oe._parse_single_audit(
+            '{"verdict": "reject", "comments": {"s1": "第一条", "s2": "第二条"}}')
+        assert verdict == "reject"
+        assert comment == "第一条"
+
+    def test_bad_json_fails_open(self):
+        assert oe._parse_single_audit("坏输出") == ("pass", "")
+
+
+class TestFmtComments:
+    """_fmt_comments：审计意见 → 人类可读串（含 80 字截断）。"""
+
+    def test_empty_returns_placeholder(self):
+        assert oe._fmt_comments({}) == "（无具体意见，全组重做）"
+
+    def test_joins_with_semicolon(self):
+        out = oe._fmt_comments({"s1": "数据不准", "s2": "缺风险"})
+        assert out == "s1: 数据不准; s2: 缺风险"
+
+    def test_truncates_long_comment_to_80(self):
+        out = oe._fmt_comments({"s1": "长" * 200})
+        # "s1: " (4) + 80 字截断
+        assert out == "s1: " + "长" * 80
+
+    def test_drops_empty_values(self):
+        # 空意见不该渲染成 "s1: " 这种噪声
+        assert oe._fmt_comments({"s1": "", "s2": "有意见"}) == "s2: 有意见"
+
+
+class TestExecInstruction:
+    """_exec_instruction：子任务执行指令拼装。"""
+
+    def test_contains_all_four_fields(self):
+        task = {"title": "季度报告", "brief": "老板原始指令"}
+        sub = {"instruction": "写营收", "acceptance": "数据准确"}
+        out = oe._exec_instruction(task, sub)
+        assert "季度报告" in out and "写营收" in out
+        assert "数据准确" in out and "老板原始指令" in out
+
+    def test_missing_fields_do_not_crash(self):
+        # 缺字段走 .get 默认值，不应 KeyError
+        out = oe._exec_instruction({}, {})
+        assert "请直接产出" in out
+
+
+class TestBuildCandidateList:
+    """build_candidate_list：候选清单 + 能力诚实标注三态（P2-b 修复点）。"""
+
+    def test_empty_profiles_returns_hint(self):
+        out = oe.build_candidate_list({})
+        assert "暂无其他 agent" in out
+
+    def test_official_capability_not_marked_inferred(self):
+        # 官方手写的能力是真值，不得标"(推测)"
+        out = oe.build_candidate_list({
+            "a1": {"id": "a1", "name": "甲", "capability_tags": ["code"],
+                   "capability_source": "official"},
+        })
+        assert "能力：code" in out
+        assert "(推测)" not in out
+
+    def test_inferred_capability_marked(self):
+        out = oe.build_candidate_list({
+            "a1": {"id": "a1", "name": "甲", "capability_tags": ["code"],
+                   "capability_source": "inferred"},
+        })
+        assert "能力(推测)：code" in out
+
+    def test_unknown_source_defaults_to_inferred_mark(self):
+        # 未标注 source 时按"不是官方"处理 → 标推测（保守、不冒充真值）
+        out = oe.build_candidate_list({
+            "a1": {"id": "a1", "name": "甲", "capability_tags": ["code"]},
+        })
+        assert "能力(推测)：code" in out
+
+    def test_no_capability_shows_unlabeled(self):
+        out = oe.build_candidate_list({"a1": {"id": "a1", "name": "甲"}})
+        assert "能力：未标注" in out
+
+    def test_description_truncated_to_60(self):
+        out = oe.build_candidate_list({
+            "a1": {"id": "a1", "name": "甲", "description": "介" * 100},
+        })
+        assert "介" * 60 in out
+        assert "介" * 61 not in out
+
+    def test_row_shape_pid_name_transport_model(self):
+        out = oe.build_candidate_list({
+            "a1": {"id": "a1", "name": "甲", "transport": "acp",
+                   "provider": "openai", "model": "gpt-5"},
+        })
+        assert out == "a1: 甲 | acp | openai/gpt-5 | 能力：未标注"
+
+
 if __name__ == "__main__":
     # 简易独立运行入口
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
