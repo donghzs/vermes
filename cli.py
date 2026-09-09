@@ -2108,7 +2108,7 @@ class ChatConsole:
     Captures Rich's rendered ANSI output and routes it through _cprint
     so colors and markup render correctly inside the interactive chat loop.
     Drop-in replacement for Rich Console — just pass this to any function
-    that expects a console.logger.info() interface.
+    that expects a console.print() interface.
     """
 
     def __init__(self):
@@ -2126,7 +2126,7 @@ class ChatConsole:
         self._buffer.truncate()
         # Read terminal width at render time so panels adapt to current size
         self._inner.width = shutil.get_terminal_size((80, 24)).columns
-        self._inner.logger.info(*args, **kwargs)
+        self._inner.print(*args, **kwargs)
         output = self._buffer.getvalue()
         for line in output.rstrip("\n").split("\n"):
             _cprint(line)
@@ -3594,12 +3594,12 @@ class VermesCLI:
 
     def _print_user_message_preview(self, user_input: str) -> None:
         """Render a user message using the normal chat scrollback style."""
-        ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
+        ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
         text = str(user_input or "")
         if "\n" in text:
-            ChatConsole().logger.info(self._format_submitted_user_message_preview(text))
+            ChatConsole().print(self._format_submitted_user_message_preview(text))
         else:
-            ChatConsole().logger.info(f"[bold {_accent_hex()}]●[/] [bold]{_escape(text)}[/]")
+            ChatConsole().print(f"[bold {_accent_hex()}]●[/] [bold]{_escape(text)}[/]")
 
     def _stream_reasoning_delta(self, text: str) -> None:
         """Stream reasoning/thinking tokens into a dim box above the response.
@@ -4078,7 +4078,7 @@ class VermesCLI:
 
         if runtime is None:
             message = format_runtime_provider_error(_primary_exc) if _primary_exc else "Provider resolution failed."
-            ChatConsole().logger.info(f"[bold red]{message}[/]")
+            ChatConsole().print(f"[bold red]{message}[/]")
             return False
 
         api_key = runtime.get("api_key")
@@ -4261,7 +4261,7 @@ class VermesCLI:
             except Exception:
                 resolved_id = self.session_id
             if resolved_id and resolved_id != self.session_id:
-                ChatConsole().logger.info(
+                ChatConsole().print(
                     f"[{_DIM}]Session {_escape(self.session_id)} was compressed into "
                     f"{_escape(resolved_id)}; resuming the descendant with your "
                     f"transcript.[/]"
@@ -4278,14 +4278,14 @@ class VermesCLI:
                 title_part = ""
                 if session_meta.get("title"):
                     title_part = f" \"{session_meta['title']}\""
-                ChatConsole().logger.info(
+                ChatConsole().print(
                     f"[bold {_accent_hex()}]↻ Resumed session[/] "
                     f"[bold]{_escape(self.session_id)}[/]"
                     f"[bold {_accent_hex()}]{_escape(title_part)}[/] "
                     f"({msg_count} user message{'s' if msg_count != 1 else ''}, {len(restored)} total messages)"
                 )
             else:
-                ChatConsole().logger.info(
+                ChatConsole().print(
                     f"[bold {_accent_hex()}]Session {_escape(self.session_id)} found but has no messages. Starting fresh.[/]"
                 )
             # Re-open the session (clear ended_at so it's active again)
@@ -4399,7 +4399,7 @@ class VermesCLI:
                     # Keep _pending_title so it can be retried after row creation succeeds
             return True
         except Exception as e:
-            ChatConsole().logger.info(f"[bold red]Failed to initialize agent: {e}[/]")
+            ChatConsole().print(f"[bold red]Failed to initialize agent: {e}[/]")
             return False
     
     def _show_security_advisories(self):
@@ -4758,7 +4758,7 @@ class VermesCLI:
             width=width,
         )
         with _suspend_output_history():
-            console.logger.info(panel)
+            console.print(panel)
         return buf.getvalue().rstrip("\n").splitlines()
 
     def _try_attach_clipboard_image(self) -> bool:
@@ -5383,12 +5383,12 @@ class VermesCLI:
             for cmd, desc in commands.items():
                 if not self._command_available(cmd):
                     continue
-                ChatConsole().logger.info(f"    [bold {_accent_hex()}]{cmd:<15}[/] [dim]-[/] {_escape(desc)}")
+                ChatConsole().print(f"    [bold {_accent_hex()}]{cmd:<15}[/] [dim]-[/] {_escape(desc)}")
 
         if _skill_commands:
             _cprint(f"\n  ⚡ {_BOLD}Skill Commands{_RST} ({len(_skill_commands)} installed):")
             for cmd, info in sorted(_skill_commands.items()):
-                ChatConsole().logger.info(
+                ChatConsole().print(
                     f"    [bold {_accent_hex()}]{cmd:<22}[/] [dim]-[/] {_escape(info['description'])}"
                 )
 
@@ -5398,7 +5398,7 @@ class VermesCLI:
             for cmd, info in sorted(_bundles_now.items()):
                 skill_count = len(info.get("skills", []))
                 desc = info.get("description") or f"Load {skill_count} skills"
-                ChatConsole().logger.info(
+                ChatConsole().print(
                     f"    [bold {_accent_hex()}]{cmd:<22}[/] [dim]-[/] "
                     f"{_escape(desc)} [dim]({skill_count} skills)[/]"
                 )
@@ -6965,7 +6965,7 @@ class VermesCLI:
 
     def _console_print(self, *args, **kwargs):
         """Print through the active command-safe console."""
-        self._output_console().logger.info(*args, **kwargs)
+        self._output_console().print(*args, **kwargs)
 
     @staticmethod
     def _resolve_personality_prompt(value) -> str:
@@ -7254,7 +7254,7 @@ class VermesCLI:
                 cc = ChatConsole()
                 term_w = shutil.get_terminal_size().columns
                 if self.compact or term_w < 80:
-                    cc.logger.info(_build_compact_banner())
+                    cc.print(_build_compact_banner())
                 else:
                     tools = get_tool_definitions(enabled_toolsets=self.enabled_toolsets, quiet_mode=True)
                     cwd = os.getenv("TERMINAL_CWD", os.getcwd())
@@ -7280,7 +7280,7 @@ class VermesCLI:
                         _tip_color = get_active_skin().get_color("banner_dim", "#B8860B")
                     except Exception:
                         _tip_color = "#B8860B"
-                    cc.logger.info(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
+                    cc.print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
                 except Exception:
                     pass
             else:
@@ -7603,13 +7603,13 @@ class VermesCLI:
                         f"({len(loaded_names)} skills)"
                     )
                     if missing:
-                        ChatConsole().logger.info(
+                        ChatConsole().print(
                             f"[yellow]Skipped missing skills: {', '.join(missing)}[/]"
                         )
                     if hasattr(self, '_pending_input'):
                         self._pending_input.put(msg)
                 else:
-                    ChatConsole().logger.info(
+                    ChatConsole().print(
                         f"[bold red]Failed to load bundle for {base_cmd}[/]"
                     )
             # Check for skill slash commands (/gif-search, /axolotl, etc.)
@@ -7624,7 +7624,7 @@ class VermesCLI:
                     if hasattr(self, '_pending_input'):
                         self._pending_input.put(msg)
                 else:
-                    ChatConsole().logger.info(f"[bold red]Failed to load skill for {base_cmd}[/]")
+                    ChatConsole().print(f"[bold red]Failed to load skill for {base_cmd}[/]")
             else:
                 # Prefix matching: if input uniquely identifies one command, execute it.
                 # Matches against both built-in COMMANDS and installed skill commands so
@@ -7761,10 +7761,10 @@ class VermesCLI:
                     self._app.invalidate()
                     time.sleep(0.05)  # brief pause for refresh
                 logger.info()
-                ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
+                ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
                 _cprint(f"  ✅ Background task #{task_num} complete")
                 _cprint(f"  Prompt: \"{prompt[:60]}{'...' if len(prompt) > 60 else ''}\"")
-                ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
+                ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
                 if response:
                     try:
                         from vermes_cli.skin_engine import get_active_skin
@@ -7778,7 +7778,7 @@ class VermesCLI:
                         _resp_text = "#FFF8DC"
 
                     _chat_console = ChatConsole()
-                    _chat_console.logger.info(Panel(
+                    _chat_console.print(Panel(
                         _render_final_assistant_content(response, mode=self.final_response_markdown),
                         title=f"[{_resp_color} bold]{label} (background #{task_num})[/]",
                         title_align="left",
@@ -7859,12 +7859,12 @@ class VermesCLI:
         for info in bundles:
             skill_count = len(info.get("skills", []))
             desc = info.get("description") or f"Load {skill_count} skills"
-            ChatConsole().logger.info(
+            ChatConsole().print(
                 f"    [bold {_accent_hex()}]/{info['slug']:<20}[/] "
                 f"[dim]-[/] {_escape(desc)} [dim]({skill_count} skills)[/]"
             )
             for s in info.get("skills", []):
-                ChatConsole().logger.info(f"        [dim]· {_escape(s)}[/]")
+                ChatConsole().print(f"        [dim]· {_escape(s)}[/]")
         _cprint(
             f"\n  {_DIM}Invoke a bundle with /<slug>. "
             f"Manage with `Vermes bundles`.{_RST}"
@@ -10274,7 +10274,7 @@ class VermesCLI:
         # Add user message to history
         self.conversation_history.append({"role": "user", "content": message})
 
-        ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
+        ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
         logger.info()
         
         try:
@@ -10652,7 +10652,7 @@ class VermesCLI:
                     pass
                 else:
                     _chat_console = ChatConsole()
-                    _chat_console.logger.info(Panel(
+                    _chat_console.print(Panel(
                         _render_final_assistant_content(response, mode=self.final_response_markdown),
                         title=f"[{_resp_color} bold]{label}[/]",
                         title_align="left",
@@ -13665,7 +13665,7 @@ def main(
             # invocations are fast.
             _query_label = query or ("[image attached]" if single_query_images else "")
             if _query_label:
-                cli.console.logger.info(f"[bold blue]Query:[/] {_query_label}")
+                cli.console.print(f"[bold blue]Query:[/] {_query_label}")
             # Surface security advisories before the agent runs — short
             # banner, doesn't depend on the welcome banner being shown.
             cli._show_security_advisories()
