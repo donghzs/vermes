@@ -4478,8 +4478,8 @@ async def bot_room_message_send(request: Request, room_id: str):
                 return {"ok": True, "timeline": db.get_bot_room_timeline(room_id)}
             # 2b) 秘书模式（⑭ 傻瓜式懒人路径）：群无岗位表即触发，满足：
             #     (i) 恰 1 个 agent → 该 agent 当老板秘书（既有路径，test_secretary_org_flow 覆盖）；
-            #     (ii) 含 secretary 成员 且 用户消息 @ 到该秘书（决策 A：@ 护栏，
-            #          避免纯闲聊误组队；贴合「自建群拉秘书、@秘书即触发」心智）。
+            #     (ii) 含 secretary 成员 → 直接触发（决策：群=组队场景，来了就是
+            #          组队/讨论组织架构落实方案，无需 @ 护栏；闲聊应去单聊）。
             try:
                 room_roles = db.get_org_roles(room_id) if hasattr(db, "get_org_roles") else []
             except Exception:
@@ -4488,7 +4488,7 @@ async def bot_room_message_send(request: Request, room_id: str):
             if not room_roles:
                 if len(profiles) == 1:
                     sec = profiles[0]
-                elif secretary_profiles and parse_room_mentions(text, secretary_profiles):
+                elif secretary_profiles:
                     sec = secretary_profiles[0]
             if sec is not None:
                 # ⑭ 体验改善：秘书模式后台化——请求秒回，流水线在后台跑，
