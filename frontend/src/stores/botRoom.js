@@ -214,6 +214,14 @@ export const useBotRoomStore = defineStore('botRoom', {
           const cur = this.streaming[aid] || { text: '', active: true }
           this.streaming = { ...this.streaming, [aid]: { text: cur.text + (m.delta || ''), active: true } }
         }
+        // ⑭ 组织流水线 token 级流式：后端每个执行者结束（成功或异常）都补发
+        // phase='end'，此处显式收起气泡。否则子任务工件若未以
+        // author_ref=<profile id> 的 agent 消息落库，「正在生成」气泡会永久悬挂。
+        if (m.phase === 'end') {
+          const next = { ...this.streaming }
+          delete next[aid]
+          this.streaming = next
+        }
       }
       // 落库完成（room_message 且是 agent 消息）→ 清理对应 streaming 气泡
       if (msg.event === 'room_message' && topicRoom === this.currentRoomId) {

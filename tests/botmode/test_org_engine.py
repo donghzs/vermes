@@ -431,6 +431,79 @@ def test_secretary_instruction_mentions_balance():
     assert "eng1" in cl and "甲" in cl
 
 
+# ───────────────── token 级流式（P0 体验 step ②）─────────────────
+
+def test_run_agent_streams_tokens_and_closes():
+    """native 执行者：增量回调带执行者标识，且收尾必发 done=True。
+
+    断言意义：done 缺失会让前端「正在生成」气泡永久悬挂，故正常/异常两条路径都覆盖。
+    """
+    events = []
+
+    def _stream(delta, ref=None, done=False):
+        events.append((delta, ref, done))
+
+    async def _streaming_runner(profile, instruction, ctx):
+        cb = (ctx or {}).get("stream_callback")
+        assert cb is not None, "runner 必须收到 stream_callback"
+        for piece in ("营收", "部分", "完成"):
+            cb(piece)
+        return "[工件-eng1] 完成"
+
+    ctx = oe.OrgContext(
+        task=make_task(), roles=[], profiles={"eng1": {"id": "eng1"}},
+        room={"title": "t"}, store=lambda tid, t: None,
+        append_message=lambda *a, **k: None,
+        stream=_stream,
+    )
+    out = run(oe._run_agent(ctx, {"id": "eng1"}, "写营收", _streaming_runner))
+    assert out == "[工件-eng1] 完成"
+    # 增量按序透传，且带执行者标识（并行多执行者靠 ref 区分）
+    deltas = [(d, r) for d, r, done in events if not done and d]
+    assert deltas == [("营收", "eng1"), ("部分", "eng1"), ("完成", "eng1")]
+    # 收尾 done 恰好一次
+    dones = [e for e in events if e[2] is True]
+    assert len(dones) == 1 and dones[0][1] == "eng1"
+
+
+def test_run_agent_stream_closes_on_failure():
+    """执行异常：仍必须补发 done=True（否则前端流式气泡悬挂）。"""
+    events = []
+
+    async def _boom(profile, instruction, ctx):
+        cb = (ctx or {}).get("stream_callback")
+        if cb:
+            cb("半截")
+        raise RuntimeError("模型炸了")
+
+    ctx = oe.OrgContext(
+        task=make_task(), roles=[], profiles={"eng1": {"id": "eng1"}},
+        room={"title": "t"}, store=lambda tid, t: None,
+        append_message=lambda *a, **k: None,
+        stream=lambda delta, ref=None, done=False: events.append((delta, ref, done)),
+    )
+    out = run(oe._run_agent(ctx, {"id": "eng1"}, "写", _boom))
+    assert out.startswith("[执行失败]")
+    assert any(e[2] is True for e in events), "异常路径也必须收尾 done"
+
+
+def test_run_agent_without_stream_is_noop():
+    """未注入 stream（兼容旧构造点）：不报错，runner 收到 None 回调。fail-open。"""
+    seen = {}
+
+    async def _runner(profile, instruction, ctx):
+        seen["cb"] = (ctx or {}).get("stream_callback")
+        return "ok"
+
+    ctx = oe.OrgContext(
+        task=make_task(), roles=[], profiles={"eng1": {"id": "eng1"}},
+        room={"title": "t"}, store=lambda tid, t: None,
+        append_message=lambda *a, **k: None,
+    )  # 故意不传 stream
+    assert run(oe._run_agent(ctx, {"id": "eng1"}, "写", _runner)) == "ok"
+    assert seen["cb"] is None
+
+
 if __name__ == "__main__":
     # 简易独立运行入口
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

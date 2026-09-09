@@ -3863,6 +3863,56 @@ def _org_announce_ws(room_id: str, content: str,
         pass
 
 
+# ── ⑭ 子任务 token 级流式（P0 体验 step ②）──
+# 只 native 通路（AIAgent.chat）会真产生 delta；ACP/CLI 为阻塞往返无 token 流，
+# 前端对这两类只呈现节点级"执行中"进度，不伪造流式（诚实标注）。
+_ORG_STREAM_FLUSH_INTERVAL = 0.12  # 秒：合批节流，避免每 token 一次 WS 广播
+_org_stream_lock = threading.Lock()
+_org_stream_buf: dict = {}  # (room_id, ref) -> {"text": str, "last": float}
+
+
+def _org_stream_ws(room_id: str, ref: Optional[str], delta: str,
+                   done: bool = False) -> None:
+    """把子任务生成过程的 token 增量合批广播到 WS（org_stream 事件）。
+
+    编排跑在后台线程独立 loop，故同样用 run_coroutine_threadsafe 投递回主 loop。
+    fail-open：无主 loop / 广播失败只静默，靠节点级 _announce + 4s 轮询兜底。
+    """
+    key = (room_id, ref or "")
+    chunk = ""
+    try:
+        with _org_stream_lock:
+            st = _org_stream_buf.setdefault(key, {"text": "", "last": 0.0})
+            if delta:
+                st["text"] += delta
+            now = time.monotonic()
+            if done or (now - st["last"]) >= _ORG_STREAM_FLUSH_INTERVAL:
+                chunk = st["text"]
+                st["text"] = ""
+                st["last"] = now
+                if done:
+                    _org_stream_buf.pop(key, None)
+    except Exception:
+        return
+    if not chunk and not done:
+        return
+    try:
+        if _main_loop_ref is None or _main_loop_ref.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(
+            _bot_broadcast_room_update(
+                room_id, "room_message_delta",
+                # 复用既有流式契约（G3）：agent_id 区分并行执行者，
+                # phase=delta 增量 / end 收尾（done 时前端收起"正在生成"气泡）。
+                message={"agent_id": ref, "phase": "end" if done else "delta",
+                         "delta": chunk},
+            ),
+            _main_loop_ref,
+        )
+    except Exception:
+        pass
+
+
 def _run_org_in_background(db_factory, fn, args: tuple, kwargs: dict = None) -> None:
     """⑭ 体验改善：组织/秘书编排后台化容器。
 
@@ -3956,6 +4006,9 @@ async def _org_message_orchestrate(db, room: dict, room_id: str, norm,
                 turn_session_id=_session_key_for_room(norm, aref) if aref else None,
             ),
             broadcast=lambda content: _org_announce_ws(room_id, content),
+            # ⑭ token 级流式：native 执行者的生成过程增量推给前端
+            # （ACP/CLI 阻塞无流，前端只呈现节点级"执行中"，不伪造）。
+            stream=lambda delta, ref=None, done=False: _org_stream_ws(room_id, ref, delta, done=done),
             log=lambda s: _log.info("[Org] %s", s),
         )
 
@@ -4042,6 +4095,10 @@ def _org_runner_factory(db, room_id: str, norm):
     async def _runner(profile: dict, instruction: str, _ctx) -> str:
         sid = _session_key_for_room(norm, profile.get("id"))
         tr = profile.get("transport")
+        # ⑭ token 级流式：只有 native 通路（AIAgent.chat）支持 stream_callback。
+        # ACP/CLI 为 stdio/子进程阻塞往返，无 token 流可透出——诚实标注：不伪造，
+        # 这两类只保留节点级 _announce 进度（"执行中"）。
+        cb = (_ctx or {}).get("stream_callback") if isinstance(_ctx, dict) else None
         try:
             if tr == "acp":
                 return (await _asyncio.to_thread(
@@ -4052,6 +4109,9 @@ def _org_runner_factory(db, room_id: str, norm):
             agent = await _bot_build_agent(sid, profile)
             if agent is None:
                 return ""
+            if cb is not None:
+                return (await _asyncio.to_thread(
+                    agent.chat, instruction, stream_callback=cb)) or ""
             return (await _asyncio.to_thread(agent.chat, instruction)) or ""
         except Exception as e:
             _log.warning("[Org] runner failed %s: %s", profile.get("id"), e)
@@ -4318,6 +4378,9 @@ async def _secretary_orchestrate(db, room: dict, room_id: str, norm,
                 rid, atype, aref, content, turn_session_id=_session_key_for_room(norm, aref) if aref else None
             ),
             broadcast=lambda content: _org_announce_ws(room_id, content),
+            # ⑭ token 级流式：native 执行者的生成过程增量推给前端
+            # （ACP/CLI 阻塞无流，前端只呈现节点级"执行中"，不伪造）。
+            stream=lambda delta, ref=None, done=False: _org_stream_ws(room_id, ref, delta, done=done),
             log=lambda s: _log.info("[Org] %s", s),
         )
         final_task = await run_org_task(

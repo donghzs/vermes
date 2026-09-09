@@ -251,6 +251,7 @@ class OrgContext:
                  store: Callable[[str, Dict], None],
                  append_message: Optional[Callable[[str, str, Optional[str], str], None]] = None,
                  broadcast: Optional[Callable[[str], None]] = None,
+                 stream: Optional[Callable[..., None]] = None,
                  log: Optional[Callable[[str], None]] = None):
         self.task = task
         self.roles = roles
@@ -259,6 +260,9 @@ class OrgContext:
         self.store = store                # store(task_id, updated_task)
         self.append_message = append_message or (lambda *a, **k: None)
         self.broadcast = broadcast or (lambda s: None)  # 实时推流水线节点文字（fail-open）
+        # token 级流式：stream(delta, ref=..., done=...)，由路由层注入。
+        # 仅 native 通路会产生 delta；ACP/CLI 为阻塞往返无 token 流（不伪造）。
+        self.stream = stream
         self.log = log or (lambda s: None)
 
     # 便捷：按岗位类型取第一个有 profile 的岗位
@@ -310,14 +314,37 @@ def _set_status(ctx: OrgContext, status: str) -> None:
 
 async def _run_agent(ctx: OrgContext, profile: Dict, instruction: str,
                      runner: AgentRunner) -> str:
-    """跑一个 agent 岗位，产出文本（工件/意见/汇总）。"""
+    """跑一个 agent 岗位，产出文本（工件/意见/汇总）。
+
+    ⑭ token 级流式（P0 体验 step ②）：把 ctx.stream 包成带执行者标识的回调，
+    经 extra["stream_callback"] 传给 runner。
+      - native 通路（AIAgent.chat）会逐段回调，前端可见"正在生成"的实时文字；
+      - ACP/CLI 为 stdio/子进程阻塞往返，**无 token 流可透出**——诚实标注：
+        不伪造流式，这类执行者只保留节点级 _announce 进度（"执行中"）。
+    无论成功/异常都补发 done=True，避免前端流式气泡悬挂。fail-open。
+    """
+    ref = profile.get("id")
+    stream_cb = getattr(ctx, "stream", None)
+
+    def _emit(delta: str = "", done: bool = False) -> None:
+        if stream_cb is None:
+            return
+        try:
+            stream_cb(delta, ref=ref, done=done)
+        except Exception:
+            pass  # fail-open：流式推送失败绝不阻断执行
+
     try:
-        return (await runner(profile, instruction, {
+        out = await runner(profile, instruction, {
             "task": ctx.task, "room": ctx.room, "roles": ctx.roles,
-        })) or ""
+            "stream_callback": (lambda d: _emit(d)) if stream_cb is not None else None,
+        })
     except Exception as exc:  # fail-open：单岗位失败不拖垮整条流水线
         ctx.log(f"[Org] role run failed profile={profile.get('id')}: {exc}")
+        _emit(done=True)
         return f"[执行失败] {exc}"
+    _emit(done=True)
+    return out or ""
 
 
 # ─────────────────────────── 主状态机 ───────────────────────────
