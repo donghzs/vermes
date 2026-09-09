@@ -1195,3 +1195,29 @@ def test_native_upsert_transport_default_native(env):
     p = db2.get_agent_profile(pid)
     db2.close()
     assert p.get("transport") == "native"
+
+
+def test_onboard_endpoint_need_name(env):
+    """Sprint D：/api/agents/onboard 缺 name 报 error。"""
+    client = _client()
+    r = client.post("/api/agents/onboard", json={})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ok"] is False
+    assert "name" in d.get("error", "").lower()
+
+
+def test_onboard_endpoint_not_found(env):
+    """Sprint D：/api/agents/onboard 找不到 agent 返回 not_found。"""
+    from unittest.mock import patch, MagicMock
+
+    client = _client()
+    # patch LocalAgentScanner 返回空列表 + find_recipe 返回 None
+    with patch("vermes_cli.a2a.onboarding.find_recipe", return_value=None), \
+         patch("vermes_cli.a2a.onboarding.find_recipe_for_discovery", return_value=None), \
+         patch("vermes_cli.a2a.onboarding.LocalAgentScanner") as sc:
+        sc.return_value.scan.return_value = []
+        r = client.post("/api/agents/onboard", json={"name": "不存在的Agent"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["status"] == "not_found"

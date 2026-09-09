@@ -679,6 +679,10 @@ const api = {
   // ── ⑭ 请神收尾：外部 ACP agent「登堂」 ──
   // 路径不带 /api 前缀：request() 会按在线/离线模式拼 /v1 或 /api。
   listAgentRecipes() { return this.get('/agents/recipes') },
+  // Sprint D · 儇瓜式接入外部 agent（薄封装 onboarding.onboard_agent）
+  onboardAgent(name, authValue = '') {
+    return this.post('/agents/onboard', { name, auth_value: authValue })
+  },
   registerAgentProfile(recipe, authValue = '') {
     return this.post('/agents/register-profile', { recipe, auth_value: authValue })
   },

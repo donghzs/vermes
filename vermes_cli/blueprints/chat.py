@@ -6076,6 +6076,32 @@ def _acp_health_check(transport, timeout_seconds: float = 30.0) -> "tuple[bool, 
     return False, f"handshake failed: {detail}"
 
 
+async def api_agent_onboard(request: Request):
+    """POST /api/agents/onboard  (Sprint D · 儇瓜式接入外部 agent)
+
+    body: {name: str, auth_value?: str}
+    薄封装 ``onboarding.onboard_agent``——供前端「+ 接入」按钮直接调用。
+    旧端点 ``register-profile`` / ``local-connect`` 保留不动。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return {"ok": False, "status": "error", "error": "name required"}
+    auth_value = body.get("auth_value", "") or ""
+    try:
+        from vermes_cli.a2a.onboarding import onboard_agent
+
+        return onboard_agent(name, auth_value)
+    except Exception as e:
+        _log.exception("[BotMode] onboard failed")
+        return {"ok": False, "status": "error", "error": str(e)}
+
+
 async def api_agent_local_connect(request: Request):
     """POST /api/agents/local-connect  (本机发现一键接入，神魔堂公开版收口)
 
@@ -6396,6 +6422,13 @@ def register_to(app):
         api_agent_local_connect,
         methods=["POST"],
         name="agent_local_connect",
+    )
+    # Sprint D · 儇瓜式接入外部 agent（薄封装 onboarding.onboard_agent）
+    app.add_api_route(
+        "/api/agents/onboard",
+        api_agent_onboard,
+        methods=["POST"],
+        name="agent_onboard",
     )
     # ⑭ 造神：原生 agent 管理（per-agent 专属 API key）
     app.add_api_route(

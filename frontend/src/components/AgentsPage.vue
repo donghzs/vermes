@@ -20,6 +20,10 @@
           @click="openForge()"
           class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition"
         >⚒️ 造神</button>
+        <button
+          @click="openOnboard()"
+          class="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition"
+        >⚡ 接入</button>
         <input
           v-model="query"
           placeholder="搜索名称 / 描述…"
@@ -334,6 +338,43 @@
             @click="windowOpen(installModal.hint)"
             class="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
           >打开官网 ↗</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sprint D · 儇瓜式接入外部 agent -->
+    <div
+      v-if="onboardModal.open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="onboardModal.open = false"
+    >
+      <div class="w-full max-w-md mx-4 p-5 rounded-2xl bg-white dark:bg-gray-800 shadow-xl">
+        <h3 class="text-base font-semibold mb-1">⚡ 接入外部 Agent</h3>
+        <p class="text-xs text-gray-500 mb-3">输入 agent 名称（如 codex / claude / openclaw），自动探测接入通路。</p>
+        <input
+          v-model="onboardModal.name"
+          placeholder="agent 名称"
+          class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-emerald-500"
+          @keydown.enter="submitOnboard"
+        />
+        <div v-if="onboardModal.loginCommand" class="mt-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
+          <div class="flex items-center gap-2">
+            <code class="flex-1 px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 font-mono text-[11px]">{{ onboardModal.loginCommand }}</code>
+            <button @click="copyLoginCmd" class="text-[11px] px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex-shrink-0">复制</button>
+          </div>
+        </div>
+        <input
+          v-if="onboardModal.needAuth"
+          v-model="onboardModal.authValue"
+          type="password"
+          :placeholder="onboardModal.authEnv || 'API Key'"
+          class="mt-2 w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-emerald-500"
+        />
+        <div v-if="onboardModal.result" class="mt-2 text-sm" :class="onboardModal.resultOk ? 'text-emerald-600' : 'text-gray-500'">{{ onboardModal.result }}</div>
+        <p v-if="onboardModal.error" class="mt-2 text-xs text-red-500">{{ onboardModal.error }}</p>
+        <div class="mt-4 flex justify-end gap-2">
+          <button @click="onboardModal.open = false" class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">关闭</button>
+          <button @click="submitOnboard" :disabled="onboardModal.loading" class="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">{{ onboardModal.loading ? '探测中…' : '接入' }}</button>
         </div>
       </div>
     </div>
@@ -656,6 +697,55 @@ const recipes = ref([])
 const ascendState = ref({})
 // 鉴权弹窗
 const authModal = ref({ open: false, key: '', recipe: null, authEnv: '', value: '', error: '', loginCommand: '' })
+
+// Sprint D · 儇瓜式接入外部 agent
+const onboardModal = ref({
+  open: false, name: '', authValue: '', needAuth: false, authEnv: '',
+  loginCommand: '', result: '', resultOk: false, error: '', loading: false,
+})
+function openOnboard() {
+  onboardModal.value = {
+    open: true, name: '', authValue: '', needAuth: false, authEnv: '',
+    loginCommand: '', result: '', resultOk: false, error: '', loading: false,
+  }
+}
+function copyLoginCmd() {
+  const cmd = onboardModal.value.loginCommand
+  if (!cmd) return
+  navigator.clipboard && navigator.clipboard.writeText(cmd)
+  onboardModal.value = { ...onboardModal.value, error: `已复制：${cmd}` }
+}
+async function submitOnboard() {
+  const m = onboardModal.value
+  if (!m.name.trim()) {
+    onboardModal.value = { ...m, error: '请输入 agent 名称' }
+    return
+  }
+  onboardModal.value = { ...m, loading: true, error: '', result: '' }
+  try {
+    const data = await api.onboardAgent(m.name.trim(), m.authValue.trim())
+    if (data.status === 'success') {
+      onboardModal.value = { ...m, loading: false, result: `✅ 已接入：${data.profile_name || m.name}`, resultOk: true }
+      loadNativeAgents()  // 刷新联系人列表
+      loadAgents(true)     // 刷新本机发现
+    } else if (data.status === 'need_auth') {
+      onboardModal.value = {
+        ...m, loading: false, needAuth: true,
+        authEnv: data.auth_env || 'API Key',
+        loginCommand: data.login_command || '',
+        error: '',
+      }
+    } else if (data.status === 'not_found') {
+      onboardModal.value = { ...m, loading: false, error: data.detail || '未找到匹配的 agent 或食谱' }
+    } else if (data.status === 'fail') {
+      onboardModal.value = { ...m, loading: false, error: data.detail || data.error || '接入失败' }
+    } else {
+      onboardModal.value = { ...m, loading: false, error: data.error || '未知状态' }
+    }
+  } catch (e) {
+    onboardModal.value = { ...m, loading: false, error: (e && e.message) ? e.message : String(e) }
+  }
+}
 // 安装引导弹窗（神魔堂公开版收口 2026-09-07：登堂失败=本机没装 CLI → 引导去官网下载）
 const installModal = ref({ open: false, recipe: null, hint: '', entryPoint: '', spawn: '' })
 
