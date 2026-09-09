@@ -128,6 +128,13 @@ hiddenimports = [
     'vermes_cli.blueprints.analytics', 'vermes_cli.blueprints.status',
     'vermes_cli.blueprints.profiles', 'vermes_cli.blueprints.oauth',
     'vermes_cli.update_manager',
+
+    # ⑤ R3 神魔堂 org → 蜂群执行沙箱委派（Sprint D）：org_sandbox 静态 import
+    # kanban_db/kanban_swarm，三者原未进包（docs 标注 Kanban 未包入 PyInstaller）。
+    # 显式收录，避免重打 DMG 后 ImportError。
+    'vermes_cli.org_sandbox',
+    'vermes_cli.kanban_db',
+    'vermes_cli.kanban_swarm',
     'vermes_cli.shutdown_signal',
     'vermes_cli.win_adapter',
     # ⑭ 请神收尾：a2a 食谱 loader/schema/transport + botmode core（登堂/群聊运行必需）

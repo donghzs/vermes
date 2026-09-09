@@ -60,6 +60,8 @@ from vermes_cli.botmode.org_engine import (
     OrgContext,
     run_org_task,
 )
+from vermes_cli import kanban_db as kb
+from vermes_cli import org_sandbox
 
 # ── Session plan state store (for SSE reconnect snapshot) ──────────
 # session_id → {"plan": dict|None, "todo_states": dict, "plan_emitted": bool}
@@ -4116,6 +4118,22 @@ def _org_runner_factory(db, room_id: str, norm):
         # ACP/CLI 为 stdio/子进程阻塞往返，无 token 流可透出——诚实标注：不伪造，
         # 这两类只保留节点级 _announce 进度（"执行中"）。
         cb = (_ctx or {}).get("stream_callback") if isinstance(_ctx, dict) else None
+        # ⑤ R3：opt-in 沙箱委派——native/CLI 子任务下沉蜂群执行沙箱；
+        # ACP 永不进沙箱（任务书硬约束）；默认 off 走原内联路径（纯增量，主线零改动）。
+        if org_sandbox.org_sandbox_enabled(_ctx) and tr != "acp":
+            try:
+                _org_tid = None
+                if isinstance(_ctx, OrgContext) and getattr(_ctx, "task", None):
+                    _t = _ctx.task
+                    _org_tid = _t.get("id") if isinstance(_t, dict) else getattr(_t, "id", None)
+                return await _asyncio.to_thread(
+                    org_sandbox.run_org_subtask_in_sandbox,
+                    profile, instruction, tr,
+                    org_task_id=_org_tid,
+                ) or ""
+            except Exception as e:
+                _log.warning("[Org] sandbox runner failed %s: %s", profile.get("id"), e)
+                return f"[沙箱执行失败] {e}"
         try:
             if tr == "acp":
                 return (await _asyncio.to_thread(
