@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import os
 import platform
-import shu
+import shutil
 import logging
 
 logger = logging.getLogger(__name__)
-til
 import subprocess
 import sys
 from pathlib import Path

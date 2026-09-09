@@ -31,6 +31,8 @@ import sys
 from pathlib import Path
 from vermes_constants import get_vermes_home
 
+logger = logging.getLogger(__name__)
+
 
 # Methods clients send as periodic liveness probes. They are not part of the
 # ACP schema, so the acp router correctly returns JSON-RPC -32601 to the
@@ -144,14 +146,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _print_version() -> None:
     from vermes_cli import __version__ as VERMES_version
 
-    logger.info(VERMES_version)
+    print(VERMES_version)
 
 
 def _run_check() -> None:
     import acp  # noqa: F401
     from acp_adapter.server import VermesACPAgent  # noqa: F401
 
-    logger.info("Vermes ACP check OK")
+    print("Vermes ACP check OK")
 
 
 def _run_setup() -> None:
@@ -194,7 +196,7 @@ def _run_setup_browser(assume_yes: bool = False) -> int:
     try:
         node_ok = ensure_dependency("node", interactive=not assume_yes)
         if not node_ok:
-            logger.info("Node.js installation failed — cannot proceed with browser tools.",
+            print("Node.js installation failed — cannot proceed with browser tools.",
                   file=sys.stderr)
             return 1
 
