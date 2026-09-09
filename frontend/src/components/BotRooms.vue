@@ -179,6 +179,7 @@ const ORG_TYPE_LABELS = { dispatcher: '分派', executor: '执行', auditor: '�
 
 async function openOrgBoard() {
   orgBoard.value.open = true
+  startNowTicker()          // step ③：实时耗时秒针（与 4s 数据轮询解耦）
   await loadOrgBoard()
   startOrgPolling()
   if (!modelOptions.value.length) loadModelOptions()
@@ -187,6 +188,7 @@ async function openOrgBoard() {
 function closeOrgBoard() {
   orgBoard.value.open = false
   stopOrgPolling()
+  stopNowTicker()
 }
 
 function startOrgPolling() {
@@ -240,8 +242,11 @@ function latestAuditBySub(t) {
   return latest
 }
 
-// 子任务最新审计状态图标
+// 子任务最新状态图标（step ③：执行失败/岗位空挂与「审计打回」区分开，不混成一色红）
 function subStatusIcon(t, p) {
+  const art = (t && t.artifacts && t.artifacts[p.sub_id]) || ''
+  if (typeof art === 'string'
+      && (art.indexOf('[执行失败]') === 0 || art.indexOf('[无绑定 agent') === 0)) return '⛔'
   const a = latestAuditBySub(t)[p.sub_id]
   if (!a) return '⏳'
   return a.verdict === 'pass' ? '✅' : '🔴'
@@ -266,6 +271,106 @@ function orgStatusClass(s) {
   }
   return map[s] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
 }
+
+// ── ⑭ step ③ 产品封装（2026-09-09）：加载骨架 / 执行中实时态 / 失败可视化诊断 / 工期预期 ──
+// 活动态 = 流水线还在跑（前端据此显示脉冲动画 + 走实时耗时；终态则停表）
+const ORG_ACTIVE_STATUS = ['dispatched', 'planning', 'executing', 'auditing', 'reworking', 'aggregating']
+
+function isOrgActive(t) {
+  return ORG_ACTIVE_STATUS.indexOf(t && t.status) >= 0
+}
+
+// 实时秒针：让「已运行」每秒自己走，不用等 4s 轮询（只在看板打开时跑）
+const nowSec = ref(Math.floor(Date.now() / 1000))
+let nowSecTimer = null
+function startNowTicker() {
+  stopNowTicker()
+  nowSec.value = Math.floor(Date.now() / 1000)
+  nowSecTimer = setInterval(() => { nowSec.value = Math.floor(Date.now() / 1000) }, 1000)
+}
+function stopNowTicker() {
+  if (nowSecTimer) { clearInterval(nowSecTimer); nowSecTimer = null }
+}
+
+// 已耗时：活动态走实时秒针，终态停在 updated_at。
+// 诚实呈现「已经跑了多久」，不编造「预计还要多久」——后端无工期字段。
+function orgElapsedText(t) {
+  if (!t || !t.created_at) return ''
+  const end = isOrgActive(t) ? nowSec.value : (t.updated_at || nowSec.value)
+  const s = Math.max(0, Math.floor(end - t.created_at))
+  if (s < 60) return `${s} 秒`
+  const m = Math.floor(s / 60)
+  return `${m} 分 ${s % 60} 秒`
+}
+
+// 进度：已通过交叉审计的子任务 / 计划总数
+function orgProgress(t) {
+  const total = (t && t.plan && t.plan.length) || 0
+  if (!total) return null
+  const done = passedSubCount(t)
+  return { done, total, pct: Math.min(100, Math.round(done / total * 100)) }
+}
+
+// 当前进行到哪个子任务（推断：第一个尚未通过审计的）。
+// 注意是「推断」不是后端执行指针——后端未暴露 in-flight 子任务，此处按审计结果倒推。
+function orgCurrentSubIndex(t) {
+  const plan = (t && t.plan) || []
+  const latest = latestAuditBySub(t)
+  for (let i = 0; i < plan.length; i++) {
+    const a = latest[plan[i].sub_id]
+    if (!a || a.verdict !== 'pass') return i + 1
+  }
+  return plan.length
+}
+
+// 失败可视化诊断：后端 org_tasks 无 error 字段，全部从真数据推导，不编造：
+//   ① artifacts 值前缀 '[执行失败] ' / '[无绑定 agent…' → 执行者报错 / 岗位空挂
+//   ② audit_log 最新一轮 verdict=reject         → 审计打回及意见
+//   ③ plan[i]._escalated                        → 超过审计轮次上限，已上报老板
+function orgFailures(t) {
+  const out = []
+  if (!t) return out
+  const arts = t.artifacts || {}
+  for (const sid of Object.keys(arts)) {
+    const v = arts[sid]
+    if (typeof v !== 'string') continue
+    if (v.indexOf('[执行失败]') === 0) out.push({ kind: 'exec', sub_id: sid, title: '执行者报错', text: v })
+    else if (v.indexOf('[无绑定 agent') === 0) out.push({ kind: 'unbound', sub_id: sid, title: '岗位未坐人', text: v })
+  }
+  const latest = latestAuditBySub(t)
+  for (const sid of Object.keys(latest)) {
+    const a = latest[sid]
+    if (a && a.verdict === 'reject') {
+      out.push({
+        kind: 'audit', sub_id: sid, title: '审计打回',
+        text: a.comment || '（审计未给出具体意见）',
+        round: a.round, auditor: a.auditor,
+      })
+    }
+  }
+  for (const p of (t.plan || [])) {
+    if (p && p._escalated) {
+      out.push({ kind: 'escalated', sub_id: p.sub_id, title: '超过审计上限', text: '达到最大审计轮次仍未通过，已上报老板裁决。' })
+    }
+  }
+  return out
+}
+
+// 工期预期：告诉老板「现在卡在哪一步、在等什么」，而不是拍一个假 ETA
+const ORG_NEXT_HINT = {
+  dispatched: '已派活，等执行者接单',
+  planning: '正在拆解为子任务…',
+  executing: '执行者正在产出工件…',
+  auditing: '交叉审计中，通过即落定',
+  reworking: '正按审计意见重做…',
+  aggregating: '正在汇总最终交付物…',
+}
+function orgNextHint(s) { return ORG_NEXT_HINT[s] || '' }
+
+// 活动任务数（头部工期提示用）
+const activeTaskCount = computed(
+  () => (orgBoard.value.tasks || []).filter(t => isOrgActive(t)).length
+)
 
 function orgRoleTypeText(t) {
   return ORG_TYPE_LABELS[t] || t || ''
@@ -333,7 +438,7 @@ async function loadTaskDetail(taskId) {
   } catch (e) { /* 静默 */ }
 }
 
-onUnmounted(stopOrgPolling)
+onUnmounted(() => { stopOrgPolling(); stopNowTicker() })
 
 // ── 🏢 从模板搭组织（⑭ 2026-09-07）：模板只是岗位骨架，指派现有联系人坐岗 ──
 const orgModal = ref({
@@ -1194,13 +1299,32 @@ onUnmounted(() => {
             <div v-if="orgBoard.roles.length" class="text-[11px] text-gray-400 mt-0.5">
               {{ orgBoard.roles.length }} 个岗位 · {{ orgBoard.tasks.length }} 个任务
             </div>
+            <!-- 工期预期（step ③）：只说「后台跑、不用盯」，不拍假 ETA -->
+            <div
+              v-if="activeTaskCount"
+              class="text-[11px] text-blue-500 dark:text-blue-400 mt-0.5 flex items-center gap-1"
+              title="任务通常需数十秒到数分钟，取决于子任务数与执行者模型——不拍假的预计剩余时间"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+              {{ activeTaskCount }} 个任务后台执行中 · 可随时关闭此面板，进度不中断
+            </div>
           </div>
           <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none px-1" @click="closeOrgBoard">×</button>
         </div>
 
         <div class="flex-1 overflow-y-auto p-3 space-y-3">
+          <!-- 首次加载骨架（step ③）：避免打开面板先白屏一拍，轮询刷新时不闪骨架 -->
+          <div v-if="orgBoard.loading && !orgBoard.roles.length && !orgBoard.tasks.length" class="space-y-2">
+            <div v-for="i in 3" :key="i" class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 animate-pulse">
+              <div class="h-3 w-1/2 bg-gray-200 dark:bg-gray-700 rounded"></div>
+              <div class="h-2 w-3/4 bg-gray-100 dark:bg-gray-800 rounded mt-2"></div>
+              <div class="h-2 w-1/3 bg-gray-100 dark:bg-gray-800 rounded mt-1.5"></div>
+            </div>
+            <div class="text-[11px] text-gray-400 text-center pt-1">正在读取组织看板…</div>
+          </div>
+
           <!-- 空组织引导 -->
-          <div v-if="!orgBoard.roles.length && !orgBoard.tasks.length" class="text-center py-6 text-sm text-gray-400">
+          <div v-else-if="!orgBoard.roles.length && !orgBoard.tasks.length" class="text-center py-6 text-sm text-gray-400">
             <div class="text-3xl mb-2">🏗️</div>
             <div class="px-2">
               这个群还没有组织架构。两种搭法：<br/>
@@ -1247,15 +1371,31 @@ onUnmounted(() => {
                 <button class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition" @click="toggleTaskDetail(t)">
                   <div class="flex items-center justify-between gap-2">
                     <span class="text-sm font-medium truncate">{{ t.title || t.brief?.slice(0, 30) || t.id }}</span>
-                    <span class="text-[10px] px-1.5 py-0.5 rounded shrink-0" :class="orgStatusClass(t.status)">{{ orgStatusText(t.status) }}</span>
+                    <span
+                      class="text-[10px] px-1.5 py-0.5 rounded shrink-0 inline-flex items-center gap-1"
+                      :class="[orgStatusClass(t.status), isOrgActive(t) ? 'animate-pulse' : '']"
+                    >
+                      <span v-if="isOrgActive(t)" class="w-1 h-1 rounded-full bg-current"></span>
+                      {{ orgStatusText(t.status) }}
+                    </span>
                   </div>
                   <div class="text-[11px] text-gray-400 mt-1 flex items-center gap-2">
                     <span>第 {{ t.current_round || 1 }} 轮</span>
                     <template v-if="t.plan && t.plan.length">
                       <span>·</span>
-                      <span>{{ passedSubCount(t) }}/{{ t.plan.length }} 子任务通过</span>
+                      <span v-if="isOrgActive(t)" title="按审计结果推断当前进度（后端未暴露执行指针）">{{ orgCurrentSubIndex(t) }}/{{ t.plan.length }} 进行中</span>
+                      <span v-else>{{ passedSubCount(t) }}/{{ t.plan.length }} 子任务通过</span>
                     </template>
-                    <span class="ml-auto">{{ formatTime(t.updated_at || t.created_at) }}</span>
+                    <span v-if="isOrgActive(t) && orgNextHint(t.status)" class="truncate">· {{ orgNextHint(t.status) }}</span>
+                    <span class="ml-auto shrink-0" :title="formatTime(t.updated_at || t.created_at)">{{ orgElapsedText(t) }}</span>
+                  </div>
+                  <!-- 进度条（step ③）：让「还在跑 / 跑到哪」一眼可见 -->
+                  <div v-if="orgProgress(t)" class="mt-1.5 h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                    <div
+                      class="h-1 rounded-full transition-all duration-500"
+                      :class="t.status === 'rejected' ? 'bg-red-400' : (isOrgActive(t) ? 'bg-blue-500' : 'bg-green-500')"
+                      :style="{ width: (orgProgress(t).pct || 0) + '%' }"
+                    ></div>
                   </div>
                 </button>
 
@@ -1264,6 +1404,25 @@ onUnmounted(() => {
                   <div>
                     <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">老板指令</div>
                     <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ t.brief }}</div>
+                  </div>
+
+                  <!-- 失败可视化诊断（step ③）：后端 org_tasks 无 error 字段，
+                       全部从 artifacts 前缀 / audit_log reject / plan._escalated 推导，不编造来源 -->
+                  <div v-if="orgFailures(t).length" class="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-2">
+                    <div class="text-xs font-semibold text-red-600 dark:text-red-300 mb-1">
+                      ⚠️ 失败诊断 · {{ orgFailures(t).length }} 项
+                    </div>
+                    <div class="space-y-1">
+                      <div v-for="(f, i) in orgFailures(t)" :key="i" class="text-[11px] flex items-start gap-1.5">
+                        <span class="shrink-0">{{ f.kind === 'audit' ? '🔴' : '⛔' }}</span>
+                        <div class="min-w-0 flex-1">
+                          <div class="text-red-700 dark:text-red-200">
+                            {{ f.title }}<span v-if="f.sub_id"> · {{ f.sub_id }}</span><span v-if="f.round"> · 第 {{ f.round }} 轮</span><span v-if="f.auditor"> · {{ f.auditor }}</span>
+                          </div>
+                          <div class="text-red-600/80 dark:text-red-300/80 whitespace-pre-wrap break-words mt-0.5">{{ f.text }}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <!-- 任务级 LLM 覆盖（D2）：只对 native/CLI 执行者生效，ACP 模型自持 -->

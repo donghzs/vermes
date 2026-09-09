@@ -88,6 +88,14 @@ export default defineConfig({
     }
   },
   build: {
+    // 部署产物直接输出到后端静态目录，一次 build = 一次部署同步。
+    // 历史坑：此处若缺 outDir，产物会落到默认的 frontend/dist，只能靠手工改名拷进
+    // web_dist（旧包还越堆越多），造成「源码与包不一致」——审计无法自动化。
+    // main.py 的 _web_ui_build_needed 也是按 vermes_cli/web_dist 判定的，必须一致。
+    // publicDir(frontend/public) 下的文件（guide.md 等）每次 build 自动复制到 outDir，
+    // 因此 emptyOutDir 清理旧 hash 包不会误删非构建产物。
+    outDir: '../vermes_cli/web_dist',
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks: {
