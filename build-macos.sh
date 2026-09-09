@@ -56,10 +56,23 @@ fi
 npm run build
 cd ..
 
-echo "🔄 Syncing frontend/dist → vermes_cli/web_dist..."
-rm -rf vermes_cli/web_dist
-cp -R frontend/dist vermes_cli/web_dist
-echo "✅ web_dist synced (gitHash: $(cat vermes_cli/web_dist/frontend-build.json 2>/dev/null | grep gitHash | head -1))"
+echo "🔄 检查前端产物去向..."
+# 2026-09-09 链路理顺：vite.config.js 的 build.outDir 已直指 ../vermes_cli/web_dist，
+# 一次 build 即完成部署同步，正常情况下无需再拷贝；仅当产物落到默认的 frontend/dist
+# （outDir 被改回/缺失）时才走兜底同步，避免误删刚产出的 web_dist。
+if [[ -d "frontend/dist" ]]; then
+  echo "   检测到 frontend/dist（outDir 未直指 web_dist），执行兜底同步…"
+  rm -rf vermes_cli/web_dist
+  cp -R frontend/dist vermes_cli/web_dist
+else
+  echo "   vite build 已直接输出到 vermes_cli/web_dist，跳过同步。"
+fi
+# fail-fast：web_dist 缺失时不得继续打包（否则 App 加载不到前端）
+if [[ ! -f "vermes_cli/web_dist/index.html" ]]; then
+  echo "❌ vermes_cli/web_dist/index.html 缺失，前端产物未生成，终止构建。"
+  exit 1
+fi
+echo "✅ web_dist 就绪 (gitHash: $(cat vermes_cli/web_dist/frontend-build.json 2>/dev/null | grep gitHash | head -1))"
 
 # Build
 echo "🔨 Building Vermes.app (windowed)..."
