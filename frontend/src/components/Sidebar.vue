@@ -664,43 +664,55 @@ async function handleImportFile(e) {
         </div>
       </div>
 
-      <!-- 底部工具栏 -->
-      <div class="p-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-1 shrink-0">
-        <button @click="goStudio()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
-          <span class="text-base">🎨</span><span>创作</span>
+      <!-- 底部工具栏（方案B：grid-cols-4 紧凑 + 悬停弹功能介绍，文字不再占高） -->
+      <div class="p-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-4 gap-1 shrink-0">
+        <button @click="goStudio()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
+          <span class="text-[15px] leading-none">🎨</span><span>创作</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">创作工作室</span>
         </button>
-        <button @click="goScholarForge()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/scholarforge' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作">
-          <span class="text-base">📝</span><span>论文</span>
+        <button @click="goScholarForge()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/scholarforge' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作">
+          <span class="text-[15px] leading-none">📝</span><span>论文</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">论文写作（ScholarForge）</span>
         </button>
-        <button @click="go3DStudio()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/3d-studio' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="3D 建模">
-          <span class="text-base">🏭</span><span>3D</span>
+        <button @click="go3DStudio()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/3d-studio' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="3D 建模">
+          <span class="text-[15px] leading-none">🏭</span><span>3D</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">3D 建模工作室</span>
         </button>
-        <button @click="goWorkflows()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/workflows' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="工作流编排">
-          <span class="text-base">🔀</span><span>工作流</span>
+        <button @click="goWorkflows()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/workflows' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="工作流编排">
+          <span class="text-[15px] leading-none">🔀</span><span>工作流</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">工作流编排</span>
         </button>
-        <button @click="goShenmotang()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/shenmotang' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="神魔堂——诸神会晤（多 Agent 群聊）+ 神魔架（请神登堂/造神）">
-          <span class="text-base">⛩️</span><span>神魔堂</span>
+        <button @click="goShenmotang()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/shenmotang' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="神魔堂">
+          <span class="text-[15px] leading-none">⛩️</span><span>神魔堂</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">神魔堂：诸神会晤群聊 + 神魔架请神/造神 + 蜂群看板</span>
         </button>
-        <button @click="goGrowth()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/growth' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="我的成长——成长轨迹 / 能力自检 / 我眼里的你">
-          <span class="text-base">🌱</span><span>成长</span>
+        <button @click="goGrowth()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/growth' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="我的成长">
+          <span class="text-[15px] leading-none">🌱</span><span>成长</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">我的成长：成长轨迹 / 能力自检 / 我眼里的你</span>
         </button>
-        <button @click="goBricks()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/bricks' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="积木市场 + 热门榜（技能 / 工具 / 模块 / 软件）">
-          <span class="text-base">🧱</span><span>积木</span>
+        <button @click="goBricks()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/bricks' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="积木市场">
+          <span class="text-[15px] leading-none">🧱</span><span>积木</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">积木市场 + 热门榜（技能/工具/模块/软件）</span>
         </button>
-        <button @click="goBenchmark()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/benchmark' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="Benchmark 大盘">
-          <span class="text-base">📊</span><span>Benchmark</span>
+        <button @click="goBenchmark()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/benchmark' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="Benchmark 大盘">
+          <span class="text-[15px] leading-none">📊</span><span>Benchmark</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">Benchmark 大盘：工具接线 / pipeline 回归干跑</span>
         </button>
-        <button @click="goMobileConnect()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="移动接入">
-          <span class="text-base">📱</span><span>移动接入</span>
+        <button @click="goMobileConnect()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="移动接入">
+          <span class="text-[15px] leading-none">📱</span><span>移动接入</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">移动设备接入（渠道 / App）</span>
         </button>
-        <button @click="openPanel('skills')" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="Agent 管理（技能/工具/软件/专家/MCP/记忆/知识库）">
-          <span class="text-base">🤖</span><span>Agent</span>
+        <button @click="openPanel('skills')" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="Agent 管理">
+          <span class="text-[15px] leading-none">🤖</span><span>Agent</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">Agent 管理：技能/工具/软件/专家/MCP/记忆/知识库</span>
         </button>
-        <button @click="chat.toggleTheme()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
-          <span class="text-base">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span><span>{{ chat.theme === 'dark' ? '浅色' : '深色' }}</span>
+        <button @click="chat.toggleTheme()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
+          <span class="text-[15px] leading-none">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span><span>{{ chat.theme === 'dark' ? '浅色' : '深色' }}</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">切换主题（浅色 / 深色）</span>
         </button>
-        <button @click="goSettings()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
-          <span class="text-base">⚙️</span><span>设置</span>
+        <button @click="goSettings()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
+          <span class="text-[15px] leading-none">⚙️</span><span>设置</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">设置</span>
         </button>
       </div>
 
