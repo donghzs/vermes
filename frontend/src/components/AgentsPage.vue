@@ -69,7 +69,6 @@
             <div class="flex flex-wrap gap-1.5">
               <span v-if="n.provider" class="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{{ n.provider }}</span>
               <span v-if="n.model" class="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{{ n.model }}</span>
-              <span class="px-2 py-0.5 text-[11px] rounded-full" :class="n.has_api_key ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300'">{{ n.has_api_key ? '🔑 专属 Key' : '⚠️ 未绑 Key（用全局）' }}</span>
             </div>
             <div class="mt-auto pt-1 flex items-center gap-2">
               <button
@@ -388,7 +387,7 @@
       <div class="w-[30rem] max-w-[92vw] max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-800 p-5 shadow-xl">
         <h3 class="text-base font-semibold mb-1">{{ forgeModal.editing ? '编辑神' : '⚒️ 造神' }}</h3>
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          造一位 Vermes 原生 agent，可绑定专属厂商 API Key——不同神各干各的任务、各用各的厂商。
+          造一位 Vermes 原生 agent，统一走「设置」里配置好的厂商与模型——不同神各干各的任务。
         </p>
         <div class="flex flex-col gap-3">
           <div>
@@ -408,11 +407,6 @@
               </optgroup>
             </select>
             <p class="text-[11px] text-gray-400 mt-1">在「设置」里配好的模型在此直接选；留空 = 用全局默认模型。</p>
-          </div>
-          <div>
-            <label class="text-xs text-gray-500 mb-1 block">专属 API Key（留空 = 用全局 Key）</label>
-            <input v-model="forgeModal.apiKey" type="password" :placeholder="forgeModal.editing && forgeModal.editing.has_api_key ? '已配置（留空保持不变）' : 'sk-...'" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
-            <p v-if="forgeModal.editing && forgeModal.editing.has_api_key" class="text-[11px] text-gray-400 mt-1">已绑专属 Key，留空保持不变；输入新值则覆盖。</p>
           </div>
           <div class="border-t border-gray-100 dark:border-gray-700 pt-2 mt-1">
             <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
@@ -487,7 +481,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../services/api'
 import { showToast as toast } from '../utils/toast'
 
@@ -510,26 +504,40 @@ const query = ref('')
 // ⑭ 造神：原生 agent 列表（transport=native 的 Vermes 原生 agent）
 const nativeAgents = ref([])
 // 造神弹窗状态
-const forgeModal = ref({ open: false, editing: null, name: '', description: '', provider: '', model: '', customProvider: '', apiKey: '', systemPrompt: '', hue: 0, toolsets: [], capabilityTags: [] })
+const forgeModal = ref({ open: false, editing: null, name: '', description: '', provider: '', model: '', customProvider: '', systemPrompt: '', hue: 0, toolsets: [], capabilityTags: [] })
 
-// ── 造神：厂商/模型下拉（复用设置页 /api/model/options 已配厂商+精选模型） ──
-const modelProviders = ref([])   // [{ slug, name, is_current, models: [] }]
-const allToolsets = ref([])      // [{ name, label, description }]（/api/tools/toolsets）
-const capabilityVocab = ref([])  // [{ value, label }]（/agents/recipes 下发的受控词表）
-const capabilityLabels = {}       // value → label（快速查）
-function capLabel(v) {
-  return capabilityLabels[v] || v
-}
-// ── 造神：LLM 模型下拉（复用单聊会话同款：把设置里配好的模型按厂商分组，一个下拉选谁就谁） ──
+// ── 造神：LLM 模型下拉 ─────────────────────────────────────────────
+// 直接复用单聊会话同款「设置里配好的模型」（localStorage vermes-providers）：
+//   · 同步读取，免异步加载 → 打开造神/编辑弹窗即时出下拉，不再转圈；
+//   · 只列在「设置」里已配置的可用模型，杜绝用户选到用不了的；
+//   · 监听 providers-updated 事件，设置改动后下拉即时刷新（与单聊一致）。
+const defaultForgeModels = [
+  { id: 'agnes-2.5-flash', name: '⚡ Agnes 2.5 Flash（免费）', provider: 'agnes' },
+  { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
+]
+const _forgeProvidersVersion = ref(0)
+function _onForgeProvidersUpdated() { _forgeProvidersVersion.value++ }
+onMounted(() => window.addEventListener('providers-updated', _onForgeProvidersUpdated))
+onUnmounted(() => window.removeEventListener('providers-updated', _onForgeProvidersUpdated))
+
 const forgeModelOptions = computed(() => {
-  const out = []
-  for (const p of modelProviders.value) {
-    const prov = p.slug || p.id || ''
-    for (const m of (p.models || [])) {
-      out.push({ id: m, name: m, provider: prov, group: p.name })
+  _forgeProvidersVersion.value  // 依赖触发器：设置保存后强制重算
+  try {
+    const saved = localStorage.getItem('vermes-providers')
+    if (saved) {
+      const providers = JSON.parse(saved)
+      const out = []
+      for (const p of providers) {
+        if (p.models && p.models.length > 0) {
+          for (const m of p.models) {
+            out.push({ id: m, name: m, provider: p.id, group: p.name })
+          }
+        }
+      }
+      if (out.length > 0) return out
     }
-  }
-  return out
+  } catch (e) { /* 解析失败退回默认列表 */ }
+  return defaultForgeModels
 })
 const forgeModelGroups = computed(() => {
   const groups = {}
@@ -541,14 +549,12 @@ const forgeModelGroups = computed(() => {
   return Object.values(groups)
 })
 
-async function loadModelProviders() {
-  try {
-    const data = await api.getModels()
-    modelProviders.value = (data && data.providers) || []
-  } catch (e) {
-    console.warn('[Agents] 加载厂商/模型列表失败（不影响手动输入）', e)
-    modelProviders.value = []
-  }
+// ── 造神：技能集 / 能力词表 ─────────────────────────────────────────
+const allToolsets = ref([])      // [{ name, label, description }]（/api/tools/toolsets）
+const capabilityVocab = ref([])  // [{ value, label }]（/agents/recipes 下发的受控词表）
+const capabilityLabels = {}       // value → label（快速查）
+function capLabel(v) {
+  return capabilityLabels[v] || v
 }
 
 async function loadToolsets() {
@@ -1018,13 +1024,12 @@ async function loadNativeAgents() {
 }
 
 function openForge(editing = null) {
-  loadModelProviders()  // 每次打开刷新：复用设置最新配置的厂商/模型
   forgeModal.value = editing
     ? {
         open: true, editing, error: '',
         name: editing.name || '', description: editing.description || '',
         provider: editing.provider || '', model: editing.model || '', customProvider: '',
-        apiKey: '', systemPrompt: editing.system_prompt || '',
+        systemPrompt: editing.system_prompt || '',
         hue: editing.hue || 0, toolsets: Array.isArray(editing.toolsets) ? [...editing.toolsets] : [],
         capabilityTags: Array.isArray(editing.capability_tags) ? [...editing.capability_tags] : [],
         editable: editing.editable ?? 1,
@@ -1032,7 +1037,7 @@ function openForge(editing = null) {
     : {
         open: true, editing: null, error: '',
         name: '', description: '', provider: '', model: '', customProvider: '',
-        apiKey: '', systemPrompt: '', hue: 0, toolsets: [],
+        systemPrompt: '', hue: 0, toolsets: [],
         capabilityTags: [],
         editable: 1,
       }
@@ -1044,10 +1049,8 @@ async function submitForge() {
     forgeModal.value = { ...m, error: '请填写名称' }
     return
   }
-  // 编辑时留空 apiKey = __KEEP__（保持原 key 不变）；造神留空 = 用全局
-  const apiKey = m.apiKey.trim()
-    ? m.apiKey.trim()
-    : (m.editing ? '__KEEP__' : '')
+  // 专属 API Key 字段已取消（留空=用全局，且填写也无法生效）；编辑时保留后端原值，新建一律用全局
+  const apiKey = m.editing ? '__KEEP__' : ''
   try {
     // 自定义厂商：用 customProvider 输入值
     const finalProvider = m.provider === '__custom__' ? (m.customProvider || '').trim() : m.provider
@@ -1080,7 +1083,6 @@ onMounted(() => {
   loadAgents()
   loadRecipes()
   loadNativeAgents()
-  loadModelProviders()
   loadToolsets()
 })
 </script>
