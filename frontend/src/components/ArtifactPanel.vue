@@ -487,6 +487,202 @@ function openArtifactById(id) {
   } catch (_) {}
   return true
 }
+
+// ── A3 版本历史（产物「选区编辑 + 版本回退」的版本 UI 部分，复用后端 /versions /revert /diff）──
+const showVersionHistory = ref(false)
+const versions = ref([])
+const versionsLoading = ref(false)
+const versionsError = ref('')
+const selectedVersion = ref(null)
+const versionPreview = ref('')
+const versionPreviewLoading = ref(false)
+const versionDiff = ref('')
+const versionDiffLoading = ref(false)
+const revertingId = ref(null)
+const versionTab = ref('preview')
+function setVersionTab(t) { versionTab.value = t }
+
+function fmtVerTime(ts) {
+  try { return new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false }) } catch (e) { return String(ts) }
+}
+function fmtVerSize(n) {
+  if (n < 1024) return n + ' B'
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB'
+  return (n / 1024 / 1024).toFixed(1) + ' MB'
+}
+async function openVersionHistory() {
+  const a = activeArtifact.value
+  if (!a) return
+  showVersionHistory.value = true
+  await loadVersions(a)
+}
+async function loadVersions(a) {
+  if (!a) return
+  versionsLoading.value = true; versionsError.value = ''
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(a.path)}/versions`)
+    if (!resp.ok) { const d = await resp.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${resp.status}`) }
+    const data = await resp.json()
+    versions.value = data.versions || []
+  } catch (e) { versionsError.value = e.message || String(e) } finally { versionsLoading.value = false }
+}
+async function previewVersion(v) {
+  const a = activeArtifact.value
+  if (!a || v.kind !== 'text') return
+  selectedVersion.value = v
+  versionPreviewLoading.value = true; versionPreview.value = ''
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(a.path)}/versions/${v.id}`)
+    if (!resp.ok) throw new Error('加载失败')
+    const d = await resp.json()
+    versionPreview.value = d.content != null ? d.content : ''
+  } catch (e) { versionPreview.value = '加载失败: ' + (e.message || e) } finally { versionPreviewLoading.value = false }
+}
+async function showVersionDiff(v) {
+  const a = activeArtifact.value
+  if (!a || v.kind !== 'text') return
+  selectedVersion.value = v
+  versionDiffLoading.value = true; versionDiff.value = ''
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(a.path)}/versions/${v.id}/diff?base=current`)
+    if (!resp.ok) throw new Error('对比失败')
+    const d = await resp.json()
+    versionDiff.value = d.diffable ? d.diff : (d.reason || '不可对比')
+  } catch (e) { versionDiff.value = '对比失败: ' + (e.message || e) } finally { versionDiffLoading.value = false }
+}
+async function revertVersion(v) {
+  const a = activeArtifact.value
+  if (!a || !v.restorable) return
+  revertingId.value = v.id
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(a.path)}/versions/${v.id}/revert`, { method: 'POST' })
+    if (!resp.ok) { const d = await resp.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${resp.status}`) }
+    await loadContent(a)
+    await loadVersions(a)
+    saveState.value = 'saved'
+    setTimeout(() => { if (saveState.value === 'saved') saveState.value = '' }, 2000)
+  } catch (e) { versionsError.value = '回退失败: ' + (e.message || e) } finally { revertingId.value = null }
+}
+function closeVersionHistory() {
+  showVersionHistory.value = false
+  selectedVersion.value = null
+  versionPreview.value = ''
+  versionDiff.value = ''
+  versionTab.value = 'preview'
+}
+
+// ── A2 选区编辑（局部重生成）：前端选区 + 调用后端 /patch ──
+const editArea = ref(null)            // 编辑态 textarea 引用（读取鼠标选区）
+const showPatchBox = ref(false)       // 文本类「选区重生成」指令输入框
+const patchInstruction = ref('')
+const patchBusy = ref(false)
+const patchError = ref('')
+const patchSelected = ref('')         // 当前选中的原文（回显用）
+
+const docxSelectedBlock = ref(null)   // docx 预览点击选中的段落 {index, text}
+const docxPatchInstruction = ref('')
+const docxPatchBusy = ref(false)
+const docxPatchError = ref('')
+
+function _curSid() { return window.__vermes_current_session_id || 'default' }
+
+function getEditSelection() {
+  const ta = editArea.value
+  if (!ta) return null
+  const s = ta.selectionStart, e = ta.selectionEnd
+  if (s === e) return null            // 空选区
+  const text = editBuffer.value
+  const lineStart = text.slice(0, s).split('\n').length
+  const lineEnd = lineStart + text.slice(s, e).split('\n').length - 1
+  return { lineStart, lineEnd, selected: text.slice(s, e) }
+}
+
+async function refreshFromDisk(a) {
+  const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(a.path)}`)
+  if (!resp.ok) throw new Error('刷新文件失败')
+  const txt = await resp.text()
+  rawText.value = txt
+  content.value = txt
+  if (editing.value) editBuffer.value = txt
+}
+
+async function loadVersionsSafe(a) {
+  if (showVersionHistory.value) { try { await loadVersions(a) } catch (e) {} }
+}
+
+function openPatchBox() {
+  const sel = getEditSelection()
+  patchError.value = ''
+  if (!sel) { patchError.value = '请先在编辑区用鼠标选中要重生成的文字'; return }
+  patchSelected.value = sel.selected
+  patchInstruction.value = ''
+  showPatchBox.value = true
+}
+function closePatchBox() { showPatchBox.value = false; patchInstruction.value = ''; patchError.value = '' }
+
+async function runPatchText() {
+  const a = activeArtifact.value
+  const sel = getEditSelection()
+  if (!a || !sel) { patchError.value = '选区已失效，请重新选中'; return }
+  if (!patchInstruction.value.trim()) { patchError.value = '请填写修改意图'; return }
+  patchBusy.value = true; patchError.value = ''
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(a.path)}/patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        anchor: { type: 'line_range', start: sel.lineStart, end: sel.lineEnd },
+        selection: sel.selected,
+        instruction: patchInstruction.value.trim(),
+        session_id: _curSid(),
+      }),
+    })
+    const d = await resp.json().catch(() => ({}))
+    if (!resp.ok) throw new Error(d.detail || `HTTP ${resp.status}`)
+    await refreshFromDisk(a)
+    await loadVersionsSafe(a)
+    showPatchBox.value = false
+    saveState.value = 'saved'
+    setTimeout(() => { if (saveState.value === 'saved') saveState.value = '' }, 2000)
+  } catch (e) { patchError.value = e.message || String(e) } finally { patchBusy.value = false }
+}
+
+function onDocxClick(e) {
+  const p = e.target.closest('p')
+  if (!p) { docxSelectedBlock.value = null; return }
+  const ps = e.currentTarget.querySelectorAll('p')
+  const idx = Array.from(ps).indexOf(p)
+  if (idx < 0) return
+  docxSelectedBlock.value = { index: idx, text: p.textContent || '' }
+  docxPatchError.value = ''
+}
+function closeDocxPatch() { docxPatchInstruction.value = ''; docxPatchError.value = '' }
+async function runPatchDocx() {
+  const a = activeArtifact.value
+  if (!a || !docxSelectedBlock.value) { docxPatchError.value = '请先在文档中点击选中一个段落'; return }
+  if (!docxPatchInstruction.value.trim()) { docxPatchError.value = '请填写修改意图'; return }
+  docxPatchBusy.value = true; docxPatchError.value = ''
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(a.path)}/patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        anchor: { type: 'block_index', index: docxSelectedBlock.value.index },
+        selection: docxSelectedBlock.value.text,
+        instruction: docxPatchInstruction.value.trim(),
+        session_id: _curSid(),
+      }),
+    })
+    const d = await resp.json().catch(() => ({}))
+    if (!resp.ok) throw new Error(d.detail || `HTTP ${resp.status}`)
+    docxSelectedBlock.value = null
+    docxPatchInstruction.value = ''
+    await loadContent(a)
+    await loadVersionsSafe(a)
+    saveState.value = 'saved'
+    setTimeout(() => { if (saveState.value === 'saved') saveState.value = '' }, 2000)
+  } catch (e) { docxPatchError.value = e.message || String(e) } finally { docxPatchBusy.value = false }
+}
 </script>
 
 <template>
@@ -595,6 +791,10 @@ function openArtifactById(id) {
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 <span class="header-tooltip header-tooltip-below group-hover:opacity-100">{{ isDesktop ? '另存为…' : '下载' }}</span>
               </button>
+              <button @click="openVersionHistory" class="group relative p-1.5 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition" title="历史版本">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+                <span class="header-tooltip header-tooltip-below group-hover:opacity-100">历史版本</span>
+              </button>
             </div>
           </div>
           <!-- 渲染区：flex-col 让编辑模式 textarea 能撑满整片高度，而不是被普通 block 布局压成小框 -->
@@ -614,10 +814,21 @@ function openArtifactById(id) {
                   <span v-else-if="saveState==='saved'" class="text-xs text-green-600">已回存原文件</span>
                   <span v-else-if="saveState==='error'" class="text-xs text-red-500">保存失败，见下方提示</span>
                   <div class="flex-1"></div>
+                  <button @click="openPatchBox" class="px-3 py-1 rounded-md bg-blue-500 text-white text-xs font-medium hover:bg-blue-600">选区重生成</button>
                   <button @click="saveEdit" :disabled="saveState==='saving'" class="px-3 py-1 rounded-md bg-green-500 text-white text-xs font-medium hover:bg-green-600 disabled:opacity-50">保存回存</button>
                   <button @click="cancelEdit" class="px-3 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs hover:bg-gray-300 dark:hover:bg-gray-600">取消</button>
                 </div>
-                <textarea v-model="editBuffer" spellcheck="false" class="flex-1 w-full resize-none p-4 font-mono text-sm leading-relaxed bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 border-0 outline-none"></textarea>
+                <!-- A2 选区重生成：指令输入 + 生成并写回 -->
+                <div v-if="showPatchBox" class="shrink-0 border-t border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 space-y-1.5">
+                  <div class="text-xs text-blue-700 dark:text-blue-300">选中 <b>{{ patchSelected.length }}</b> 字：<code class="break-all">{{ patchSelected.slice(0, 90) }}{{ patchSelected.length > 90 ? '…' : '' }}</code></div>
+                  <div class="flex items-center gap-2">
+                    <input v-model="patchInstruction" placeholder="修改意图，如：改成中文 / 补充示例 / 改为函数式写法" class="flex-1 rounded border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs outline-none" @keyup.enter="runPatchText" />
+                    <button @click="runPatchText" :disabled="patchBusy" class="px-3 py-1 rounded-md bg-blue-500 text-white text-xs font-medium hover:bg-blue-600 disabled:opacity-50">{{ patchBusy ? '生成中…' : '生成并写回' }}</button>
+                    <button @click="closePatchBox" class="px-3 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs">取消</button>
+                  </div>
+                  <div v-if="patchError" class="text-xs text-red-500">{{ patchError }}</div>
+                </div>
+                <textarea ref="editArea" v-model="editBuffer" spellcheck="false" class="flex-1 w-full resize-none p-4 font-mono text-sm leading-relaxed bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 border-0 outline-none"></textarea>
               </div>
               <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown p-5 prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(content)"></div>
               <div v-else-if="rendererFor(activeArtifact) === 'html'" class="w-full h-full"><iframe class="w-full h-full border-0 bg-white" sandbox="allow-scripts allow-same-origin" :srcdoc="content"></iframe></div>
@@ -627,7 +838,18 @@ function openArtifactById(id) {
               <div v-else-if="rendererFor(activeArtifact) === 'image'" class="flex items-center justify-center p-5"><img :src="content" :alt="activeArtifact.title || 'image'" class="max-w-full max-h-full object-contain rounded-lg" /></div>
               <div v-else-if="rendererFor(activeArtifact) === 'pdf'" class="w-full h-full"><iframe :src="`/api/v1/artifacts/${encodeURIComponent(activeArtifact.path)}`" class="w-full h-full border-0 bg-white" referrerpolicy="no-referrer"></iframe></div>
               <div v-else-if="rendererFor(activeArtifact) === 'excel'" class="overflow-auto p-3 bg-gray-50 dark:bg-gray-800/30"><div v-if="content" class="excel-render" v-html="content"></div></div>
-              <div v-else-if="rendererFor(activeArtifact) === 'docx'" class="overflow-y-auto p-6 bg-white dark:bg-gray-900"><div v-if="content" class="docx-render prose prose-sm max-w-none dark:prose-invert" v-html="content"></div></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'docx'" class="relative overflow-y-auto p-6 bg-white dark:bg-gray-900">
+                <div v-if="content" class="docx-render prose prose-sm max-w-none dark:prose-invert" v-html="content" @click="onDocxClick"></div>
+                <div v-if="docxSelectedBlock" class="absolute top-3 right-3 z-40 w-72 rounded-lg border border-blue-300 bg-white dark:bg-gray-800 shadow-lg p-3 text-xs space-y-2">
+                  <div class="font-medium text-blue-600">已选中第 {{ docxSelectedBlock.index + 1 }} 段</div>
+                  <input v-model="docxPatchInstruction" placeholder="修改意图，如：扩写 / 改写正式语气" class="w-full rounded border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-900 px-2 py-1 text-xs outline-none" @keyup.enter="runPatchDocx" />
+                  <div class="flex gap-2">
+                    <button @click="runPatchDocx" :disabled="docxPatchBusy" class="px-2 py-1 rounded bg-blue-500 text-white">{{ docxPatchBusy ? '生成中…' : '重生成此段' }}</button>
+                    <button @click="docxSelectedBlock = null" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-600">取消</button>
+                  </div>
+                  <div v-if="docxPatchError" class="text-red-500">{{ docxPatchError }}</div>
+                </div>
+              </div>
               <div v-else-if="rendererFor(activeArtifact) === 'office'" class="w-full h-full overflow-auto bg-gray-50 dark:bg-gray-800/30">
                 <template v-if="previewData && previewData.kind === 'pptx'">
                   <div class="p-4 space-y-4 max-w-3xl mx-auto">
@@ -784,6 +1006,66 @@ function openArtifactById(id) {
       </div>
     </aside>
   </transition>
+
+    <!-- A3 版本历史抽屉：产物「选区编辑 + 版本回退」的前端 UI -->
+    <div v-if="showVersionHistory" class="fixed inset-0 z-50 flex" @click.self="closeVersionHistory">
+      <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+      <aside class="absolute right-0 top-0 h-full w-[400px] max-w-[92vw] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col">
+        <!-- 头部 -->
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <div class="min-w-0">
+            <div class="text-sm font-semibold text-gray-800 dark:text-gray-100">历史版本</div>
+            <div class="text-[11px] text-gray-400 truncate">{{ activeArtifact?.path }}</div>
+          </div>
+          <button @click="closeVersionHistory" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 transition" title="关闭">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <!-- 版本列表 -->
+        <div class="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+          <div v-if="versionsLoading" class="text-center text-xs text-gray-400 py-8">加载中…</div>
+          <div v-else-if="versionsError" class="text-xs text-red-500 py-2 break-words">{{ versionsError }}</div>
+          <div v-else-if="versions.length === 0" class="text-center text-xs text-gray-400 py-8">暂无历史版本（保存后将自动快照）</div>
+          <div v-for="v in versions" :key="v.id"
+               class="rounded-lg border px-3 py-2 cursor-pointer transition"
+               :class="selectedVersion?.id === v.id ? 'border-purple-400 bg-purple-50/60 dark:bg-purple-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-purple-300'">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">v{{ v.version }}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full"
+                      :class="v.kind==='text' ? 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300' : v.kind==='binary' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-gray-100 text-gray-500'">
+                  {{ v.kind==='text' ? '文本' : v.kind==='binary' ? '二进制' : '超大' }}
+                </span>
+              </div>
+              <span class="text-[10px] text-gray-400">{{ fmtVerSize(v.size) }}</span>
+            </div>
+            <div class="text-[10px] text-gray-400 mt-1">{{ fmtVerTime(v.created_at) }} · {{ v.note }}</div>
+            <div class="flex items-center gap-2 mt-2">
+              <button v-if="v.kind==='text'" @click.stop="previewVersion(v); setVersionTab('preview')" class="text-[11px] px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition">预览</button>
+              <button v-if="v.kind==='text'" @click.stop="showVersionDiff(v); setVersionTab('diff')" class="text-[11px] px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition">对比当前</button>
+              <button v-if="v.restorable" @click.stop="revertVersion(v)" :disabled="revertingId===v.id"
+                      class="text-[11px] px-2 py-1 rounded-md bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 transition">
+                {{ revertingId===v.id ? '回退中…' : '回退到此版本' }}
+              </button>
+              <span v-else class="text-[10px] text-gray-400">不可回退</span>
+            </div>
+          </div>
+        </div>
+        <!-- 预览 / 对比面板 -->
+        <div v-if="selectedVersion" class="h-[40%] border-t border-gray-200 dark:border-gray-700 flex flex-col">
+          <div class="flex items-center gap-3 px-3 py-2 border-b border-gray-100 dark:border-gray-800 text-[11px]">
+            <button @click="setVersionTab('preview')" :class="versionTab==='preview' ? 'text-purple-600 font-semibold' : 'text-gray-400 hover:text-gray-600'">预览</button>
+            <button v-if="selectedVersion.kind==='text'" @click="setVersionTab('diff')" :class="versionTab==='diff' ? 'text-purple-600 font-semibold' : 'text-gray-400 hover:text-gray-600'">对比当前</button>
+            <span class="flex-1"></span>
+            <span class="text-gray-400">v{{ selectedVersion.version }}</span>
+          </div>
+          <div class="flex-1 overflow-auto p-3">
+            <pre v-if="versionTab==='preview'" class="text-[11px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{{ versionPreview || '点击上方「预览」查看该版本内容' }}</pre>
+            <pre v-else-if="versionTab==='diff'" class="text-[11px] leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{{ versionDiff || '点击上方「对比当前」生成差异' }}</pre>
+          </div>
+        </div>
+      </aside>
+    </div>
 </template>
 
 <style scoped>
