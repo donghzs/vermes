@@ -8,6 +8,7 @@ import ConfirmDialog from './components/ConfirmDialog.vue'
 import ToolSkillDrawer from './components/ToolSkillDrawer.vue'
 import ArtifactPanel from './components/ArtifactPanel.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
+import CommandPalette from './components/CommandPalette.vue'
 import { useChatStore } from './stores/chat'
 import { useBackendConnectionStore } from './stores/backendConnection'
 import { useUpdateStore } from './stores/update'
@@ -90,6 +91,7 @@ onMounted(async () => {
       <ConfirmDialog />
       <UpdateDialog />
       <ToolSkillDrawer />
+      <CommandPalette />
     </ErrorBoundary>
   </div>
 </template>

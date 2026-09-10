@@ -27,6 +27,8 @@ function go3DStudio() { router.push('/3d-studio') }
 function goBricks() { router.push('/bricks') }
 function goWorkflows() { router.push('/workflows') }
 function goGrowth() { router.push('/growth') }
+// 📊 Benchmark 大盘
+function goBenchmark() { router.push('/benchmark') }
 // ⛩️ 神魔堂：单一融合入口（诸神会晤群聊 + 神魔架请神/造神 + 蜂群看板）
 function goShenmotang() { router.push('/shenmotang') }
 // goModuleStore 已移除（模块商店归入 Agent 管理→软件 tab）
@@ -651,57 +653,56 @@ async function handleImportFile(e) {
 
         <!-- 空状态 -->
         <div v-if="groupedSessions.pinned.length === 0 && groupedSessions.items.length === 0" class="text-center text-gray-400 dark:text-gray-500 text-xs py-6">
-          {{ searchQuery ? '没有匹配的会话' : '暂无会话' }}
+          <template v-if="searchQuery">没有匹配的会话</template>
+          <template v-else>
+            <div class="mb-2">暂无会话</div>
+            <div class="flex items-center justify-center gap-2">
+              <button @click="chat.createSession('新会话')" class="px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition">💬 新建对话</button>
+              <button @click="goShenmotang()" class="px-2 py-1 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition">⛩️ 组个队</button>
+            </div>
+          </template>
         </div>
       </div>
 
       <!-- 底部工具栏 -->
-      <div class="p-3 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-2 shrink-0">
-        <button @click="goStudio()" class="group relative px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
-          <span class="text-base">🎨</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">创作工作室</span>
+      <div class="p-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-1 shrink-0">
+        <button @click="goStudio()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
+          <span class="text-base">🎨</span><span>创作</span>
         </button>
-        <button @click="goSettings()" class="group relative px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
-          <span class="text-base">⚙️</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">设置</span>
+        <button @click="goScholarForge()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/scholarforge' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作">
+          <span class="text-base">📝</span><span>论文</span>
         </button>
-        <button @click="chat.toggleTheme()" class="group relative px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
-          <span class="text-base">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.theme === 'dark' ? '浅色模式' : '深色模式' }}</span>
+        <button @click="go3DStudio()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/3d-studio' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="3D 建模">
+          <span class="text-base">🏭</span><span>3D</span>
         </button>
-        <button @click="openPanel('skills')" class="group relative px-3 py-2 rounded-lg text-sm transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="Agent 管理（技能/工具/软件/专家/MCP/记忆/知识库）">
-          <span class="text-base">🤖</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">Agent 管理</span>
+        <button @click="goWorkflows()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/workflows' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="工作流编排">
+          <span class="text-base">🔀</span><span>工作流</span>
         </button>
-        <button @click="goMobileConnect()" class="group relative px-3 py-2 rounded-lg text-sm transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="移动接入">
-          <span class="text-base">📱</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">移动接入</span>
+        <button @click="goShenmotang()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/shenmotang' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="神魔堂——诸神会晤（多 Agent 群聊）+ 神魔架（请神登堂/造神）">
+          <span class="text-base">⛩️</span><span>神魔堂</span>
         </button>
-        <button @click="goScholarForge()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/scholarforge' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作">
-          <span class="text-base">📝</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">论文写作</span>
+        <button @click="goGrowth()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/growth' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="我的成长——成长轨迹 / 能力自检 / 我眼里的你">
+          <span class="text-base">🌱</span><span>成长</span>
         </button>
-        <button @click="go3DStudio()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/3d-studio' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="3D 建模">
-          <span class="text-base">🏭</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">3D 建模</span>
+        <button @click="goBricks()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/bricks' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="积木市场 + 热门榜（技能 / 工具 / 模块 / 软件）">
+          <span class="text-base">🧱</span><span>积木</span>
         </button>
-        <button @click="goBricks()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/bricks' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="积木市场 + 热门榜（技能 / 工具 / 模块 / 软件）">
-          <span class="text-base">🧱</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">积木市场</span>
+        <button @click="goBenchmark()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition" :class="$route.path === '/benchmark' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="Benchmark 大盘">
+          <span class="text-base">📊</span><span>Benchmark</span>
         </button>
-        <button @click="goWorkflows()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/workflows' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="工作流编排">
-          <span class="text-base">🔀</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">工作流编排</span>
+        <button @click="goMobileConnect()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="移动接入">
+          <span class="text-base">📱</span><span>移动接入</span>
         </button>
-        <button @click="goGrowth()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/growth' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="我的成长——成长轨迹 / 能力自检 / 我眼里的你">
-          <span class="text-base leading-none">🌱</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">成长</span>
+        <button @click="openPanel('skills')" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="Agent 管理（技能/工具/软件/专家/MCP/记忆/知识库）">
+          <span class="text-base">🤖</span><span>Agent</span>
         </button>
-        <button @click="goShenmotang()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/shenmotang' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="神魔堂——诸神会晤（多 Agent 群聊）+ 神魔架（请神登堂/造神）">
-          <span class="text-base leading-none">⛩️</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">神魔堂</span>
+        <button @click="chat.toggleTheme()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
+          <span class="text-base">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span><span>{{ chat.theme === 'dark' ? '浅色' : '深色' }}</span>
         </button>
-        </div>
+        <button @click="goSettings()" class="flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[11px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
+          <span class="text-base">⚙️</span><span>设置</span>
+        </button>
+      </div>
 
       <!-- G13/成长：侧栏底部 mini 信号行已移除（入口统一走「成长」按钮直达 /growth） -->
     </template>
