@@ -739,6 +739,48 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
     return provider, base_url, api_key, actual_model
 
 
+# ── A2 选区重生成：注入真实 regenerator（闭合 artifacts 接缝，使 /patch 端到端可用）──
+def _region_regenerate(selection, instruction, before, after, model_hint=None):
+    """单轮补全：按指令改写选区文本，返回纯文本（无解释、无 markdown 代码块包裹）。
+
+    复用 _resolve_model_provider 解析用户当前模型；OpenAI 兼容端点直连。
+    artifacts._regenerate_region 在同步上下文中调用本函数（端点为 async，但本函数为同步，
+    单次轻量补全对事件循环的阻塞可接受）。
+    """
+    from openai import OpenAI
+    model = model_hint or "agnes-2.0-flash"
+    provider, base_url, api_key, actual_model = _resolve_model_provider(model, None)
+    if not base_url:
+        raise RuntimeError(
+            f"无法解析模型 {model} 的 base_url，请检查 config.yaml / providers 配置（选区重生成需要可用模型）"
+        )
+    client = OpenAI(base_url=base_url, api_key=api_key or "x")
+    sys_msg = (
+        "你是资深文档编辑。仅重写用户选中的文本，严格遵循其修改指令；"
+        "只返回重写后的文本本身，不要任何解释说明，也不要用 markdown 代码块包裹。"
+    )
+    user_msg = (
+        f"修改指令：{instruction}\n\n"
+        f"选中文本：\n{selection}\n\n"
+        f"（以下为前后文，仅供理解语境，不要改写它们）\n"
+        f"前文：\n{(before or '')[-1500:]}\n\n"
+        f"后文：\n{(after or '')[:1500]}"
+    )
+    resp = client.chat.completions.create(
+        model=actual_model,
+        messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}],
+        temperature=0.3,
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
+try:
+    from vermes_cli.blueprints import artifacts as _art_mod
+    _art_mod.register_region_regenerator(_region_regenerate)
+except Exception as _e:  # 注册失败绝不应阻断 app 启动（未注入时 /patch 仍返 501）
+    logger.warning(f"[A2] 选区重生成 regenerator 注册失败，/patch 将返 501：{_e}")
+
+
 # ── Trial token wrapper ──────────────────────────────────────────────
 
 async def claim_trial_token_wrapper(wechat_openid: str) -> dict:

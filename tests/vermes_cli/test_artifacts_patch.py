@@ -142,8 +142,11 @@ def test_patch_missing_instruction_400(client):
         os.unlink(p)
 
 
-def test_patch_no_regenerator_501(client):
-    """未注入真实 regenerator → 501（诚实报错，不静默假成功）。"""
+def test_patch_no_regenerator_501(client, ver_db, monkeypatch):
+    """未注入真实 regenerator → 501（诚实报错，不静默假成功）。
+    显式把接缝置 None，模拟「未配置」场景（生产环境 chat 蓝图会在 import 时注入真实实现）。
+    """
+    monkeypatch.setattr(ver_db, "_REGION_REGENERATOR", None)
     p = _mk_artifact(".md")
     try:
         open(p, "w").write("x\n")
@@ -173,3 +176,11 @@ def test_patch_fingerprint_not_found_404(client, ver_db, monkeypatch):
         assert r.status_code == 404
     finally:
         os.unlink(p)
+
+
+def test_real_regenerator_registered_by_chat_blueprint():
+    """chat 蓝图 import 时应已把真实 regenerator 注入 artifacts 接缝（使 /patch 端到端可用）。"""
+    import vermes_cli.blueprints.chat as chat_bp
+    import vermes_cli.blueprints.artifacts as art
+    assert art._REGION_REGENERATOR is not None
+    assert art._REGION_REGENERATOR is chat_bp._region_regenerate
