@@ -1,18 +1,18 @@
 {
-  "version": "2.4.4",
-  "releaseDate": "2026-08-26",
-  "notes": "本次打包汇总（2.4.3→2.4.4）：①产物面板 WorkBuddy 对标（工具过程叙事/长推理/错误恢复 + 三模式对话开关 ⚡直接/📋先规划/💬只问答）；②最终交付产物到达时自动渲染到右栏、聊天框点击产物直接渲染（去掉再点一次）；③长程任务规划（先规划再执行，宽松 plan 解析兜底）+ 右栏步骤卡显示交付物/完成标准；④会话隔离（产物/变更按会话落各自 localStorage）；⑤专家目录修复（2.4.2 DMG 漏打包 experts_catalog.json）；⑥🧠进化面板 / 📚记忆 / Settings 迁移 Tab；⑦OpenClaw 迁移 500 错误修复 + SCNet 431 友好提示。",
+  "version": "2.4.8",
+  "releaseDate": "2026-09-10",
+  "notes": "Vermes 2.4.8 主要更新：① 神魔堂大升级——群聊四层协作（共享 transcript/roster/@接力/回合制 orchestrator）、秘书模式（1 agent 自动搭组织/派活/交付）、组织任务看板（岗位表/状态/审计流水/交付物）、分身(avatar)共享全局记忆与身份、蜂群看板收编；② 登堂降门槛——本机 CLI 登录态探测 + OpenClaw/Hermes/CodeBuddy 等 ACP recipe 直登，通用 wrapper CLI 运行时 env 自动补齐；③ 造神/接入 Sprint A-D——transport 放开 native→cli/acp、前端「+接入」按钮、/api/agents/onboard 端点、能力标签诚实标注；④ 产物面板（方案A）选区编辑 + 版本回退（A1/A2/A3）并闭合 /patch 选区重生成接缝；⑤ 安全——前端 XSS 修复（markdown DOMPurify 消毒 + iframe sandbox 收紧）、打包版默认关闭 /openapi.json；⑥ UX——导航文字标签 + /benchmark 入口 + Cmd+K 命令面板、群聊空态引导、神魔堂默认收起侧栏；⑦ 构建/发版——Electron 壳 + electron-updater 全链路自动更新、macOS 无签名降级方案（version.json 轮询 + 官网 DMG 下载）、build.sh agent 沙箱内可复现构建；⑧ 本次收口——神魔堂造神 LLM 选择复用单聊同款单下拉（设置里配好的模型直接选）。",
   "downloads": {
     "mac": {
       "arm64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.4-arm64.dmg",
-        "sha256": "2d397a62a758324708fbf2583f4b139e68dea98194101fd900dd9e083608f6a5",
-        "size": 319483099
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8-arm64.dmg",
+        "sha256": "be555e729e0cec3c01c4be641f183b24a6f3a85a98f776fae317115383b28f15",
+        "size": 277572356
       },
       "x64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.4.dmg",
-        "sha256": "42631464f96061151590124bd77c6a17d54de96fe97f7a313421b26fe7e66b7f",
-        "size": 321249875
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8.dmg",
+        "sha256": "255fbf99c72313d6bafd20111e6c85e9304664e06f846ba6d6759e084f1e14ea",
+        "size": 282649605
       }
     },
     "windows": {
