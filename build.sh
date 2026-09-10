@@ -8,10 +8,11 @@ cd "$(dirname "$0")"
 echo "▶ 1/5 构建前端..."
 cd frontend && npm run build && cd ..
 
-echo "▶ 2/5 同步 web_dist..."
-# 清理旧文件（防止堆积多个版本）
-rm -rf vermes_cli/web_dist/assets
-cp -R frontend/dist/* vermes_cli/web_dist/
+echo "▶ 2/5 同步 web_dist（vite outDir 已直出 web_dist，无需 cp）..."
+# 注：vite.config.js 的 build.outDir 指向 ../vermes_cli/web_dist，
+# 第 1 步 npm run build 已把产物写入 web_dist 且 emptyOutDir 自动清空旧文件，
+# 因此此处不再执行 rm/cp（旧逻辑 rm -rf web_dist/assets + cp frontend/dist/* 在
+# 当前 vite 配置下会误删刚 build 好的产物，且 frontend/dist 已不存在）。
 
 echo "▶ 3/5 PyInstaller 打包后端 (vermes-backend.spec)..."
 .venv/bin/python -m PyInstaller vermes-backend.spec --noconfirm
