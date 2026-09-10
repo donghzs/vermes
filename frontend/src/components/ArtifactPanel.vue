@@ -257,6 +257,14 @@ async function loadContent(artifact) {
       const mammoth = await loadMammoth()
       const buf = await resp.blob().then(b => b.arrayBuffer())
       content.value = (await mammoth.convertToHtml({ arrayBuffer: buf })).value || '<p style="color:#999">文档内容为空</p>'
+      // 拉取后端真实段落列表，供点击时按文本对齐 block_index（修复表格/列表内嵌 <p> 导致的序号偏移 v1 边界）
+      try {
+        const er = await fetch(`/api/v1/artifacts/${encodeURIComponent(artifact.path)}/editable`)
+        if (er.ok) {
+          const ej = await er.json().catch(() => null)
+          docxParagraphs.value = (ej && ej.type === 'docx' && Array.isArray(ej.paragraphs)) ? ej.paragraphs : []
+        } else { docxParagraphs.value = [] }
+      } catch (_) { docxParagraphs.value = [] }
     } else {
       const text = await resp.text()
       rawText.value = text
@@ -580,6 +588,7 @@ const patchError = ref('')
 const patchSelected = ref('')         // 当前选中的原文（回显用）
 
 const docxSelectedBlock = ref(null)   // docx 预览点击选中的段落 {index, text}
+const docxParagraphs = ref(null)      // 后端 /editable 返回的真实段落列表 [{i, text}]（对齐 doc.paragraphs 的 block_index）
 const docxPatchInstruction = ref('')
 const docxPatchBusy = ref(false)
 const docxPatchError = ref('')
@@ -650,10 +659,31 @@ async function runPatchText() {
 function onDocxClick(e) {
   const p = e.target.closest('p')
   if (!p) { docxSelectedBlock.value = null; return }
-  const ps = e.currentTarget.querySelectorAll('p')
-  const idx = Array.from(ps).indexOf(p)
+  const ps = Array.from(e.currentTarget.querySelectorAll('p'))
+  const idx = ps.indexOf(p)
   if (idx < 0) return
-  docxSelectedBlock.value = { index: idx, text: p.textContent || '' }
+  const clickedText = (p.textContent || '').trim()
+  // 用后端真实段落列表（/editable，doc.paragraphs 语义）按文本+出现次序对齐 block_index，
+  // 修复 mammoth 渲染时表格/列表内嵌 <p> 导致 DOM 序号与后端 i 不一致的偏移（方案A v1 边界）。
+  const paras = docxParagraphs.value
+  let backendIndex = null
+  if (Array.isArray(paras) && paras.length) {
+    // 点击段落在 DOM 中的出现次序（第几次出现该文本，0 基）
+    const occInDom = ps.slice(0, idx + 1).filter(x => (x.textContent || '').trim() === clickedText).length - 1
+    // 在后端的 doc.paragraphs 列表中找相同文本的第 occInDom 次出现，取其 i
+    let seen = 0
+    for (const para of paras) {
+      if ((para.text || '').trim() === clickedText) {
+        if (seen === occInDom) { backendIndex = para.i; break }
+        seen++
+      }
+    }
+    // 兜底：文本未命中（表格/列表内嵌 <p>，不在 doc.paragraphs 内）→ 取 DOM 序号就近的后端段落
+    if (backendIndex === null) backendIndex = Math.min(idx, paras.length - 1)
+  } else {
+    backendIndex = idx
+  }
+  docxSelectedBlock.value = { index: backendIndex, text: p.textContent || '' }
   docxPatchError.value = ''
 }
 function closeDocxPatch() { docxPatchInstruction.value = ''; docxPatchError.value = '' }
