@@ -4,10 +4,14 @@ import { useConfirm } from '@/composables/useConfirm'
 
 // 版本号从后端 /health 运行时读取，不编译时硬编码
 // 框架更新不触发前端重建
-let CURRENT_VERSION = '0.0.0'
+// 初始值取 preload 注入的 window.vermes.version（Electron 壳已读 electron/package.json=2.4.8），
+// 避免 /health 未就绪时落下 0.0.0；用 ref 保证 fetch 更新后界面响应式刷新。
+const CURRENT_VERSION = ref(
+  (typeof window !== 'undefined' && window.vermes?.version) ? window.vermes.version : '0.0.0'
+)
 fetch('/health')
   .then(r => r.json())
-  .then(d => { CURRENT_VERSION = d.version || '0.0.0' })
+  .then(d => { CURRENT_VERSION.value = d.version || window.vermes?.version || '0.0.0' })
   .catch(() => {})
 const VERSION_URL = 'https://vbit.top/vermes/version.json'
 const AGENT_VERSION_URL = '/api/agent/check'
@@ -160,7 +164,7 @@ export const useUpdateStore = defineStore('update', () => {
         .then(r => r.json())
         .catch(() => null)
 
-      if (res && res.version && isNewer(res.version, CURRENT_VERSION)) {
+      if (res && res.version && isNewer(res.version, CURRENT_VERSION.value)) {
         if (localStorage.getItem(DISMISS_KEY) === res.version) {
           return
         }

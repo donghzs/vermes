@@ -1,18 +1,18 @@
 {
   "version": "2.4.8",
   "releaseDate": "2026-09-10",
-  "notes": "Vermes 2.4.8 主要更新：① 神魔堂大升级——群聊四层协作（共享 transcript/roster/@接力/回合制 orchestrator）、秘书模式（1 agent 自动搭组织/派活/交付）、组织任务看板（岗位表/状态/审计流水/交付物）、分身(avatar)共享全局记忆与身份、蜂群看板收编；② 登堂降门槛——本机 CLI 登录态探测 + OpenClaw/Hermes/CodeBuddy 等 ACP recipe 直登，通用 wrapper CLI 运行时 env 自动补齐；③ 造神/接入 Sprint A-D——transport 放开 native→cli/acp、前端「+接入」按钮、/api/agents/onboard 端点、能力标签诚实标注；④ 产物面板（方案A）选区编辑 + 版本回退（A1/A2/A3）并闭合 /patch 选区重生成接缝；⑤ 安全——前端 XSS 修复（markdown DOMPurify 消毒 + iframe sandbox 收紧）、打包版默认关闭 /openapi.json；⑥ UX——导航文字标签 + /benchmark 入口 + Cmd+K 命令面板、群聊空态引导、神魔堂默认收起侧栏；⑦ 构建/发版——Electron 壳 + electron-updater 全链路自动更新、macOS 无签名降级方案（version.json 轮询 + 官网 DMG 下载）、build.sh agent 沙箱内可复现构建；⑧ 本次收口——神魔堂造神 LLM 选择复用单聊同款单下拉（设置里配好的模型直接选）；⑨ 2.4.8 验收 hotfix——神魔堂造神 LLM 下拉免加载（改读设置缓存、对齐单聊、只列已配可用模型，杜绝选到用不了的）+ 删除无效的「专属 API Key」字段（填写无法生效）、神魔堂整页卡顿修复（tab 面板 v-show→v-if 懒挂载 + 会话列表缓存不遮挡）、Benchmark 大盘滑不动修复（根容器加 overflow 滚动）、侧边栏底栏紧凑（grid-cols-4 + 悬停弹功能介绍）。",
+  "notes": "Vermes 2.4.8 主要更新：① 神魔堂大升级——群聊四层协作（共享 transcript/roster/@接力/回合制 orchestrator）、秘书模式（1 agent 自动搭组织/派活/交付）、组织任务看板（岗位表/状态/审计流水/交付物）、分身(avatar)共享全局记忆与身份、蜂群看板收编；② 登堂降门槛——本机 CLI 登录态探测 + OpenClaw/Hermes/CodeBuddy 等 ACP recipe 直登，通用 wrapper CLI 运行时 env 自动补齐；③ 造神/接入 Sprint A-D——transport 放开 native→cli/acp、前端「+接入」按钮、/api/agents/onboard 端点、能力标签诚实标注；④ 产物面板（方案A）选区编辑 + 版本回退（A1/A2/A3）并闭合 /patch 选区重生成接缝；⑤ 安全——前端 XSS 修复（markdown DOMPurify 消毒 + iframe sandbox 收紧）、打包版默认关闭 /openapi.json；⑥ UX——导航文字标签 + /benchmark 入口 + Cmd+K 命令面板、群聊空态引导、神魔堂默认收起侧栏；⑦ 构建/发版——Electron 壳 + electron-updater 全链路自动更新、macOS 无签名降级方案（version.json 轮询 + 官网 DMG 下载）、build.sh agent 沙箱内可复现构建；⑧ 本次收口——神魔堂造神 LLM 选择复用单聊同款单下拉（设置里配好的模型直接选）；⑨ 2.4.8 验收 hotfix——神魔堂造神 LLM 下拉免加载（改读设置缓存、对齐单聊、只列已配可用模型，杜绝选到用不了的）+ 删除无效的「专属 API Key」字段（填写无法生效）、神魔堂整页卡顿修复（tab 面板 v-show→v-if 懒挂载 + 会话列表缓存不遮挡）、Benchmark 大盘滑不动修复（根容器加 overflow 滚动）、侧边栏底栏紧凑（grid-cols-4 + 悬停弹功能介绍）；⑩ 设置页「版本」显示 0.0.0 修复——currentVersion 改为响应式 ref，初始值取 Electron 壳注入的真实版本（2.4.8），/health 就绪后覆盖，杜绝一直显示 0.0.0。",
   "downloads": {
     "mac": {
       "arm64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8-arm64.dmg",
-        "sha256": "8753fcb44544166c98d81fdb8dfd088773250f4ec21e9a6067ebeed8654ad084",
-        "size": 277577059
+        "sha256": "b98d9e0ab6b4bf187a4940872580219f68b8371db389a673febd4fec040027f3",
+        "size": 277564625
       },
       "x64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8.dmg",
-        "sha256": "40815cc8c7a02cc54ade01548e665b9482db0ebef84cb042a176c4333916a00d",
-        "size": 282531829
+        "sha256": "2c574e457d2b08dbcffa55e0d9be19db240ad727ebac2052a1c5b54049d2e801",
+        "size": 282494340
       }
     },
     "windows": {
