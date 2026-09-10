@@ -1,5 +1,5 @@
 <template>
-  <div class="benchmark-dashboard p-6 max-w-6xl mx-auto bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+  <div class="benchmark-dashboard h-full overflow-y-auto p-6 max-w-6xl mx-auto bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
     <h2 class="text-xl font-bold mb-4">📊 Benchmark 大盘</h2>
 
     <!-- 触发栏 -->

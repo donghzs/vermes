@@ -88,10 +88,13 @@ onUnmounted(() => {
     </div>
 
     <!-- 内容：三个 tab 复用现有组件 -->
+    <!-- 用 v-if 而非 v-show：只挂载当前 tab，避免一进神魔堂就并发挂载三个重型组件
+         （BotRooms/AgentsPage/KanbanBoard 各自 onMounted 拉数据），消除整页卡顿。
+         代价：切 tab 会重新挂载并刷新，但换来进入顺滑，符合用户「进来要快」诉求。 -->
     <div class="flex-1 min-h-0">
-      <BotRooms v-show="tab === 'hall'" class="h-full" />
-      <AgentsPage v-show="tab === 'roster'" class="h-full" />
-      <KanbanBoard v-show="tab === 'swarm'" class="h-full" />
+      <BotRooms v-if="tab === 'hall'" class="h-full" />
+      <AgentsPage v-if="tab === 'roster'" class="h-full" />
+      <KanbanBoard v-if="tab === 'swarm'" class="h-full" />
     </div>
   </div>
 </template>

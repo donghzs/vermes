@@ -869,7 +869,8 @@ onUnmounted(() => {
         >+ 建群</button>
       </div>
       <div class="flex-1 overflow-y-auto p-2 space-y-1">
-        <div v-if="bot.loadingRooms" class="text-xs text-gray-400 px-1">加载中…</div>
+        <!-- 仅当「尚无缓存」时才显示加载态；已有缓存则后台静默刷新，避免每次进入神魔堂空白闪烁 -->
+        <div v-if="bot.loadingRooms && bot.rooms.length === 0" class="text-xs text-gray-400 px-1">加载中…</div>
         <div v-else-if="bot.rooms.length === 0" class="text-xs text-gray-400 px-1">还没有群，点「+ 建群」创建一个。</div>
         <button
           v-for="r in bot.rooms"
@@ -967,7 +968,8 @@ onUnmounted(() => {
 
       <!-- 时间线 -->
       <div ref="timelineRef" class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        <div v-if="bot.loadingTimeline" class="text-xs text-gray-400">加载消息…</div>
+        <!-- 同上：有缓存则后台刷新，不遮挡已加载的消息 -->
+        <div v-if="bot.loadingTimeline && bot.timeline.length === 0" class="text-xs text-gray-400">加载消息…</div>
         <div v-else-if="messages.length === 0" class="text-sm text-gray-400 mt-8 text-center">
           还没有消息。输入 @名字 点名 Agent，可 @ 多人协作；
           Agent 回复中会 @ 接力其他成员，形成协作链。
