@@ -64,6 +64,10 @@ def _onboard_via_acp(db, recipe, auth_value: str) -> dict:
             }
 
     # 用户授权的 key → 注入当次进程环境 + 持久化到凭据库（跨重启生效）
+    # 已知面（审计 P3）：os.environ 是全局进程级注入，所有后续子进程继承；
+    # 若两个 recipe 共用同一 auth_env（如均为 OPENAI_API_KEY），后者覆盖前者。
+    # 当前为可接受工程权衡（已同时持久化到凭据库，per-recipe 隔离可重建），
+    # 彻底解决需改为「仅 spawn 时按 profile 注入 env」，不在本期范围。
     persisted = True
     persist_error: Optional[str] = None
     if auth_env and auth_value:

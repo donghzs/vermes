@@ -58,6 +58,10 @@ def test_onboard_by_recipe_name_success(db):
         "vermes_cli.a2a.onboarding.find_recipe", return_value=recipe
     ), patch(
         "vermes_cli.a2a.onboarding.build_acp_transport", return_value=transport
+    ), patch(
+        # _health_check 第一级是真实 shutil.which 查 PATH（onboarding.py:184）。
+        # 不隔离 → 本测试依赖「机器是否真装了 codex」：装了才绿，换机即红。
+        "shutil.which", return_value="/usr/bin/codex"
     ):
         r = onboard_agent("codex-acp", db=db)
     assert r["status"] == "success"

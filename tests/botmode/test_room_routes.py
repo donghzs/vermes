@@ -1159,7 +1159,12 @@ def test_native_upsert_transport_cli(env):
 
 
 def test_native_upsert_transport_acp(env):
-    """Sprint C：造神支持 transport=acp。"""
+    """Sprint C 收口：造神拒绝 transport=acp（幽灵联系人防枪）。
+
+    造神只写 agent_profiles 表，不写 a2a_agents.recipe → acp dispatch 永远找不到
+    recipe；若放行则原生列表被 transport==acp 过滤 + dispatch 报 no recipe → 两头
+    不靠的幽灵联系人。外部 ACP agent 必须走登堂/onboard（写 a2a_agents）。
+    """
     client = _client()
     db = vermes_state.SessionDB(env.db_path)
     db.seed_default_profiles()
@@ -1171,12 +1176,14 @@ def test_native_upsert_transport_acp(env):
         "transport_ref": "npx @agentclientprotocol/codex-acp",
     })
     assert r.status_code == 200
-    pid = r.json().get("id")
+    d = r.json()
+    assert d.get("ok") is False
+    assert "acp" in d.get("error", "")
+    # 未落库（不建幽灵联系人）
     db2 = vermes_state.SessionDB(env.db_path)
-    p = db2.get_agent_profile(pid)
+    p = db2.get_agent_profile("ACP助手")
     db2.close()
-    assert p.get("transport") == "acp"
-    assert p.get("transport_ref") == "npx @agentclientprotocol/codex-acp"
+    assert p is None
 
 
 def test_native_upsert_transport_default_native(env):
@@ -1221,3 +1228,77 @@ def test_onboard_endpoint_not_found(env):
     assert r.status_code == 200
     d = r.json()
     assert d["status"] == "not_found"
+
+
+def test_onboard_endpoint_success(env):
+    """Sprint D 收口：/api/agents/onboard 成功路径（mock recipe + transport + which）。
+
+    审计 P3：Sprint D 原只测失败路径（缺 name / 找不到），success/need_auth 主路径
+    零覆盖。补：命中 recipe 免 key → success + 落库。
+    """
+    from types import SimpleNamespace
+    from unittest.mock import patch, MagicMock
+
+    client = _client()
+    db = vermes_state.SessionDB(env.db_path)
+    db.seed_default_profiles()
+    db.close()
+
+    recipe = SimpleNamespace(
+        name="openclaw-acp",
+        provider="acp-openclaw",
+        description="OpenClaw (ACP)",
+        is_acp=True,
+        auth=SimpleNamespace(env_var=None),  # 免 key
+        spawn_command=["openclaw", "acp"],
+        capabilities=["agent"],
+        capability_source="inferred",
+    )
+    transport = MagicMock()
+    transport._acp_command = "openclaw"
+    transport._handshake = MagicMock(return_value=(True, "protocolVersion=1"))
+    with patch("vermes_cli.a2a.onboarding.find_recipe", return_value=recipe), \
+         patch("vermes_cli.a2a.onboarding.build_acp_transport", return_value=transport), \
+         patch("shutil.which", return_value="/usr/bin/openclaw"):
+        r = client.post("/api/agents/onboard", json={"name": "openclaw-acp"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["status"] == "success"
+    assert d["transport"] == "acp"
+    assert d["profile_id"] == "a2a:acp-openclaw"
+
+
+def test_onboard_endpoint_need_auth_no_key_leak(env):
+    """Sprint D 收口：need_auth 主路径 + 响应不泄露明文 key。
+
+    审计 P3 补缺：need_auth 返回 auth_env 变量名 + login_command，绝不含 key。
+    """
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from vermes_cli.a2a.login_probe import LoginProbe
+
+    client = _client()
+    recipe = SimpleNamespace(
+        name="claude-agent-acp",
+        provider="acp-claude-agent",
+        description="Claude Agent (ACP)",
+        is_acp=True,
+        auth=SimpleNamespace(env_var="ANTHROPIC_API_KEY"),
+        spawn_command=["npx", "@agentclientprotocol/claude-agent-acp"],
+        capabilities=["coding"],
+        capability_source="inferred",
+    )
+    lp = LoginProbe(logged_in=False, method="test", detail="no keychain")
+    with patch("vermes_cli.a2a.onboarding.find_recipe", return_value=recipe), \
+         patch("vermes_cli.a2a.onboarding.probe_login", return_value=lp), \
+         patch.dict("os.environ", {}, clear=True):
+        r = client.post("/api/agents/onboard", json={"name": "claude-agent-acp"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["status"] == "need_auth"
+    assert d["auth_env"] == "ANTHROPIC_API_KEY"
+    assert "login_command" in d
+    # 响应正文绝不含明文 key（安全硬纪律）：auth_env 只回变量名，无任何 sk-/key-/Bearer
+    blob = str(d)
+    assert not any(s in blob for s in ("sk-", "key-", "Bearer "))

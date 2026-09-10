@@ -5972,6 +5972,15 @@ async def api_native_agent_upsert(request: Request):
             api_key = body.get("api_key", "")
             if api_key == "__KEEP__":
                 api_key = (existing or {}).get("api_key", "") if existing else ""
+            # Sprint C 收口：transport 白名单 + 幽灵联系人防枪
+            # 造神（agent_profiles 表）只能造 native / cli 两类；**不支持 acp**：
+            # acp dispatch（_acp_agent_chat_sync）读 a2a_agents.recipe 字段，造神不写该表 →
+            # 即使填 transport=acp 也永远驱动不了（原生列表被 transport==acp 过滤 + dispatch 无 recipe 报错）→ 两头不靠的幽灵联系人。
+            # 接入外部 ACP agent 必须走登堂（register-profile）或 +接入（onboard），由它们写 a2a_agents。
+            transport = (body.get("transport") or "native").strip()
+            transport_ref = (body.get("transport_ref") or "").strip()
+            if transport not in ("native", "cli"):
+                return {"ok": False, "error": f"造神 transport 仅支持 native/cli，不支持：{transport}。接入外部 ACP agent 请走「封神榜登堂」或「+ 接入」"}
             db.upsert_agent_profile({
                 "id": pid,
                 "name": name,
@@ -5985,8 +5994,8 @@ async def api_native_agent_upsert(request: Request):
                 "avatar_seed": body.get("avatar_seed", pid) or pid,
                 "hue": int(body.get("hue", 0) or 0),
                 "is_default": int(body.get("is_default", 0) or 0),
-                "transport": (body.get("transport") or "native").strip(),
-                "transport_ref": (body.get("transport_ref") or "").strip(),
+                "transport": transport,
+                "transport_ref": transport_ref,
                 "api_key": api_key or "",
                 "editable": int(req_editable),
             })
