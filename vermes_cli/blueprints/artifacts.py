@@ -11,6 +11,12 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, HTMLResponse, Response, JSONResponse
 import base64
 import json
+import time
+import sqlite3
+import hashlib
+import threading
+import difflib
+from contextlib import contextmanager
 
 
 def _allowed_roots():
@@ -146,6 +152,112 @@ _MIME_MAP = {
 _MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
+# ─────────────────────────────────────────────────────────────
+# A1 版本快照基建（复用 ScholarForge snapshots 的 LRU 裁剪模式）
+# 存储：~/.vermes/artifacts_versions.db（独立库，不与 scholarforge.db 耦合）
+# 表：artifact_versions(artifact_path, session_id, version, content_hash, kind, content, size, created_at, note)
+# 触发：write_artifact_content 写回前自动快照「覆盖前状态」；可 /versions 列表 /revert 回退 /diff 对比
+# ─────────────────────────────────────────────────────────────
+_VERSIONS_DB_PATH = os.path.expanduser("~/.vermes/artifacts_versions.db")
+_versions_lock = threading.Lock()
+# 单产物版本上限：超出按 version 升序淘汰最旧（复用 ScholarForge create_snapshot 的 LRU 裁剪模式）。
+# 方案稿写「8 条」，但真实 ScholarForge 上限为 30；产物编辑频次高，取 30 避免历史过快丢失，可调。
+MAX_VERSIONS_PER_ARTIFACT = 30
+# 超此大小的产物不进版本库（避免大二进制把 SQLite 撑爆），仅记元信息占位
+_MAX_VERSIONED_SIZE = 25 * 1024 * 1024  # 25MB
+
+
+@contextmanager
+def _versions_conn():
+    """线程安全连接（仿 ScholarForge get_conn）"""
+    conn = sqlite3.connect(_VERSIONS_DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _init_versions_db():
+    """建表 — 幂等"""
+    with _versions_lock, _versions_conn() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS artifact_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                artifact_path TEXT NOT NULL,
+                session_id TEXT,
+                version INTEGER NOT NULL,
+                content_hash TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'text',
+                content BLOB NOT NULL,
+                size INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                note TEXT DEFAULT ''
+            );
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_av_path_ver "
+            "ON artifact_versions(artifact_path, version)"
+        )
+
+
+def _content_kind(b: bytes) -> str:
+    """判断内容是否可被版本 diff/预览：UTF-8 解码成功即 text，否则 binary"""
+    try:
+        b.decode('utf-8')
+        return 'text'
+    except UnicodeDecodeError:
+        return 'binary'
+
+
+def _record_version(artifact_path: Path, prev_bytes: bytes, session_id: str | None, note: str) -> int:
+    """写回前自动快照「覆盖前状态」。返回新建版本 id。
+
+    调用方应已确认 prev_bytes 与即将写入内容不同（避免无变化刷版本）。
+    超大文件仅记元信息占位（kind='oversize'），不存内容、不可回退。
+    """
+    _init_versions_db()
+    with _versions_lock, _versions_conn() as conn:
+        version = conn.execute(
+            "SELECT COALESCE(MAX(version),0)+1 FROM artifact_versions WHERE artifact_path=?",
+            (str(artifact_path),)
+        ).fetchone()[0]
+        if len(prev_bytes) > _MAX_VERSIONED_SIZE:
+            cur = conn.execute(
+                "INSERT INTO artifact_versions (artifact_path, session_id, version, content_hash, kind, content, size, created_at, note) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (str(artifact_path), session_id, version, hashlib.sha256(prev_bytes).hexdigest(),
+                 'oversize', b'', len(prev_bytes), int(time.time()), note + '（超 25MB 未存内容）')
+            )
+            _evict_versions(conn, str(artifact_path))
+            return cur.lastrowid
+        cur = conn.execute(
+            "INSERT INTO artifact_versions (artifact_path, session_id, version, content_hash, kind, content, size, created_at, note) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (str(artifact_path), session_id, version, hashlib.sha256(prev_bytes).hexdigest(),
+             _content_kind(prev_bytes), prev_bytes, len(prev_bytes), int(time.time()), note)
+        )
+        _evict_versions(conn, str(artifact_path))
+        return cur.lastrowid
+
+
+def _evict_versions(conn, artifact_path: str):
+    """超出 MAX_VERSIONS_PER_ARTIFACT 时按 version 升序淘汰最旧（仿 ScholarForge）"""
+    count = conn.execute("SELECT COUNT(*) FROM artifact_versions WHERE artifact_path=?", (artifact_path,)).fetchone()[0]
+    if count > MAX_VERSIONS_PER_ARTIFACT:
+        excess = count - MAX_VERSIONS_PER_ARTIFACT
+        old = conn.execute(
+            "SELECT id FROM artifact_versions WHERE artifact_path=? ORDER BY version ASC LIMIT ?",
+            (artifact_path, excess)
+        ).fetchall()
+        for (oid,) in old:
+            conn.execute("DELETE FROM artifact_versions WHERE id=?", (oid,))
+
+
 def _check_origin(request: Request):
     """纵深防御：校验请求来源是否为本应用（挡掉跨站调用）"""
     origin = request.headers.get('origin', '')
@@ -175,6 +287,31 @@ def _apply_docx_paragraphs(path, paragraphs):
             updated += 1
     doc.save(str(path))
     return updated
+
+
+# ─────────────────────────────────────────────────────────────
+# A2 选区编辑（局部重生成）的「模型重生成」接缝（模块级）
+# 默认未注入真实 LLM 单轮补全时抛清晰错误（不静默假成功）。
+# chat 蓝图在启动时调用 register_region_regenerator(...) 注入真实实现：
+#   fn(selection, instruction, before, after, model_hint) -> new_text
+# 复用既有 _resolve_model_provider / 单轮补全。
+# ─────────────────────────────────────────────────────────────
+_REGION_REGENERATOR = None
+
+
+def register_region_regenerator(fn):
+    """注入真实「选区→重生成」实现。fn(selection, instruction, before, after, model_hint)->new_text。"""
+    global _REGION_REGENERATOR
+    _REGION_REGENERATOR = fn
+
+
+def _regenerate_region(selection, instruction, before, after, model_hint=None):
+    if _REGION_REGENERATOR is None:
+        raise RuntimeError(
+            "局部重生成未接入模型：请在 chat 蓝图启动时调用 "
+            "artifacts.register_region_regenerator(...) 注入单轮补全实现"
+        )
+    return _REGION_REGENERATOR(selection, instruction, before, after, model_hint)
 
 
 def _regenerate_pdf_from_md(path, md):
@@ -292,40 +429,236 @@ def register_to(app):
             raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
         return {'path': str(safe_path), 'name': safe_path.name, 'size': safe_path.stat().st_size}
 
-    @app.get('/api/v1/artifacts/{path:path}')
-    async def serve_artifact(path: str, request: Request):
-        """读取产物文件，返回对应 MIME 类型"""
+    # ═════════════════════════════════════════════════════════════
+    # A1 版本快照端点：/versions 列表 · /versions/{vid} 取内容 · /revert 回退 · /diff 对比
+    # （注册在 serve_artifact 通配 GET 之前，避免被 {path:path} 通配抢匹配）
+    # ═════════════════════════════════════════════════════════════
+    @app.get('/api/v1/artifacts/{path:path}/versions')
+    async def list_artifact_versions(path: str, request: Request):
+        """列出某产物的全部历史版本（元信息，不含内容体）。"""
         _check_origin(request)
         safe_path = _is_safe_path(path)
+        _init_versions_db()
+        with _versions_conn() as conn:
+            rows = conn.execute(
+                "SELECT id, version, content_hash, kind, size, created_at, note, session_id "
+                "FROM artifact_versions WHERE artifact_path=? ORDER BY version DESC",
+                (str(safe_path),)
+            ).fetchall()
+        return {'artifact': str(safe_path), 'versions': [
+            {'id': r['id'], 'version': r['version'], 'content_hash': r['content_hash'],
+             'kind': r['kind'], 'size': r['size'], 'created_at': r['created_at'],
+             'note': r['note'], 'session_id': r['session_id'],
+             'restorable': r['kind'] in ('text', 'binary')}
+            for r in rows
+        ]}
 
+    @app.get('/api/v1/artifacts/{path:path}/versions/{vid:int}')
+    async def get_artifact_version(path: str, vid: int, request: Request):
+        """取单个版本完整内容：text 直接返回文本，binary 返回 base64，oversize 不可回退。"""
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
+        _init_versions_db()
+        with _versions_conn() as conn:
+            row = conn.execute(
+                "SELECT id, version, kind, content, note, created_at FROM artifact_versions "
+                "WHERE id=? AND artifact_path=?",
+                (vid, str(safe_path))
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail=f"版本不存在: v{vid}")
+            kind = row['kind']
+            if kind == 'oversize':
+                return {'id': row['id'], 'version': row['version'], 'kind': kind,
+                        'restorable': False, 'note': row['note'], 'created_at': row['created_at']}
+            raw = bytes(row['content'])
+            if kind == 'text':
+                content = raw.decode('utf-8')
+            else:
+                content = base64.b64encode(raw).decode('ascii')
+            return {'id': row['id'], 'version': row['version'], 'kind': kind,
+                    'restorable': True, 'content': content, 'note': row['note'],
+                    'created_at': row['created_at']}
+
+    @app.post('/api/v1/artifacts/{path:path}/versions/{vid:int}/revert')
+    async def revert_artifact_version(path: str, vid: int, request: Request):
+        """回退到指定版本：写回该版本内容，并自动快照「回退前状态」使回退本身可撤销。"""
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
+        session_id = request.headers.get('X-Session-Id') or request.query_params.get('session_id')
+        _init_versions_db()
+        with _versions_conn() as conn:
+            row = conn.execute(
+                "SELECT id, version, kind, content FROM artifact_versions WHERE id=? AND artifact_path=?",
+                (vid, str(safe_path))
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail=f"版本不存在: v{vid}")
+            if row['kind'] == 'oversize':
+                raise HTTPException(status_code=409, detail="该版本超 25MB 未存内容，不可回退")
+            target = bytes(row['content'])
+        # 回退前快照当前状态（让回退可撤销）
+        try:
+            current = safe_path.read_bytes()
+        except OSError:
+            current = b''
+        safe_path.parent.mkdir(parents=True, exist_ok=True)
+        safe_path.write_bytes(target)
+        if current != target:
+            _record_version(safe_path, current, session_id, note=f"回退到 v{row['version']}（回退前快照）")
+        return {'ok': True, 'reverted_to': row['version'], 'path': str(safe_path),
+                'size': safe_path.stat().st_size}
+
+    @app.get('/api/v1/artifacts/{path:path}/versions/{vid:int}/diff')
+    async def diff_artifact_version(path: str, vid: int, request: Request, base: str = 'current'):
+        """对比某版本与基准：base=current（默认，文件现状）或另一版本 id。仅 text 可 diff。"""
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
+        _init_versions_db()
+        with _versions_conn() as conn:
+            ver = conn.execute(
+                "SELECT id, version, kind, content FROM artifact_versions WHERE id=? AND artifact_path=?",
+                (vid, str(safe_path))
+            ).fetchone()
+            if not ver:
+                raise HTTPException(status_code=404, detail=f"版本不存在: v{vid}")
+            if ver['kind'] != 'text':
+                return {'diffable': False, 'reason': '仅文本类产物支持 diff'}
+            ver_text = bytes(ver['content']).decode('utf-8')
+            if base == 'current':
+                try:
+                    base_text = safe_path.read_text(encoding='utf-8')
+                except (OSError, UnicodeDecodeError):
+                    return {'diffable': False, 'reason': '当前文件不可作为文本基准'}
+                base_label, ver_label = '当前', f"v{ver['version']}"
+            else:
+                try:
+                    base_id = int(base)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="base 须为 'current' 或版本 id")
+                brow = conn.execute(
+                    "SELECT version, kind, content FROM artifact_versions WHERE id=? AND artifact_path=?",
+                    (base_id, str(safe_path))
+                ).fetchone()
+                if not brow or brow['kind'] != 'text':
+                    return {'diffable': False, 'reason': '基准版本不存在或非文本'}
+                base_text = bytes(brow['content']).decode('utf-8')
+                base_label, ver_label = f"v{brow['version']}", f"v{ver['version']}"
+        diff_lines = difflib.unified_diff(
+            base_text.splitlines(), ver_text.splitlines(),
+            fromfile=base_label, tofile=ver_label, lineterm=''
+        )
+        return {'diffable': True, 'base': base_label, 'version': ver_label,
+                'diff': '\n'.join(diff_lines)}
+
+    # ═══════════════════════════════════════════════════════════
+    # A2 选区编辑（局部重生成）：/patch 把「选区上下文 + 修改意图」交给 regenerator，
+    # 只重生成选区并写回（文本类复用 A1 自动快照；docx 复用 _apply_docx_paragraphs）。
+    # 关键设计：选区锚点（行号区间 / 文本指纹 / 段落 index），避免「整文件重发」。
+    # regenerator 接缝在模块级定义：artifacts.register_region_regenerator(...) 注入真实实现。
+    # ═══════════════════════════════════════════════════════════
+
+    @app.post('/api/v1/artifacts/{path:path}/patch')
+    async def patch_artifact_region(path: str, request: Request):
+        """A2 选区编辑（局部重生成）。
+
+        请求体 JSON：
+          anchor:      文本类 {type:'line_range', start, end} | {type:'text_fingerprint', text}
+                      docx   {type:'block_index', index}
+          selection:   选中的原文（指纹校验 / 回显）
+          instruction: 修改意图（必填）
+          session_id / model: 可选
+        返回：{ok, type, before, after, line_range|block_index, path}
+        """
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
         if not safe_path.exists():
             raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
-
-        if not safe_path.is_file():
-            raise HTTPException(status_code=400, detail=f"不是文件: {path}")
-
-        file_size = safe_path.stat().st_size
-        if file_size > _MAX_FILE_SIZE:
-            raise HTTPException(status_code=413, detail=f"文件过大 ({file_size // 1024 // 1024}MB)，上限 50MB")
+        try:
+            body = json.loads((await request.body()).decode('utf-8'))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"JSON 解析失败: {e}")
+        anchor = body.get('anchor') or {}
+        selection = body.get('selection', '') or ''
+        instruction = (body.get('instruction') or '').strip()
+        session_id = (body.get('session_id') or request.headers.get('X-Session-Id')
+                      or request.query_params.get('session_id'))
+        model_hint = body.get('model')
+        if not instruction:
+            raise HTTPException(status_code=400, detail="instruction（修改意图）不能为空")
 
         ext = safe_path.suffix.lower()
-        mime = _MIME_MAP.get(ext, 'application/octet-stream')
 
-        # 图片直接返回二进制
-        if mime.startswith('image/'):
-            with open(safe_path, 'rb') as f:
-                return Response(content=f.read(), media_type=mime, headers=_SECURITY_HEADERS)
+        # ── docx：按段落 index 回填（复用 _apply_docx_paragraphs）──
+        if ext == '.docx':
+            if anchor.get('type') != 'block_index':
+                raise HTTPException(status_code=400,
+                                    detail="docx 局部重生成需 anchor.type='block_index'")
+            idx = anchor.get('index')
+            if not isinstance(idx, int) or idx < 0:
+                raise HTTPException(status_code=400, detail="block_index 需为非负整数")
+            try:
+                new_text = _regenerate_region(selection, instruction, '', '', model_hint)
+            except RuntimeError as e:
+                raise HTTPException(status_code=501, detail=str(e))
+            if not new_text:
+                raise HTTPException(status_code=422, detail="模型返回为空，未执行替换")
+            prev_bytes = safe_path.read_bytes()
+            n = _apply_docx_paragraphs(safe_path, [{'i': idx, 'text': new_text}])
+            if n > 0:
+                _record_version(safe_path, prev_bytes, session_id,
+                                note=f"docx 选区重生成 段{idx}")
+            return {'ok': True, 'type': 'docx', 'updated': n,
+                    'block_index': idx, 'path': str(safe_path)}
 
-        # 文本类返回内容
+        # ── 文本类：md / code / html / csv / json / 其它 ──
         try:
-            with open(safe_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except UnicodeDecodeError:
-            # 二进制文件 fallback
-            with open(safe_path, 'rb') as f:
-                return Response(content=f.read(), media_type=mime, headers=_SECURITY_HEADERS)
+            cur = safe_path.read_text(encoding='utf-8')
+        except (OSError, UnicodeDecodeError):
+            raise HTTPException(status_code=415, detail="该文件非文本，无法选区重生成")
+        lines = cur.split('\n')
+        atype = anchor.get('type')
+        if atype == 'line_range':
+            start = anchor.get('start'); end = anchor.get('end')
+            if not isinstance(start, int) or not isinstance(end, int) or start < 1 or end < start:
+                raise HTTPException(status_code=400,
+                                    detail="line_range 需 start>=1 且 end>=start（均为行号）")
+            region_start, region_end = start, end
+        elif atype == 'text_fingerprint':
+            fp = anchor.get('text') or selection
+            if not fp:
+                raise HTTPException(status_code=400,
+                                    detail="text_fingerprint 需提供 anchor.text 或 selection")
+            pos = cur.find(fp)
+            if pos < 0:
+                raise HTTPException(status_code=404, detail="未在当前文件中找到该选区指纹")
+            region_start = cur.count('\n', 0, pos) + 1
+            region_end = region_start + fp.count('\n')
+        else:
+            raise HTTPException(status_code=400,
+                                detail="文本类需 anchor.type='line_range' 或 'text_fingerprint'")
 
-        return PlainTextResponse(content, media_type=mime, headers=_SECURITY_HEADERS)
+        region = '\n'.join(lines[region_start - 1:region_end])
+        before_ctx = '\n'.join(lines[max(0, region_start - 3):region_start - 1])
+        after_ctx = '\n'.join(lines[region_end:min(len(lines), region_end + 2)])
+        try:
+            new_region = _regenerate_region(region, instruction, before_ctx, after_ctx, model_hint)
+        except RuntimeError as e:
+            raise HTTPException(status_code=501, detail=str(e))
+        if not new_region:
+            raise HTTPException(status_code=422, detail="模型返回为空，未执行替换")
+
+        new_lines = lines[:region_start - 1] + new_region.split('\n') + lines[region_end:]
+        new_text = '\n'.join(new_lines)
+        prev_bytes = safe_path.read_bytes()
+        try:
+            safe_path.write_text(new_text, encoding='utf-8')
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"写入失败: {e}")
+        if prev_bytes != new_text.encode('utf-8'):
+            _record_version(safe_path, prev_bytes, session_id, note="选区重生成")
+        return {'ok': True, 'type': 'text', 'before': region, 'after': new_region,
+                'line_range': [region_start, region_end], 'path': str(safe_path)}
 
     @app.get('/api/v1/artifacts/{path:path}/preview')
     async def preview_artifact(path: str, request: Request):
@@ -368,6 +701,41 @@ def register_to(app):
             return JSONResponse({'kind': 'pptx', 'pages': pages})
         return JSONResponse({'kind': 'unsupported', 'reason': '仅支持 pptx 预览'}, status_code=415)
 
+    @app.get('/api/v1/artifacts/{path:path}')
+    async def serve_artifact(path: str, request: Request):
+        """读取产物文件，返回对应 MIME 类型"""
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
+
+        if not safe_path.exists():
+            raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
+
+        if not safe_path.is_file():
+            raise HTTPException(status_code=400, detail=f"不是文件: {path}")
+
+        file_size = safe_path.stat().st_size
+        if file_size > _MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"文件过大 ({file_size // 1024 // 1024}MB)，上限 50MB")
+
+        ext = safe_path.suffix.lower()
+        mime = _MIME_MAP.get(ext, 'application/octet-stream')
+
+        # 图片直接返回二进制
+        if mime.startswith('image/'):
+            with open(safe_path, 'rb') as f:
+                return Response(content=f.read(), media_type=mime, headers=_SECURITY_HEADERS)
+
+        # 文本类返回内容
+        try:
+            with open(safe_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            # 二进制文件 fallback
+            with open(safe_path, 'rb') as f:
+                return Response(content=f.read(), media_type=mime, headers=_SECURITY_HEADERS)
+
+        return PlainTextResponse(content, media_type=mime, headers=_SECURITY_HEADERS)
+
     @app.post('/api/v1/artifacts/{path:path}/content')
     async def write_artifact_content(path: str, request: Request):
         """回存产物文件内容（轻量可编辑右栏的"人改→保存"落点）。
@@ -382,6 +750,10 @@ def register_to(app):
             raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
         if not safe_path.is_file():
             raise HTTPException(status_code=400, detail=f"不是文件: {path}")
+
+        # A1：写回前抓取「覆盖前状态」，供自动快照
+        prev_bytes = safe_path.read_bytes()
+        session_id = request.headers.get('X-Session-Id') or request.query_params.get('session_id')
 
         body = await request.body()
         if len(body) > _MAX_FILE_SIZE:
@@ -398,9 +770,12 @@ def register_to(app):
             try:
                 if etype == 'docx':
                     n = _apply_docx_paragraphs(safe_path, payload.get('paragraphs', []))
+                    if n > 0:
+                        _record_version(safe_path, prev_bytes, session_id, note=f"docx 编辑 {n} 段")
                     return {'ok': True, 'type': 'docx', 'updated': n, 'path': str(safe_path)}
                 if etype == 'pdf':
                     _regenerate_pdf_from_md(safe_path, payload.get('md', ''))
+                    _record_version(safe_path, prev_bytes, session_id, note="pdf 从 md 重生成")
                     return {'ok': True, 'type': 'pdf', 'path': str(safe_path), 'size': safe_path.stat().st_size}
             except RuntimeError as e:
                 raise HTTPException(status_code=422, detail=str(e))
@@ -417,5 +792,9 @@ def register_to(app):
                 safe_path.write_bytes(body)
         except OSError as e:
             raise HTTPException(status_code=500, detail=f"写入失败: {e}")
+
+        # A1：覆盖前状态与写入后不同才记版本（无变化跳过，避免刷版本）
+        if prev_bytes != body:
+            _record_version(safe_path, prev_bytes, session_id, note="编辑保存")
 
         return {'ok': True, 'path': str(safe_path), 'size': safe_path.stat().st_size}

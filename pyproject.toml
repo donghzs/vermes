@@ -88,6 +88,14 @@ hindsight = ["hindsight-client==0.6.1"]
   # Optional — lazy-loaded by the /preview endpoint; kept out of core deps
   # because only sessions that open a pptx need it (keeps base install lean).
   office = ["python-pptx==1.0.2"]
+  # PyInstaller GUI build (vermes-gui.spec:102-108 已配 webview/bottle/pyobjc
+  # hiddenimports) 的缺失声明。干净 clone + 标准安装后打包 GUI 必然缺窗口，
+  # 根因就是 pyproject 从未声明 pywebview（前轮覆盖安装 P0）。
+  # 6.x 在 macOS 通过 sys_platform=="darwin" 标记自动拉起 pyobjc-* 后端，
+  # 故 `pip install 'vermes[gui]'` 即可装齐 Cocoa/WebKit 窗口 backend。
+  # 仅作 optional extra：不进 core 也不进 [all]，避免 Electron 构建（主桌面目标）
+  # 被迫拖入 pyobjc 重量级依赖。
+  gui = ["pywebview==6.2.1"]
   dev = ["debugpy==1.8.20", "pytest==9.0.2", "pytest-asyncio==1.3.0", "pytest-xdist==3.8.0", "pytest-split==0.11.0", "mcp==1.26.0", "ty==0.0.21", "ruff==0.15.10"]
 messaging = ["python-telegram-bot[webhooks]==22.6", "discord.py[voice]==2.7.1", "aiohttp==3.13.3", "brotlicffi==1.2.0.1", "slack-bolt==1.27.0", "slack-sdk==3.40.1", "qrcode==7.4.2"]
 cron = []  # croniter is now a core dependency; this extra kept for back-compat
