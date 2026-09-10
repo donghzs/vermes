@@ -399,24 +399,15 @@
             <label class="text-xs text-gray-500 mb-1 block">一句话描述</label>
             <input v-model="forgeModal.description" placeholder="它的职责 / 擅长领域" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
           </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="text-xs text-gray-500 mb-1 block">厂商（provider）</label>
-              <select v-model="forgeModal.provider" @change="onForgeProviderChange" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500">
-                <option value="">用全局默认（不指定厂商）</option>
-                <option v-for="p in modelProviders" :key="p.slug" :value="p.slug">{{ p.name }}<template v-if="p.is_current"> · 当前</template></option>
-                <option value="__custom__">自定义厂商…</option>
-              </select>
-              <input v-if="forgeModal.provider === '__custom__'" v-model="forgeModal.customProvider" placeholder="自定义 provider 名（如 deepseek）" class="mt-2 w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
-            </div>
-            <div>
-              <label class="text-xs text-gray-500 mb-1 block">模型（model）</label>
-              <select v-if="forgeModels.length" v-model="forgeModal.model" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500">
-                <option value="">用厂商默认</option>
-                <option v-for="m in forgeModels" :key="m" :value="m">{{ m }}</option>
-              </select>
-              <input v-else v-model="forgeModal.model" placeholder="如 deepseek-chat（留空=厂商默认）" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500" />
-            </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">🧠 LLM 模型（与单聊同款：设置里配好的直接选）</label>
+            <select v-model="forgeModal.model" @change="onForgeModelChange" class="w-full px-3 py-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500">
+              <option value="">用全局默认（不指定厂商）</option>
+              <optgroup v-for="g in forgeModelGroups" :key="g.name" :label="g.name">
+                <option v-for="m in g.models" :key="m.id" :value="m.id">{{ m.name }}</option>
+              </optgroup>
+            </select>
+            <p class="text-[11px] text-gray-400 mt-1">在「设置」里配好的模型在此直接选；留空 = 用全局默认模型。</p>
           </div>
           <div>
             <label class="text-xs text-gray-500 mb-1 block">专属 API Key（留空 = 用全局 Key）</label>
@@ -529,10 +520,25 @@ const capabilityLabels = {}       // value → label（快速查）
 function capLabel(v) {
   return capabilityLabels[v] || v
 }
-const forgeModels = computed(() => {
-  if (!forgeModal.value.provider || forgeModal.value.provider === '__custom__') return []
-  const p = modelProviders.value.find(x => x.slug === forgeModal.value.provider)
-  return (p && p.models) || []
+// ── 造神：LLM 模型下拉（复用单聊会话同款：把设置里配好的模型按厂商分组，一个下拉选谁就谁） ──
+const forgeModelOptions = computed(() => {
+  const out = []
+  for (const p of modelProviders.value) {
+    const prov = p.slug || p.id || ''
+    for (const m of (p.models || [])) {
+      out.push({ id: m, name: m, provider: prov, group: p.name })
+    }
+  }
+  return out
+})
+const forgeModelGroups = computed(() => {
+  const groups = {}
+  for (const m of forgeModelOptions.value) {
+    const g = m.group || '其他'
+    if (!groups[g]) groups[g] = { name: g, models: [] }
+    groups[g].models.push(m)
+  }
+  return Object.values(groups)
 })
 
 async function loadModelProviders() {
@@ -555,9 +561,12 @@ async function loadToolsets() {
   }
 }
 
-function onForgeProviderChange() {
-  // 切换厂商时清空之前选的模型（避免张冠李戴：deepseek 的模型配 anthropic 厂商）
-  forgeModal.value.model = ''
+function onForgeModelChange() {
+  // 选模型即同时定厂商；选「全局默认」则清空厂商，走全局默认
+  const id = forgeModal.value.model
+  if (!id) { forgeModal.value.provider = ''; return }
+  const m = forgeModelOptions.value.find(x => x.id === id)
+  forgeModal.value.provider = m ? m.provider : ''
 }
 
 // 角色 → 推荐技能集（与后端 _profile_enabled_toolsets 的 capability_tags 映射对齐）
@@ -1009,6 +1018,7 @@ async function loadNativeAgents() {
 }
 
 function openForge(editing = null) {
+  loadModelProviders()  // 每次打开刷新：复用设置最新配置的厂商/模型
   forgeModal.value = editing
     ? {
         open: true, editing, error: '',
