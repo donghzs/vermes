@@ -5,6 +5,8 @@ import { showToast as toast } from '../utils/toast'
 import api from '../services/api'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
+import DOMPurify from 'dompurify'
+import { DOMPURIFY_BASE_CONFIG } from '../utils/security'
 
 const bot = useBotRoomStore()
 
@@ -24,7 +26,7 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return self.renderToken(tokens, idx, options)
 }
 function renderMarkdown(text) {
-  try { return md.render(text || '') } catch (e) { return '<pre>' + (text || '') + '</pre>' }
+  try { return DOMPurify.sanitize(md.render(text || ''), DOMPURIFY_BASE_CONFIG) } catch (e) { return '<pre>' + (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>' }
 }
 
 // ── 交付物全屏查看弹窗（老板点「📄 全屏」读报告 + 下载 .md）──

@@ -5,6 +5,8 @@ import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
+import DOMPurify from 'dompurify'
+import { DOMPURIFY_BASE_CONFIG } from '../utils/security'
 import ModelViewer from './ModelViewer.vue'
 
 const router = useRouter()
@@ -338,7 +340,7 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   if (/^https?:\/\//i.test(href)) { token.attrSet('target', '_blank'); token.attrSet('rel', 'noopener noreferrer') }
   return self.renderToken(tokens, idx, options)
 }
-function renderMarkdown(text) { try { return md.render(text || '') } catch (e) { return '<pre>' + (text || '') + '</pre>' } }
+function renderMarkdown(text) { try { return DOMPurify.sanitize(md.render(text || ''), DOMPURIFY_BASE_CONFIG) } catch (e) { return '<pre>' + (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>' } }
 function formatJson(text) { try { return JSON.stringify(JSON.parse(text), null, 2) } catch (e) { return text } }
 function parseCsv(text) {
   const rows = []; let row = []; let field = ''; let inQ = false
@@ -861,12 +863,12 @@ async function runPatchDocx() {
                 <textarea ref="editArea" v-model="editBuffer" spellcheck="false" class="flex-1 w-full resize-none p-4 font-mono text-sm leading-relaxed bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 border-0 outline-none"></textarea>
               </div>
               <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown p-5 prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(content)"></div>
-              <div v-else-if="rendererFor(activeArtifact) === 'html'" class="w-full h-full"><iframe class="w-full h-full border-0 bg-white" sandbox="allow-scripts allow-same-origin" :srcdoc="content"></iframe></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'html'" class="w-full h-full"><iframe class="w-full h-full border-0 bg-white" sandbox="allow-scripts" :srcdoc="content"></iframe></div>
               <div v-else-if="rendererFor(activeArtifact) === 'json'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200"><code>{{ formatJson(content) }}</code></pre></div>
               <div v-else-if="rendererFor(activeArtifact) === 'csv'" class="p-5 overflow-auto"><table class="text-sm border-collapse w-full"><tbody><tr v-for="(row, i) in parseCsv(content)" :key="i" :class="i === 0 ? 'font-semibold bg-gray-50 dark:bg-gray-800' : ''"><td v-for="(cell, j) in row" :key="j" class="border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-gray-700 dark:text-gray-200">{{ cell }}</td></tr></tbody></table></div>
               <div v-else-if="rendererFor(activeArtifact) === 'code'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded-lg p-4"><code>{{ content }}</code></pre></div>
               <div v-else-if="rendererFor(activeArtifact) === 'image'" class="flex items-center justify-center p-5"><img :src="content" :alt="activeArtifact.title || 'image'" class="max-w-full max-h-full object-contain rounded-lg" /></div>
-              <div v-else-if="rendererFor(activeArtifact) === 'pdf'" class="w-full h-full"><iframe :src="`/api/v1/artifacts/${encodeURIComponent(activeArtifact.path)}`" class="w-full h-full border-0 bg-white" referrerpolicy="no-referrer"></iframe></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'pdf'" class="w-full h-full"><iframe :src="`/api/v1/artifacts/${encodeURIComponent(activeArtifact.path)}`" sandbox="" class="w-full h-full border-0 bg-white" referrerpolicy="no-referrer"></iframe></div>
               <div v-else-if="rendererFor(activeArtifact) === 'excel'" class="overflow-auto p-3 bg-gray-50 dark:bg-gray-800/30"><div v-if="content" class="excel-render" v-html="content"></div></div>
               <div v-else-if="rendererFor(activeArtifact) === 'docx'" class="relative overflow-y-auto p-6 bg-white dark:bg-gray-900">
                 <div v-if="content" class="docx-render prose prose-sm max-w-none dark:prose-invert" v-html="content" @click="onDocxClick"></div>
