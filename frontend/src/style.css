@@ -48,18 +48,21 @@ html, body {
 .dark .text-gray-400 { color: #d1d5db; }
 .dark .text-gray-500 { color: #9ca3af; }
 
-/* 侧边栏按钮悬浮提示：比 title 属性更快可见，位置在按钮上方 */
+/* 侧边栏按钮悬浮提示：在按钮右侧弹出，避免与下方常驻标签上下重叠、避免被底栏上方区域截断 */
 .sidebar-tooltip {
   position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
   background: rgba(17, 24, 39, 0.95);
   color: #fff;
   font-size: 11px;
-  padding: 3px 8px;
+  line-height: 1.35;
+  padding: 4px 8px;
   border-radius: 6px;
-  white-space: nowrap;
+  max-width: 160px;
+  white-space: normal;
+  text-align: left;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -69,11 +72,11 @@ html, body {
 .sidebar-tooltip::after {
   content: '';
   position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
   border: 4px solid transparent;
-  border-top-color: rgba(17, 24, 39, 0.95);
+  border-right-color: rgba(17, 24, 39, 0.95);
 }
 
 /* 顶部栏按钮悬浮提示：位置在按钮下方（避免被窗口顶部边缘裁掉），箭头朝上 */
