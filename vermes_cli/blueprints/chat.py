@@ -2791,6 +2791,16 @@ async def self_modify_history(limit: int = 100):
     This is the "what did the agent try to change about itself, and what did
     I approve" panel. All rows come from raw_events.
     """
+    # 2.4.9 桌面端体验专项 A1：sqlite3 是同步 API，在 FastAPI 事件环内直接调用
+    # 会阻塞整个进程（并发请求与流式输出一起卡）。统一丢线程池执行——与本项目
+    # 既有惯例一致（见 :4265 等处 to_thread 用法），亦合 docs/optimization-report.md
+    # §1.1 推荐方案 A。
+    return await asyncio.to_thread(_self_modify_history_sync, limit)
+
+
+def _self_modify_history_sync(limit: int = 100) -> dict:
+    """Synchronous query for :func:`self_modify_history` — run via
+    ``asyncio.to_thread`` only; never call it inline from a coroutine."""
     try:
         from agent.evolution_manager import get_self_model_db
         db_path = str(get_self_model_db())

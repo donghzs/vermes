@@ -4,6 +4,8 @@ import api from '../services/api.js'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 import { useBrickEvents } from '../utils/brick-events'
+// 2.4.9 桌面端体验专项 B1：统一状态块（替代散落的"加载中/暂无/失败"写法）
+import StateBlock from './StateBlock.vue'
 const { confirm } = useConfirm()
 
 const servers = ref([])
@@ -196,10 +198,9 @@ onEvent('tool.deregistered', () => refreshAll())
       <span class="ml-auto text-gray-400">{{ callStats.count }} 个工具有记录</span>
     </div>
     <!-- 有 server 但零调用属正常（尚未被调用），不是错误态 -->
-    <div v-else-if="callStats && callStats.count === 0 && servers.length"
-         class="text-[10px] px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-gray-400">
-      暂无调用记录 —— 统计为进程内内存，后端重启后清零
-    </div>
+    <StateBlock v-else-if="callStats && callStats.count === 0 && servers.length"
+                state="empty" compact icon="📊" text="暂无调用记录"
+                detail="统计为进程内内存，后端重启后清零" />
 
     <!-- Add form -->
     <div v-if="showAddForm" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-2">
@@ -219,6 +220,12 @@ onEvent('tool.deregistered', () => refreshAll())
 
     <!-- Server list -->
     <div class="space-y-1.5">
+      <StateBlock v-if="loading && servers.length === 0" state="loading" text="加载 MCP 服务…" />
+      <StateBlock v-else-if="!loading && servers.length === 0" state="empty" icon="🔌"
+                  text="尚未配置 MCP 服务" detail="点击右上角「+」添加，接入外部工具能力">
+        <button class="mt-1.5 text-xs px-2.5 py-1 rounded-lg bg-green-500 text-white hover:bg-green-600"
+                @click="showAddForm = true">+ 添加服务</button>
+      </StateBlock>
       <div v-for="srv in servers" :key="srv.name"
            class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2">
         <div class="flex items-center gap-2">
