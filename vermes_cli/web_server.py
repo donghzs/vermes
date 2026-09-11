@@ -3020,6 +3020,7 @@ blueprints.gateway_channels.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
 blueprints.artifacts.register_to(app)
+blueprints.verify.register_to(app)  # E2: 浏览器验证闭环
 blueprints.modules_market.register_to(app)  # Phase 3.2 市场后端中间层
 blueprints.capabilities.register_to(app)  # P0: 能力目录端点（GET /api/v1/capabilities）
 

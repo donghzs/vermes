@@ -233,6 +233,9 @@ const editing = ref(false)         // 是否处于编辑模式
 const editBuffer = ref('')         // 编辑缓冲区
 const saveState = ref('')          // '', 'saving', 'saved', 'error'
 const previewData = ref(null)      // office 静态预览数据（pptx 分页：{kind:'pptx',pages:[...]}）
+// E2 浏览器验证闭环（opt-in 手动触发）：verifying=进行中，verifyResult=结构化回报
+const verifying = ref(false)
+const verifyResult = ref(null)     // {ok, verdict, analysis, screenshot, preview_url} 或 {ok:false, error}
 const EDITABLE_TYPES = new Set(['markdown', 'code', 'html', 'csv', 'json'])
 const isEditableType = computed(() => {
   const a = activeArtifact.value
@@ -827,6 +830,11 @@ async function runPatchDocx() {
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
                 <span class="header-tooltip header-tooltip-below group-hover:opacity-100">历史版本</span>
               </button>
+              <button v-if="rendererFor(activeArtifact) === 'html'" @click="verifyHtml" :disabled="verifying" class="group relative p-1.5 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition disabled:opacity-50" title="用浏览器验证渲染">
+                <svg v-if="!verifying" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg v-else class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                <span class="header-tooltip header-tooltip-below group-hover:opacity-100">{{ verifying ? '验证中…' : '🔍 验证' }}</span>
+              </button>
             </div>
           </div>
           <!-- 渲染区：flex-col 让编辑模式 textarea 能撑满整片高度，而不是被普通 block 布局压成小框 -->
@@ -863,7 +871,39 @@ async function runPatchDocx() {
                 <textarea ref="editArea" v-model="editBuffer" spellcheck="false" class="flex-1 w-full resize-none p-4 font-mono text-sm leading-relaxed bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 border-0 outline-none"></textarea>
               </div>
               <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown p-5 prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(content)"></div>
-              <div v-else-if="rendererFor(activeArtifact) === 'html'" class="w-full h-full"><iframe class="w-full h-full border-0 bg-white" sandbox="allow-scripts" :srcdoc="content"></iframe></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'html'" class="relative w-full h-full">
+                <iframe class="w-full h-full border-0 bg-white" sandbox="allow-scripts" :srcdoc="content"></iframe>
+                <!-- E2 浏览器验证回报卡（opt-in：仅点「🔍 验证」后出现） -->
+                <div v-if="verifying || verifyResult" class="absolute left-3 right-3 bottom-3 mx-auto max-w-2xl rounded-xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 shadow-2xl backdrop-blur p-3 text-sm">
+                  <div class="flex items-start gap-2">
+                    <div class="shrink-0 mt-0.5">
+                      <span v-if="verifying" class="inline-block w-4 h-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin"></span>
+                      <span v-else-if="verifyResult && verifyResult.ok" class="text-base" :class="verifyResult.verdict === 'fail' ? 'text-red-500' : verifyResult.verdict === 'warn' ? 'text-amber-500' : 'text-green-500'">●</span>
+                      <span v-else class="text-base text-red-500">●</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 mb-1">
+                        <span v-if="verifying" class="font-medium text-gray-700 dark:text-gray-200">浏览器验证中…</span>
+                        <template v-else-if="verifyResult && verifyResult.ok">
+                          <span class="font-semibold" :class="verifyResult.verdict === 'fail' ? 'text-red-600' : verifyResult.verdict === 'warn' ? 'text-amber-600' : 'text-green-600'">{{ verifyResult.verdict === 'fail' ? '发现问题' : verifyResult.verdict === 'warn' ? '轻微问题' : '通过' }}</span>
+                          <span class="text-xs text-gray-400">技术冒烟（仅渲染层，不含审美）</span>
+                        </template>
+                        <span v-else class="font-semibold text-red-600">验证不可用</span>
+                        <button @click="closeVerify" class="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xs px-1 leading-none">✕</button>
+                      </div>
+                      <div v-if="verifying" class="text-xs text-gray-400">正在用浏览器打开页面并截图分析，请稍候…</div>
+                      <template v-else>
+                        <p v-if="verifyResult && verifyResult.ok" class="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">{{ verifyResult.analysis }}</p>
+                        <p v-else class="text-xs text-red-500 whitespace-pre-wrap leading-relaxed">{{ verifyResult && verifyResult.error }}</p>
+                        <div v-if="verifyResult && verifyResult.screenshot" class="mt-2 flex items-center gap-2">
+                          <img :src="`/api/v1/verify-screenshot/${verifyResult.screenshot}`" class="h-20 rounded border border-gray-200 dark:border-gray-700 object-cover" alt="验证截图" />
+                          <a v-if="verifyResult.preview_url" :href="verifyResult.preview_url" target="_blank" rel="noopener" class="text-xs text-blue-500 hover:underline">在浏览器打开验证页 ↗</a>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div v-else-if="rendererFor(activeArtifact) === 'json'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200"><code>{{ formatJson(content) }}</code></pre></div>
               <div v-else-if="rendererFor(activeArtifact) === 'csv'" class="p-5 overflow-auto"><table class="text-sm border-collapse w-full"><tbody><tr v-for="(row, i) in parseCsv(content)" :key="i" :class="i === 0 ? 'font-semibold bg-gray-50 dark:bg-gray-800' : ''"><td v-for="(cell, j) in row" :key="j" class="border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-gray-700 dark:text-gray-200">{{ cell }}</td></tr></tbody></table></div>
               <div v-else-if="rendererFor(activeArtifact) === 'code'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded-lg p-4"><code>{{ content }}</code></pre></div>
