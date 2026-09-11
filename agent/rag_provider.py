@@ -18,7 +18,7 @@ import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from agent.memory_provider import MemoryProvider
 from vermes_constants import get_vermes_home
@@ -294,6 +294,195 @@ def _extract_text_from_bytes(raw: bytes, ext: str) -> str:
             except Exception:
                 continue
         return raw.decode('utf-8', errors='replace')
+
+
+class ZipSecurityError(RuntimeError):
+    """Raised when a zip archive violates a safety guard (bomb / slip / nesting)."""
+
+
+# ── B2: zip archive ingestion (stdlib, in-memory, hardened) ──────────────
+# Text members we try to decode directly; binary members reuse the existing
+# per-format extractors so behaviour matches single-file ingestion.
+_ZIP_TEXT_EXTS = {
+    '.txt', '.md', '.py', '.js', '.ts', '.json', '.yaml', '.yml', '.toml',
+    '.html', '.css', '.xml', '.csv', '.tsv', '.sh', '.sql', '.log', '.rtf',
+    '.org', '.rst', '.tex', '.c', '.cpp', '.h', '.hpp', '.go', '.rs', '.java',
+    '.rb', '.php', '.r', '.lua', '.pl', '.bat', '.ps1', '.ipynb',
+}
+_ZIP_BINARY_EXTS = {'.pdf', '.docx', '.xlsx', '.pptx'}
+_ZIP_MAX_MEMBER_BYTES = 50 * 1024 * 1024       # 单成员解压后 ≤ 50MB
+_ZIP_MAX_TOTAL_BYTES = 1024 * 1024 * 1024       # 累计解压后 ≤ 1GB
+_ZIP_MAX_MEMBERS = 2000                          # 成员数上限
+_ZIP_MAX_DEPTH = 3                               # 嵌套 zip 深度上限
+_ZIP_MAX_RATIO = 500                             # 压缩比上限（防解压炸弹）
+
+
+def extract_zip_members(raw: bytes, depth: int = 0) -> List[Tuple[str, str]]:
+    """Extract all ingestable members from a zip archive (pure in-memory).
+
+    Returns a list of ``(member_name, text)`` pairs ready for
+    ``RAGProvider.ingest_content``. Nested ``.zip`` archives are expanded
+    recursively (bounded by ``_ZIP_MAX_DEPTH``).
+
+    Safety model: members are read as byte streams via ``zf.read`` and never
+    written to disk, so classic zip-slip path-escape is not applicable; we
+    still reject suspicious member names defensively. Decompression bombs,
+    oversized members, member-count and nesting-depth are all guarded.
+
+    Raises:
+        ZipSecurityError: when a safety guard is violated (user-facing CN msg).
+    """
+    import io
+    import zipfile
+
+    if depth > _ZIP_MAX_DEPTH:
+        raise ZipSecurityError(
+            "压缩包嵌套层数过深（超过 %d 层），已拒绝以防解压炸弹。" % _ZIP_MAX_DEPTH
+        )
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw))
+    except Exception:
+        raise ZipSecurityError("不是合法的 ZIP 压缩包，或文件已损坏。")
+
+    names = zf.namelist()
+    if len(names) > _ZIP_MAX_MEMBERS:
+        zf.close()
+        raise ZipSecurityError(
+            "压缩包内文件数过多（%d > %d），已拒绝以防资源耗尽。"
+            % (len(names), _ZIP_MAX_MEMBERS)
+        )
+
+    results: List[Tuple[str, str]] = []
+    total = 0
+    for name in names:
+        # Defensive zip-slip: reject absolute paths and parent (..) escapes.
+        if name.startswith(('/', '\\')) or '..' in name.replace('\\', '/').split('/'):
+            continue
+        info = zf.getinfo(name)
+        # Skip directories.
+        if name.endswith('/') or name.endswith('\\'):
+            continue
+        # Guard: per-member uncompressed size.
+        if info.file_size > _ZIP_MAX_MEMBER_BYTES:
+            continue
+        # Guard: compression-ratio bomb heuristic (spoofable header → real
+        # protection is the accumulated-total check below after read()).
+        comp = max(info.compress_size, 1)
+        if info.file_size / comp > _ZIP_MAX_RATIO:
+            zf.close()
+            raise ZipSecurityError("检测到疑似解压炸弹（压缩比异常），已拒绝。")
+        try:
+            data = zf.read(name)
+        except Exception:
+            continue
+        # Guard: accumulated uncompressed total (catches real bombs).
+        total += len(data)
+        if total > _ZIP_MAX_TOTAL_BYTES:
+            zf.close()
+            raise ZipSecurityError(
+                "压缩包解压后体积过大（超过 %d MB），已拒绝。"
+                % (_ZIP_MAX_TOTAL_BYTES // (1024 * 1024))
+            )
+
+        ext = Path(name).suffix.lower()
+        if ext == '.zip':
+            try:
+                results.extend(extract_zip_members(data, depth + 1))
+            except ZipSecurityError:
+                raise
+            except Exception:
+                continue
+        elif ext in _ZIP_BINARY_EXTS:
+            try:
+                results.append((name, _extract_text_from_bytes(data, ext)))
+            except Exception:
+                continue
+        elif ext in _ZIP_TEXT_EXTS or ext == '':
+            for enc in ('utf-8', 'gbk', 'latin-1'):
+                try:
+                    results.append((name, data.decode(enc)))
+                    break
+                except Exception:
+                    continue
+        # other binary (images / binaries) → skipped silently
+    zf.close()
+    return results
+
+
+class FfmpegMissingError(RuntimeError):
+    """Raised when ffmpeg is required but not installed on the user's device."""
+
+
+# ── B3: video frame extraction for RAG ingestion (ffmpeg, device-dependent) ──
+_VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v'}
+_VIDEO_MAX_FRAMES = 30  # cap sampled frames to bound cost
+
+
+def extract_video_frames(raw: bytes, ext: str) -> str:
+    """Best-effort video → text for RAG ingestion.
+
+    Samples frames via ffmpeg (1 per 2s, capped at ``_VIDEO_MAX_FRAMES``),
+    OCRs each frame (pytesseract if available) and returns aggregated text.
+    The video is indexed as a single document so it is at least searchable by
+    filename and any on-screen text (subtitles / slides / code demos).
+
+    Device-dependent: raises ``FfmpegMissingError`` with install instructions
+    when ffmpeg is absent — no hard dependency, graceful degradation.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    ffmpeg = shutil.which('ffmpeg')
+    if not ffmpeg:
+        raise FfmpegMissingError(
+            "未检测到 ffmpeg，视频抽帧暂不可用。请安装后重试："
+            "mac 执行 `brew install ffmpeg`；Windows 从 ffmpeg.org 下载或执行 "
+            "`choco install ffmpeg`；Linux 执行 `sudo apt install ffmpeg`。"
+        )
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / ("video" + ext)
+        src.write_bytes(raw)
+        frames_dir = Path(td) / "frames"
+        frames_dir.mkdir()
+        cmd = [
+            ffmpeg, "-y", "-loglevel", "error", "-i", str(src),
+            "-vf", "fps=1/2", str(frames_dir / "frame_%03d.png"),
+        ]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+        except subprocess.CalledProcessError as e:
+            err = (e.stderr or b"").decode("utf-8", errors="replace")[:300]
+            raise RuntimeError("视频抽帧失败：%s" % err)
+        except Exception as e:
+            raise RuntimeError("视频抽帧失败：%s" % e)
+
+        frame_files = sorted(frames_dir.glob("*.png"))[:_VIDEO_MAX_FRAMES]
+        if not frame_files:
+            raise RuntimeError("视频抽帧未产生任何帧（可能是编码不支持或文件损坏）。")
+
+        try:
+            from PIL import Image
+            import pytesseract
+            have_ocr = True
+        except Exception:
+            have_ocr = False
+
+        ocr_parts: List[str] = []
+        if have_ocr:
+            for fp in frame_files:
+                try:
+                    ocr_parts.append(
+                        pytesseract.image_to_string(Image.open(fp), lang="chi_sim+eng")
+                    )
+                except Exception:
+                    continue
+        ocr_text = "\n".join(p for p in ocr_parts if p and p.strip())
+        note = "（未检测到 OCR 引擎 tesseract，仅索引文件名）" if not have_ocr else ""
+        meta = "[视频文件，抽取 %d 帧%s]" % (len(frame_files), note)
+        return "%s\n%s\n%s" % (ext, meta, ocr_text)
 
 
 def _extract_pdf(raw: bytes) -> str:
@@ -673,6 +862,42 @@ class RAGProvider(MemoryProvider):
             _init_db(_get_rag_db())
             self._db_path = _get_rag_db()
             self._initialized = True
+        p = Path(file_path)
+        if p.suffix.lower() == '.zip':
+            # B2: archive ingestion — expand every ingestable member in-memory.
+            try:
+                raw = p.read_bytes()
+                members = extract_zip_members(raw)
+            except ZipSecurityError as e:
+                return json.dumps({"error": str(e)}, ensure_ascii=False)
+            if not members:
+                return json.dumps(
+                    {"error": f"压缩包 {p.name} 为空或无可识别文件"}, ensure_ascii=False
+                )
+            agg = {"status": "ok", "archive": p.name, "files": 0, "skipped": 0, "errors": []}
+            for name, text in members:
+                if not text or not text.strip():
+                    agg["skipped"] += 1
+                    continue
+                res = self.ingest_content(name, text, Path(name).suffix)
+                try:
+                    if json.loads(res).get("status") == "ok":
+                        agg["files"] += 1
+                    else:
+                        agg["errors"].append(name)
+                except Exception:
+                    agg["errors"].append(name)
+            return json.dumps(agg, ensure_ascii=False)
+        if p.suffix.lower() in _VIDEO_EXTS:
+            # B3: video frame extraction (ffmpeg, device-dependent)
+            try:
+                raw = p.read_bytes()
+                vtext = extract_video_frames(raw, p.suffix.lower())
+            except FfmpegMissingError as e:
+                return json.dumps({"error": str(e)}, ensure_ascii=False)
+            except RuntimeError as e:
+                return json.dumps({"error": str(e)}, ensure_ascii=False)
+            return self.ingest_content(p.name, vtext, p.suffix.lower())
         try:
             text = _extract_text(file_path)
         except RuntimeError as exc:

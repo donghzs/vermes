@@ -126,6 +126,12 @@ function addToRecent(modelId) {
 }
 
 // 模型列表
+// C 智能路由：Auto 哨兵项（策略编码进 id：auto:balanced / auto:cost / auto:speed）
+const AUTO_SENTINELS = [
+  { id: 'auto:balanced', name: '🤖 Auto · 均衡', provider: 'route', group: '智能路由' },
+  { id: 'auto:cost', name: '🤖 Auto · 经济', provider: 'route', group: '智能路由' },
+  { id: 'auto:speed', name: '🤖 Auto · 速度', provider: 'route', group: '智能路由' },
+]
 
 const models = computed(() => {
   _providersVersion.value  // 依赖触发器
@@ -141,10 +147,10 @@ const models = computed(() => {
           }
         }
       }
-      if (synced.length > 0) return synced
+      if (synced.length > 0) return [...AUTO_SENTINELS, ...synced]
     }
   } catch(e) {}
-  return defaultModels
+  return [...AUTO_SENTINELS, ...defaultModels]
 })
 
 const modelGroups = computed(() => {

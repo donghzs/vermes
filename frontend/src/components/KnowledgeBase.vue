@@ -199,7 +199,7 @@ onMounted(() => {
     <div class="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-4 text-center hover:border-green-400 transition-colors cursor-pointer"
          @click="uploadRef?.click()">
       <input ref="uploadRef" type="file" multiple class="hidden"
-             accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.py,.js,.ts,.vue,.json,.csv"
+             accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.py,.js,.ts,.vue,.json,.csv,.zip,.mp4,.mov,.avi,.mkv,.webm"
              @change="onFileUpload" />
       <div v-if="!uploading" class="text-xs text-gray-400">
         <span class="text-base">📎</span> 点击或拖拽文件上传

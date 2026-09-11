@@ -687,8 +687,141 @@ PROVIDERS = {
 }
 
 
+# ── C 智能路由 L3：均衡/经济/速度 启发式评分表（静态档位，待真实遥测升级）──
+# 三元组 = (quality 质量, cost 经济, speed 速度)，0=差/贵/慢，1=优/廉/快。
+# 质量综合厂商梯队；经济：本地/免费云端=1.0；速度：groq 极速、本地次之。
+_ROUTE_ECONOMICS = {
+    "ollama": (0.60, 1.00, 0.80), "vmlx": (0.62, 1.00, 0.82),
+    "lmstudio": (0.60, 1.00, 0.80), "vllm": (0.62, 1.00, 0.85),
+    "local": (0.55, 1.00, 0.75),
+    "vbit": (0.78, 1.00, 0.70), "agnes": (0.80, 1.00, 0.72),
+    "deepseek": (0.82, 0.80, 0.65), "qwen": (0.78, 0.70, 0.60),
+    "alibaba": (0.78, 0.70, 0.60), "groq": (0.72, 0.55, 1.00),
+    "gemini": (0.88, 0.45, 0.75), "openai": (0.92, 0.35, 0.65),
+    "anthropic": (0.90, 0.35, 0.55), "claude": (0.90, 0.35, 0.55),
+    "minimax": (0.70, 0.60, 0.55), "moonshot": (0.74, 0.62, 0.60),
+    "siliconflow": (0.72, 0.75, 0.70), "xiaomi": (0.70, 0.65, 0.60),
+    "zhipu": (0.76, 0.60, 0.58), "doubao": (0.74, 0.62, 0.62),
+    "yi": (0.68, 0.60, 0.55), "baichuan": (0.66, 0.58, 0.55),
+    "baidu": (0.70, 0.58, 0.55), "xinghuo": (0.68, 0.58, 0.55),
+    "stepfun": (0.70, 0.60, 0.58), "mistral": (0.78, 0.50, 0.60),
+    "cohere": (0.72, 0.50, 0.58), "together": (0.76, 0.55, 0.70),
+    "openrouter": (0.80, 0.55, 0.68), "custom": (0.60, 0.90, 0.70),
+    "scnet": (0.76, 0.80, 0.65),
+}
+# 各 provider 的兜底具体模型（config 未指定且 models.dev 无数据时启用）
+_ROUTE_DEFAULT_MODEL = {
+    "ollama": "llama3", "vmlx": "mlx-model", "lmstudio": "local-model",
+    "vllm": "vllm-model", "local": "local-model",
+    "vbit": "gpt-4o", "agnes": "agnes-2.0-flash", "deepseek": "deepseek-chat",
+    "qwen": "qwen-max", "alibaba": "qwen-max", "groq": "llama-3.3-70b-versatile",
+    "gemini": "gemini-1.5-pro", "openai": "gpt-4o", "anthropic": "claude-opus-4",
+    "claude": "claude-opus-4", "minimax": "abab6.5", "moonshot": "moonshot-v1-8k",
+    "siliconflow": "deepseek-ai/deepseek-chat", "xiaomi": "mimo-v2", "zhipu": "glm-4",
+    "doubao": "doubao-pro", "yi": "yi-large", "baichuan": "baichuan4",
+    "baidu": "ernie-4.0", "xinghuo": "spark-v4", "stepfun": "step-1",
+    "mistral": "mistral-large", "cohere": "command-r", "together": "meta-llama/Llama-3.3-70B",
+    "openrouter": "openai/gpt-4o", "custom": "custom-model", "scnet": "scnet-default",
+}
+_ROUTE_LOCAL = {"ollama", "local", "vmlx", "lmstudio", "vllm"}
+
+
+def resolve_smart_route(strategy: str = "balanced") -> tuple:
+    """C 智能路由 L3：聚合用户已配置可用的所有 LLM，按策略选最优。
+
+    后端就是「聚合用户已配置过且可用的全部 LLM」——本地类（ollama/vmlx/
+    lmstudio/vllm/local）无需密钥即可用，云端类需 config 中配置了 api_key。
+    评分复用 ``build_provider_capability_index`` 的能力标签（质量微调）+
+    静态经济/速度启发式（``_ROUTE_ECONOMICS``），按 ``balanced/cost/speed``
+    加权选优，实现「质量·效率·经济」三角平衡（又快又好）。无可用 provider 时
+    回退默认模型，保证不阻断对话。
+
+    返回 ``(provider, base_url, api_key, actual_model)``，复用
+    ``_resolve_model_provider`` 完成具体模型的 base_url/api_key 解析。
+    """
+    from vermes_constants import get_vermes_home
+    home = get_vermes_home()
+    cfg = {}
+    cfg_path = home / "config.yaml"
+    if cfg_path.exists():
+        try:
+            import yaml
+            cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            cfg = {}
+    cfg_providers = cfg.get("providers", {}) or {}
+
+    # 1) 聚合「已配置可用」的 provider
+    available: dict = {}
+    for pid in PROVIDERS:
+        pc = cfg_providers.get(pid)
+        if pid in _ROUTE_LOCAL:
+            # 本地 provider 仅在用户于设置中显式启用时才算可用，
+            # 避免路由到根本没启动的 ollama/vmlx/lmstudio/vllm 服务。
+            if pc is not None:
+                available[pid] = pc or {}
+        else:
+            if pc and (pc.get("api_key") or pc.get("env_key")):
+                available[pid] = pc
+    if not available:
+        logger.warning("[smart-route] 无已配置可用的 provider，回退默认模型")
+        return _resolve_model_provider("agnes-2.0-flash", None)
+
+    # 2) 能力标签（复用 capability_index）
+    cap_idx: dict = {}
+    try:
+        from vermes_cli.capabilities.manifest import build_provider_capability_index
+        cap_idx = build_provider_capability_index() or {}
+    except Exception:
+        cap_idx = {}
+
+    # 3) 构造候选（具体模型：config > models.dev > 兜底默认）
+    candidates = []
+    for pid, pc in available.items():
+        model_id = pc.get("model")
+        if not model_id:
+            try:
+                from vermes_cli.capabilities.manifest import fetch_models_dev
+                data = fetch_models_dev(force_refresh=False) or {}
+                pdata = data.get(pid)
+                if isinstance(pdata, dict):
+                    models = pdata.get("models") or {}
+                    if isinstance(models, dict) and models:
+                        model_id = next(iter(models.keys()))
+            except Exception:
+                model_id = None
+        if not model_id:
+            model_id = _ROUTE_DEFAULT_MODEL.get(pid, "gpt-4o")
+        candidates.append({"pid": pid, "model": model_id, "caps": cap_idx.get(pid, [])})
+
+    # 4) 按策略加权评分
+    def _score(c):
+        q, cost, speed = _ROUTE_ECONOMICS.get(c["pid"], (0.6, 0.6, 0.6))
+        q = min(1.0, q + min(0.1, len(c["caps"]) * 0.01))  # 能力广度微调质量
+        if strategy == "cost":
+            return 0.70 * cost + 0.20 * q + 0.10 * speed
+        if strategy == "speed":
+            return 0.70 * speed + 0.20 * q + 0.10 * cost
+        return 0.45 * q + 0.30 * cost + 0.25 * speed  # balanced
+
+    candidates.sort(key=_score, reverse=True)
+    best = candidates[0]
+    logger.info("[smart-route] strategy=%s -> %s/%s (candidates=%d)",
+                strategy, best["pid"], best["model"], len(candidates))
+    return _resolve_model_provider(best["model"], best["pid"])
+
+
 def _resolve_model_provider(model: str, explicit_provider: str | None = None) -> tuple:
     """Resolve model name to (provider, base_url, api_key, actual_model)."""
+    # C 智能路由：auto[:strategy] 前缀 → 聚合可用 LLM 按策略选优
+    model_s = str(model or "")
+    if model_s.startswith("auto"):
+        strategy = "balanced"
+        if ":" in model_s:
+            strategy = (model_s.split(":", 1)[1] or "balanced").strip()
+        if strategy not in ("balanced", "cost", "speed"):
+            strategy = "balanced"
+        return resolve_smart_route(strategy)
     from vermes_constants import get_vermes_home
     home = get_vermes_home()
     env_path = home / ".env"
@@ -5266,10 +5399,42 @@ async def rag_ingest(req: Request):
             except Exception:
                 return {"error": "Invalid base64 content"}
             ext = Path(filename).suffix.lower()
+            from agent.rag_provider import (
+                _extract_text_from_bytes,
+                extract_zip_members,
+                ZipSecurityError,
+            )
+            if ext == '.zip':
+                # B2: archive ingestion — extract every ingestable member in-memory
+                try:
+                    members = extract_zip_members(raw)
+                except ZipSecurityError as e:
+                    return {"error": str(e)}
+                if not members:
+                    return {"error": "压缩包为空或无可识别文件（支持 pdf/docx/xlsx/pptx/txt/md/代码等文本与嵌套 zip）"}
+                ingested = 0
+                skipped = 0
+                for name, text in members:
+                    if not text or not text.strip():
+                        skipped += 1
+                        continue
+                    provider.ingest_content(name, text, Path(name).suffix)
+                    ingested += 1
+                return {"status": "ok", "archive": filename, "files": ingested, "skipped": skipped}
+            if ext in ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v'):
+                # B3: video frame extraction (ffmpeg, device-dependent)
+                from agent.rag_provider import extract_video_frames, FfmpegMissingError
+                try:
+                    vtext = extract_video_frames(raw, ext)
+                except FfmpegMissingError as e:
+                    return {"error": str(e)}
+                except RuntimeError as e:
+                    return {"error": str(e)}
+                result = provider.ingest_content(filename, vtext, ext)
+                return result
             binary_exts = {'.pdf', '.docx', '.xlsx', '.pptx'}
             if ext in binary_exts:
                 # Binary document — extract text first
-                from agent.rag_provider import _extract_text_from_bytes
                 text = _extract_text_from_bytes(raw, ext)
                 if not text.strip():
                     return {"error": f"无法从 {ext} 文件中提取文本，可能为扫描件或空文档"}

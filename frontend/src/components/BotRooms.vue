@@ -149,7 +149,12 @@ async function loadModelOptions() {
         opts.push({ value: `${p.slug}/${m}`, label: `${p.name} / ${m}${cur}` })
       }
     }
-    modelOptions.value = opts
+    modelOptions.value = [
+      { value: 'auto:balanced', label: '🤖 Auto · 均衡（智能路由）' },
+      { value: 'auto:cost', label: '🤖 Auto · 经济（智能路由）' },
+      { value: 'auto:speed', label: '🤖 Auto · 速度（智能路由）' },
+      ...opts,
+    ]
   } catch (e) {
     console.warn('[BotRooms] 加载模型列表失败', e)
     modelOptions.value = []
