@@ -1274,6 +1274,19 @@ def run_conversation(
             should_review_memory=_should_review_memory,
         )
 
+    # 每次 API 调用的计时起点。原定义在主循环内(:1375)，但若循环首轮条件
+    # 即不满足(预算耗尽 / api_call_count 已满 / 非 grace 调用)或首轮在 1375
+    # 之前 break(用户中断等)，循环体根本执行不到赋值，而循环外的
+    # finalize_turn(:4577) 仍会引用它 → UnboundLocalError。
+    # 提前到循环之前初始化：循环内每轮会在 1375 覆盖为真实调用起点，
+    # 未执行任何 API 调用时退化为"循环前时刻"，耗时统计≈0，语义安全。
+    api_start_time = time.time()
+    # 同上：approx_tokens 原本只在循环内(:1353)赋值，而 finalize_turn(:4586)
+    # 在循环外引用它；用户中断 / 预算耗尽的 break 均在 1353 之前，
+    # 会走到 4586 而变量未定义 → UnboundLocalError。
+    # 兜底 0 = "本轮未发起任何 API 请求"，与下游指标语义一致（无除法风险）。
+    approx_tokens = 0
+
     while (api_call_count < agent.max_iterations and agent.iteration_budget.remaining > 0) or agent._budget_grace_call:
         # Reset per-turn checkpoint dedup so each iteration can take one snapshot
         agent._checkpoint_mgr.new_turn()

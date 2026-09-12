@@ -295,7 +295,15 @@ def prepare_messages(
         )
         # 把边界标记合并到用户消息末尾,而不是单独一条消息
         # 这样不增加消息数,模型也一定能看到
-        messages[-1]["content"] = messages[-1]["content"] + _boundary_note
+        # 注意：多模态消息(连发图片)的 content 是 parts 列表，
+        # 直接 `list + str` 会抛 TypeError 并中断整个回合处理。
+        # 复用 context_compressor._append_text_to_content：
+        #   str  → 末尾拼接；list → 追加 {"type":"text"} part；None → 直接作为文本。
+        # 惰性导入以遵守本模块"不在 import 期依赖重模块"的约定（无循环依赖）。
+        from agent.context_compressor import _append_text_to_content
+        messages[-1]["content"] = _append_text_to_content(
+            messages[-1].get("content"), _boundary_note
+        )
 
     if not agent.quiet_mode:
         _print_preview = _summarize_user_message_for_log(user_message)

@@ -195,6 +195,83 @@ class TestPrepareMessagesDirect:
         assert "conversation turn" in first_call_args[0]
 
 
+class TestMultimodalBoundaryMarker:
+    """回归：多模态消息（连发图片）下回合边界标记不得崩溃。
+
+    真实事故：用户连发 8-9 张图片 → user_message 是 OpenAI 风格 parts 列表；
+    若上下文同时攒了 ≥3 对 tool_call/result，prepare_messages 会走到边界标记
+    合并分支，原实现 ``content + _boundary_note``（list + str）抛 TypeError，
+    整个回合处理链路中断（gateway 进程本身不挂，外部表现为"发图没反应"）。
+
+    修复：改用 context_compressor._append_text_to_content（str→拼接 /
+    list→追加 {"type":"text"} part / None→直接作文本）。
+    """
+
+    @staticmethod
+    def _tool_pair_history(pairs: int = 4):
+        history = []
+        for _ in range(pairs):
+            history.append({"role": "assistant", "content": "",
+                            "tool_calls": [{"id": "x", "function": {"name": "f"}}]})
+            history.append({"role": "tool", "content": "ok", "tool_call_id": "x"})
+        return history
+
+    @staticmethod
+    def _images(n: int):
+        return [{"type": "image_url",
+                 "image_url": {"url": f"data:image/png;base64,IMG{i}"}} for i in range(n)]
+
+    def test_multimodal_does_not_raise_typeerror(self):
+        """9 连图 + 4 对 tool_call 历史：不得抛 TypeError。"""
+        agent = _make_agent()
+        multimodal = [{"type": "text", "text": "看看这几张图"}] + self._images(9)
+        msgs, _, _, _ = prepare_messages(agent, multimodal, None, self._tool_pair_history())
+        assert isinstance(msgs[-1]["content"], list)
+
+    def test_boundary_note_appended_as_text_part(self):
+        """边界标记以 text part 追加，而非破坏 content 结构。"""
+        agent = _make_agent()
+        multimodal = [{"type": "text", "text": "hi"}] + self._images(3)
+        msgs, _, _, _ = prepare_messages(agent, multimodal, None, self._tool_pair_history())
+        parts = msgs[-1]["content"]
+        assert isinstance(parts, list)
+        assert any(isinstance(p, dict) and p.get("type") == "text"
+                   and "新的一轮" in (p.get("text") or "") for p in parts)
+
+    def test_all_images_preserved(self):
+        """追加标记不得丢失任何一张图片（连发场景的核心不变量）。"""
+        agent = _make_agent()
+        multimodal = [{"type": "text", "text": "hi"}] + self._images(9)
+        msgs, _, _, _ = prepare_messages(agent, multimodal, None, self._tool_pair_history())
+        assert sum(1 for p in msgs[-1]["content"]
+                   if isinstance(p, dict) and p.get("type") == "image_url") == 9
+
+    def test_original_multimodal_list_not_mutated(self):
+        """不得就地修改调用方传入的列表（避免跨回合共享副作用）。"""
+        agent = _make_agent()
+        multimodal = [{"type": "text", "text": "hi"}] + self._images(2)
+        original_len = len(multimodal)
+        prepare_messages(agent, multimodal, None, self._tool_pair_history())
+        assert len(multimodal) == original_len
+
+    def test_plain_str_path_unchanged(self):
+        """纯文本路径行为不变（仍为字符串拼接）。"""
+        agent = _make_agent()
+        msgs, _, _, _ = prepare_messages(agent, "hi", None, self._tool_pair_history())
+        assert isinstance(msgs[-1]["content"], str)
+        assert "新的一轮" in msgs[-1]["content"]
+
+    def test_mutation_teeth_merge_is_noop(self):
+        """变异牙齿：把 _append_text_to_content 降级为 no-op 后边界标记必须消失，
+        证明上面各测锁的是"真实发生合并"而非镜像实现。"""
+        agent = _make_agent()
+        multimodal = [{"type": "text", "text": "hi"}] + self._images(2)
+        with patch("agent.context_compressor._append_text_to_content",
+                   side_effect=lambda content, text, **kw: content):
+            msgs, _, _, _ = prepare_messages(agent, multimodal, None, self._tool_pair_history())
+        assert not any("新的一轮" in str(p) for p in msgs[-1]["content"])
+
+
 # ---------------------------------------------------------------------------
 # 变异牙齿检查（证明测试咬住真实行为，非镜像实现）
 # ---------------------------------------------------------------------------
