@@ -188,6 +188,28 @@ function openExpertsPanel() {
   openPanel('experts')
 }
 
+// C1 能力显形（2026-09-14）：WelcomeGuide 原本只引导「配模型 + 挑专家 + 开技能」，
+// 对本机已具备的重型能力**零提及**（神魔堂 / 创作工作室 / 论文写作 / 3D 建模 /
+// 工作流编排 / 积木市场 / 成长 / Benchmark 均无入口）——新用户配完模型就一路单聊，
+// 永远不知道这些能力存在。这与「Vermes = 单机桌面应用、家底很厚，缺的是显形」的判断一致。
+// 处置：**不另建一套 onboarding**（本组件已是完整三步引导），而是在落地页补一块能力地图。
+// 路径与文案统一取自 Sidebar.vue 底部导航，避免术语二次漂移（配合 C3 单一真相源）。
+const capabilityMap = [
+  { icon: '⛩️', label: '神魔堂', desc: '诸神会晤群聊 · 请神/造神 · 蜂群看板', path: '/shenmotang' },
+  { icon: '🎨', label: '创作工作室', desc: '长文 / 多轮创作流水线', path: '/studio' },
+  { icon: '📝', label: '论文写作', desc: 'ScholarForge 学术全流程', path: '/scholarforge' },
+  { icon: '🏭', label: '3D 建模', desc: '文本/草图 → 可导出模型', path: '/3d-studio' },
+  { icon: '🔀', label: '工作流编排', desc: '可视化 DAG + 触发器', path: '/workflows' },
+  { icon: '🧱', label: '积木市场', desc: '技能 / 工具 / 模块 / 软件', path: '/bricks' },
+  { icon: '🌱', label: '我的成长', desc: '成长轨迹 · 能力自检', path: '/growth' },
+  { icon: '📊', label: 'Benchmark', desc: '工具接线 / pipeline 干跑', path: '/benchmark' },
+]
+function goCapability(c) {
+  // 走路由跳转而非塞进右侧面板：这些都是本机的重型工作台，产品形态本就是独立页面，
+  // 且经 A3 改造后各自已是独立懒加载 chunk，跳过去等于按需下载，符合改造意图。
+  router.push(c.path)
+}
+
 onMounted(() => {
   loadExperts().then(loadRecommendations)
   loadRecommendedSkills()
@@ -275,6 +297,22 @@ onMounted(() => {
           </button>
         </div>
         <button @click="openExpertsPanel" class="mt-2 w-full text-center text-xs text-green-500 hover:text-green-600 transition">查看全部专家 →</button>
+      </div>
+
+      <!-- C1 能力显形：本机还有这些重型工作台，别让新用户永远停留在单聊 -->
+      <div class="mt-6">
+        <p class="text-center text-sm text-gray-400 dark:text-gray-500 mb-3">除了聊天，本机还能玩这些 →</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button v-for="c in capabilityMap" :key="c.path"
+                  @click="goCapability(c)"
+                  class="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-green-400 dark:hover:border-green-600 hover:shadow-sm transition text-left">
+            <div class="flex items-center gap-1.5">
+              <span class="text-base leading-none">{{ c.icon }}</span>
+              <span class="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{{ c.label }}</span>
+            </div>
+            <div class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{{ c.desc }}</div>
+          </button>
+        </div>
       </div>
     </div>
 

@@ -97,3 +97,9 @@ vermes_cli/mfgcad/**/__pycache__/
 
 # ── IDE ──
 .vscode/
+
+# ── 前端构建临时产物 ──
+# vite 加载 vite.config.js 时会生成带时间戳的副本（vite.config.js.timestamp-*.mjs），
+# 每次 npm run build 都可能新增一个。此前 .gitignore 没覆盖 → 以 untracked 形式留在工作树，
+# 极易被 `git add -A` 误提交。此处显式忽略。
+frontend/vite.config.js.timestamp-*.mjs
