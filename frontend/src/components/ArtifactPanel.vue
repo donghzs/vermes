@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
@@ -7,7 +7,13 @@ import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
 import { DOMPURIFY_BASE_CONFIG } from '../utils/security'
-import ModelViewer from './ModelViewer.vue'
+// A3 首屏瘦身（2026-09-14）：ModelViewer 静态 import 会把 three.js（实测 453.5 KB）钉死在首屏。
+// 它在模板中只出现在 v-else-if="rendererFor(activeArtifact) === 'model'" 分支——
+// 即只有用户真的打开一个 3D 模型产物时才需要渲染。
+// 改为异步组件后，three.js 随 ModelViewer 一起移出首屏主包，到打开 3D 产物那刻才按需下载。
+// 注意：ThreeDStudio.vue 仍静态引用 ModelViewer（3D 查看是它的核心能力），
+// 但 3D 工作室已随路由懒加载，两者不冲突。
+const ModelViewer = defineAsyncComponent(() => import('./ModelViewer.vue'))
 
 const router = useRouter()
 const chat = useChatStore()
