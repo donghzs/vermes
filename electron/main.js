@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+// screen：C4 窗口几何记忆需要它校验「恢复的位置是否仍在某个当前显示器可视区内」。
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, screen } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -719,15 +720,74 @@ function maybeCleanPartitionStorage(ses) {
   })
 }
 
+// ── C4 窗口几何记忆（2026-09-14）──
+// 原行为：每次冷启动固定 1200×800，用户调好的尺寸与位置**全部丢失**——每一次重启都要
+// 重新拉窗口，是桌面应用最基础也最高频的「不顺手」感知点。
+// 改为持久化到 userData/window-state.json，沿用本项目 last-clean-version 的 fs 惯例，
+// 不引入 electron-store 等新依赖。
+//
+// ⚠️ 关键防呆：恢复的位置必须仍落在某个当前显示器的工作区内，否则一律回退默认。
+// 经典事故：上次退出时窗口在外接显示器上，拔掉后原样恢复 → 窗口整个跑到屏幕外 →
+// 用户看到「点了图标但应用不出现」。这比不做记忆严重得多，所以越界必须回退。
+const WINDOW_STATE_FILE = 'window-state.json'
+const DEFAULT_WIN = { width: 1200, height: 800 }
+const MIN_WIN = { width: 900, height: 650 }   // 与下方 BrowserWindow 的 minWidth/minHeight 对齐
+
+function loadWindowState() {
+  try {
+    const p = path.join(app.getPath('userData'), WINDOW_STATE_FILE)
+    const s = JSON.parse(fs.readFileSync(p, 'utf8'))
+    if (!s || typeof s.width !== 'number' || typeof s.height !== 'number') return null
+    // 尺寸不得小于窗口下限：小于下限 Electron 会静默放大，行为不可预期
+    if (s.width < MIN_WIN.width || s.height < MIN_WIN.height) return null
+    if (typeof s.x !== 'number' || typeof s.y !== 'number') return null
+    return s
+  } catch {
+    return null   // 首次启动 / 文件损坏 → 走默认，不影响启动
+  }
+}
+
+function saveWindowState(win) {
+  try {
+    if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return
+    const b = win.getBounds()
+    fs.writeFileSync(
+      path.join(app.getPath('userData'), WINDOW_STATE_FILE),
+      JSON.stringify(b), 'utf8'
+    )
+  } catch {
+    // 持久化失败不得影响退出流程
+  }
+}
+
+// 恢复的矩形是否与某个当前显示器的工作区相交（显示器拔掉 / 分辨率变更后视为失效）
+function isBoundsVisible(b) {
+  try {
+    return screen.getAllDisplays().some(d => {
+      const wa = d.workArea
+      return b.x < wa.x + wa.width && b.x + b.width > wa.x &&
+             b.y < wa.y + wa.height && b.y + b.height > wa.y
+    })
+  } catch {
+    return false
+  }
+}
+
 // ── 创建窗口 ──
 async function createWindow() {
   const iconPath = getIconPath() || undefined;  // getIconPath 找不到时返回 null → 不设置 icon
 
+  // C4：恢复上次的窗口尺寸/位置；校验不通过（首次启动 / 文件损坏 / 显示器已变更）则回退默认
+  const _saved = loadWindowState()
+  const _useSaved = !!(_saved && isBoundsVisible(_saved))
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 650,
+    width: _useSaved ? _saved.width : DEFAULT_WIN.width,
+    height: _useSaved ? _saved.height : DEFAULT_WIN.height,
+    x: _useSaved ? _saved.x : undefined,
+    y: _useSaved ? _saved.y : undefined,
+    minWidth: MIN_WIN.width,
+    minHeight: MIN_WIN.height,
     title: 'Vermes',
     icon: iconPath,
     show: false,
@@ -739,6 +799,11 @@ async function createWindow() {
       partition: 'persist:vermes',
     },
   });
+
+  // C4：退出时落盘窗口几何。用 'close' 而非 'closed'——后者触发时窗口已销毁，
+  // getBounds() 不可靠。只在 close 落一次盘，不去监听 resize/move：
+  // 拖动窗口时会高频触发，频繁写盘无收益且增加抖动。
+  mainWindow.on('close', () => saveWindowState(mainWindow))
 
   // 清除缓存 — 防止旧前端 JS/CSS 被缓存导致白屏
   const ses = mainWindow.webContents.session
