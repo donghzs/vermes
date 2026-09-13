@@ -130,13 +130,22 @@ function authHeaders() {
 }
 
 // ── 加载看板 ──
+// A2 卡顿治理（2026-09-14）：轮询/WS 重连回来时若数据没变，别换引用。
+// 本组件的轮询仅在 WS 断连时作回退（startPoll 内判断），频率不高，但 WS 抖动恢复、
+// 页面从后台切回都会触发 loadBoard → 原本无条件下发一次全量重渲染。
+// 与 BotRooms.loadOrgBoard 同一处置口径（详见该文件注释）。
+function _sameJSON(a, b) {
+  try { return JSON.stringify(a) === JSON.stringify(b) } catch { return false }
+}
+
 async function loadBoard() {
   loading.value = true
   error.value = ''
   try {
     const resp = await fetch('/api/plugins/kanban/board', { headers: authHeaders() })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-    board.value = await resp.json()
+    const next = await resp.json()
+    if (!_sameJSON(board.value, next)) board.value = next
   } catch (e) {
     error.value = e?.message || '看板加载失败'
     board.value = null
@@ -268,7 +277,8 @@ async function loadWorkers() {
     const resp = await fetch('/api/plugins/kanban/workers/active', { headers: authHeaders() })
     if (!resp.ok) return
     const data = await resp.json()
-    workers.value = data.workers || []
+    const next = data.workers || []
+    if (!_sameJSON(workers.value, next)) workers.value = next
   } catch { /* silent */ }
 }
 

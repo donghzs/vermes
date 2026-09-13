@@ -184,8 +184,30 @@ async function setTaskModel(t, val) {
 
 const ORG_TYPE_LABELS = { dispatcher: '分派', executor: '执行', auditor: '审计', aggregator: '汇总' }
 
+// C3 术语一致性（2026-09-14）：「登堂 / 原生」徽标此前在本组件 5 处各写各的，
+// 文案与判定口径双重不统一：
+//   · 文案：'登堂'(1206) / '⛩️ 登堂'(1282,1319) / '（登堂）'(1169) / '(登堂)'(1629) 四种写法
+//   · 判定：仅 1319 群成员管理把 A2A 适配器（ref_id 前缀 'a2a:'）算作「登堂」，
+//     其余 4 处只认 transport==='acp' → 同一个 A2A agent 在不同面板显示两种身份。
+// 统一口径（取更完整的原 1319 为准）：ACP transport 或 A2A 适配器接入均属「登堂」，
+// 与品牌语义一致——「原生或 A2A adapter 接入皆一等公民」。
+// ⚠️ 有意的行为变更：原先在联系人列表/拉人弹窗/下拉里被标为「原生」的 A2A agent，
+//    现统一显示「⛩️ 登堂」。若不希望如此，只需改本函数一处即可全量回退。
+function isDengtang(x) {
+  return !!x && (x.transport === 'acp' || String(x.ref_id || '').startsWith('a2a:'))
+}
+function originLabel(x) {
+  return isDengtang(x) ? '⛩️ 登堂' : '原生'
+}
+function originClass(x) {
+  return isDengtang(x)
+    ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300'
+    : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'
+}
+
 async function openOrgBoard() {
   orgBoard.value.open = true
+  _orgLoadedOnce = false     // 换看板/重开 → 下一次 loadOrgBoard 仍算「首次加载」，保留加载态
   startNowTicker()          // step ③：实时耗时秒针（与 4s 数据轮询解耦）
   await loadOrgBoard()
   startOrgPolling()
@@ -210,21 +232,40 @@ function stopOrgPolling() {
   }
 }
 
+// A2 卡顿治理（2026-09-14）：区分「首次加载」与「4s 轮询刷新」。
+// 首次须给 loading 态（骨架/ AreasPlaceholder）；轮询刷新则不必——否则每 4 秒白闪一次
+// 加载态，还额外产生 2 次响应式写入（true→false），每次都触发整子树重渲染。
+let _orgLoadedOnce = false
+
+function _sameJSON(a, b) {
+  try { return JSON.stringify(a) === JSON.stringify(b) } catch { return false }
+}
+
 async function loadOrgBoard() {
   if (!bot.currentRoomId) return
-  orgBoard.value.loading = true
+  const isPoll = _orgLoadedOnce   // 已成功加载过 → 本次是轮询刷新
+  if (!isPoll) orgBoard.value.loading = true
   try {
     const res = await api.getBotRoomOrg(bot.currentRoomId)
     if (res && res.ok) {
-      orgBoard.value.roles = res.roles || []
-      orgBoard.value.tasks = res.tasks || []
-      orgBoard.value.profileNames = res.profile_names || {}
-      orgBoard.value.statusLabels = res.status_labels || {}
+      const roles = res.roles || []
+      const tasks = res.tasks || []
+      const profileNames = res.profile_names || {}
+      const statusLabels = res.status_labels || {}
+      // 仅在数据真的变化时替换引用。组织看板绝大多数轮询是「空闲无变化」，
+      // 原逻辑无条件整体赋值会让 Vue 因引用变化重渲染整个看板子树，叠加
+      // latestAuditBySub 等模板函数开销 → 明明什么都没变却每秒/每 4 秒卡一下。
+      // 代价：每次轮询 4 次 JSON.stringify（小载荷，远低于一次全量 diff + 重渲染）。
+      if (!_sameJSON(orgBoard.value.roles, roles)) orgBoard.value.roles = roles
+      if (!_sameJSON(orgBoard.value.tasks, tasks)) orgBoard.value.tasks = tasks
+      if (!_sameJSON(orgBoard.value.profileNames, profileNames)) orgBoard.value.profileNames = profileNames
+      if (!_sameJSON(orgBoard.value.statusLabels, statusLabels)) orgBoard.value.statusLabels = statusLabels
+      _orgLoadedOnce = true
     }
   } catch (e) {
     // 静默：轮询期间网络抖动忽略
   } finally {
-    orgBoard.value.loading = false
+    if (!isPoll) orgBoard.value.loading = false
   }
 }
 
@@ -238,14 +279,27 @@ function passedSubCount(t) {
   return Object.values(latestAuditBySub(t)).filter(a => a.verdict === 'pass').length
 }
 
+// A2 卡顿治理（2026-09-14）：本函数被模板高频调用且原本每次都 O(n) 重建结果对象。
+// 实测调用密度：任务列表 v-for 中，每项 → orgCurrentSubIndex 1 次、passedSubCount 1 次、
+// subStatusIcon 每子任务 1 次、subAuditComment 每子任务 2 次（v-if 判空又渲染一次）；
+// 而 nowSec 每秒 tick 会让整个看板重渲染 → 上述开销每秒全量重跑一遍，活动态多了就卡。
+// 记忆化：以 audit_log 数组引用为键缓存结果。同一次渲染内命中 O(1)；
+// 4s 轮询返回新数据时数组身份变化 → 缓存自然失效，语义与计算逻辑完全不变。
+// 安全前提：所有调用点均为只读（已逐处核验，无就地修改），故共享同一结果对象无别名风险。
+const _LATEST_AUDIT_EMPTY = Object.freeze({})
+const _latestAuditCache = new WeakMap()
+
 function latestAuditBySub(t) {
+  if (!t || !t.audit_log) return _LATEST_AUDIT_EMPTY
+  const cached = _latestAuditCache.get(t.audit_log)
+  if (cached) return cached
   const latest = {}
-  if (!t || !t.audit_log) return latest
   for (const a of t.audit_log) {
     if (!a.sub_id) continue
     const prev = latest[a.sub_id]
     if (!prev || (a.round || 0) >= (prev.round || 0)) latest[a.sub_id] = a
   }
+  _latestAuditCache.set(t.audit_log, latest)
   return latest
 }
 
@@ -1133,7 +1187,7 @@ onUnmounted(() => {
                   >
                     <option :value="null">— 指派 Agent（可留空后补）—</option>
                     <option v-for="c in contacts" :key="c.id" :value="c.id" :disabled="createAssignedIds().includes(c.id) && r.profile_id !== c.id">
-                      {{ c.name || c.id }}{{ c.transport === 'acp' ? '（登堂）' : '' }}
+                      {{ c.name || c.id }}{{ isDengtang(c) ? '（登堂）' : '' }}
                     </option>
                   </select>
                 </div>
@@ -1170,7 +1224,7 @@ onUnmounted(() => {
                   <div class="text-[11px] text-gray-400 truncate">{{ c.description || c.id }}</div>
                 </div>
                 <span v-if="createAssignedIds().includes(c.id)" class="text-[10px] text-emerald-500">已坐岗</span>
-                <span v-else class="text-[10px] px-1.5 py-0.5 rounded" :class="c.transport === 'acp' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'">{{ c.transport === 'acp' ? '登堂' : '原生' }}</span>
+                <span v-else class="text-[10px] px-1.5 py-0.5 rounded" :class="originClass(c)">{{ originLabel(c) }}</span>
               </label>
             </div>
           </div>
@@ -1246,7 +1300,7 @@ onUnmounted(() => {
               <div class="text-sm truncate">{{ c.name }}</div>
               <div class="text-[11px] text-gray-400 truncate">{{ c.description || c.id }}</div>
             </div>
-            <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded shrink-0" :class="c.transport === 'acp' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'">{{ c.transport === 'acp' ? '⛩️ 登堂' : '原生' }}</span>
+            <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded shrink-0" :class="originClass(c)">{{ originLabel(c) }}</span>
           </label>
         </div>
         <div class="mt-4 flex justify-end gap-2">
@@ -1283,7 +1337,7 @@ onUnmounted(() => {
             <div class="min-w-0 flex-1">
               <div class="text-sm truncate flex items-center gap-1.5">
                 <span class="truncate">{{ m.name || m.ref_id }}</span>
-                <span class="text-[10px] px-1.5 py-0.5 rounded shrink-0" :class="m.transport === 'acp' || (m.ref_id || '').startsWith('a2a:') ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'">{{ m.transport === 'acp' || (m.ref_id || '').startsWith('a2a:') ? '⛩️ 登堂' : '原生' }}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded shrink-0" :class="originClass(m)">{{ originLabel(m) }}</span>
               </div>
               <div class="text-[11px] text-gray-400 truncate">{{ m.ref_id }}</div>
             </div>
@@ -1593,7 +1647,7 @@ onUnmounted(() => {
                   :key="c.id"
                   :value="c.id"
                   :disabled="orgAssignedIds().includes(c.id)"
-                >{{ orgContactName(c) }}（{{ c.transport === 'acp' ? '登堂' : '原生' }}）</option>
+                >{{ orgContactName(c) }}（{{ originLabel(c) }}）</option>
               </select>
             </div>
           </div>
