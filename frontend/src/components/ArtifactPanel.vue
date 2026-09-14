@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
@@ -137,8 +137,18 @@ const activeChange = computed(() => {
 // ── 任务进程 ──
 const now = ref(Date.now())
 let _timer = null
-onMounted(() => { _timer = setInterval(() => { now.value = Date.now() }, 1000) })
-onUnmounted(() => { if (_timer) clearInterval(_timer) })
+// A2 流畅度（2026-09-14）：面板根节点是 v-show 而非 v-if —— 关闭时组件不销毁、DOM 仍在，
+// 依赖照样被追踪。原本无条件 setInterval 会每秒唤醒整棵隐藏子树重渲染一次，
+// 其中就包括下面 v-html 的 markdown 渲染与 JSON/CSV 解析（见 renderedMarkdown 等）。
+// 现在让 tick 跟随 open 启停：只有面板真的可见时才需要秒级刷新（进行中步骤的耗时读数）。
+function _stopTick() { if (_timer) { clearInterval(_timer); _timer = null } }
+function _startTick() {
+  if (_timer) return
+  now.value = Date.now()   // 重新可见时先对齐，避免用到关闭期间留下的旧时间戳
+  _timer = setInterval(() => { now.value = Date.now() }, 1000)
+}
+watch(open, (v) => { v ? _startTick() : _stopTick() }, { immediate: true })
+onUnmounted(_stopTick)
 
 const STATUS_TEXT = { pending: '待办', in_progress: '进行中', completed: '已完成', cancelled: '已跳过', interrupted: '已中断' }
 const STATUS_ICON = { pending: '⭕️', in_progress: '🔄', completed: '✅', cancelled: '⏭️', interrupted: '⚠️' }
@@ -243,6 +253,16 @@ const previewData = ref(null)      // office 静态预览数据（pptx 分页：
 const verifying = ref(false)
 const verifyResult = ref(null)     // {ok, verdict, analysis, screenshot, preview_url} 或 {ok:false, error}
 const EDITABLE_TYPES = new Set(['markdown', 'code', 'html', 'csv', 'json'])
+
+// A2 流畅度（2026-09-14）：下面三个渲染结果原本是写在模板里的方法调用
+// （renderMarkdown(content) / formatJson(content) / parseCsv(content)）。
+// 组件每次重渲染都会重新执行它们 —— 配合上面的秒级 tick，等于每秒对整篇内容
+// 跑一次 md.render + DOMPurify.sanitize，或 JSON.stringify，或 CSV 全量解析。
+// 改为按「当前文件类型 + 内容」缓存的 computed：只有真的换了文件或内容才重算。
+// rendererFor 参与判断，所以打开代码文件时不会白白去渲染 markdown。
+const renderedMarkdown = computed(() => rendererFor(activeArtifact.value) === 'markdown' ? renderMarkdown(content.value) : '')
+const renderedJson = computed(() => rendererFor(activeArtifact.value) === 'json' ? formatJson(content.value) : '')
+const parsedCsv = computed(() => rendererFor(activeArtifact.value) === 'csv' ? parseCsv(content.value) : [])
 const isEditableType = computed(() => {
   const a = activeArtifact.value
   return !!a && EDITABLE_TYPES.has(rendererFor(a))
@@ -876,7 +896,7 @@ async function runPatchDocx() {
                 </div>
                 <textarea ref="editArea" v-model="editBuffer" spellcheck="false" class="flex-1 w-full resize-none p-4 font-mono text-sm leading-relaxed bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 border-0 outline-none"></textarea>
               </div>
-              <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown p-5 prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(content)"></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown p-5 prose prose-sm dark:prose-invert max-w-none" v-html="renderedMarkdown"></div>
               <div v-else-if="rendererFor(activeArtifact) === 'html'" class="relative w-full h-full">
                 <iframe class="w-full h-full border-0 bg-white" sandbox="allow-scripts" :srcdoc="content"></iframe>
                 <!-- E2 浏览器验证回报卡（opt-in：仅点「🔍 验证」后出现） -->
@@ -910,8 +930,8 @@ async function runPatchDocx() {
                   </div>
                 </div>
               </div>
-              <div v-else-if="rendererFor(activeArtifact) === 'json'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200"><code>{{ formatJson(content) }}</code></pre></div>
-              <div v-else-if="rendererFor(activeArtifact) === 'csv'" class="p-5 overflow-auto"><table class="text-sm border-collapse w-full"><tbody><tr v-for="(row, i) in parseCsv(content)" :key="i" :class="i === 0 ? 'font-semibold bg-gray-50 dark:bg-gray-800' : ''"><td v-for="(cell, j) in row" :key="j" class="border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-gray-700 dark:text-gray-200">{{ cell }}</td></tr></tbody></table></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'json'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200"><code>{{ renderedJson }}</code></pre></div>
+              <div v-else-if="rendererFor(activeArtifact) === 'csv'" class="p-5 overflow-auto"><table class="text-sm border-collapse w-full"><tbody><tr v-for="(row, i) in parsedCsv" :key="i" :class="i === 0 ? 'font-semibold bg-gray-50 dark:bg-gray-800' : ''"><td v-for="(cell, j) in row" :key="j" class="border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-gray-700 dark:text-gray-200">{{ cell }}</td></tr></tbody></table></div>
               <div v-else-if="rendererFor(activeArtifact) === 'code'" class="p-5 overflow-auto"><pre class="text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded-lg p-4"><code>{{ content }}</code></pre></div>
               <div v-else-if="rendererFor(activeArtifact) === 'image'" class="flex items-center justify-center p-5"><img :src="content" :alt="activeArtifact.title || 'image'" class="max-w-full max-h-full object-contain rounded-lg" /></div>
               <div v-else-if="rendererFor(activeArtifact) === 'pdf'" class="w-full h-full"><iframe :src="`/api/v1/artifacts/${encodeURIComponent(activeArtifact.path)}`" sandbox="" class="w-full h-full border-0 bg-white" referrerpolicy="no-referrer"></iframe></div>
