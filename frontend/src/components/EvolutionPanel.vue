@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
+import { useVisiblePoll } from '../composables/useVisiblePoll'
 import { useBackendConnectionStore } from '../stores/backendConnection'
 import { personaMiniStatus, personaTitles, personaLabels } from '../utils/persona-copy'
 import CapabilitySelfCheck from './CapabilitySelfCheck.vue'
@@ -396,12 +397,10 @@ async function _refreshAll() {
   }
 }
 
-onMounted(() => {
-  _refreshAll()
-  // 每 30 秒刷新全部数据（含成就/DAG/技能）
-  const timer = setInterval(() => _refreshAll(), 30000)
-  onUnmounted(() => clearInterval(timer))
-})
+// 每 30 秒刷新全部数据（含成就/DAG/技能）。
+// 改 useVisiblePoll：隐藏时暂停（挂载即在 onMounted 里拉首次），恢复可见补一次。
+// 顺带修掉原写法「onUnmounted 嵌套在 onMounted 里注册」的非常规写法。
+useVisiblePoll(_refreshAll, 30000)
 
 // A.4.5: 后端由主进程看门狗自愈恢复 → 立即重刷数据并解除 toast 节流，
 // 用户无需手动刷新即可看到面板重新填充。

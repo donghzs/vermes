@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
+import { useVisiblePoll } from '../composables/useVisiblePoll'
 import HelpGuide from './HelpGuide.vue'
 
 // ── 核心 store（必须在所有引用它的函数/computed 之前初始化） ──
@@ -16,7 +17,10 @@ async function fetchEvoStatus() {
     if (r.ok) evoStatus.value = await r.json()
   } catch { /* 静默 */ }
 }
-onMounted(() => { fetchEvoStatus(); setInterval(fetchEvoStatus, 60000) })
+// 原为 onMounted 里裸 setInterval：① 无 clearInterval，ChatView 是路由组件，
+// 每次离开首页再回来就泄漏一个定时器，且泄漏的会永久每 60s 打后端；
+// ② 关窗挂托盘后仍在轮询。改用 useVisiblePoll：卸载自动清理 + 隐藏时暂停。
+useVisiblePoll(fetchEvoStatus, 60000)
 
 function openEvolutionPanel() {
   // 打开侧边栏 + 滚动到进化面板
@@ -69,11 +73,8 @@ function refreshMemoryAfterFirstMessage() {
 
 watch(() => chat.filteredMessages?.length, refreshMemoryAfterFirstMessage)
 
-onMounted(() => { 
-  fetchMemStatus()
-  // 每 30s 刷新一次（轻量接口）
-  setInterval(fetchMemStatus, 30000) 
-})
+// 同上（原裸 setInterval，无清理且隐藏后仍轮询）→ 轻量接口，30s 刷新
+useVisiblePoll(fetchMemStatus, 30000)
 
 // 默认模型（未同步 provider 时的回退列表）
 const defaultModels = [

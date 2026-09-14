@@ -914,6 +914,23 @@ async function createWindow() {
     }
   })
 
+  // ── 窗口可见性广播（供渲染进程暂停「纯 UI 轮询」）──
+  // 必要性：本窗口设了 backgroundThrottling: false（长任务要在关窗挂托盘后继续跑），
+  // 而 Electron 文档明确——**禁用后台节流后 document.visibilityState 永久保持 visible**，
+  // 最小化 / 被遮挡 / hide() 都不会让它翻转。也就是说 Page Visibility API 在这个窗口里
+  // 完全失效，渲染进程无法用 document.hidden 判断自己是不是被藏起来了。
+  // 所以改由主进程按窗口真实状态显式广播；渲染进程的 useVisiblePoll 据此启停。
+  // 只影响会话列表/状态徽标/看板这类「藏起来刷了也没人看」的刷新；
+  // 流式输出与长任务状态轮询不受影响，继续跑。
+  const broadcastVisibility = (hidden) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('window:visibility', !!hidden)
+  }
+  mainWindow.on('hide', () => broadcastVisibility(true))
+  mainWindow.on('show', () => broadcastVisibility(false))
+  mainWindow.on('minimize', () => broadcastVisibility(true))
+  mainWindow.on('restore', () => broadcastVisibility(false))
+
   // 清除缓存 — 防止旧前端 JS/CSS 被缓存导致白屏
   const ses = mainWindow.webContents.session
   ses.clearCache().catch(() => {})

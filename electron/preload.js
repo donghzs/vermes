@@ -90,6 +90,19 @@ contextBridge.exposeInMainWorld('vermes', {
     ipcRenderer.on('backend-status', handler);
     return () => ipcRenderer.removeListener('backend-status', handler);
   },
+  // ── 窗口可见性（主进程显式下发）──
+  // 为什么不能只用 Page Visibility API：主窗口为让长任务在「关窗挂托盘」后继续跑，
+  // 设了 backgroundThrottling: false。Electron 文档明确：一旦禁用后台节流，
+  // document.visibilityState 会**永久保持 visible**（最小化/遮挡/隐藏都不再翻转）。
+  // 因此隐藏与否只能由主进程按 win 的 show/hide/minimize/restore 显式广播。
+  // 用途：暂停纯 UI 轮询（会话列表/状态徽标/看板），隐藏时刷了也没人看；
+  // 流式输出与长任务轮询不受影响，继续跑。
+  onWindowVisibility: (cb) => {
+    const handler = (_e, hidden) => cb(hidden);
+    ipcRenderer.on('window:visibility', handler);
+    return () => ipcRenderer.removeListener('window:visibility', handler);
+  },
+
   // splash.html 触发重试
   retryInit: () => ipcRenderer.send('splash:retry'),
   // splash.html 「复制诊断信息」按钮（G4 数据保护错误页三件套之一）

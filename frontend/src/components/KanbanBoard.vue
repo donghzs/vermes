@@ -352,15 +352,30 @@ function stopWorkerPoll() {
 }
 
 // ── 页面可见性 ──
+// 🔴 不能只信 document.hidden：主窗口 backgroundThrottling: false 时，Electron 会让
+// visibilityState 永久保持 visible（最小化/遮挡/hide 都不翻转）。
+// 因此叠加主进程广播（window:visibility），任一信号说隐藏即视为隐藏。
 let wasVisible = true
+let windowHidden = false
+let offWindowVis = null
+function isHidden() {
+  return windowHidden || (typeof document !== 'undefined' && document.hidden)
+}
 function onVisibility() {
-  const visible = !document.hidden
+  const visible = !isHidden()
   if (visible && !wasVisible) {
-    // 恢复可见：立即刷新 + 重连 WS
+    // 恢复可见：立即刷新 + 重连 WS + 重启轮询
     loadBoard()
+    startPoll()
+    startWorkerPoll()
+    loadWorkers()
     if (!ws.value) connectWS()
   } else if (!visible && wasVisible) {
     // 不可见：断开 WS（节省资源）
+    // 必须同时停掉 HTTP 轮询——否则 WS 一断 wsConnected=false，
+    // startPoll 的 5s 回退轮询反而变成「隐藏时每 5 秒打一次后端」，比可见时更忙。
+    stopPoll()
+    stopWorkerPoll()
     disconnectWS()
   }
   wasVisible = visible
@@ -374,12 +389,17 @@ onMounted(async () => {
   startWorkerPoll()
   loadWorkers()
   document.addEventListener('visibilitychange', onVisibility)
+  offWindowVis = window.vermes?.onWindowVisibility?.((hidden) => {
+    windowHidden = !!hidden
+    onVisibility()
+  }) || null
 })
 onUnmounted(() => {
   stopPoll()
   stopWorkerPoll()
   disconnectWS()
   document.removeEventListener('visibilitychange', onVisibility)
+  if (offWindowVis) { offWindowVis(); offWindowVis = null }
 })
 
 function goChat() { router.push('/') }

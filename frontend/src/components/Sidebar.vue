@@ -4,6 +4,7 @@ import { useChatStore, SESSION_TEMPLATES } from '../stores/chat'
 import { useRouter, useRoute } from 'vue-router'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
+import { useVisiblePoll } from '../composables/useVisiblePoll'
 const { confirm } = useConfirm()
 import { loadMessagesFromIDB } from '../stores/chat-storage'
 import api from '../services/api'
@@ -252,17 +253,13 @@ onMounted(async () => {
 })
 
 // ── 渠道会话定时轮询（每 5 秒刷新会话列表，发现新消息/新会话）──
-let _channelPollTimer = null
-onMounted(() => {
-  _channelPollTimer = setInterval(() => {
-    chat.loadChannelSessions().catch(() => {})
-    // 仅当用户已展开后台任务区时刷新，避免无谓请求
-    if (showBackground.value) loadBackgroundSessions().catch(() => {})
-  }, 5000)
-})
-onUnmounted(() => {
-  if (_channelPollTimer) { clearInterval(_channelPollTimer); _channelPollTimer = null }
-})
+// 改 useVisiblePoll：关窗挂托盘后暂停（隐藏时刷了也没人看），恢复可见立即补一次。
+// 注意此处**不加** immediate——上方 onMounted 已经拉过一次，避免启动瞬间重复请求。
+useVisiblePoll(() => {
+  chat.loadChannelSessions().catch(() => {})
+  // 仅当用户已展开后台任务区时刷新，避免无谓请求
+  if (showBackground.value) loadBackgroundSessions().catch(() => {})
+}, 5000, { immediate: false })
 
 // ── 后台任务视图（curator 等系统会话，默认不进「我的对话」）──
 const backgroundSessions = ref([])
