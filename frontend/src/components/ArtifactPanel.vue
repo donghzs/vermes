@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
 import MarkdownIt from 'markdown-it'
-import hljs from 'highlight.js'
+// highlight.js 改为按需加载（见下方 loadHljs）—— 它整块 72.5 KB 原本被常驻挂载的
+// 本组件拖进首屏，而聊天页（MessageList）只用 markdown-it、根本不用 hljs。
 import DOMPurify from 'dompurify'
 import { DOMPURIFY_BASE_CONFIG } from '../utils/security'
 // A3 首屏瘦身（2026-09-14）：ModelViewer 静态 import 会把 three.js（实测 453.5 KB）钉死在首屏。
@@ -260,7 +261,12 @@ const EDITABLE_TYPES = new Set(['markdown', 'code', 'html', 'csv', 'json'])
 // 跑一次 md.render + DOMPurify.sanitize，或 JSON.stringify，或 CSV 全量解析。
 // 改为按「当前文件类型 + 内容」缓存的 computed：只有真的换了文件或内容才重算。
 // rendererFor 参与判断，所以打开代码文件时不会白白去渲染 markdown。
-const renderedMarkdown = computed(() => rendererFor(activeArtifact.value) === 'markdown' ? renderMarkdown(content.value) : '')
+const renderedMarkdown = computed(() => {
+  void hljsReady.value   // 依赖它：highlight.js 到位后重算一次，代码块从转义纯文本升级为高亮
+  return rendererFor(activeArtifact.value) === 'markdown' ? renderMarkdown(content.value) : ''
+})
+// 打开 markdown 产物时才去拉 highlight.js（首屏不为它买单）
+watch(() => rendererFor(activeArtifact.value) === 'markdown', (isMd) => { if (isMd) loadHljs().catch(() => {}) })
 const renderedJson = computed(() => rendererFor(activeArtifact.value) === 'json' ? formatJson(content.value) : '')
 const parsedCsv = computed(() => rendererFor(activeArtifact.value) === 'csv' ? parseCsv(content.value) : [])
 const isEditableType = computed(() => {
@@ -359,9 +365,20 @@ let _XLSX = null
 function loadXLSX() { if (_XLSX) return Promise.resolve(_XLSX); return import('xlsx').then(m => { _XLSX = m.default || m; return _XLSX }) }
 let _mammoth = null
 function loadMammoth() { if (_mammoth) return Promise.resolve(_mammoth); return import('mammoth').then(m => { _mammoth = m.default || m; return _mammoth }) }
+// A3 首屏瘦身（2026-09-14）：highlight.js 只有本组件（常驻挂载）和 BotRooms（懒加载路由）在用，
+// MessageList 只用 markdown-it 不用 hljs —— 这 72.5 KB 纯属被本组件拖进首屏。
+// 沿用上面 loadXLSX / loadMammoth 的按需加载套路：打开 markdown 产物时才拉，
+// 到位后翻转 hljsReady，让 renderedMarkdown 重算一次，代码块从转义纯文本升级为高亮。
+const hljsReady = ref(false)
+let _hljs = null
+function loadHljs() {
+  if (_hljs) return Promise.resolve(_hljs)
+  return import('highlight.js').then(m => { _hljs = m.default || m; hljsReady.value = true; return _hljs })
+}
 
 const md = new MarkdownIt({ html: true, linkify: true, typographer: true, highlight: (code, lang) => {
-  if (lang && hljs.getLanguage(lang)) { try { return '<pre class="hljs"><code>' + hljs.highlight(code, { language: lang, ignoreIllegals: true }).value + '</code></pre>' } catch (e) {} }
+  const h = _hljs   // 还没加载好时为 null → 走下面的转义兜底（等 loadHljs 到位后会自动重算升级）
+  if (lang && h && h.getLanguage(lang)) { try { return '<pre class="hljs"><code>' + h.highlight(code, { language: lang, ignoreIllegals: true }).value + '</code></pre>' } catch (e) {} }
   return '<pre class="hljs"><code>' + md.utils.escapeHtml(code) + '</code></pre>'
 } })
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
