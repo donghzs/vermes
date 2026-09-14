@@ -1,5 +1,5 @@
 // screen：C4 窗口几何记忆需要它校验「恢复的位置是否仍在某个当前显示器可视区内」。
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, screen } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, screen, Tray, nativeImage, globalShortcut } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -78,6 +78,70 @@ function getIconPath() {
     path.join(process.resourcesPath || '', 'app', 'assets', iconFile),
     path.join(process.resourcesPath || '', 'app.asar', 'assets', iconFile),
   ]);
+}
+
+// ── C4 桌面基础手感：系统托盘 + 全局快捷键（2026-09-14）──
+// 背景（真缺口，非锦上添花）：macOS 上关窗后 app **并不退出**（window-all-closed 只在非
+// darwin 才 quit），后端 gateway / 长任务仍在跑，却没有任何可见入口 —— 只能靠点 Dock
+// 图标走 activate 复活。这是典型的「应用还在跑但看不见」。
+// 以下取舍均为有意设计，不是疏漏：
+//   ① 关窗 = 隐藏到托盘，不退出 —— Vermes 常有 bot / agent / gateway 长任务在跑。
+//   ② 真退出走托盘菜单「退出」或 Cmd+Q（before-quit 置 isQuitting 后关窗才真关）。
+//   ③ 不隐藏 Dock 图标：万一托盘创建失败，Dock 仍是兜底入口，避免应用彻底失联。
+//   ④ 托盘菜单不造新的更新检查入口 —— setupAutoUpdater 明确要求更新唯一触发点在前端，
+//      主进程主动 checkForUpdates 会撞 "Already checking"。
+const TRAY_HOTKEY = 'CmdOrCtrl+Shift+K'   // 不用 Cmd+K：那是浏览器「聚焦搜索栏」通用键，抢了要打架
+let tray = null
+
+function getTrayIconPath() {
+  // 托盘用 PNG（icns 不适合托盘缩放），沿用 getIconPath 同款多候选探测
+  return resolveResource(path.join('assets', 'icon.png'), [
+    path.join(__dirname, 'assets', 'icon.png'),
+    path.join(__dirname, '..', 'assets', 'icon.png'),
+    path.join(process.resourcesPath || '', 'app', 'assets', 'icon.png'),
+    path.join(process.resourcesPath || '', 'app.asar', 'assets', 'icon.png'),
+  ])
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) { createWindow(); return }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (!mainWindow.isVisible()) mainWindow.show()
+  mainWindow.focus()
+}
+
+function toggleMainWindow() {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused()) {
+    mainWindow.hide()
+  } else {
+    showMainWindow()
+  }
+}
+
+function setupTray() {
+  const iconPath = getTrayIconPath()
+  if (!iconPath) { console.error('[Vermes] 托盘图标缺失，跳过托盘（不影响主窗口）'); return }
+  let image = nativeImage.createFromPath(iconPath)
+  if (!image || image.isEmpty()) { console.error('[Vermes] 托盘图标无法解析，跳过托盘'); return }
+  image = image.resize({ width: 16, height: 16 })
+  if (process.platform === 'darwin') image.setTemplateImage(true)  // 跟随系统明暗自动反色
+  tray = new Tray(image)
+  tray.setToolTip(`Vermes v${app.getVersion()}`)
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示 / 隐藏', click: () => toggleMainWindow() },
+    { type: 'separator' },
+    { label: `Vermes v${app.getVersion()}`, enabled: false },
+    { type: 'separator' },
+    { label: '退出', click: () => app.quit() },   // before-quit 会停 backend / gateway
+  ]))
+  tray.on('click', () => toggleMainWindow())
+}
+
+function setupGlobalShortcuts() {
+  // 注册失败（被其他应用占用）只告警，不阻塞启动
+  const ok = globalShortcut.register(TRAY_HOTKEY, () => toggleMainWindow())
+  if (!ok) console.warn(`[Vermes] 全局快捷键 ${TRAY_HOTKEY} 注册失败（可能被其他应用占用）`)
+  else console.log(`[Vermes] 全局快捷键已注册：${TRAY_HOTKEY}`)
 }
 
 // ── Windows Git Bash 检测与自动安装 ──
@@ -803,7 +867,15 @@ async function createWindow() {
   // C4：退出时落盘窗口几何。用 'close' 而非 'closed'——后者触发时窗口已销毁，
   // getBounds() 不可靠。只在 close 落一次盘，不去监听 resize/move：
   // 拖动窗口时会高频触发，频繁写盘无收益且增加抖动。
-  mainWindow.on('close', () => saveWindowState(mainWindow))
+  // 关窗 = 隐藏到托盘（不退出）。注意几何照旧先存：hide 前窗口仍有效，
+  // 且 app.isQuitting 为真时（Cmd+Q / 托盘退出）放行真关。
+  mainWindow.on('close', (e) => {
+    saveWindowState(mainWindow)
+    if (!app.isQuitting) {
+      e.preventDefault()
+      mainWindow.hide()
+    }
+  })
 
   // 清除缓存 — 防止旧前端 JS/CSS 被缓存导致白屏
   const ses = mainWindow.webContents.session
@@ -1218,20 +1290,24 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    // 窗口可能是被「隐藏到托盘」了 —— 此时 isMinimized() 为 false 且仍不可见，
+    // 只 restore + focus 不会让它现形，必须显式 show()。
+    showMainWindow();
   });
 
   // ── App 生命周期 ──
   app.whenReady().then(() => {
     createWindow();
     setupAutoUpdater();
+    setupTray();
+    setupGlobalShortcuts();
   });
 }
 
 app.on('window-all-closed', () => {
+  // 注：关窗已改为「隐藏到托盘」（见 createWindow 的 close 处理），
+  // 所以这里平时不会触发；只在真退出（托盘「退出」/ Cmd+Q）关窗时才走到，
+  // 此时 app.quit() 已在流程中，重复调用无害。保留是为了非 darwin 的兜底语义。
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -1239,13 +1315,18 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  try { globalShortcut.unregisterAll(); } catch (_) {}
   stopGateway();
   stopBackend();
 });
 
 app.on('activate', () => {
+  // 关窗=隐藏后 mainWindow 不为 null 但不可见 —— 旧逻辑只判 null，
+  // 导致点 Dock 图标毫无反应。改为统一走 showMainWindow，两种情形都覆盖。
   if (mainWindow === null) {
     createWindow();
+  } else {
+    showMainWindow();
   }
 });
 
