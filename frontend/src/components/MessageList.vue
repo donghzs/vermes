@@ -38,25 +38,38 @@ function updateChangeCount() {
     changeCount.value = window.__vermesChanges.changes.value?.length || 0
   }
 }
+// 轮询等待 ArtifactPanel 挂上 window.__vermesArtifacts / __vermesChanges 后再订阅。
+// 修两处缺陷：
+// ① 原写法在 setInterval 回调里调 watch() —— 那里没有活动组件实例，Vue **不会**
+//    自动回收 watcher，而 MessageList 是路由组件，每次进出首页泄漏 2 个 watcher；
+// ② 若两个全局只有一个先就绪，回调会每 200ms **重复注册同一个 watch**（最多 50 个），
+//    每个都会在每次变更时重复触发 updateXxx。
+// 故：用标志位保证只注册一次，并保存 stop 句柄在 onUnmounted 里释放。
+let _stopArtifactWatch = null
+let _stopChangeWatch = null
+let _checkReadyTimer = null
+let _checkReadyBail = null
+
 onMounted(() => {
   updateArtifactCount()
   updateChangeCount()
-  // 轮询检查 __vermesArtifacts / __vermesChanges 是否就绪
-  const checkReady = setInterval(() => {
-    if (window.__vermesArtifacts?.artifacts) {
+  _checkReadyTimer = setInterval(() => {
+    if (!_stopArtifactWatch && window.__vermesArtifacts?.artifacts) {
       updateArtifactCount()
-      watch(window.__vermesArtifacts.artifacts, updateArtifactCount, { deep: true })
+      _stopArtifactWatch = watch(window.__vermesArtifacts.artifacts, updateArtifactCount, { deep: true })
     }
-    if (window.__vermesChanges?.changes) {
+    if (!_stopChangeWatch && window.__vermesChanges?.changes) {
       updateChangeCount()
-      watch(window.__vermesChanges.changes, updateChangeCount, { deep: true })
+      _stopChangeWatch = watch(window.__vermesChanges.changes, updateChangeCount, { deep: true })
     }
-    if (window.__vermesArtifacts?.artifacts && window.__vermesChanges?.changes) {
-      clearInterval(checkReady)
+    if (_stopArtifactWatch && _stopChangeWatch) {
+      clearInterval(_checkReadyTimer); _checkReadyTimer = null
     }
   }, 200)
   // 10s 后放弃
-  setTimeout(() => clearInterval(checkReady), 10000)
+  _checkReadyBail = setTimeout(() => {
+    if (_checkReadyTimer) { clearInterval(_checkReadyTimer); _checkReadyTimer = null }
+  }, 10000)
 })
 
 // 工具结果展开状态
@@ -736,6 +749,11 @@ onUnmounted(() => {
     chatContainer.value.removeEventListener('scroll', checkScrollPosition)
   }
   setScrollTarget(null)
+  // 释放在 setInterval 回调里注册的 watcher（它们不随组件自动回收）
+  if (_checkReadyTimer) { clearInterval(_checkReadyTimer); _checkReadyTimer = null }
+  if (_checkReadyBail) { clearTimeout(_checkReadyBail); _checkReadyBail = null }
+  if (_stopArtifactWatch) { _stopArtifactWatch(); _stopArtifactWatch = null }
+  if (_stopChangeWatch) { _stopChangeWatch(); _stopChangeWatch = null }
 })
 
 // 切换会话时滚到最新用户消息（多次尝试，确保长列表渲染完成）
