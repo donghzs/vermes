@@ -25,8 +25,21 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   if (/^https?:\/\//i.test(href)) { token.attrSet('target', '_blank'); token.attrSet('rel', 'noopener noreferrer') }
   return self.renderToken(tokens, idx, options)
 }
+// 交付物 markdown 渲染缓存（2026-09-15 性能修复）
+// 模板里此函数写在 v-for 内部（:1060 用 m.content、:1549 用 t.final_output），
+// 且组织看板是 **4 秒轮询** —— 每次轮询触发的重渲染都会对每条交付物重跑
+// md.render + DOMPurify.sanitize。而交付物一旦产出内容就固定不变，这些计算全是浪费。
+// 按文本做 key 天然正确（纯函数，md/消毒配置均为模块级常量）；内容变化时 key 变化自动重算。
+const _deliverableMdCache = new Map()
 function renderMarkdown(text) {
-  try { return DOMPurify.sanitize(md.render(text || ''), DOMPURIFY_BASE_CONFIG) } catch (e) { return '<pre>' + (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>' }
+  const key = text || ''
+  const hit = _deliverableMdCache.get(key)
+  if (hit !== undefined) return hit
+  let out
+  try { out = DOMPurify.sanitize(md.render(key), DOMPURIFY_BASE_CONFIG) } catch (e) { out = '<pre>' + key.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>' }
+  if (_deliverableMdCache.size >= 300) _deliverableMdCache.delete(_deliverableMdCache.keys().next().value)
+  _deliverableMdCache.set(key, out)
+  return out
 }
 
 // ── 交付物全屏查看弹窗（老板点「📄 全屏」读报告 + 下载 .md）──

@@ -454,18 +454,43 @@ const chatContainer = ref(null)
 DOMPurify.addHook('afterSanitizeAttributes', enforceLinkSecurity)
 
 // ── Markdown 渲染 ──
+// ── 渲染结果缓存（2026-09-15 性能修复）──
+// 为什么需要：模板里 renderMd / extractImages / cleanUserContent 都写在 v-for 内部，
+// Vue 每次重渲染都会对**每一条消息**重新调用它们。而流式输出时 MessageList 是高频
+// 重渲染的 —— 100 条消息的会话，每帧就要跑 100 次 md.render + DOMPurify.sanitize +
+// 路径链接化。其中**历史消息的 content 根本不会变**，这些计算全是纯浪费。
+//
+// 为什么按 content 字符串做 key 是安全的：renderMd 只依赖 content（纯函数，md 与
+// 消毒配置都是模块级常量）。流式消息的 content 每帧都在变 → key 变化 → 命中失败 →
+// 自动重算，语义与不加缓存**完全一致**；历史消息 content 不变 → 命中缓存 → 零成本。
+const MEMO_MAX = 400
+const _mdCache = new Map()
+const _cleanCache = new Map()
+const _imgCache = new Map()
+function _memo(cache, key, compute) {
+  const hit = cache.get(key)
+  if (hit !== undefined) return hit
+  const val = compute()
+  // FIFO 淘汰（Map 保持插入顺序），避免长会话无限增长；400 条足够覆盖可视区 + 滚动回看
+  if (cache.size >= MEMO_MAX) cache.delete(cache.keys().next().value)
+  cache.set(key, val)
+  return val
+}
+
 function renderMd(content) {
   if (!content) return ''
-  try {
-    const rawHtml = md.render(content)
-    const sanitized = DOMPurify.sanitize(rawHtml, DOMPURIFY_BASE_CONFIG)
-    // 裸文件路径链接化（在 sanitize 之后，确保不引入未消毒 HTML）
-    return linkifyArtifactPaths(sanitized)
-  } catch (e) {
-    console.error('[DOMPurify] sanitize failed:', e)
-    // 降级：纯文本转义
-    return content.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  }
+  return _memo(_mdCache, content, () => {
+    try {
+      const rawHtml = md.render(content)
+      const sanitized = DOMPurify.sanitize(rawHtml, DOMPURIFY_BASE_CONFIG)
+      // 裸文件路径链接化（在 sanitize 之后，确保不引入未消毒 HTML）
+      return linkifyArtifactPaths(sanitized)
+    } catch (e) {
+      console.error('[DOMPurify] sanitize failed:', e)
+      // 降级：纯文本转义
+      return content.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    }
+  })
 }
 
 // ── 文件大小格式化 ──
@@ -522,19 +547,26 @@ function openDeliveryArtifact(a) {
 // ── 用户消息图片提取 ──
 function extractImages(content) {
   if (!content) return []
-  const re = /!\[.*?\]\((data:image\/[^)]+)\)/g
-  const urls = []
-  let m
-  while ((m = re.exec(content)) !== null) {
-    urls.push(m[1])
-  }
-  return urls
+  // 走缓存：模板里在 v-for 内逐条消息调用。返回的数组仅被 v-for 只读遍历，共享引用安全。
+  return _memo(_imgCache, content, () => {
+    const re = /!\[.*?\]\((data:image\/[^)]+)\)/g
+    const urls = []
+    let m
+    while ((m = re.exec(content)) !== null) {
+      urls.push(m[1])
+    }
+    return urls
+  })
 }
 
 // ── 用户消息文本清理：去掉 base64 图片引用避免显示乱码 ──
 function cleanUserContent(content) {
   if (!content) return ''
-  return content.replace(/!\[.*?\]\(data:image\/[^)]+\)/g, '').replace(/\n{3,}/g, '\n\n').trim()
+  // 走缓存：模板里同一行被调用两次（v-if 条件 + 插值），缓存后第二次直接命中；
+  // 且 v-for 内逐条消息调用，历史消息重复计算纯属浪费。
+  return _memo(_cleanCache, content, () =>
+    content.replace(/!\[.*?\]\(data:image\/[^)]+\)/g, '').replace(/\n{3,}/g, '\n\n').trim()
+  )
 }
 
 // ── 链接点击拦截（pywebview/浏览器兼容） ──
