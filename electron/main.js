@@ -856,6 +856,23 @@ async function createWindow() {
     icon: iconPath,
     show: false,
     backgroundColor: '#0f172a', // 深色背景减少白闪
+    // C4 配套（2026-09-15）：关窗 = 隐藏到托盘后，Chromium 默认会把
+    // 「隐藏/被遮挡」渲染进程的定时器节流到约 1 次/分钟（intensive wake up throttling）。
+    // 前端有 20 处 setInterval 依赖它拉数据——渠道消息(chat.js:776 / Sidebar:243)、
+    // 组织看板 4s(BotRooms:225)、看板 10s(KanbanBoard:337/348)、创作任务 8s(StudioChat:753)、
+    // 进化/记忆状态 30~60s 等。节流后表现为「关着窗时界面数据不动，切回来才一次性补上」，
+    // 与「Vermes 长任务在后台跑，用户关窗就是为了让它继续干活」的定位直接冲突。
+    //
+    // trade-off（有意选择，改回前请先读）：
+    //   关掉节流 = 隐藏时定时器照常跑 → 后台仍吃一点 CPU / 多耗电；
+    //   保留节流 = 省电，但后台界面数据不刷新。
+    // 选前者，理由：① 桌面端对电量敏感度远低于移动端；② 用户要彻底停止有明确出口
+    //   （Cmd+Q 或托盘「退出」→ before-quit 置 isQuitting → 真关，定时器随进程结束）；
+    //   ③ 本应用的产品价值恰在后台长任务。
+    // 若日后发现后台耗电成为问题，正确做法不是简单改回 true，而是
+    //   把轮询改成「仅在前台轮询 + 回到前台立即补拉一次」，而不是让数据停摆。
+    // 注：此选项是 BrowserWindow 顶层项，不是 webPreferences 的子项。
+    backgroundThrottling: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
