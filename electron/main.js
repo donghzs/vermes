@@ -94,12 +94,30 @@ const TRAY_HOTKEY = 'CmdOrCtrl+Shift+K'   // 不用 Cmd+K：那是浏览器「�
 let tray = null
 
 function getTrayIconPath() {
-  // 托盘用 PNG（icns 不适合托盘缩放），沿用 getIconPath 同款多候选探测
-  return resolveResource(path.join('assets', 'icon.png'), [
-    path.join(__dirname, 'assets', 'icon.png'),
-    path.join(__dirname, '..', 'assets', 'icon.png'),
-    path.join(process.resourcesPath || '', 'app', 'assets', 'icon.png'),
-    path.join(process.resourcesPath || '', 'app.asar', 'assets', 'icon.png'),
+  // 🔴 为什么托盘不能直接用 icon.png 当模板图（2026-09-15 用户实测反馈「菜单栏只有个白圈、没有 V」）：
+  //   icon.png 是「绿圆底 + 白色 V」，但两者**都不透明**（alpha 全为 255）。
+  //   macOS 的 setTemplateImage(true) 只读 **alpha 通道**、丢弃颜色 ——
+  //   于是整个圆被渲染成一个实心色块，V 与圆底之间只靠颜色区分，信息全丢 → 剩一个白圈。
+  //   正确做法：模板图必须是「透明背景 + 不透明形状」。故预生成 assets/trayTemplate.png：
+  //   把白色 V 挖成透明 —— alpha = orig_alpha × (255 - min(r,g,b)) / 255，
+  //   绿色像素 min 值低 → 保留（实心圆），白色像素 min=255 → 归零（镂空 V）。
+  //   （原文案注明：V=min(rgb)≥100 的区域，见生成脚本；模板化后即「实心圆 + 镂空 V」。）
+  // 命名带 Template 便于 Electron 识别，且 trayTemplate@2x.png(32px) 会被自动关联为高分屏表示。
+  const isMac = process.platform === 'darwin';
+  const dir = 'assets';
+  // macOS 用模板图（跟随系统明暗自动反色）；Win/Linux 模板化无意义，用彩色 icon.png
+  const file = isMac ? 'trayTemplate.png' : 'icon.png';
+  const fallback = 'icon.png';   // 兜底：模板图万一未随包分发，至少保证托盘图标存在
+  return resolveResource(path.join(dir, file), [
+    path.join(__dirname, dir, file),
+    path.join(__dirname, '..', dir, file),
+    path.join(process.resourcesPath || '', 'app', dir, file),
+    path.join(process.resourcesPath || '', 'app.asar', dir, file),
+    // 兜底候选
+    path.join(__dirname, dir, fallback),
+    path.join(__dirname, '..', dir, fallback),
+    path.join(process.resourcesPath || '', 'app', dir, fallback),
+    path.join(process.resourcesPath || '', 'app.asar', dir, fallback),
   ])
 }
 
@@ -123,7 +141,9 @@ function setupTray() {
   if (!iconPath) { console.error('[Vermes] 托盘图标缺失，跳过托盘（不影响主窗口）'); return }
   let image = nativeImage.createFromPath(iconPath)
   if (!image || image.isEmpty()) { console.error('[Vermes] 托盘图标无法解析，跳过托盘'); return }
-  image = image.resize({ width: 16, height: 16 })
+  // 注意：**不要**在这里 resize —— trayTemplate.png(16px) 与 trayTemplate@2x.png(32px)
+  // 会被 createFromPath 自动关联成多分辨率表示，resize 会把 @2x 压掉、Retina 下变糊。
+  // 尺寸由 PNG 自身决定（16px 逻辑 / 32px Retina 正是 macOS 菜单栏的标准规格）。
   if (process.platform === 'darwin') image.setTemplateImage(true)  // 跟随系统明暗自动反色
   tray = new Tray(image)
   tray.setToolTip(`Vermes v${app.getVersion()}`)
