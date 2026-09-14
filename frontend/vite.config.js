@@ -99,13 +99,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'katex': ['katex', 'markdown-it-texmath'],
+          // 说明：katex / markdown-it-texmath / codemirror(@codemirror/*) 三条分组已于
+          // 2026-09-15 移除 —— 它们全仓零引用（唯一使用者 CodeMirrorEditor.vue 是死组件，
+          // 已删；katex/texmath 从未被引用），留着只会每轮构建产出 0.00 kB 空 chunk。
+          // 如需重新引入数学公式或代码编辑器，记得把分组一并加回来。
           'vendor': ['vue', 'vue-router', 'pinia'],
-          'codemirror': [
-            '@codemirror/state', '@codemirror/view', '@codemirror/commands',
-            '@codemirror/language', '@codemirror/autocomplete', '@codemirror/search',
-            '@codemirror/lang-markdown',
-          ],
           'markdown': ['markdown-it', 'dompurify'],
           'highlight': [
             'highlight.js/lib/core',
