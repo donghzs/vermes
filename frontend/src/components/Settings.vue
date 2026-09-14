@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
@@ -114,6 +114,38 @@ const providers = ref([
 
 const customModelInputs = ref({})
 const activeTab = ref(route.query.tab || 'providers')
+
+// C2 设置页导航与搜索（2026-09-14）：
+// ① tab 栏原本是 9 个内联 button、同一条 class 串重复 9 遍；收敛成数组 + v-for 后样式完全一致。
+// ② kw 里的关键词取自各 tab 内**真实存在**的小节标题（模型设置 / 凭证健康 / MCP 安全校验 /
+//    存储用量 …）。搜「api」「凭证」「知识库」这类词即可直接跳到对应 tab —— 2902 行里找一项
+//    设置不用再挨个 tab 点过去。
+// ③ 纯增量：不改动任何 tab 的内容与逻辑，只在外面加一层导航/搜索外壳。
+//    （提供商 tab 内原有的 providerSearch 是「tab 内过滤」，与本搜索互补，互不干扰。）
+const SETTING_TABS = [
+  { id: 'providers',  icon: '',    label: '提供商',   kw: '模型 model api key 密钥 供应商 provider openai anthropic vbit 国产 国际 自定义 同步模型' },
+  { id: 'services',   icon: '🔑', label: '服务',     kw: '凭证 api key token 服务 粘贴 自动识别 credential service' },
+  { id: 'literature', icon: '📖', label: '文献源',   kw: '文献 论文 检索 arxiv 学术 scholarforge 源' },
+  { id: 'channels',   icon: '📱', label: '移动接入', kw: '渠道 移动 手机 微信 telegram 飞书 接入 教程 gateway channel' },
+  { id: 'security',   icon: '🔒', label: '安全',     kw: '安全 审批 权限 工具审批 自我进化 档位 凭证健康 security' },
+  { id: 'mcp',        icon: '🔌', label: 'MCP',      kw: 'mcp 插件 工具 目录 一键安装 已安装 安全校验' },
+  { id: 'knowledge',  icon: '📚', label: '知识库',   kw: '知识库 rag 文档 索引 向量 检索 knowledge' },
+  { id: 'migration',  icon: '📦', label: '迁移',     kw: '迁移 导入 搬家 hermes 配置 migration' },
+  { id: 'about',      icon: '',    label: '关于',     kw: '关于 版本 更新 检查更新 存储用量 api 接入 about' },
+]
+const globalSearch = ref('')
+const contentEl = ref(null)
+const searchResults = computed(() => {
+  const q = globalSearch.value.trim().toLowerCase()
+  if (!q) return []
+  return SETTING_TABS.filter(t => (t.label + ' ' + t.kw).toLowerCase().includes(q))
+})
+function goTab(id) {
+  activeTab.value = id
+  globalSearch.value = ''
+  // 切 tab 后内容区会保留上一个 tab 的滚动位置，拉回顶部
+  nextTick(() => { if (contentEl.value) contentEl.value.scrollTop = 0 })
+}
 
 // 切到对应 Tab 时，如果尚未加载过则补加载（修复首次打开后端未 ready 导致空列表）
 watch(activeTab, (tab) => {
@@ -1816,23 +1848,24 @@ async function toggleChannel(platformKey) {
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       </button>
       <h2 class="font-semibold text-gray-800 dark:text-gray-200">设置</h2>
+      <!-- C2 跨 tab 搜索：命中 tab 标签或关键词，点结果直接跳过去 -->
+      <div class="relative ml-auto">
+        <input v-model="globalSearch" placeholder="搜索设置…" class="pl-8 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 w-44" />
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
+        <div v-if="globalSearch.trim()" class="absolute right-0 top-full mt-1 w-56 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+          <button v-for="r in searchResults" :key="r.id" @click="goTab(r.id)" class="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{ r.icon ? r.icon + ' ' + r.label : r.label }}</button>
+          <div v-if="!searchResults.length" class="px-3 py-2 text-sm text-gray-400">没有匹配的分区</div>
+        </div>
+      </div>
     </div>
 
     <!-- Tab 栏 -->
     <div class="px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-0">
-      <button @click="activeTab = 'providers'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'providers' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">提供商</button>
-      <button @click="activeTab = 'services'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'services' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔑 服务</button>
-      <button @click="activeTab = 'literature'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'literature' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📖 文献源</button>
-      <button @click="activeTab = 'channels'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'channels' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📱 移动接入</button>
-      <button @click="activeTab = 'security'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'security' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔒 安全</button>
-      <button @click="activeTab = 'mcp'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'mcp' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔌 MCP</button>
-      <button @click="activeTab = 'knowledge'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'knowledge' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📚 知识库</button>
-      <button @click="activeTab = 'migration'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'migration' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📦 迁移</button>
-      <button @click="activeTab = 'about'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'about' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">关于</button>
+      <button v-for="t in SETTING_TABS" :key="t.id" @click="activeTab = t.id" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === t.id ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">{{ t.icon ? t.icon + ' ' + t.label : t.label }}</button>
     </div>
 
     <!-- 内容区 -->
-    <div class="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900">
+    <div ref="contentEl" class="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900">
 
       <!-- 提供商配置 -->
       <div v-if="activeTab === 'providers'" class="max-w-2xl space-y-3">
