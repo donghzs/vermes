@@ -327,11 +327,31 @@ export const useChatStore = defineStore('chat', () => {
     return true
   }
 
+  // 上一次写入 channelSessions 的内容指纹。
+  // 必要性:Sidebar 每 5s 调一次 loadChannelSessions(),旧实现无条件
+  // `channelSessions.value = <全新数组>`,即使数据一个字节没变也会让 Vue 判定
+  // 依赖失效 → 会话列表整体重渲染(含每条的 markdown/时间/count 重算)。
+  // 有指纹后,数据未变时**不触碰 ref** → 零失效、零重渲染。
+  // 安全性:指纹覆盖映射结果的全部可变字段(channel 恒为 true 故不计);
+  // 全仓仅 Sidebar.vue 消费 channelSessions,且无任何原地 mutate,保留旧数组语义等价。
+  let _channelSessionsSig = ''
+  function _signChannelSessions(list) {
+    let sig = ''
+    for (const s of list) {
+      // 分隔符用显式转义(不写裸控制字符):裸 \x01 会被部分编辑器静默吞掉,
+      // 一旦丢失就退化成无分隔拼接,id/name 之间可能产生碰撞导致漏更新。
+      sig += s.id + '\u0001' + s.name + '\u0002' + s.createdAt + '\u0003'
+        + s.lastActive + '\u0004' + s.source + '\u0005' + s.model + '\u0006'
+        + s.messageCount + '\u0007' + s.preview + '\u0008'
+    }
+    return sig
+  }
+
   async function loadChannelSessions() {
     try {
       const rows = await listChannelSessionsFromAPI(200)
       const localIds = new Set(sessions.value.map(s => s.id))
-      channelSessions.value = rows
+      const next = rows
         .filter(r => r && r.id && !localIds.has(r.id) && (r.message_count || 0) > 0)
         .map(r => ({
           id: r.id,
@@ -344,6 +364,10 @@ export const useChatStore = defineStore('chat', () => {
           messageCount: r.message_count || 0,
           preview: r.preview || '',
         }))
+      const sig = _signChannelSessions(next)
+      if (sig === _channelSessionsSig) return  // 无变化:不写 ref,不触发任何重渲染
+      _channelSessionsSig = sig
+      channelSessions.value = next
     } catch (e) {
       // 后端不可达时保留旧列表,不清空--避免后端短暂抖动导致渠道会话"消失"
       logger.warn('[Vermes] 渠道会话列表刷新失败,保留旧列表:', e)
@@ -587,6 +611,7 @@ export const useChatStore = defineStore('chat', () => {
     // 渠道会话:仅从 state.db + 内存列表移除,不走本地 IDB/localStorage 清理
     if (isChannelSession(id)) {
       channelSessions.value = channelSessions.value.filter(s => s.id !== id)
+      _channelSessionsSig = ''  // 局部改动已偏离指纹,下次拉取必须强制写回
       messages.value = messages.value.filter(m => m.sessionId !== id)
       if (currentSessionId.value === id) {
         if (sessions.value.length > 0) await switchSession(sessions.value[0].id)
@@ -627,6 +652,7 @@ export const useChatStore = defineStore('chat', () => {
     const set = new Set(ids)
     sessions.value = sessions.value.filter(s => !set.has(s.id))
     channelSessions.value = channelSessions.value.filter(s => !set.has(s.id))
+    _channelSessionsSig = ''  // 同上:局部改动后指纹作废,保证回滚路径能重新写回
     for (const sid of ids) {
       try { localStorage.removeItem(MESSAGES_KEY_PREFIX + sid) } catch {}
     }

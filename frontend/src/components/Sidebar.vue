@@ -193,9 +193,23 @@ async function loadAllSessionMeta() {
   await Promise.all(promises)
 }
 
+// 渠道会话 id → 会话对象的索引。
+// 旧实现在 getMessageCount / getFirstMessagePreview 里各做一次
+// `channelSessions.find()` 线性查找,而这两个函数被会话列表 v-for 的**每一项**
+// 调用(v-if 判定 + 插值渲染各一次 → 4 次/项),总代价 O(会话数 × 渠道会话数)。
+// 改 Map 后单次 O(1),且 channelSessions 未变化时 computed 不重算。
+// 语义严格等价:find() 返回首个匹配,故 Map 用 if(!has) set 保持「首个优先」。
+const channelSessionById = computed(() => {
+  const m = new Map()
+  for (const s of chat.channelSessions) {
+    if (!m.has(s.id)) m.set(s.id, s)
+  }
+  return m
+})
+
 function getMessageCount(sessionId) {
   // 渠道会话：直接用 state.db 返回的 message_count
-  const ch = chat.channelSessions.find(s => s.id === sessionId)
+  const ch = channelSessionById.value.get(sessionId)
   if (ch) return ch.messageCount || 0
   const meta = sessionMeta.value.get(sessionId)
   if (meta) return meta.count
@@ -216,7 +230,7 @@ function getTodoCompleted(sessionId) {
 
 function getFirstMessagePreview(sessionId) {
   // 渠道会话：直接用 state.db 返回的 preview
-  const ch = chat.channelSessions.find(s => s.id === sessionId)
+  const ch = channelSessionById.value.get(sessionId)
   if (ch) return ch.preview || ''
   const meta = sessionMeta.value.get(sessionId)
   if (meta) return meta.firstMsg
