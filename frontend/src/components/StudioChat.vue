@@ -150,6 +150,10 @@
 
         <!-- 状态二：已配模型，教怎么用 -->
         <template v-else>
+          <div v-if="inheritedFrom" class="so-inherit">
+            <span>✅ 已自动带入「设置」里的模型：<b>{{ inheritedFrom }}</b></span>
+            <button class="so-inherit-btn" @click="showConfig = true">换一个 →</button>
+          </div>
           <div class="so-steps">
             <div class="so-step">
               <div class="so-step-n">1</div>
@@ -309,7 +313,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, watch, onUnmounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { logger } from '@/utils/logger'
 import { useConfirm } from '../composables/useConfirm'
@@ -383,6 +387,35 @@ function openConfigForSetup() {
 function goSettings() {
   router.push('/settings')
 }
+
+// ── 从「设置」带入全局模型配置（2026-09-16）────────────────────────
+// 根因：创作工作室的生成是**直连厂商**的，需要 base_url + model + api_key，
+// 但它此前只读自己的 localStorage，与「设置」里的全局模型配置**完全隔离** ——
+// 用户在设置里明明配好了模型（聊天都能用），进来却只有三个空输入框要重填一遍。
+// 这是「创作工作室打不开/用不了」的真正原因，比缺引导更致命。
+//
+// 策略：**仅在本地完全没填时**才带入，绝不覆盖用户自己填过的任何值。
+const inheritedFrom = ref('')
+
+async function inheritGlobalConfig() {
+  if (baseUrl.value || apiKey.value) return   // 用户已有配置 → 尊重，不动
+  try {
+    const resp = await fetch('/api/studio/effective-config')
+    if (!resp.ok) return
+    const d = await resp.json()
+    if (!d || !d.available || !d.baseUrl) return
+    baseUrl.value = d.baseUrl
+    model.value = d.model || ''
+    apiKey.value = d.apiKey || ''
+    inheritedFrom.value = [d.provider, d.model].filter(Boolean).join(' · ')
+    // 上面的赋值会触发既有的 watch([baseUrl, model, apiKey]) → 自动写入 localStorage，
+    // 相当于把「设置」里的这套配置"认领"进创作工作室，下次进来直接可用。
+  } catch (_) {
+    // 拉不到就保持「需要手填」的引导态，不打断用户
+  }
+}
+
+onMounted(() => { inheritGlobalConfig() })
 
 // 统一的状态提示：只在内容未被后续提示覆盖时清空，避免定时器把新提示误删。
 // 需要用户动手的提示（如「还差 API Key」）传更长的 ms。
@@ -1295,6 +1328,23 @@ async function deleteCurrentConfig() {
 .so-btn-primary { background: #409EFF; border-color: #409EFF; color: #fff; font-weight: 500; }
 .so-btn-primary:hover { background: #2b8ce8; border-color: #2b8ce8; }
 .so-note { font-size: 11.5px; color: #9ca3af; margin: 10px 0 0; }
+
+/* 「已从设置带入全局模型配置」提示条 */
+.so-inherit {
+  width: 100%; max-width: 560px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 8px 12px;
+  font-size: 12.5px; color: #276749;
+  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;
+  box-sizing: border-box;
+}
+.so-inherit-btn {
+  margin-left: auto; padding: 3px 10px; border-radius: 6px; cursor: pointer;
+  font-size: 12px; color: #276749;
+  background: #fff; border: 1px solid #86efac;
+  transition: background .15s;
+}
+.so-inherit-btn:hover { background: #dcfce7; }
 
 .so-steps {
   width: 100%; max-width: 560px;

@@ -4,6 +4,7 @@
 直接调厂商 API，不经任何 Agent 逻辑。
 
 Endpoints:
+- GET  /api/studio/effective-config — 返回「设置」里当前生效的模型配置（供创作工作室一键带入）
 - GET  /api/studio/providers       — 动态返回可用 provider 列表（从 config.yaml + 插件注册表）
 - POST /api/studio/providers       — 新增 provider 配置（写入 config.yaml）
 - DELETE /api/studio/providers/{name} — 删除 provider 配置
@@ -583,6 +584,76 @@ def _resolve_env_value(raw: str) -> str:
     if isinstance(raw, str) and raw.startswith("${") and raw.endswith("}"):
         return os.environ.get(raw[2:-1], "")
     return raw or ""
+
+
+def _resolve_key_entry(entry: Dict[str, Any]) -> str:
+    """从 provider 配置里解析出可用的 api_key。
+
+    两种写法都要支持：
+      · api_key: "sk-xxx" 或 "api_key: ${MY_KEY}"
+      · key_env: "MY_KEY" / "${MY_KEY}"（部分厂商只存环境变量名）
+    """
+    api_key = _resolve_env_value(entry.get("api_key", ""))
+    if api_key:
+        return api_key
+    key_env = str(entry.get("key_env") or "").strip()
+    if not key_env:
+        return ""
+    if key_env.startswith("${") and key_env.endswith("}"):
+        key_env = key_env[2:-1]
+    return os.environ.get(key_env, "")
+
+
+@router.get("/effective-config")
+def get_effective_config():
+    """返回「设置」里当前生效的模型配置，供创作工作室一键带入。
+
+    背景（2026-09-16）：创作工作室的生成是**直连厂商**的，需要 base_url + model + api_key。
+    但它此前只读自己的 localStorage['vermes-studio-config']，与「设置」中的全局模型配置
+    **完全隔离** —— 用户明明在设置里配好了模型（聊天都能用），进创作工作室却只有三个
+    空输入框要重填一遍。这正是「创作工作室用不了」的根因，本端点用于消除它。
+
+    字段来源（~/.vermes/config.yaml）：
+      · model.provider → 当前厂商 id
+      · model.default  → 当前模型名
+      · providers.<id>.base_url / api_key / key_env
+
+    说明：这是单机桌面应用，前端即用户本机自身的界面，读回本机已配置的凭证属预期行为；
+    端点只返回**当前生效的那一套**（不是全部厂商），不额外扩大暴露面。
+    """
+    try:
+        from vermes_cli.config import load_config
+        cfg = load_config()
+        if not isinstance(cfg, dict):
+            return {"available": False, "reason": "no_config"}
+
+        model_cfg = cfg.get("model")
+        model_cfg = model_cfg if isinstance(model_cfg, dict) else {}
+        provider_id = str(model_cfg.get("provider") or "")
+        model_name = str(model_cfg.get("default") or "")
+
+        provs = cfg.get("providers")
+        provs = provs if isinstance(provs, dict) else {}
+        if not provider_id or not isinstance(provs.get(provider_id), dict):
+            return {"available": False, "reason": "no_active_provider", "provider": provider_id}
+
+        entry = provs[provider_id]
+        base_url = _resolve_env_value(entry.get("base_url", "")).strip()
+        if not base_url:
+            return {"available": False, "reason": "no_base_url", "provider": provider_id}
+
+        api_key = _resolve_key_entry(entry)
+        return {
+            "available": True,
+            "provider": provider_id,
+            "baseUrl": base_url,
+            "model": model_name,
+            "apiKey": api_key,          # 可能为空（厂商走环境变量且当前未设置）
+            "hasKey": bool(api_key),
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Studio] 读取全局模型配置失败: %s", e)
+        return {"available": False, "reason": "read_failed"}
 
 
 @router.get("/providers")
