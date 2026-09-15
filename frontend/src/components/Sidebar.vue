@@ -677,7 +677,10 @@ async function handleImportFile(e) {
 
       <!-- 底部工具栏（方案B：grid-cols-4 紧凑 + 悬停弹功能介绍，文字不再占高） -->
       <div class="p-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-4 gap-1 shrink-0">
-        <button @click="goStudio()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+        <!-- :class 里的路由高亮是本轮补的：原先「创作」按钮**没有激活态**，
+             点进去后侧栏毫无变化（论文/3D/工作流/神魔堂/成长/积木都有高亮），
+             视觉上像「点了没生效」——反馈缺失会直接放大成「点击没反应」的观感。 -->
+        <button @click="goStudio()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/studio' ? 'bg-purple-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'">
           <span class="text-[15px] leading-none">🎨</span><span>创作</span>
           <span class="sidebar-tooltip group-hover:opacity-100">创作工作室</span>
         </button>

@@ -3048,6 +3048,20 @@ try:
 except Exception as _e:
     logger.warning("credential_lifecycle 注册失败: %s", _e)
 
+# ── 创作工作室（多模态直通车）──
+# 背景：blueprints/studio.py 自 2026-08-21 就存在（33KB / 8 个端点），但**从未在此注册**，
+# 导致前端 StudioChat.vue 调用的 /api/studio/* 全部 404：
+#   · GET  /api/studio/providers  → 厂商列表拉不到（前端静默回退到内置预设）
+#   · POST /api/studio/models     → 「🔄 拉取模型列表」报「请求失败」
+#   · POST /api/studio/providers  → 「➕ 添加厂商」报错且不保存
+#   · GET  /api/studio/status/{id}→ 视频永远停在「正在处理…」
+# studio 是独立于 Agent 会话的非核心链路，故用 try/except 包裹：
+# 注册失败只降级创作工作室的管理/视频能力，不拖垮后端启动。
+try:
+    blueprints.studio.register_to(app)
+except Exception as _e:  # noqa: BLE001
+    logger.warning("studio 注册失败（创作工作室的厂商管理/模型列表/视频状态将不可用）: %s", _e)
+
 # ── L2 adapters API（发现/推荐/安装软件积木）──
 try:
     from vermes_cli.adapters.api import register_to as register_adapters

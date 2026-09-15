@@ -6,7 +6,7 @@
 //
 // 与对话式(C) 共享同一后端引擎：工具箱经 invokeTool → POST /api/tools/invoke →
 // handler 内部含 run_quality_gate，故质量护栏对两种入口行为一致（P0b 已封堵缺口）。
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScholarStore } from '../stores/scholar'
 import ToolBox from './scholar/ToolBox.vue'
@@ -28,8 +28,30 @@ const TABS = [
   { key: 'upload', label: '📥 上传' },
 ]
 
-onMounted(() => {
-  scholar.loadProjects()
+// 记住用户上次用的 Tab。背景（2026-09-16「非技术用户上手」专项）：
+// 原先每次进来都固定落在「工具箱」——27 个工具卡全是 scholarforge_write /
+// section_type / p_value 这类术语，第一次来的人不知道先点哪个，会直接判定「用不了」。
+const TAB_KEY = 'vermes-scholar-last-tab'
+
+// 无项目时的上手提示条，用户可关掉（关掉后本次会话不再出现）
+const hintDismissed = ref(false)
+
+function switchTab(key) {
+  scholar.activeTab = key
+  try { localStorage.setItem(TAB_KEY, key) } catch {}
+}
+
+onMounted(async () => {
+  await scholar.loadProjects()
+  let saved = null
+  try { saved = localStorage.getItem(TAB_KEY) } catch {}
+  if (saved && TABS.some(t => t.key === saved)) {
+    // 老用户：回到他上次待的地方，不打扰
+    scholar.activeTab = saved
+  } else {
+    // 第一次来：没有项目就直接落到「写作引导」——先讲清楚要干什么，再进工具箱
+    scholar.activeTab = scholar.projects.length === 0 ? 'guide' : 'tools'
+  }
 })
 </script>
 
@@ -60,7 +82,7 @@ onMounted(() => {
               ? 'bg-blue-600 text-white font-medium'
               : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
           ]"
-          @click="scholar.activeTab = t.key"
+          @click="switchTab(t.key)"
         >
           {{ t.label }}
         </button>
@@ -79,6 +101,33 @@ onMounted(() => {
         </select>
       </div>
     </header>
+
+    <!-- 无项目时的上手提示（2026-09-16 非技术用户上手专项）
+         背景：此前没有任何项目也能直接点工具，而写回类工具在后端会**静默写进隐藏的
+         「默认兜底项目」**——用户回「项目空间」找不到自己的成果，只会以为「点了没用」。
+         这里把「先建项目」摆在最显眼处，并提供直达按钮。 -->
+    <div
+      v-if="scholar.projectsLoaded && scholar.projects.length === 0 && !hintDismissed"
+      class="shrink-0 flex items-center gap-3 px-4 py-2.5 flex-wrap
+             bg-amber-50 dark:bg-amber-900/25 border-b border-amber-200 dark:border-amber-800
+             text-sm text-amber-800 dark:text-amber-200"
+    >
+      <span>📌 <b>还没有论文项目</b> —— 先建一个，之后的文献、写作、质量检查都会归到它下面，成果不会散落。</span>
+      <span class="ml-auto flex items-center gap-2">
+        <button
+          @click="switchTab('projects')"
+          class="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition"
+        >＋ 新建项目</button>
+        <button
+          @click="switchTab('guide')"
+          class="px-3 py-1 rounded-lg border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs transition"
+        >看看写作流程</button>
+        <button
+          @click="hintDismissed = true"
+          class="px-2 py-1 text-xs text-amber-600 dark:text-amber-400 hover:underline"
+        >知道了</button>
+      </span>
+    </div>
 
     <main class="flex-1 overflow-y-auto">
       <ToolBox v-if="scholar.activeTab === 'tools'" />

@@ -145,8 +145,19 @@ async function onRename(pid) {
     </form>
 
     <!-- 项目列表 -->
-    <div v-if="scholar.projectsLoaded && !scholar.projects.length" class="text-sm text-gray-400 py-8 text-center">
-      还没有论文项目，点「＋ 新建项目」开始。
+    <!-- 空态引导（2026-09-16 非技术用户上手专项）
+         原来只有一句灰字「点「＋ 新建项目」开始」——但那按钮在右上角，第一次来的人
+         得先自己找到它。改为直接给按钮，一步进入建项目。 -->
+    <div v-if="scholar.projectsLoaded && !scholar.projects.length" class="py-10 text-center">
+      <div class="text-3xl mb-3">🗂️</div>
+      <div class="text-sm text-gray-600 dark:text-gray-300 mb-1">还没有论文项目</div>
+      <div class="text-xs text-gray-400 dark:text-gray-500 mb-4 leading-relaxed">
+        建一个项目，之后的文献检索、大纲、正文、质量检查都会归到它下面，<br />成果不会散落。
+      </div>
+      <button
+        @click="showCreate = true"
+        class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
+      >＋ 新建第一个项目</button>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -107,11 +107,84 @@
           </div>
         </div>
       </Teleport>
-      <div v-if="statusMsg" class="status-msg">{{ statusMsg }}</div>
     </div>
+    <!-- 状态提示放在配置区**之外**：配置区可折叠，而「还差 API Key」这类提示
+         必须始终可见，否则又会退化成「点了没反应」。 -->
+    <div
+      v-if="statusMsg"
+      class="status-msg"
+      :class="{
+        'status-warn': statusMsg.startsWith('⚠️') || statusMsg.startsWith('👆'),
+        'status-err': statusMsg.startsWith('❌')
+      }"
+    >{{ statusMsg }}</div>
 
     <!-- 消息列表 -->
     <div class="messages" ref="msgListRef">
+      <!-- 空状态上手引导（2026-09-16 用户反馈「点击创作工作室没反应」后补）
+           此前无消息时这里是**一片纯空白**：用户点进来看到白板，分不清「页面没打开」
+           还是「我不知道该点哪」，于是判定为「没反应」。现按两种状态给引导：
+             · 没配模型 → 先讲「为什么需要 API 地址/Key」并给一键入口（解决「能不能用」）
+             · 已配模型 → 给三步上手 + 点一下就能跑的示例（解决「怎么用」） -->
+      <div v-if="messages.length === 0 && !loading" class="so-wrap">
+        <div class="so-hero">
+          <div class="so-hero-icon">🎨</div>
+          <div class="so-hero-title">创作工作室</div>
+          <div class="so-hero-sub">用你自己的模型写文章、画图、做视频 —— 不经过对话，出结果更快。</div>
+        </div>
+
+        <!-- 状态一：还没配模型（此时发送一定会失败，先解决它） -->
+        <div v-if="!isConfigured" class="so-card so-card-warn">
+          <div class="so-card-head">① 先接上模型（约 1 分钟）</div>
+          <p class="so-card-p">创作工作室需要你自己的 <b>API 地址</b> 和 <b>API Key</b>。填一次就记住，之后进来直接创作。</p>
+          <ul class="so-list">
+            <li>已经在「设置 → 模型」里配过？用同一套地址和 Key 就行。</li>
+            <li>还没有 Key？点上方内置的 <b>Agnes AI</b> 标签会自动填好地址，再补上你的 Key 即可。</li>
+          </ul>
+          <div class="so-actions">
+            <button class="so-btn so-btn-primary" @click="openConfigForSetup">现在填写配置</button>
+            <button class="so-btn" @click="goSettings">看已配好的模型 →</button>
+          </div>
+          <p class="so-note">配置只保存在本机，不会上传。</p>
+        </div>
+
+        <!-- 状态二：已配模型，教怎么用 -->
+        <template v-else>
+          <div class="so-steps">
+            <div class="so-step">
+              <div class="so-step-n">1</div>
+              <div class="so-step-body">
+                <div class="so-step-t">说清你想要什么</div>
+                <div class="so-step-d">写文章就说主题，画图就描述画面；也可以直接点下方模板。</div>
+              </div>
+            </div>
+            <div class="so-step">
+              <div class="so-step-n">2</div>
+              <div class="so-step-body">
+                <div class="so-step-t">回车发送</div>
+                <div class="so-step-d">结果直接出现在这里；图片能下载，视频需要等一会儿。</div>
+              </div>
+            </div>
+            <div class="so-step">
+              <div class="so-step-n">3</div>
+              <div class="so-step-body">
+                <div class="so-step-t">不满意就改一句再发</div>
+                <div class="so-step-d">历史结果都在下方「🖼️ 画廊」里，随时能翻回来。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="so-examples">
+            <div class="so-examples-title">点一下就能试（会自动填进下方输入框）</div>
+            <div class="so-chips">
+              <button v-for="ex in startExamples" :key="ex.label" class="so-chip" @click="useExample(ex)">
+                <span class="so-chip-icon">{{ ex.icon }}</span>{{ ex.label }}
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+
       <div v-for="(msg, i) in messages" :key="i" class="msg" :class="msg.role">
         <div class="msg-avatar">{{ msg.role === 'user' ? '👤' : 'V' }}</div>
         <div class="msg-body">
@@ -221,6 +294,7 @@
         <button class="btn-remove" @click="removeUploadedImage">✕</button>
       </div>
       <input
+        ref="promptInput"
         v-model="prompt"
         @keydown.enter="send"
         placeholder="输入指令...（支持图片拖拽/上传）"
@@ -235,7 +309,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, onUnmounted } from 'vue'
+import { ref, computed, nextTick, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { logger } from '@/utils/logger'
 import { useConfirm } from '../composables/useConfirm'
@@ -278,6 +352,44 @@ watch([baseUrl, model, apiKey], () => {
 })
 const showKey = ref(false)
 const showConfig = ref(true)
+
+// 是否已具备「能发出去」的最小配置（地址 + Key）。
+// 用于空状态引导分支：没配 → 先教配置；配了 → 教怎么用。
+// 注意只判这两个：model 可由「🔄 拉取模型列表」或默认值补齐，不作为阻塞条件。
+const isConfigured = computed(() => !!(baseUrl.value && apiKey.value))
+
+// 上手示例：点一下即填入输入框。刻意覆盖「文字 / 图片 / 视频 / 灵感」四类，
+// 让第一次进来的人不需要先想清楚「这个框该填什么」。
+const startExamples = [
+  { icon: '📝', label: '写一篇公众号文章', prompt: '写一篇 800 字左右的公众号文章，主题是：', mode: 'text' },
+  { icon: '🖼️', label: '画一张幼儿园环创海报', prompt: '画一张幼儿园主题墙海报，暖色调，卡通风格，画面里有小朋友和向日葵', mode: 'image' },
+  { icon: '💡', label: '想出 5 个选题', prompt: '帮我想 5 个适合幼儿园大班的「幼小衔接」主题选题方向，每个用一句话说明', mode: 'text' },
+  { icon: '🎬', label: '做一段小动画', prompt: '生成一段 5 秒动画：一只小猫在草地上追蝴蝶，阳光明媚', mode: 'video' },
+]
+
+function useExample(ex) {
+  prompt.value = ex.prompt
+  if (ex.mode) params.value.mode = ex.mode
+  nextTick(() => promptInput.value?.focus())
+}
+
+// 未配置时的「现在填写配置」：展开配置区并给出可执行提示，
+// 而不是让用户在空白页上自己找输入框。
+function openConfigForSetup() {
+  showConfig.value = true
+  flashStatus('👆 请填写 API 地址与 API Key（模型名可留空，点 🔄 可自动获取）', 6000)
+}
+
+function goSettings() {
+  router.push('/settings')
+}
+
+// 统一的状态提示：只在内容未被后续提示覆盖时清空，避免定时器把新提示误删。
+// 需要用户动手的提示（如「还差 API Key」）传更长的 ms。
+function flashStatus(msg, ms = 2500) {
+  statusMsg.value = msg
+  setTimeout(() => { if (statusMsg.value === msg) statusMsg.value = '' }, ms)
+}
 const showSaveDialog = ref(false)
 const showAddProviderDialog = ref(false)
 const saveName = ref('')
@@ -285,6 +397,7 @@ const newProvider = ref({ name: '', label: '', baseUrl: '', apiKey: '', text: ''
 const statusMsg = ref('')
 const uploadedImage = ref(null) // { dataUrl, file }
 const fileInput = ref(null)
+const promptInput = ref(null) // 点示例 / 校验失败后聚焦到输入框
 
 // ── 参数控制 ──
 const showParams = ref(false)
@@ -578,7 +691,22 @@ function onDrop(e) {
 async function send() {
   const text = prompt.value.trim()
   const hasImage = !!uploadedImage.value
-  if ((!text && !hasImage) || loading.value || !baseUrl.value || !apiKey.value) return
+  if (loading.value) return
+  // 🔴 原先这里是一句静默 return：缺「API 地址 / Key」时点发送**毫无反应、零提示**，
+  //    用户只能得出「点了没用」的结论（2026-09-16 反馈的直接来源之一）。
+  //    现按「缺什么就说什么」拆开，并自动展开配置区，让用户知道下一步该做什么。
+  if (!text && !hasImage) {
+    flashStatus('⚠️ 请先写下你想要的文字，或上传一张图片')
+    nextTick(() => promptInput.value?.focus())
+    return
+  }
+  if (!baseUrl.value || !apiKey.value) {
+    showConfig.value = true
+    flashStatus(!baseUrl.value
+      ? '⚠️ 还差「API 地址」：请在上方配置里填写（点 Agnes AI 标签可自动填地址）'
+      : '⚠️ 还差「API Key」：请在上方配置里填写后再发送', 6000)
+    return
+  }
   prompt.value = ''
 
   // 有图片且无文字描述时自动用默认提示
@@ -1113,12 +1241,88 @@ async function deleteCurrentConfig() {
 }
 
 .status-msg {
-  padding: 4px 12px 8px;
+  padding: 6px 12px;
   font-size: 12px;
   color: #52c41a;
+  background: #fafbfc;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
 }
+/* 原先所有状态提示都是同一抹绿色，「还差 API Key」这种警告混在里面根本不像警告 */
+.status-msg.status-warn { color: #d46b08; }
+.status-msg.status-err { color: #e53935; }
 
 .typing { color: #999; }
+
+/* ── 空状态上手引导（2026-09-16）────────────────────────────────
+   此前无消息时 .messages 是一片纯空白，现改为可操作的引导面板。
+   两态：未配模型（教怎么配） / 已配模型（教怎么用）。 */
+.so-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.so-hero { text-align: center; margin-bottom: 18px; }
+.so-hero-icon { font-size: 40px; line-height: 1; margin-bottom: 8px; }
+.so-hero-title { font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 6px; }
+.so-hero-sub { font-size: 13px; color: #6b7280; max-width: 460px; margin: 0 auto; line-height: 1.6; }
+
+.so-card {
+  width: 100%;
+  max-width: 560px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-sizing: border-box;
+}
+.so-card-warn { border-color: #ffd591; background: #fffbf5; }
+.so-card-head { font-size: 14px; font-weight: 600; color: #1f2937; margin-bottom: 8px; }
+.so-card-p { font-size: 13px; color: #4b5563; margin: 0 0 8px; line-height: 1.65; }
+.so-list { margin: 0 0 14px; padding-left: 18px; font-size: 12.5px; color: #6b7280; line-height: 1.85; }
+.so-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.so-btn {
+  padding: 7px 14px; border-radius: 7px; font-size: 13px; cursor: pointer;
+  border: 1px solid #d1d5db; background: #fff; color: #374151;
+  transition: background .15s, border-color .15s;
+}
+.so-btn:hover { background: #f3f4f6; }
+.so-btn-primary { background: #409EFF; border-color: #409EFF; color: #fff; font-weight: 500; }
+.so-btn-primary:hover { background: #2b8ce8; border-color: #2b8ce8; }
+.so-note { font-size: 11.5px; color: #9ca3af; margin: 10px 0 0; }
+
+.so-steps {
+  width: 100%; max-width: 560px;
+  display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px;
+}
+.so-step {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 9px; padding: 10px 12px;
+}
+.so-step-n {
+  flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%;
+  background: #e6f0ff; color: #409EFF; font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; margin-top: 1px;
+}
+.so-step-t { font-size: 13px; font-weight: 600; color: #1f2937; margin-bottom: 2px; }
+.so-step-d { font-size: 12px; color: #6b7280; line-height: 1.55; }
+
+.so-examples { width: 100%; max-width: 560px; }
+.so-examples-title { font-size: 12px; color: #9ca3af; margin-bottom: 8px; text-align: center; }
+.so-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.so-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 12px; border-radius: 18px; font-size: 12.5px; cursor: pointer;
+  border: 1px solid #d9e6f7; background: #f0f7ff; color: #2b6cb0;
+  transition: background .15s, border-color .15s;
+}
+.so-chip:hover { background: #e0efff; border-color: #409EFF; }
+.so-chip-icon { font-size: 14px; }
 
 /* 输入区 */
 .input-bar {
