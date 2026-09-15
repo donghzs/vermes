@@ -6,7 +6,7 @@
 //
 // 与对话式(C) 共享同一后端引擎：工具箱经 invokeTool → POST /api/tools/invoke →
 // handler 内部含 run_quality_gate，故质量护栏对两种入口行为一致（P0b 已封堵缺口）。
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScholarStore } from '../stores/scholar'
 import ToolBox from './scholar/ToolBox.vue'
@@ -35,14 +35,66 @@ const TAB_KEY = 'vermes-scholar-last-tab'
 
 // 无项目时的上手提示条，用户可关掉（关掉后本次会话不再出现）
 const hintDismissed = ref(false)
+const projectHintDismissed = ref(false)
 
 function switchTab(key) {
   scholar.activeTab = key
   try { localStorage.setItem(TAB_KEY, key) } catch {}
 }
 
+function goSettings() { router.push('/settings') }
+
+// 下拉框选项目：显式经 store，确保后端激活项目被同步（v-model 直接赋值会漏掉这一步）
+function onProjectChange(e) {
+  const raw = e.target.value
+  if (raw === '') { scholar.selectProject(null); return }
+  const pid = Number(raw)
+  scholar.selectProject(Number.isInteger(pid) && pid > 0 ? pid : null)
+}
+
+// ── 环境自检（2026-09-16 非技术用户上手专项）──────────────────────────
+// 原则：动手之前就告诉用户缺什么，而不是等他点了工具、在角落里冒一行红字才明白。
+// 复用后端已有的 GET /api/onboarding（blueprints/config.py get_onboarding）：
+// 它检查 model / provider / api_key 三者是否齐备 —— 不重复实现，口径与首页一致。
+const envChecked = ref(false)
+const envMissing = ref([])
+const envDismissed = ref(false)
+
+const MISSING_LABEL = {
+  model: '还没选模型',
+  provider: '还没选服务商',
+  api_key: 'API Key 还没填',
+}
+const envMissingText = computed(
+  () => envMissing.value.map(m => MISSING_LABEL[m] || m).join('、')
+)
+const envBlocked = computed(
+  () => envChecked.value && !envDismissed.value && envMissing.value.length > 0
+)
+
+async function checkEnv() {
+  try {
+    const resp = await fetch('/api/onboarding')
+    if (!resp.ok) {
+      envChecked.value = true
+      return // 老后端没有该端点：静默降级，不显示横幅、不打扰
+    }
+    const d = await resp.json()
+    envMissing.value = Array.isArray(d.missing) ? d.missing : []
+  } catch {
+    /* 后端不可达：不阻断面板本身 */
+  }
+  envChecked.value = true
+}
+
+// 有项目但没选中：写回类成果会落进后端隐藏的默认兜底项目，用户回项目空间找不到。
+const projectNotPicked = computed(
+  () => scholar.projectsLoaded && scholar.projects.length > 0 &&
+        scholar.currentProjectId == null && !projectHintDismissed.value
+)
+
 onMounted(async () => {
-  await scholar.loadProjects()
+  await Promise.all([scholar.loadProjects(), checkEnv()])
   let saved = null
   try { saved = localStorage.getItem(TAB_KEY) } catch {}
   if (saved && TABS.some(t => t.key === saved)) {
@@ -90,17 +142,70 @@ onMounted(async () => {
 
       <div class="ml-auto flex items-center gap-2">
         <label class="text-xs text-gray-500">当前项目</label>
+        <!-- 不用 v-model：直接改 currentProjectId 会绕过 store 的 selectProject()，
+             后端「激活项目」不会被更新，写回类成果仍会落进隐藏的默认兜底项目。
+             @change 显式走 selectProject（内含种入后端 + 跨会话记忆）。
+             另：:value="null" 会被 Vue 视为「移除属性」，option.value 退化成中文文本，
+             故这里用静态空串 ''，在 handler 里映射回 null。 -->
         <select
-          v-model="scholar.currentProjectId"
+          :value="scholar.currentProjectId ?? ''"
+          @change="onProjectChange"
           class="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm"
         >
-          <option :value="null">未选择（工具不带项目上下文）</option>
+          <option value="">未选择项目（成果可能散落）</option>
           <option v-for="p in scholar.projects" :key="p.id" :value="p.id">
             #{{ p.id }} {{ p.title }}
           </option>
         </select>
       </div>
     </header>
+
+    <!-- 环境自检（2026-09-16 非技术用户上手专项）
+         背景：模型没配好时，工具箱 27 个工具点下去必然报错，而原先只有报错那一刻
+         才在角落冒一行红字 —— 用户会判定「软件坏了」，而不是「我还没配模型」。
+         这里在进页面时就显式说明缺什么，并给一键直达。 -->
+    <div
+      v-if="envBlocked"
+      class="shrink-0 flex items-center gap-3 px-4 py-2.5 flex-wrap
+             bg-rose-50 dark:bg-rose-900/25 border-b border-rose-200 dark:border-rose-800
+             text-sm text-rose-800 dark:text-rose-200"
+    >
+      <span>⚠️ <b>还差一步才能开始</b> —— {{ envMissingText }}。论文工具需要调用大模型，配好之后 27 个工具才跑得动。</span>
+      <span class="ml-auto flex items-center gap-2">
+        <button
+          @click="goSettings"
+          class="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition"
+        >⚙️ 去设置</button>
+        <button
+          @click="switchTab('guide')"
+          class="px-3 py-1 rounded-lg border border-rose-300 dark:border-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-xs transition"
+        >先看看流程</button>
+        <button
+          @click="envDismissed = true"
+          class="px-2 py-1 text-xs text-rose-600 dark:text-rose-400 hover:underline"
+        >知道了</button>
+      </span>
+    </div>
+
+    <!-- 有项目但没选中：写回类成果会落进后端隐藏的默认兜底项目 -->
+    <div
+      v-if="!envBlocked && projectNotPicked"
+      class="shrink-0 flex items-center gap-3 px-4 py-2.5 flex-wrap
+             bg-amber-50 dark:bg-amber-900/25 border-b border-amber-200 dark:border-amber-800
+             text-sm text-amber-800 dark:text-amber-200"
+    >
+      <span>📌 <b>还没选项目</b> —— 现在点写回类工具，成果会落进一个隐藏的默认项目，你在「项目空间」里翻不到。</span>
+      <span class="ml-auto flex items-center gap-2">
+        <button
+          @click="switchTab('projects')"
+          class="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition"
+        >去选一个</button>
+        <button
+          @click="projectHintDismissed = true"
+          class="px-2 py-1 text-xs text-amber-600 dark:text-amber-400 hover:underline"
+        >知道了</button>
+      </span>
+    </div>
 
     <!-- 无项目时的上手提示（2026-09-16 非技术用户上手专项）
          背景：此前没有任何项目也能直接点工具，而写回类工具在后端会**静默写进隐藏的

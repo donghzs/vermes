@@ -13,6 +13,20 @@ export const useScholarStore = defineStore('scholar', () => {
   const projects = ref([])
   const projectsLoaded = ref(false)
 
+  // 记住上次选中的项目（2026-09-16 非技术用户上手专项）。
+  // 背景：currentProjectId 原先只活在内存里 —— 刷新页面就回到「未选择」，而写回类工具
+  // 在没有激活项目时会**静默落进后端隐藏的默认兜底项目**，用户回「项目空间」找不到
+  // 自己的成果，只会以为「点了没用」。跨会话记住即可消除这个断点。
+  const PROJECT_KEY = 'vermes-scholar-current-project'
+  let projectAutoRestored = false // 每次会话只自动恢复一次，之后尊重用户的手动选择
+
+  function persistProjectId(pid) {
+    try {
+      if (pid == null) localStorage.removeItem(PROJECT_KEY)
+      else localStorage.setItem(PROJECT_KEY, String(pid))
+    } catch { /* localStorage 不可用时静默降级 */ }
+  }
+
   // 跨子组件协调：FlowGuide / Uploader 触发工具箱动作时统一经此。
   const activeTab = ref('tools') // 'tools' | 'projects' | 'quality' | 'guide'
   const pendingTool = ref(null) // FlowGuide 点「执行」→ ToolBox 选中该工具
@@ -45,6 +59,21 @@ export const useScholarStore = defineStore('scholar', () => {
     } catch (e) {
       projects.value = []
     } finally {
+      // 首次加载时自动恢复上次选中的项目：
+      //  - 只恢复一次，之后用户在本会话内的手动选择不被反复覆盖；
+      //  - 恢复的 id 必须仍存在于项目列表，否则说明已被删除，保持未选择。
+      if (!projectAutoRestored) {
+        projectAutoRestored = true
+        if (currentProjectId.value == null) {
+          let saved = null
+          try { saved = Number(localStorage.getItem(PROJECT_KEY)) } catch { /* ignore */ }
+          if (Number.isInteger(saved) && saved > 0 &&
+              projects.value.some(p => Number(p.id) === saved)) {
+            currentProjectId.value = saved
+            setActiveProject(saved) // 同步后端激活项目，避免刷新后零样本写回落错
+          }
+        }
+      }
       projectsLoaded.value = true
     }
   }
@@ -74,7 +103,10 @@ export const useScholarStore = defineStore('scholar', () => {
       const data = await resp.json().catch(() => ({}))
       throw new Error(data.detail || `删除失败（HTTP ${resp.status}）`)
     }
-    if (currentProjectId.value === pid) currentProjectId.value = null
+    if (currentProjectId.value === pid) {
+      currentProjectId.value = null
+      persistProjectId(null)
+    }
     await loadProjects()
   }
 
@@ -98,6 +130,7 @@ export const useScholarStore = defineStore('scholar', () => {
   async function setActiveProject(pid) {
     const id = Number(pid)
     if (!Number.isInteger(id) || id <= 0) return
+    persistProjectId(id) // 覆盖 createProject / selectProject 两条路径
     try {
       await fetch('/api/scholar/active-project', {
         method: 'POST',
@@ -112,7 +145,11 @@ export const useScholarStore = defineStore('scholar', () => {
   // 选中项目 = 更新当前 id + 种入后端激活项目
   function selectProject(pid) {
     currentProjectId.value = pid
-    setActiveProject(pid)
+    if (pid == null) {
+      persistProjectId(null) // 用户主动取消选择：清掉记忆，下次进来不再自动恢复
+      return
+    }
+    setActiveProject(pid) // 内部会 persistProjectId
   }
 
   return {

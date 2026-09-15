@@ -144,9 +144,11 @@ async function runTool(args) {
 
 <template>
   <div class="p-4 space-y-4">
+    <!-- 文案刻意避开 project_id / 单阶段 这类术语（2026-09-16 非技术用户上手专项）：
+         第一次来的人看到字段名只会更困惑，说清「会自动归到哪个项目」就够。 -->
     <p class="text-sm text-gray-500">
-      选择工具直接运行（单阶段独立用）。带项目上下文的工具会从顶部「当前项目」自动注入
-      <code class="px-1 bg-gray-100 dark:bg-gray-700 rounded">project_id</code>，无需手填。
+      选一个工具，填好内容直接跑。需要归到某个项目的工具，会自动使用顶部「当前项目」，
+      不用你填编号。
     </p>
 
     <p v-if="loadError" class="text-sm text-red-500">{{ loadError }}</p>
