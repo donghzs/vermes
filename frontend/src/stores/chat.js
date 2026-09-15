@@ -917,9 +917,20 @@ export const useChatStore = defineStore('chat', () => {
       ws.onerror = () => { try { ws.close() } catch (e) {} }
     }
     const _scheduleSyncReconnect = (fn) => {
-      if (_syncRetry >= _SYNC_MAX_RETRIES) return
-      const delay = Math.min(1000 * Math.pow(2, _syncRetry), 30000)
-      _syncRetry++
+      // 原实现：重试 20 次后 `return`，**永久放弃**。
+      // 问题：本连接同时承载渠道未读角标与 Bot 房间实时刷新（room_update），
+      // 而桌面端可能连续运行数天——后端被看门狗重启、机器睡眠唤醒都会让它断开。
+      // 一旦放弃，且 initChannelSync() 开头有 `if (_syncWs) return`（旧 socket 非空），
+      // 就再无任何路径能复活，只能重启应用。
+      // 改法：快速退避重试耗尽后，转入 60s 一次的「长跑重试」而非彻底放弃。
+      // 稳态成本 = 每分钟 1 次建连尝试，可忽略；连接成功后 _syncRetry 归零回到快路径。
+      let delay
+      if (_syncRetry < _SYNC_MAX_RETRIES) {
+        delay = Math.min(1000 * Math.pow(2, _syncRetry), 30000)
+        _syncRetry++
+      } else {
+        delay = 60000
+      }
       setTimeout(fn, delay)
     }
     connect()
