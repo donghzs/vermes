@@ -451,7 +451,8 @@ def check_statistics_consistency(
     支持校验的指标对：
     1. η² ↔ Cohen's d:  d = 2√(η²/(1-η²))
     2. t ↔ d:  d = 2t/√(df)  (独立样本 t 检验)
-    3. F ↔ η²:  η² = F/(F + df_error)  (单因素 ANOVA)
+    3. F ↔ η²:  η² = F·df_between/(F·df_between + df_error)  (单因素 ANOVA；
+       df_between 缺省时只能算出 df1=1 的理论**下界**，见校验 3 的四分支说明)
     4. d ↔ r:  r = d/√(d² + 4)  (二分组)
     5. p值 ↔ 统计量:  根据统计量和自由度估算 p 值范围
 
@@ -462,6 +463,7 @@ def check_statistics_consistency(
             - t_value: float (t 统计量)
             - df: int (自由度)
             - f_value: float (F 统计量)
+            - df_between: int (组间自由度，单因素 ANOVA = 组数-1；缺省时 F↔η² 按两组比较估算)
             - df_error: int (误差自由度)
             - p_value: float (p 值)
             - n_group1: int (组1样本量)
@@ -479,6 +481,9 @@ def check_statistics_consistency(
     df = stats.get("df")
     f = stats.get("f_value")
     df_error = stats.get("df_error")
+    # 组间自由度（单因素 ANOVA 中 = 组数-1）。2026-09-16 新增：缺它时 F↔η² 换算
+    # 只能在「两组比较」前提下成立，三组及以上会误判（详见校验 3 的说明）。
+    df_between = stats.get("df_between")
     p = stats.get("p_value")
     n1 = stats.get("n_group1")
     n2 = stats.get("n_group2")
@@ -523,21 +528,74 @@ def check_statistics_consistency(
 
     # ── 校验 3: F ↔ η² (单因素 ANOVA) ──
     if f is not None and df_error is not None and eta_sq is not None:
-        # η² = F / (F + df_error)
-        eta_sq_expected = f / (f + df_error)
-        tolerance = 0.05  # η² 允许 0.05 绝对误差
+        # 🔴 2026-09-16 修正：原实现为 η² = F/(F+df_error)，**漏了组间自由度**。
+        #   推导：η² = SS_b/(SS_b+SS_e)，而 F = (SS_b/df1)/(SS_e/df2)
+        #         → SS_b = F·MS_e·df1, SS_e = MS_e·df2
+        #         → η² = F·df1 / (F·df1 + df2)
+        #   两个式子**仅在 df1=1（两组比较）时等价**；三组及以上用旧式会系统性低估 η²，
+        #   实测 F=8.0/df1=2/df2=87：旧式给 0.0842，真值 0.1553 —— 于是把**正确报告**
+        #   判成「矛盾」（误报）。此前的测试数据恰好都是 F(1,58) 这类 df1=1，故未暴露。
+        assumed_two_group = df_between is None
+        k = 1 if assumed_two_group else max(1, int(df_between))
+        eta_sq_expected = (f * k) / (f * k + df_error)
+        # 容差改「相对为主 + 绝对下限」：η² 是 0~0.2 量级的量，原先固定 0.05 绝对容差
+        # 分辨力过差（0.087 与 0.045 相差近一倍仍判「一致」）。
+        tolerance = max(0.01, abs(eta_sq_expected) * 0.20)
         diff = abs(eta_sq - eta_sq_expected)
         consistent = diff < tolerance
-        checks.append(StatCheck(
-            metric="F ↔ η²",
-            value_reported=f"η² = {eta_sq}",
-            value_expected=f"η² = {eta_sq_expected:.4f} (from F={f}, df_error={df_error})",
-            consistent=consistent,
-            explanation=(
-                f"根据 F={f}, df_error={df_error} 换算 η² 应为 {eta_sq_expected:.4f}，"
-                f"论文报告 η²={eta_sq}，{'一致' if consistent else f'偏差 {diff:.4f}'}"
-            ),
-        ))
+
+        if not assumed_two_group:
+            # ① 传了组间自由度 → 公式与期望值都确定，严格判定。
+            checks.append(StatCheck(
+                metric="F ↔ η²",
+                value_reported=f"η² = {eta_sq}",
+                value_expected=f"η² = {eta_sq_expected:.4f} (from F={f}, df1={k}, df_error={df_error})",
+                consistent=consistent,
+                explanation=(
+                    f"根据 F={f}, df1={k}, df_error={df_error} 换算 η² 应为 {eta_sq_expected:.4f}，"
+                    f"论文报告 η²={eta_sq}，"
+                    f"{'一致' if consistent else f'偏差 {diff:.4f}，超出容差 {tolerance:.4f}'}"
+                ),
+            ))
+        elif consistent:
+            # ② 未传 df_between，但报告值与 df1=1 的下界吻合 → 两组场景，正常通过。
+            checks.append(StatCheck(
+                metric="F ↔ η²",
+                value_reported=f"η² = {eta_sq}",
+                value_expected=f"η² = {eta_sq_expected:.4f} (from F={f}, df1=1(假定), df_error={df_error})",
+                consistent=True,
+                explanation=(
+                    f"按两组比较（df1=1）换算 η² 应为 {eta_sq_expected:.4f}，"
+                    f"论文报告 η²={eta_sq}，一致"
+                ),
+            ))
+        elif eta_sq < eta_sq_expected:
+            # ③ **低于下界 → 必然矛盾，可安全断言**：η² 关于 df1 单调递增而 df1≥1，
+            #    故 df1=1 的换算值已是理论最小值，报告值比它还小就不可能成立。
+            checks.append(StatCheck(
+                metric="F ↔ η²",
+                value_reported=f"η² = {eta_sq}",
+                value_expected=f"η² ≥ {eta_sq_expected:.4f}（df1=1 时的理论下界）",
+                consistent=False,
+                explanation=(
+                    f"η² 不可能低于 {eta_sq_expected:.4f}：换算关系 η²=F·df1/(F·df1+df2) 关于 df1 "
+                    f"单调递增，而组间自由度 df1≥1，故该值已是下界。报告 η²={eta_sq} 偏小，请核对。"
+                ),
+            ))
+        else:
+            # ④ 高于下界 → 总存在某个 df1>1 使其成立，**无法判定**。
+            #    这里明确说「未校验」而不是猜「一致」（放过错误）或报「矛盾」（误伤正确报告）。
+            checks.append(StatCheck(
+                metric="F ↔ η²（未校验）",
+                value_reported=f"η² = {eta_sq}",
+                value_expected=f"η² ≥ {eta_sq_expected:.4f}（df1=1 时的下界）",
+                consistent=True,
+                explanation=(
+                    f"未提供组间自由度 df_between，无法确定 η² 的期望值 —— η² 随组数增大而增大，"
+                    f"df1=1 时下界为 {eta_sq_expected:.4f}，而报告值高于它，说明可能是多组比较，"
+                    f"但不能据此判定对错。请补充 df_between（单因素 ANOVA = 组数-1）后重新校验。"
+                ),
+            ))
 
     # ── 校验 4: d ↔ mean_diff / pooled_sd ──
     if d is not None and mean_diff is not None and pooled_sd is not None:

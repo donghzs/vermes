@@ -2861,6 +2861,11 @@ SCHOLARFORGE_CHECK_STATS_SCHEMA = {
             "t_value": {"type": "number", "description": "t 统计量"},
             "df": {"type": "integer", "description": "自由度"},
             "f_value": {"type": "number", "description": "F 统计量"},
+            "df_between": {
+                "type": "integer",
+                "description": "组间自由度（单因素 ANOVA = 组数-1）。做三组及以上比较时**务必填**："
+                               "缺省会按两组比较估算 η²，导致误判。",
+            },
             "df_error": {"type": "integer", "description": "误差自由度"},
             "p_value": {"type": "number", "description": "p 值"},
             "n_group1": {"type": "integer", "description": "组1样本量"},
@@ -2893,6 +2898,53 @@ async def _handle_scholarforge_check_stats(args: dict, **kw: Any) -> str:
     except Exception as e:
         logger.error(f"check_stats error: {e}", exc_info=True)
         return f"❌ 统计校验失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Stats Table（统计结果 → 学术三线表，2026-09-16 新增）
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_STATS_TABLE_SCHEMA = {
+    "name": "scholarforge_stats_table",
+    "description": (
+        "把 SPSS 输出或统计结论转成可直接放进论文的学术三线表。适用于：写完「研究结果」"
+        "章节时，把 SPSS 结果窗口里的表格（成对样本检验/描述统计等，制表符分隔，直接复制粘贴即可）"
+        "或正文统计句（如 t(58)=2.34, p=.023, d=0.61）转成规范表格，并顺带做统计一致性校验。"
+        "免去手工把数字抄进 Word、再手工调三线表边框。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "raw_text": {
+                "type": "string",
+                "description": "SPSS 输出文本（在结果窗口选中整块复制即可）或统计结论文字。",
+            },
+            "caption": {
+                "type": "string",
+                "description": "表题，如「表 3-1 实验组与对照组前测成绩比较」。",
+            },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
+        },
+        "required": ["raw_text"],
+    },
+}
+
+
+async def _handle_scholarforge_stats_table(args: dict, **kw: Any) -> str:
+    """统计结果 → 三线表（纯规则解析，零 LLM 调用，秒级返回）"""
+    raw = args.get("raw_text") or ""
+    if not raw.strip():
+        return "❌ 请粘贴 SPSS 输出文本或统计结论文字。"
+    try:
+        from vermes_cli.scholarforge.stats_table import build_stats_report
+        return build_stats_report(raw, caption=(args.get("caption") or ""))
+    except Exception as e:
+        logger.error(f"stats_table error: {e}", exc_info=True)
+        return f"❌ 生成三线表失败: {str(e)[:200]}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -3880,6 +3932,18 @@ def register_tools(host_api=None):
         is_async=True,
         emoji="📐",
         description="统计指标一致性校验（η²↔d↔t↔F 值换算验证）",
+    )
+    # 2026-09-16 新增：统计结果 → 三线表。与上面 check_stats 的分工是——
+    # check_stats 管「给数字、查对不对」，本工具管「给 SPSS 输出/一句话、直接出表」，
+    # 内部会**复用** check_statistics_consistency，不重写任何换算公式。
+    registry.register(
+        name="scholarforge_stats_table",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_STATS_TABLE_SCHEMA,
+        handler=_with_usage("scholarforge_stats_table", _handle_scholarforge_stats_table),
+        is_async=True,
+        emoji="🧮",
+        description="统计结果转学术三线表（粘贴 SPSS 输出或统计结论 → 表格 + 一致性校验）",
     )
     registry.register(
         name="scholarforge_detect_design_flaws",

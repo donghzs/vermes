@@ -38,10 +38,19 @@ const TOOL_GROUPS = [
       'scholarforge_plagiarism_check',
       'scholarforge_deaigc',
       'scholarforge_quality_gate',
-      'scholarforge_check_stats',
       'scholarforge_detect_design_flaws',
       'scholarforge_review_claims',
       'scholarforge_review',
+    ],
+  },
+  // 「统计与表格」单独成组（2026-09-16）：写「研究结果」章节时找的是统计/表格，
+  // 原来 check_stats 混在 7 项的「质量检查」里，等于让用户在最不该找的地方找。
+  // stats_table 放在前面 —— 它是入口（先出表），check_stats 是深挖（已有数字查对错）。
+  {
+    label: '📊 统计与表格',
+    names: [
+      'scholarforge_stats_table',
+      'scholarforge_check_stats',
     ],
   },
   {
