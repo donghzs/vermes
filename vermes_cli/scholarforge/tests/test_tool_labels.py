@@ -42,6 +42,22 @@ def _find_repo_root() -> Path:
 REPO_ROOT = _find_repo_root()
 SF_DIR = REPO_ROOT / "vermes_cli" / "scholarforge"
 LABELS_JS = REPO_ROOT / "frontend" / "src" / "utils" / "toolLabels.js"
+TOOLBOX_VUE = (
+    REPO_ROOT / "frontend" / "src" / "components" / "scholar" / "ToolBox.vue"
+)
+
+
+def _grouped_tool_names() -> list[str]:
+    """解析 ToolBox.vue 的 TOOL_GROUPS，返回组内出现的全部工具名（保留重复，便于查重）"""
+    if not TOOLBOX_VUE.exists():
+        return []
+    src = TOOLBOX_VUE.read_text(encoding="utf-8")
+    start = src.find("const TOOL_GROUPS")
+    if start == -1:
+        return []
+    end = src.find("\n]", start)
+    segment = src[start:end] if end != -1 else src[start:]
+    return re.findall(r"'(scholarforge_[a-z0-9_]+)'", segment)
 
 # registry.register(name="scholarforge_x", toolset="scholarforge", ...)
 _REGISTER_RE = re.compile(r"registry\.register\((.*?)\n\s*\)", re.S)
@@ -143,6 +159,42 @@ class TestScholarforgeToolLabels(unittest.TestCase):
         for name, label in self.labels.items():
             self.assertNotIn(label, seen, f"中文名「{label}」被 {seen.get(label)} 和 {name} 同时使用")
             seen[label] = name
+
+
+@unittest.skipUnless(TOOLBOX_VUE.exists(), f"工具箱组件不存在: {TOOLBOX_VUE}")
+class TestToolBoxGrouping(unittest.TestCase):
+    """工具箱分组的完整性守卫
+
+    没入组的工具会掉进「其他」组。2026-09-16 实测：28 个工具里曾有 5 个落在「其他」，
+    等于分组形同虚设 —— 用户找「查看章节」得在一堆杂项里翻。加这条守卫防复发。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.grouped = _grouped_tool_names()
+        cls.tools = _registered_scholarforge_tools()
+
+    def test_group_scan_works(self):
+        """守卫本身要有效：解析不到说明锚点变了"""
+        self.assertGreater(len(self.grouped), 20, "解析到的工具名过少，TOOL_GROUPS 锚点可能已失效")
+
+    def test_every_tool_is_grouped(self):
+        """每个工具都必须归到某个组，不能靠「其他」兜底"""
+        ungrouped = sorted(set(self.tools) - set(self.grouped))
+        self.assertEqual(
+            [], ungrouped,
+            "以下工具未归入任何分组，会掉进「其他」组：\n  " + "\n  ".join(ungrouped),
+        )
+
+    def test_no_tool_listed_twice(self):
+        """同一个工具不能出现在两个组里（用户会以为是两个不同工具）"""
+        dupes = sorted({n for n in self.grouped if self.grouped.count(n) > 1})
+        self.assertEqual([], dupes, f"以下工具被分到了多个组：{dupes}")
+
+    def test_no_grouped_name_that_does_not_exist(self):
+        """组里写了已不存在的工具名 → 提示清理（否则那个位置永远空着）"""
+        ghost = sorted(set(self.grouped) - set(self.tools))
+        self.assertEqual([], ghost, f"分组里引用了不存在的工具：{ghost}")
 
 
 @unittest.skipUnless(LABELS_JS.exists(), f"前端标签文件不存在: {LABELS_JS}")

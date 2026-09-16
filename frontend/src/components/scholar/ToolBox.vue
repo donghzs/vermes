@@ -15,11 +15,15 @@ const TOOL_GROUPS = [
   {
     label: '✍️ 写作主链',
     names: [
+      // 一条龙放组内第一：它是"不知道从哪下手"时的入口（与「统计与表格」组
+      // 把 stats_table 放前面同样的道理 —— 入口在前，深挖在后）。
+      'scholarforge_run_pipeline',
       'scholarforge_search',
       'scholarforge_outline',
       'scholarforge_write',
       'scholarforge_polish',
       'scholarforge_score',
+      'scholarforge_read_section',
     ],
   },
   {
@@ -31,6 +35,7 @@ const TOOL_GROUPS = [
       'scholarforge_save_literature_cards',
       'scholarforge_literature_matrix',
       'scholarforge_research_map',
+      'scholarforge_citation_graph',
     ],
   },
   {
@@ -61,6 +66,10 @@ const TOOL_GROUPS = [
       'scholarforge_manage_snapshots',
       'scholarforge_apply_template',
       'scholarforge_learn_style',
+      // 项目类工具与"导出"同属"管理这篇论文"的心智，放一起；
+      // 原先它们落在「其他」组 —— 28 个工具里有 5 个进「其他」等于分组形同虚设。
+      'scholarforge_list_projects',
+      'scholarforge_set_active_project',
     ],
   },
 ]
