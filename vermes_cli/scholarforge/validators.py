@@ -536,9 +536,16 @@ def _p_verdict(expected_p: float, reported_p: float) -> str:
     返回 "" 表示不断言（未校验）；否则返回矛盾方向（"过大" / "过小"）。
 
     🔴 判定纪律（宁可放过、不可误伤），两条规则各自都有必须如此的理由：
-      · 「报告 p 过大」：只有 expected < 0.001 且 reported > 0.05 才断言。
-        加 reported > 0.05 这道闸，是为了避开「p < .05」「p < .001」这类**上界写法**
-        ——它们被解析成 0.05 / 0.001 后天然大于真值，属合法报告而非错误。
+      · 「报告 p 过大」：expected < 0.05（真值显著）且 reported > 0.05（报告不显著）
+        且 reported ≥ expected×5 才断言。
+        - `reported > 0.05` 这道闸是为了避开「p < .05」「p < .001」这类**上界写法**
+          ——它们被解析成 0.05 / 0.001，天然大于真值，属合法报告而非错误。
+        - 🔴 2026-09-17 放宽：原门槛是 `expected < 0.001`，**放过了整整一类最严重的
+          抄错** —— 真值 p=.019（显著）却报告 p=.919（不显著），即「把显著写成不显著」，
+          旧规则不判（因为 .019 不小于 .001）。而 `expected < 0.001` 对避上界并**无必要**
+          （上界污染由 `reported > 0.05` 单独挡住），故放宽到 α 阈值本身。
+        - ×5 余量：避开临界抖动（.049 vs .051），也兼容常见的多重比较校正
+          （Bonferroni 通常抬高 3–5 倍）。判定文本里会显式提示校正值属正常。
       · 「报告 p 过小」：只有 expected > 0.05、reported < 0.05 且相差 10 倍以上才断言。
         上界写法只会把 reported 抬高，不会压低，故这个方向不受上界污染；
         留 10 倍余量是为了兼容**单尾 p**（与双尾恰好差 2 倍，是合法差异）。
@@ -547,7 +554,7 @@ def _p_verdict(expected_p: float, reported_p: float) -> str:
         return ""
     if not (0.0 < reported_p <= 1.0):  # p=0（"< .001" 被解析没了）或越界值无法判定
         return ""
-    if expected_p < 0.001 and reported_p > 0.05:
+    if expected_p < 0.05 and reported_p > 0.05 and reported_p >= expected_p * 5:
         return "过大"
     if expected_p > 0.05 and reported_p < 0.05 and reported_p * 10 < expected_p:
         return "过小"
@@ -865,7 +872,8 @@ def check_statistics_consistency(
                 explanation=(
                     f"由 t={t}, df={df} 精确计算双尾 p = {expected_p:.3g}，论文报告 p={p}，"
                     f"报告值明显{'过大' if verdict == '过大' else '过小'}。"
-                    + ("（若该 p 是「p < .001」这类上界写法则属正常，请按上界理解。）"
+                    + ("（若该 p 是「p < .001」这类上界写法、或**多重比较校正后**"
+                       "（Bonferroni 等）的校正值，则属正常，请按校正后理解。）"
                        if verdict == "过大" else
                        "（若该 p 为单尾值，与双尾恰好差 2 倍，不会触发本判定。）")
                 ),
@@ -885,7 +893,8 @@ def check_statistics_consistency(
                 explanation=(
                     f"由 F={f}, df1={df_between}, df2={df_error} 精确计算右尾 p = {expected_p:.3g}，"
                     f"论文报告 p={p}，报告值明显{'过大' if verdict == '过大' else '过小'}。"
-                    + ("（若该 p 是「p < .001」这类上界写法则属正常，请按上界理解。）"
+                    + ("（若该 p 是「p < .001」这类上界写法、或**多重比较校正后**"
+                       "（Bonferroni 等）的校正值，则属正常，请按校正后理解。）"
                        if verdict == "过大" else
                        "（F 检验只有右尾，不存在单尾/双尾差异；若确为合法报告请核对 F 值与自由度。）")
                 ),

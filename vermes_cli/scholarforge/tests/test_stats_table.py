@@ -221,3 +221,230 @@ class TestEtaSquaredBranches:
     def test_end_to_end_catches_wrong_eta(self):
         report = build_stats_report("三组间差异显著，F(2,87)=4.12, p=.019, η²=.20")
         assert "**矛盾**: 1" in report
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F. 🔴 续轮（2026-09-17）：粘贴 SPSS 表格时的一致性校验
+#
+# 背景：detect_table_rows 早就能识别 SPSS 复制出来的表，但 build_stats_report
+# 只拿 parse_inline_stats 的结果去做校验 —— 后者认的是正文写法 `F(2,87)=4.12`，
+# 而 SPSS 表里的数是**躺在列里的裸值**。于是粘贴表格时 stats 恒为空 →
+# **一致性校验一次都没跑过**，用户却以为校验过了（虚假安全感）。
+# ════════════════════════════════════════════════════════════════════════
+
+# 真实 SPSS 中文输出的两张表（制表符分隔；末行结尾的空单元格是合法列占位）
+SPSS_ANOVA = (
+    "ANOVA\n\n反应时\n"
+    "\t平方和\t自由度\t均方\tF\t显著性\n"
+    "组之间\t1234.567\t2\t617.284\t4.123\t.019\n"
+    "组内\t13023.456\t87\t149.694\t\t\n"
+    "总计\t14258.023\t89\t\t\t\n"
+)
+
+SPSS_TTEST = (
+    "独立样本检验\n\n"
+    "\t\tF\t显著性\tt\t自由度\tSig.（双尾）\n"
+    "成绩\t假定等方差\t1.234\t.271\t2.456\t78\t.016\n"
+    "\t不假定等方差\t\t\t2.441\t72.345\t.017\n"
+)
+
+
+class TestSpssTableRowPreservation:
+    """🔴 回归：行尾空单元格是**列占位**，不能当空白裁掉。
+
+    旧实现对整段 .strip() + 每行 rstrip()，把「组内」「总计」两行结尾的 tab
+    吃掉 → 列数从 6 掉到 3/4 → 被列数过滤**整行丢弃**（4 行只剩 2 行），
+    而 F 的分母自由度 df_error 正来自「组内」行。
+    """
+
+    def test_anova_keeps_all_four_rows(self):
+        rows = detect_table_rows(SPSS_ANOVA)
+        assert len(rows) == 4, f"ANOVA 表应保留 4 行，实际 {len(rows)}：{rows}"
+
+    def test_error_row_survives_so_df_error_is_available(self):
+        """「组内」行必须活下来，否则 df_error 取不到 → F↔η² / p↔F 都算不了。"""
+        from vermes_cli.scholarforge.stats_table import extract_table_stats
+        stats = extract_table_stats(detect_table_rows(SPSS_ANOVA))
+        assert stats.get("df_error") == 87
+
+    def test_trailing_tab_cells_preserved(self):
+        """末行 `总计\\t14258.023\\t89\\t\\t\\t` 的三个空单元格必须保留。"""
+        rows = detect_table_rows(SPSS_ANOVA)
+        total_row = [r for r in rows if r and r[0] == "总计"][0]
+        assert len(total_row) == 6
+
+
+class TestSpssTableExtraction:
+    def test_anova_extracts_f_and_both_dfs(self):
+        from vermes_cli.scholarforge.stats_table import extract_table_stats
+        s = extract_table_stats(detect_table_rows(SPSS_ANOVA))
+        assert s["f_value"] == pytest.approx(4.123)
+        assert s["df_between"] == 2
+        assert s["df_error"] == 87
+        assert s["p_value"] == pytest.approx(0.019)
+
+    def test_ttest_picks_equal_variance_row(self):
+        """独立样本检验有两行，必须取「假定等方差」，不能取 Welch 那行。"""
+        from vermes_cli.scholarforge.stats_table import extract_table_stats
+        s = extract_table_stats(detect_table_rows(SPSS_TTEST))
+        assert s["t_value"] == pytest.approx(2.456)   # 不是 2.441（不假定等方差行）
+        assert s["df"] == 78                           # 不是 72.345
+        assert s["p_value"] == pytest.approx(0.016)
+
+    def test_levene_f_is_not_mistaken_for_the_mean_test(self):
+        """🔴 表里同时有 F 和 t 时，F 是**莱文方差齐性检验**，不是均值差异检验。
+
+        若把莱文的 F=1.234 配 t 的 df=78 去做 F↔η² / p↔F，会算出根本不存在的检验。
+        故有 t 列时走 t 分支，不产出 f_value。
+        """
+        from vermes_cli.scholarforge.stats_table import extract_table_stats
+        s = extract_table_stats(detect_table_rows(SPSS_TTEST))
+        assert "f_value" not in s
+
+    def test_rightmost_p_pairs_with_t(self):
+        """t 的 p 应取最右侧的 Sig.（双尾），不是莱文那个「显著性」(.271)。"""
+        from vermes_cli.scholarforge.stats_table import extract_table_stats
+        s = extract_table_stats(detect_table_rows(SPSS_TTEST))
+        assert s["p_value"] == pytest.approx(0.016)   # 不是 0.271
+
+    def test_unknown_row_labels_yield_nothing(self):
+        """认不出「组之间 / 组内」行标签时**宁可漏**，绝不盲取第一行。"""
+        from vermes_cli.scholarforge.stats_table import extract_table_stats
+        rows = [
+            ["项目", "平方和", "自由度", "均方", "F", "显著性"],
+            ["甲", "1.0", "1", "1.0", "3.0", ".100"],
+            ["乙", "2.0", "1", "2.0", "", ""],
+        ]
+        assert extract_table_stats(rows) == {}
+
+    def test_p_zero_display_becomes_upper_bound(self):
+        """SPSS 的 `.000` 是三位小数舍入显示 = p < .001，不是 p = 0。"""
+        from vermes_cli.scholarforge.stats_table import extract_table_stats
+        tbl = (
+            "\t平方和\t自由度\t均方\tF\t显著性\n"
+            "组之间\t88.533\t2\t44.267\t12.407\t.000\n"
+            "组内\t310.800\t87\t3.572\t\t\n"
+        )
+        s = extract_table_stats(detect_table_rows(tbl))
+        assert s["p_op"] == "<"
+        assert s["p_value"] == pytest.approx(0.001)
+        assert s.get("p_zero_display") is True
+
+    def test_descriptive_stats_row(self):
+        from vermes_cli.scholarforge.stats_table import extract_table_stats
+        tbl = "\t个案数\t平均值\t标准差\n前测成绩\t40\t19.85\t3.42\n"
+        s = extract_table_stats(detect_table_rows(tbl))
+        assert s["n"] == 40
+        assert s["mean"] == pytest.approx(19.85)
+        assert s["sd"] == pytest.approx(3.42)
+
+
+class TestSpssEndToEndConsistency:
+    """端到端：粘贴 SPSS 表 → 一致性校验真的跑起来，且真能抓错。"""
+
+    def test_pasted_anova_now_produces_a_check(self):
+        """🔴 本轮核心修复：以前粘贴表格时这一段**根本不会出现**。"""
+        r = build_stats_report(SPSS_ANOVA)
+        assert "统计一致性校验" in r
+        assert "从表中提取到的统计量" in r
+
+    def test_wrong_p_in_anova_table_is_caught(self):
+        """把显著的 F（真值 p≈.019）写成 .919 —— 必须抓。"""
+        bad = SPSS_ANOVA.replace("4.123\t.019", "4.123\t.919")
+        r = build_stats_report(bad)
+        assert "**矛盾**: 1" in r
+        assert "p值 ↔ F统计量" in r
+
+    def test_wrong_sig_in_ttest_table_is_caught(self):
+        bad = SPSS_TTEST.replace("2.456\t78\t.016", "2.456\t78\t.916")
+        r = build_stats_report(bad)
+        assert "**矛盾**: 1" in r
+        assert "p值 ↔ t统计量" in r
+
+    def test_correct_tables_pass(self):
+        # 注意：一致性校验器**只在矛盾时**产出条目，一致时返回空列表 →
+        # 报告里是「✅ 未发现统计指标矛盾」，而不会出现「**矛盾**: 0」。
+        for tbl in (SPSS_ANOVA, SPSS_TTEST):
+            assert "🔴 发现矛盾" not in build_stats_report(tbl)
+
+    def test_source_row_is_disclosed(self):
+        """数字保真：必须告诉用户数字取自哪一行，便于回表核对。"""
+        r = build_stats_report(SPSS_ANOVA)
+        assert "组之间" in r
+
+
+class TestNumberFidelityInExtractedTable:
+    """学术数据保真：`.83` 不得被改写成 `0.83`。"""
+
+    def test_leading_dot_preserved_through_extraction(self):
+        r = build_stats_report("组别\tM\nA\t.83\nB\t.74")
+        assert ".83" in r
+        assert "0.83" not in r
+
+    def test_anova_raw_cells_preserved(self):
+        r = build_stats_report(SPSS_ANOVA)
+        assert "4.123" in r and ".019" in r
+
+
+class TestDerivedEtaSquared:
+    """η² 由 F + 自由度推算 —— 但**绝不**参与一致性校验。"""
+
+    def test_eta_is_derived(self):
+        r = build_stats_report(SPSS_ANOVA)
+        # F=4.123, df1=2, df2=87 → η² = 8.246/95.246 ≈ 0.087
+        assert "0.087" in r
+        assert "推算" in r
+
+    def test_excluded_from_consistency(self):
+        """🔴 推算值若喂回校验 = 自己验自己，恒真通过 → 校验被架空。
+
+        这里塞一个**离谱**的 η²=0.999 并标为推算值：必须**不产出** η² 校验项。
+        """
+        from vermes_cli.scholarforge.stats_table import consistency_block
+        stats = {"f_value": 4.123, "df_between": 2, "df_error": 87,
+                 "eta_squared": 0.999, "_derived": ["eta_squared"]}
+        assert "η²" not in consistency_block(stats)
+
+    def test_positive_control_same_wrong_eta_would_be_caught(self):
+        """正对照：同样的 η²=0.999 若**不是**推算值，必须被抓。
+        否则上一条就是空断言（因为校验器根本不检查 η²）。"""
+        checks = check_statistics_consistency(
+            {"f_value": 4.123, "df_between": 2, "df_error": 87, "eta_squared": 0.999}
+        )
+        assert any(not c.consistent for c in checks), "正对照失效：错误的 η² 竟未被抓"
+
+
+class TestPVerdictThreshold:
+    """2026-09-17 放宽 `_p_verdict` 的「过大」门槛。
+
+    旧门槛 `expected < 0.001` 放过了整整一类最严重的抄错：
+    真值显著（如 .019）却报告成不显著（如 .919）。而 `expected < 0.001`
+    对避「上界写法」并**无必要** —— 上界污染由 `reported > 0.05` 单独挡住。
+    """
+
+    def _p_checks(self, expected_t=None, df=None, reported=None, f=None, d1=None, d2=None):
+        if f is not None:
+            payload = {"f_value": f, "df_between": d1, "df_error": d2, "p_value": reported}
+        else:
+            payload = {"t_value": expected_t, "df": df, "p_value": reported}
+        return [c for c in check_statistics_consistency(payload)
+                if "p值" in c.metric and not c.consistent]
+
+    def test_significant_but_reported_nonsignificant_is_caught(self):
+        """🔴 新增覆盖：真值 p≈.019，报告 .919（旧规则放过，因为 .019 不小于 .001）"""
+        assert self._p_checks(f=4.123, d1=2, d2=87, reported=0.919)
+
+    def test_borderline_flip_not_flagged(self):
+        """临界抖动（.0498 vs .051，差 1.02 倍）不得误伤 —— ×5 余量的作用。"""
+        from vermes_cli.scholarforge.validators import t_p_two_tailed
+        t = 2.23  # df=10 时双尾 p = 0.04984（刚过 α，临界值 t_crit = 2.228）
+        assert t_p_two_tailed(t, 10) < 0.05
+        assert self._p_checks(expected_t=t, df=10, reported=0.051) == []
+
+    def test_bonferroni_like_3x_not_flagged(self):
+        """多重比较校正通常抬高 3–5 倍，属合法差异，不得误伤。"""
+        assert self._p_checks(f=4.123, d1=2, d2=87, reported=0.019 * 3) == []
+
+    def test_still_catches_extreme_case(self):
+        """旧实现唯一覆盖的极端场景不能丢（t=5,df=100 精确 p=2.45e-6，报 0.5）"""
+        assert self._p_checks(expected_t=5.0, df=100, reported=0.5)
