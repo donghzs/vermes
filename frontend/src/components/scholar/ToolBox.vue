@@ -6,6 +6,7 @@ import { useScholarStore } from '../../stores/scholar'
 import { invokeTool } from '../../utils/invokeTool'
 import SchemaForm from './SchemaForm.vue'
 import ToolResult from './ToolResult.vue'
+import { toolLabel } from '../../utils/toolLabels'
 
 const scholar = useScholarStore()
 
@@ -101,10 +102,13 @@ const groupedTools = computed(() => {
   const byName = new Map(tools.value.map((t) => [t.name, t]))
   const seen = new Set()
   const kw = filter.value.trim().toLowerCase()
+  // 🔴 搜索必须匹配中文名：用户只会搜「三线表」「查重」，不会搜 stats_table。
+  //    只匹配 name/description 的话，中文名配了也等于搜不到。
   const match = (t) =>
     !kw ||
     t.name.toLowerCase().includes(kw) ||
-    (t.description || '').toLowerCase().includes(kw)
+    (t.description || '').toLowerCase().includes(kw) ||
+    toolLabel(t.name).includes(kw)
 
   const groups = TOOL_GROUPS.map((g) => {
     const items = g.names
@@ -189,7 +193,7 @@ async function runTool(args) {
         >
           <div class="flex items-center gap-2">
             <span class="text-lg">{{ t.emoji || '🔧' }}</span>
-            <span class="text-sm font-medium">{{ t.name.replace('scholarforge_', '') }}</span>
+            <span class="text-sm font-medium">{{ toolLabel(t.name) }}</span>
           </div>
           <p class="mt-1 text-xs text-gray-400 leading-snug line-clamp-2">{{ t.description }}</p>
         </button>
@@ -200,7 +204,7 @@ async function runTool(args) {
     <div v-if="selected" class="rounded-lg border border-blue-300 dark:border-blue-700 bg-blue-50/40 dark:bg-blue-900/10 p-4">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold flex items-center gap-2">
-          <span>{{ selected.emoji }}</span> 运行 {{ selected.name.replace('scholarforge_', '') }}
+          <span>{{ selected.emoji }}</span> 运行 {{ toolLabel(selected.name) }}
         </h3>
         <button
           class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"

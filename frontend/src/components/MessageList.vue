@@ -7,6 +7,9 @@ import MarkdownIt from 'markdown-it'
 import DeliveryCard from './DeliveryCard.vue'
 import DOMPurify from 'dompurify'
 import { DOMPURIFY_BASE_CONFIG, enforceLinkSecurity } from '../utils/security'
+// 工具名 → 中文显示名。原先是一张 1000+ 字符的内联对象字面量写在模板里，
+// 现已连同论文工具（28 个）一起下沉到 utils/toolLabels.js 做单一真源。
+import { toolLabel } from '../utils/toolLabels'
 
 // P3-4: 按需导入highlight.js核心和常用语言
 import hljs from 'highlight.js/lib/core'
@@ -984,7 +987,7 @@ function streamElapsed(startTime) {
                         :class="tool.status === 'error' ? 'text-red-500' : ''"
                         @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
                     <span>{{ tool.status === 'error' ? '❌' : '✅' }}</span>
-                    <span>{{ ({read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页',browser_navigate:'浏览网页',browser_click:'点击页面',browser_type:'输入文本',browser_snapshot:'截取页面',browser_console:'控制台',lsp_completion:'代码补全',lsp_diagnose:'诊断代码',code_execution:'执行代码'})[tool.name] || tool.name }}</span>
+                    <span>{{ toolLabel(tool.name) }}</span>
                     <span v-if="tool.duration" class="opacity-60">{{ tool.duration }}s</span>
                     <span v-if="tool.result_preview">{{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}</span>
                   </span>
