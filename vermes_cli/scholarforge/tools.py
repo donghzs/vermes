@@ -20,9 +20,12 @@ from tools.registry import registry
 
 from .active_project import (
     PROJECT_ID_MISSING_MSG,
+    clear_project_fallback,
     get_active_project,
     resolve_project_id,
+    restore_project_fallback,
     set_active_project,
+    take_project_fallback_note,
 )
 
 logger = logging.getLogger("scholarforge.tools")
@@ -3442,16 +3445,25 @@ def _with_usage(name: str, handler):
     async def wrapped(args: dict, **kw):
         _t0 = _time.monotonic()
         _acc_token = _LLM_USAGE_ACC.set([])
+        # 本次调用的「兜底选项目」记录（见 active_project._note_fallback）。
+        # 放这里读出并追加，是为了让 23 个调用点都不必自己写提示 —— 少一处就少一个漏的机会。
+        _fb_token = clear_project_fallback()
         ok = True
         try:
             try:
                 result = await handler(args, **kw)
                 ok = not (isinstance(result, str) and result.lstrip().startswith("❌"))
+                # 只在成功时追加：❌ 意味着没写成，再说「已自动落到项目 X」会自相矛盾。
+                if ok and isinstance(result, str):
+                    _notice = take_project_fallback_note()
+                    if _notice:
+                        result = result + _notice
                 return result
             except Exception:
                 ok = False
                 raise
         finally:
+            restore_project_fallback(_fb_token)
             try:
                 _entries = _LLM_USAGE_ACC.get()
                 _LLM_USAGE_ACC.reset(_acc_token)
