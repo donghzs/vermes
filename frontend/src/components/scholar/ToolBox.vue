@@ -7,6 +7,7 @@ import { invokeTool } from '../../utils/invokeTool'
 import SchemaForm from './SchemaForm.vue'
 import ToolResult from './ToolResult.vue'
 import { toolLabel } from '../../utils/toolLabels'
+import { BEGINNER_FLOW, BEGINNER_ENTRY, BEGINNER_NAMES, matchTool } from '../../utils/beginnerFlow'
 
 const scholar = useScholarStore()
 
@@ -82,6 +83,25 @@ const loadError = ref('')
 const filter = ref('')
 const prefillValues = ref({})
 
+// 展示模式：新手（按流程走）/ 全部（28 个工具分组平铺）。
+// 默认新手 —— 本组件的目标用户不是开发者；选过一次就记住（localStorage）。
+const MODE_KEY = 'vermes.toolbox.mode'
+function loadMode() {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'all' ? 'all' : 'beginner'
+  } catch {
+    return 'beginner' // 隐私模式 / 无 localStorage 时退回新手模式
+  }
+}
+const mode = ref(loadMode())
+watch(mode, (m) => {
+  try {
+    localStorage.setItem(MODE_KEY, m)
+  } catch {
+    /* 存不了就算了，不影响使用 */
+  }
+})
+
 onMounted(async () => {
   try {
     const resp = await fetch('/api/scholar/tools')
@@ -98,6 +118,9 @@ watch(
   () => scholar.pendingTool,
   (name) => {
     if (!name) return
+    // 跨组件（FlowGuide / Uploader）点名要的工具若不在新手流程里，自动切到「全部」——
+    // 否则表单弹出来了、卡片却不在视野内，用户不知道自己在跑什么。
+    if (!BEGINNER_NAMES.has(name)) mode.value = 'all'
     const t = tools.value.find((x) => x.name === name)
     if (t) selected.value = t
     const pf = scholar.pendingPrefill
@@ -106,18 +129,34 @@ watch(
   },
 )
 
+// 新手模式：8 步流程（带白话提示）。搜索时只保留匹配的步骤。
+const beginnerSteps = computed(() => {
+  const byName = new Map(tools.value.map((t) => [t.name, t]))
+  const kw = filter.value.trim().toLowerCase()
+  const out = []
+  BEGINNER_FLOW.forEach((s, i) => {
+    const tool = byName.get(s.name)
+    if (tool && matchTool(tool, kw)) out.push({ step: i + 1, hint: s.hint, tool })
+  })
+  return out
+})
+
+const beginnerEntryTool = computed(() => tools.value.find((t) => t.name === BEGINNER_ENTRY) || null)
+
+// 新手模式下搜到了、但不在 8 步里的工具。
+// 不加这一组的话，用户搜「三线表」会得到 0 个结果 —— 他会以为没有这个工具。
+const beginnerExtras = computed(() => {
+  const kw = filter.value.trim().toLowerCase()
+  if (!kw) return []
+  return tools.value.filter((t) => !BEGINNER_NAMES.has(t.name) && matchTool(t, kw))
+})
+
 // 分组 + 过滤后的展示结构；后端新增而未入组的工具落「其他」
 const groupedTools = computed(() => {
   const byName = new Map(tools.value.map((t) => [t.name, t]))
   const seen = new Set()
   const kw = filter.value.trim().toLowerCase()
-  // 🔴 搜索必须匹配中文名：用户只会搜「三线表」「查重」，不会搜 stats_table。
-  //    只匹配 name/description 的话，中文名配了也等于搜不到。
-  const match = (t) =>
-    !kw ||
-    t.name.toLowerCase().includes(kw) ||
-    (t.description || '').toLowerCase().includes(kw) ||
-    toolLabel(t.name).includes(kw)
+  const match = (t) => matchTool(t, kw)
 
   const groups = TOOL_GROUPS.map((g) => {
     const items = g.names
@@ -175,6 +214,37 @@ async function runTool(args) {
 
     <p v-if="loadError" class="text-sm text-red-500">{{ loadError }}</p>
 
+    <!-- 模式切换：新手（按流程走）/ 全部（平铺） -->
+    <div class="flex items-center gap-3 flex-wrap">
+      <div class="inline-flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+        <button
+          @click="mode = 'beginner'"
+          :class="[
+            'px-3 py-1.5 text-sm transition',
+            mode === 'beginner'
+              ? 'bg-blue-500 text-white'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+          ]"
+        >
+          🚶 新手模式
+        </button>
+        <button
+          @click="mode = 'all'"
+          :class="[
+            'px-3 py-1.5 text-sm transition',
+            mode === 'all'
+              ? 'bg-blue-500 text-white'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+          ]"
+        >
+          📋 全部工具
+        </button>
+      </div>
+      <span class="text-xs text-gray-400">
+        {{ mode === 'beginner' ? '按写论文的顺序走' : `共 ${tools.length} 个工具` }}
+      </span>
+    </div>
+
     <!-- 搜索过滤 -->
     <input
       v-model="filter"
@@ -183,29 +253,112 @@ async function runTool(args) {
       class="w-full sm:w-72 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
     />
 
-    <!-- 分组工具卡片 -->
-    <div v-for="g in groupedTools" :key="g.label" class="space-y-2">
-      <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-        {{ g.label }}
-      </h3>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <button
-          v-for="t in g.items"
-          :key="t.name"
-          @click="selected = t"
-          :class="[
-            'text-left rounded-lg border p-3 hover:border-blue-400 hover:shadow-sm transition',
-            selected && selected.name === t.name
-              ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-900/20'
-              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800',
-          ]"
-        >
-          <div class="flex items-center gap-2">
-            <span class="text-lg">{{ t.emoji || '🔧' }}</span>
-            <span class="text-sm font-medium">{{ toolLabel(t.name) }}</span>
-          </div>
-          <p class="mt-1 text-xs text-gray-400 leading-snug line-clamp-2">{{ t.description }}</p>
-        </button>
+    <!-- ── 新手模式 ── -->
+    <div v-if="mode === 'beginner'" class="space-y-4">
+      <!-- 入口 CTA：覆盖整条流程，给「不知道从哪下手」的人 -->
+      <button
+        v-if="beginnerEntryTool"
+        @click="selected = beginnerEntryTool"
+        class="w-full text-left rounded-lg border-2 border-blue-400 dark:border-blue-600 bg-blue-50/60 dark:bg-blue-900/20 p-4 hover:shadow-sm transition"
+      >
+        <div class="flex items-center gap-2">
+          <span class="text-xl">{{ beginnerEntryTool.emoji || '🚀' }}</span>
+          <span class="text-sm font-semibold">不知道从哪开始？</span>
+        </div>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-snug">
+          点「{{ toolLabel(beginnerEntryTool.name) }}」—— 它会按顺序把下面几步一口气做完。
+        </p>
+      </button>
+
+      <div class="space-y-2">
+        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          🚶 写论文的 8 步
+        </h3>
+        <div class="space-y-2">
+          <button
+            v-for="s in beginnerSteps"
+            :key="s.tool.name"
+            data-test="beginner-step"
+            @click="selected = s.tool"
+            :class="[
+              'w-full text-left rounded-lg border p-3 hover:border-blue-400 hover:shadow-sm transition flex items-start gap-3',
+              selected && selected.name === s.tool.name
+                ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-900/20'
+                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800',
+            ]"
+          >
+            <span
+              class="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center"
+              >{{ s.step }}</span
+            >
+            <span class="min-w-0">
+              <span class="flex items-center gap-2">
+                <span class="text-base">{{ s.tool.emoji || '🔧' }}</span>
+                <span class="text-sm font-medium">{{ toolLabel(s.tool.name) }}</span>
+              </span>
+              <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400 leading-snug">{{
+                s.hint
+              }}</span>
+            </span>
+          </button>
+        </div>
+        <p v-if="!beginnerSteps.length" class="text-sm text-gray-400">
+          8 步里没有匹配「{{ filter }}」的，看看下面 👇
+        </p>
+      </div>
+
+      <!-- 流程外但命中的工具：不给这一组的话，搜「三线表」会是 0 结果 -->
+      <div v-if="beginnerExtras.length" class="space-y-2">
+        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          🔎 其它匹配的工具
+        </h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <button
+            v-for="t in beginnerExtras"
+            :key="t.name"
+            @click="selected = t"
+            :class="[
+              'text-left rounded-lg border p-3 hover:border-blue-400 hover:shadow-sm transition',
+              selected && selected.name === t.name
+                ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-900/20'
+                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800',
+            ]"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-lg">{{ t.emoji || '🔧' }}</span>
+              <span class="text-sm font-medium">{{ toolLabel(t.name) }}</span>
+            </div>
+            <p class="mt-1 text-xs text-gray-400 leading-snug line-clamp-2">{{ t.description }}</p>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 全部工具（分组平铺）── -->
+    <div v-else class="space-y-4">
+      <div v-for="g in groupedTools" :key="g.label" class="space-y-2">
+        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          {{ g.label }}
+        </h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <button
+            v-for="t in g.items"
+            :key="t.name"
+            @click="selected = t"
+            :class="[
+              'text-left rounded-lg border p-3 hover:border-blue-400 hover:shadow-sm transition',
+              selected && selected.name === t.name
+                ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-900/20'
+                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800',
+            ]"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-lg">{{ t.emoji || '🔧' }}</span>
+              <span class="text-sm font-medium">{{ toolLabel(t.name) }}</span>
+            </div>
+            <p class="mt-1 text-xs text-gray-400 leading-snug line-clamp-2">{{ t.description }}</p>
+          </button>
+        </div>
       </div>
     </div>
 

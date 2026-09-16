@@ -210,3 +210,95 @@ class TestToolLabelHelper(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# ───────────────────────── 新手模式写作流程 ─────────────────────────
+BEGINNER_JS = REPO_ROOT / "frontend" / "src" / "utils" / "beginnerFlow.js"
+
+
+def _beginner_steps() -> list[tuple[str, str]]:
+    """解析 beginnerFlow.js 的 BEGINNER_FLOW，返回 [(工具名, 提示), ...]（保留顺序）。"""
+    if not BEGINNER_JS.exists():
+        return []
+    src = BEGINNER_JS.read_text(encoding="utf-8")
+    start = src.find("export const BEGINNER_FLOW")
+    if start == -1:
+        return []
+    end = src.find("\n]", start)
+    segment = src[start:end] if end != -1 else src[start:]
+    return re.findall(
+        r"""name:\s*['"](scholarforge_[a-z0-9_]+)['"]\s*,\s*hint:\s*['"]([^'"]+)['"]""",
+        segment,
+    )
+
+
+def _beginner_entry() -> str | None:
+    if not BEGINNER_JS.exists():
+        return None
+    m = re.search(
+        r"""BEGINNER_ENTRY\s*=\s*['"](scholarforge_[a-z0-9_]+)['"]""",
+        BEGINNER_JS.read_text(encoding="utf-8"),
+    )
+    return m.group(1) if m else None
+
+
+@unittest.skipUnless(BEGINNER_JS.exists(), f"新手流程文件不存在: {BEGINNER_JS}")
+class TestBeginnerFlow(unittest.TestCase):
+    """工具箱「新手模式」写作流程的守卫（2026-09-17）。
+
+    前端另有 tests/toolbox-beginner-mode.test.js 负责「渲染得对不对」；
+    这里负责「流程里引用的工具是否真实存在 / 提示是否守住了非技术用户口径」。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.steps = _beginner_steps()
+        cls.entry = _beginner_entry()
+        cls.tools = _registered_scholarforge_tools()
+
+    def test_scan_works(self):
+        """守卫自身要有效：解析不到说明锚点变了"""
+        self.assertGreaterEqual(len(self.steps), 5, "BEGINNER_FLOW 锚点可能已失效")
+
+    def test_every_step_tool_exists(self):
+        """流程里写了已不存在的工具名 → 那个位置永远空着"""
+        missing = [n for n, _ in self.steps if n not in self.tools]
+        self.assertEqual([], missing, f"新手流程引用了不存在的工具：{missing}")
+
+    def test_no_duplicate_steps(self):
+        names = [n for n, _ in self.steps]
+        dupes = sorted({n for n in names if names.count(n) > 1})
+        self.assertEqual([], dupes, f"新手流程里重复出现：{dupes}")
+
+    def test_entry_tool_exists(self):
+        self.assertIsNotNone(self.entry, "BEGINNER_ENTRY 未定义")
+        self.assertIn(self.entry, self.tools, "入口工具不存在")
+
+    def test_entry_not_a_step(self):
+        """入口覆盖整条流程，放进 8 步会让人以为必须先跑它"""
+        self.assertNotIn(self.entry, [n for n, _ in self.steps])
+
+    def test_every_step_has_hint(self):
+        """没有提示的步骤只是把 28 个工具换了个皮 —— 等于没做新手模式"""
+        for name, hint in self.steps:
+            self.assertGreater(len(hint.strip()), 4, f"{name} 的提示过短：{hint!r}")
+
+    def test_hints_avoid_technical_field_names(self):
+        """🔴 非技术用户看到 project_id / cohens_d 只会更困惑"""
+        banned = ("project_id", "section_key", "cohens_d", "p_value", "schema", "json")
+        for name, hint in self.steps:
+            low = hint.lower()
+            hit = [b for b in banned if b in low]
+            self.assertEqual([], hit, f"{name} 的提示含技术字段名 {hit}：{hint!r}")
+
+    def test_every_step_tool_has_chinese_label(self):
+        """流程里的工具必须都配了中文名（否则新手模式反而露英文标识符）"""
+        labels = _frontend_labels()
+        unlabeled = [n for n, _ in self.steps if n not in labels]
+        self.assertEqual([], unlabeled, f"以下流程工具缺中文名：{unlabeled}")
+
+    def test_flow_is_a_subset_of_all_tools(self):
+        """新手模式只是子集，不能凭空造工具"""
+        step_names = {n for n, _ in self.steps} | {self.entry}
+        self.assertTrue(step_names.issubset(set(self.tools)))
+        # 且必须是真子集 —— 全量即等于没做新手模式
+        self.assertLess(len(step_names), len(self.tools))
