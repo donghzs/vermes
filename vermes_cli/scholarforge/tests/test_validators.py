@@ -441,3 +441,258 @@ class TestRunAllValidators:
         assert "文献引用真实性验证报告" in report
         assert "统计一致性校验" in report
         assert "研究设计缺陷检测" in report
+
+
+# ═══════════════════════════════════════════════════════════════
+# 2026-09-16 统计校验「适用条件」回归测试
+# ═══════════════════════════════════════════════════════════════
+# 背景：旧实现把每种换算都当成「唯一公式」，于是把大量**正确**的论文报告判成「矛盾」。
+# 本组测试逐条锁死这些误报场景 —— 任何一条挂掉，都意味着误报回归。
+
+from vermes_cli.scholarforge.validators import (  # noqa: E402
+    t_p_two_tailed,
+    f_p_right_tail,
+)
+
+
+def _pick(checks, keyword):
+    """取出 metric 含关键词的校验项（应唯一）"""
+    hit = [c for c in checks if keyword in c.metric]
+    assert len(hit) == 1, f"期望恰好 1 条含「{keyword}」的校验项，实得 {len(hit)}: {[c.metric for c in checks]}"
+    return hit[0]
+
+
+class TestTDToCohensD:
+    """校验 2：t ↔ d 的检验类型分支"""
+
+    def test_paired_sample_not_false_positive(self):
+        """🔴 核心回归：配对样本 d_z = t/√(df+1) 必须判一致
+
+        旧实现只有 d = 2t/√df：
+          t=6.92, df=39 → 旧式给 2*6.92/√39 = 2.216
+          正确的配对 d_z = 6.92/√40 = 1.094
+          相对偏差 51%（容差 15%）→ 旧实现会把**完全正确**的报告判成矛盾。
+        """
+        checks = check_statistics_consistency({
+            "t_value": 6.92, "df": 39, "cohens_d": 1.094,
+        })
+        assert _pick(checks, "t ↔").consistent is True
+
+    def test_paired_sample_explicit_type(self):
+        """显式声明 t_test_type=paired → 只按配对式判定"""
+        checks = check_statistics_consistency({
+            "t_value": 6.92, "df": 39, "cohens_d": 1.094, "t_test_type": "paired",
+        })
+        assert _pick(checks, "t ↔").consistent is True
+
+    def test_paired_type_rejects_independent_value(self):
+        """声明 paired 却给了独立样本口径的 d → 应判矛盾（候选集缩窄后才抓得到）"""
+        checks = check_statistics_consistency({
+            "t_value": 6.92, "df": 39, "cohens_d": 2.216, "t_test_type": "paired",
+        })
+        assert _pick(checks, "t ↔").consistent is False
+
+    def test_independent_small_df_strict_form(self):
+        """🔴 核心回归：独立样本小 df 的严格式 d = 2t/√(df+2) 必须判一致
+
+        df=4 时旧式 2t/√df 比严格式 2t/√(df+2) 高 18.4%，超过 15% 容差 → 误报。
+        """
+        t, df = 2.776, 4  # df=4 的双尾 .05 临界值
+        d_strict = 2 * t / math.sqrt(df + 2)
+        checks = check_statistics_consistency({"t_value": t, "df": df, "cohens_d": d_strict})
+        assert _pick(checks, "t ↔").consistent is True
+
+    def test_independent_textbook_approx_still_passes(self):
+        """教科书近似式 2t/√df 仍应通过（兼容既有文献口径，不做无谓误伤）"""
+        t, df = 6.75, 58
+        checks = check_statistics_consistency({
+            "t_value": t, "df": df, "cohens_d": 2 * t / math.sqrt(df),
+        })
+        assert _pick(checks, "t ↔").consistent is True
+
+    def test_genuinely_wrong_d_still_caught(self):
+        """三个候选式都对不上时，仍必须报矛盾（不能因为放宽就漏判）"""
+        checks = check_statistics_consistency({
+            "t_value": 6.92, "df": 39, "cohens_d": 0.30,
+        })
+        c = _pick(checks, "t ↔")
+        assert c.consistent is False
+        assert "候选式均不吻合" in c.explanation
+
+    def test_sign_convention_not_flagged(self):
+        """d 取负号（组别顺序相反）不构成矛盾"""
+        checks = check_statistics_consistency({
+            "t_value": 6.75, "df": 58, "cohens_d": -1.773,
+        })
+        assert _pick(checks, "t ↔").consistent is True
+
+
+class TestEtaSquaredToD:
+    """校验 1：η² ↔ d 的多组闸门与取值域"""
+
+    def test_multi_group_skips_check(self):
+        """🔴 核心回归：三组及以上（df_between=2）时不得硬判，必须标「未校验」
+
+        多组 ANOVA 的整体 η² 没有唯一对应的两两 d，硬用 d=2√(η²/(1-η²)) 会误伤。
+        """
+        checks = check_statistics_consistency({
+            "eta_squared": 0.1553, "cohens_d": 0.62, "df_between": 2,
+        })
+        c = _pick(checks, "η²")
+        assert "未校验" in c.metric
+        assert c.consistent is True  # 未校验 ≠ 矛盾
+        assert "整体" in c.explanation
+
+    def test_two_group_still_judged(self):
+        """两组比较（df_between=1）照旧严格判定"""
+        checks = check_statistics_consistency({
+            "eta_squared": 0.14, "cohens_d": 2.12, "df_between": 1,
+        })
+        assert _pick(checks, "η²").consistent is False
+
+    def test_out_of_range_eta_squared(self):
+        """η² 越界（如把 14% 写成 14）不得抛异常，且要提示"""
+        checks = check_statistics_consistency({"eta_squared": 14, "cohens_d": 0.8})
+        c = _pick(checks, "η²")
+        assert c.consistent is False
+        assert "取值范围" in c.metric
+
+    def test_negative_d_uses_magnitude(self):
+        """η² 恒正，比对 |d| 而非 d"""
+        checks = check_statistics_consistency({"eta_squared": 0.14, "cohens_d": -0.807})
+        assert _pick(checks, "η²").consistent is True
+
+
+class TestDToR:
+    """校验 4b：d ↔ r（docstring 承诺过、但代码从未实现）"""
+
+    def test_equal_n_approx(self):
+        """未给样本量 → 用教科书近似式 r = d/√(d²+4)"""
+        d = 0.8
+        checks = check_statistics_consistency({
+            "cohens_d": d, "r_value": d / math.sqrt(d * d + 4),
+        })
+        c = _pick(checks, "d ↔ r")
+        assert c.consistent is True
+        assert "近似式" in c.value_expected
+
+    def test_exact_form_with_group_sizes(self):
+        """给 n1/n2 → 用精确式 A=(n1+n2)(n1+n2-2)/(n1·n2)，与 t 路径自洽
+
+        交叉验证：d=1.0, n1=n2=10 → t = d/√(1/10+1/10) = 2.236, df=18
+        → r = t/√(t²+df) = 0.4662，精确式 A=20·18/100=3.6 → 1/√4.6 = 0.4662 ✓
+        """
+        d, n1, n2 = 1.0, 10, 10
+        t = d / math.sqrt(1 / n1 + 1 / n2)
+        r_via_t = t / math.sqrt(t * t + (n1 + n2 - 2))
+        checks = check_statistics_consistency({
+            "cohens_d": d, "r_value": r_via_t, "n_group1": n1, "n_group2": n2,
+        })
+        c = _pick(checks, "d ↔ r")
+        assert c.consistent is True
+        assert "精确式" in c.value_expected
+
+    def test_approx_vs_exact_differ_at_small_n(self):
+        """小样本下近似式与精确式确有差距（证明精确式不是摆设）"""
+        d, n1, n2 = 1.0, 5, 5
+        r_approx = d / math.sqrt(d * d + 4)
+        r_exact = d / math.sqrt(d * d + 10 * 8 / 25)
+        assert abs(r_approx - r_exact) / r_exact > 0.05
+
+    def test_mismatch_flagged(self):
+        """明显对不上仍要抓"""
+        checks = check_statistics_consistency({"cohens_d": 1.5, "r_value": 0.1})
+        assert _pick(checks, "d ↔ r").consistent is False
+
+    def test_applicability_caveat_present(self):
+        """解释文本必须带上「点二列相关」的适用前提，防止误用于 Pearson r"""
+        checks = check_statistics_consistency({"cohens_d": 0.8, "r_value": 0.371})
+        assert "点二列" in _pick(checks, "d ↔ r").explanation
+
+
+class TestExactPValue:
+    """精确 p 值计算 + 校验 5 的判定纪律"""
+
+    def test_matches_known_critical_values(self):
+        """对照统计学教材的标准临界值（双尾 0.05 / 0.01）"""
+        for t, df, expected in [
+            (12.706, 1, 0.05), (4.303, 2, 0.05), (2.228, 10, 0.05),
+            (63.657, 1, 0.01), (9.925, 2, 0.01), (3.169, 10, 0.01),
+        ]:
+            got = t_p_two_tailed(t, df)
+            assert abs(got - expected) / expected < 0.001, f"t={t}, df={df}: {got} vs {expected}"
+
+    def test_matches_three_decimal_tail(self):
+        """极端尾概率：t=5, df=100 双尾 p = 2.4501734135e-6（与 scipy 相对误差 ~1e-15）
+
+        注意：这里必须写满有效数字 —— 早期版本把参考值截断成 2.45017341e-06（9 位），
+        导致「实现是对的、参考值不准」的假失败（相对差 1.4e-9 却要求 < 1e-9）。
+        """
+        assert abs(t_p_two_tailed(5.0, 100) - 2.450173413503806e-06) / 2.450173413503806e-06 < 1e-10
+
+    def test_f_right_tail(self):
+        """F 右尾：F(2,87)=4.12 → p ≈ 0.01952"""
+        assert abs(f_p_right_tail(4.12, 2, 87) - 0.0195183978) / 0.0195183978 < 1e-6
+
+    def test_invalid_inputs_return_nan(self):
+        """非法输入返回 NaN 而不是抛异常（打包环境里崩溃代价太高）"""
+        assert math.isnan(t_p_two_tailed(1.0, 0))
+        assert math.isnan(f_p_right_tail(-1.0, 2, 87))
+        assert t_p_two_tailed(0.0, 10) == 1.0
+
+    def test_small_df_p_still_checked(self):
+        """🔴 核心回归：小样本（df≤30）也必须校验 p —— 旧实现只在 df>30 时生效"""
+        checks = check_statistics_consistency({
+            "t_value": 0.5, "df": 12, "p_value": 0.001,
+        })
+        c = _pick(checks, "p值")
+        assert c.consistent is False
+        assert "过小" in c.explanation
+
+    def test_upper_bound_notation_not_flagged(self):
+        """「p < .001」被解析成 0.001 时不该被判「过大」（上界写法的合法场景）"""
+        checks = check_statistics_consistency({
+            "t_value": 6.92, "df": 39, "p_value": 0.001,  # 精确 p = 2.76e-8
+        })
+        p_checks = [c for c in checks if "p值" in c.metric and not c.consistent]
+        assert p_checks == []
+
+    def test_p_less_than_05_bound_not_flagged(self):
+        """真正显著却只报「p < .05」是合法报告，不得误伤"""
+        checks = check_statistics_consistency({
+            "t_value": 6.92, "df": 39, "p_value": 0.05,
+        })
+        assert [c for c in checks if "p值" in c.metric and not c.consistent] == []
+
+    def test_one_tailed_not_flagged(self):
+        """单尾 p（双尾的一半，差 2 倍）属合法差异，不得误伤"""
+        two_tailed = t_p_two_tailed(2.5, 20)
+        checks = check_statistics_consistency({
+            "t_value": 2.5, "df": 20, "p_value": two_tailed / 2,
+        })
+        assert [c for c in checks if "p值" in c.metric and not c.consistent] == []
+
+    def test_reported_p_too_large(self):
+        """t 极大却报 p=0.5 → 必须抓（这是旧实现唯一覆盖的场景，不能丢）"""
+        checks = check_statistics_consistency({
+            "t_value": 5.0, "df": 100, "p_value": 0.5,
+        })
+        c = _pick(checks, "p值")
+        assert c.consistent is False
+        assert "过大" in c.explanation
+
+    def test_f_p_contradiction(self):
+        """F 检验的 p 同样校验：F(2,87)=8.0 的精确 p=6.47e-4，报 0.5 必抓"""
+        checks = check_statistics_consistency({
+            "f_value": 8.0, "df_between": 2, "df_error": 87, "p_value": 0.5,
+        })
+        c = _pick(checks, "p值")
+        assert c.consistent is False
+        assert "F统计量" in c.metric
+
+    def test_consistent_p_produces_no_check(self):
+        """p 值吻合时不产生校验项（避免报告噪音）"""
+        checks = check_statistics_consistency({
+            "t_value": 2.228, "df": 10, "p_value": 0.05,
+        })
+        assert [c for c in checks if "p值" in c.metric] == []

@@ -443,6 +443,117 @@ class StatCheck:
     explanation: str  # 不一致时的解释
 
 
+# ═══════════════════════════════════════════════════════════════
+# 2.1 精确 p 值（纯 Python，不依赖 scipy）
+# ═══════════════════════════════════════════════════════════════
+# 🔴 为什么不用 scipy：`vermes-backend.spec` 的 excludes 里**明确排除了 scipy**
+#    （为控制包体积），打进 DMG 的后端里 import scipy 会直接 ModuleNotFoundError。
+#    故这里用 Numerical Recipes 的连分式算法实现正则化不完全 Beta 函数。
+#    精度实测：与 scipy.stats 在 df=1/10/39/100/200、p 从 6e-1 到 2.5e-6 全量比对，
+#    相对误差 ~1e-15（机器精度），对「跨阈值判定」这个用途绰绰有余。
+
+def _betacf(a: float, b: float, x: float, itmax: int = 200,
+            eps: float = 3e-16, fpmin: float = 1e-300) -> float:
+    """不完全 Beta 函数的连分式展开（Lentz 算法，Numerical Recipes 6.4）"""
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < fpmin:
+        d = fpmin
+    d = 1.0 / d
+    h = d
+    for m in range(1, itmax + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) < fpmin:
+            d = fpmin
+        c = 1.0 + aa / c
+        if abs(c) < fpmin:
+            c = fpmin
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) < fpmin:
+            d = fpmin
+        c = 1.0 + aa / c
+        if abs(c) < fpmin:
+            c = fpmin
+        d = 1.0 / d
+        dele = d * c
+        h *= dele
+        if abs(dele - 1.0) < eps:
+            break
+    return h
+
+
+def _betai(a: float, b: float, x: float) -> float:
+    """正则化不完全 Beta 函数 I_x(a, b)"""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    lbeta = math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+    front = math.exp(lbeta + a * math.log(x) + b * math.log1p(-x))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - front * _betacf(b, a, 1.0 - x) / b
+
+
+def t_p_two_tailed(t: float, df: float) -> float:
+    """t 检验双尾 p 值：p = I_{df/(df+t²)}(df/2, 1/2)。非法输入返回 NaN。"""
+    try:
+        df = float(df)
+        t = abs(float(t))
+    except (TypeError, ValueError):
+        return float("nan")
+    if df <= 0:
+        return float("nan")
+    if t == 0.0:
+        return 1.0
+    return _betai(df / 2.0, 0.5, df / (df + t * t))
+
+
+def f_p_right_tail(f: float, df_between: float, df_error: float) -> float:
+    """F 检验右尾 p 值：p = I_{df2/(df2+df1·F)}(df2/2, df1/2)。非法输入返回 NaN。"""
+    try:
+        df1 = float(df_between)
+        df2 = float(df_error)
+        f = float(f)
+    except (TypeError, ValueError):
+        return float("nan")
+    if df1 <= 0 or df2 <= 0 or f < 0:
+        return float("nan")
+    if f == 0.0:
+        return 1.0
+    return _betai(df2 / 2.0, df1 / 2.0, df2 / (df2 + df1 * f))
+
+
+def _p_verdict(expected_p: float, reported_p: float) -> str:
+    """判断「精确 p 值」与「论文报告的 p 值」是否构成可断言的矛盾。
+
+    返回 "" 表示不断言（未校验）；否则返回矛盾方向（"过大" / "过小"）。
+
+    🔴 判定纪律（宁可放过、不可误伤），两条规则各自都有必须如此的理由：
+      · 「报告 p 过大」：只有 expected < 0.001 且 reported > 0.05 才断言。
+        加 reported > 0.05 这道闸，是为了避开「p < .05」「p < .001」这类**上界写法**
+        ——它们被解析成 0.05 / 0.001 后天然大于真值，属合法报告而非错误。
+      · 「报告 p 过小」：只有 expected > 0.05、reported < 0.05 且相差 10 倍以上才断言。
+        上界写法只会把 reported 抬高，不会压低，故这个方向不受上界污染；
+        留 10 倍余量是为了兼容**单尾 p**（与双尾恰好差 2 倍，是合法差异）。
+    """
+    if expected_p != expected_p or reported_p != reported_p:  # NaN 不参与判定
+        return ""
+    if not (0.0 < reported_p <= 1.0):  # p=0（"< .001" 被解析没了）或越界值无法判定
+        return ""
+    if expected_p < 0.001 and reported_p > 0.05:
+        return "过大"
+    if expected_p > 0.05 and reported_p < 0.05 and reported_p * 10 < expected_p:
+        return "过小"
+    return ""
+
+
 def check_statistics_consistency(
     stats: dict[str, Any],
 ) -> list[StatCheck]:
@@ -450,11 +561,23 @@ def check_statistics_consistency(
 
     支持校验的指标对：
     1. η² ↔ Cohen's d:  d = 2√(η²/(1-η²))
-    2. t ↔ d:  d = 2t/√(df)  (独立样本 t 检验)
+       🔴 **仅适用于两组比较**。df_between ≥ 2 时 η² 是整体模型效应量，
+       同一个 η² 可对应多组间各不相同的两两 d，无唯一换算值 → 输出「未校验」而非判矛盾。
+    2. t ↔ d:  **按检验类型取候选式**（任一吻合即通过）：
+         独立样本（严格式）      d = 2t/√(df+2)
+         独立样本（教科书近似）  d = 2t/√df
+         配对样本（d_z）         d = t/√(df+1)
+       可用 t_test_type 指定类型以缩小候选集。详见校验 2 的 2026-09-16 修正说明。
     3. F ↔ η²:  η² = F·df_between/(F·df_between + df_error)  (单因素 ANOVA；
        df_between 缺省时只能算出 df1=1 的理论**下界**，见校验 3 的四分支说明)
-    4. d ↔ r:  r = d/√(d² + 4)  (二分组)
-    5. p值 ↔ 统计量:  根据统计量和自由度估算 p 值范围
+    4. d ↔ mean_diff / pooled_sd:  d = mean_diff / pooled_sd
+    5. d ↔ r:  r = d/√(d² + A)，A = (n1+n2)(n1+n2-2)/(n1·n2)；
+       等样本量的大样本极限 A→4，即教科书常见的 r = d/√(d²+4)。
+       要求 r 是**二分组与连续变量的点二列相关**；配对 d_z 或两个连续变量的
+       Pearson r 都不适用，故解释文本里会显式提示这一前提。
+    6. p值 ↔ t / F:  **精确计算**双尾（右尾）p 值，不再用 |t|>3.29 之类的粗启发式，
+       且小样本（df ≤ 30）同样覆盖。判定纪律见 `_p_verdict` 的注释 ——
+       只在跨过显著性阈值且数量级差 10 倍以上时断言，以兼容单尾 p 与「p < .001」上界写法。
 
     Args:
         stats: 统计指标字典，可含:
@@ -462,10 +585,12 @@ def check_statistics_consistency(
             - cohens_d: float (Cohen's d)
             - t_value: float (t 统计量)
             - df: int (自由度)
+            - t_test_type: str ("paired" 配对样本 / "independent" 独立样本；缺省则三种候选式都试)
             - f_value: float (F 统计量)
             - df_between: int (组间自由度，单因素 ANOVA = 组数-1；缺省时 F↔η² 按两组比较估算)
             - df_error: int (误差自由度)
             - p_value: float (p 值)
+            - r_value: float (相关系数 r，应为二分组的点二列相关)
             - n_group1: int (组1样本量)
             - n_group2: int (组2样本量)
             - mean_diff: float (均值差)
@@ -485,6 +610,8 @@ def check_statistics_consistency(
     # 只能在「两组比较」前提下成立，三组及以上会误判（详见校验 3 的说明）。
     df_between = stats.get("df_between")
     p = stats.get("p_value")
+    r = stats.get("r_value")
+    t_test_type = (stats.get("t_test_type") or "").strip().lower()
     n1 = stats.get("n_group1")
     n2 = stats.get("n_group2")
     mean_diff = stats.get("mean_diff")
@@ -492,37 +619,111 @@ def check_statistics_consistency(
 
     # ── 校验 1: η² ↔ Cohen's d ──
     if eta_sq is not None and d is not None:
-        # d = 2√(η²/(1-η²))
-        d_expected = 2 * math.sqrt(eta_sq / (1 - eta_sq))
-        tolerance = 0.15  # 允许 15% 误差
-        ratio = abs(d - d_expected) / max(abs(d_expected), 0.001)
-        consistent = ratio < tolerance
-        checks.append(StatCheck(
-            metric="η² ↔ Cohen's d",
-            value_reported=f"d = {d}",
-            value_expected=f"d = {d_expected:.3f} (from η²={eta_sq})",
-            consistent=consistent,
-            explanation=(
-                f"根据 η²={eta_sq} 换算 d 应为 {d_expected:.3f}，"
-                f"论文报告 d={d}，{'一致' if consistent else f'偏差 {ratio:.0%}，超出 {tolerance:.0%} 容忍范围'}"
-            ),
-        ))
+        if not (isinstance(eta_sq, (int, float)) and 0.0 <= float(eta_sq) < 1.0):
+            # 兜底：η² 越界会让 √(η²/(1-η²)) 抛 domain error / 出 NaN，先拦住
+            checks.append(StatCheck(
+                metric="η² 取值范围",
+                value_reported=f"η² = {eta_sq}",
+                value_expected="0 ≤ η² < 1",
+                consistent=False,
+                explanation=f"η² 必须落在 [0, 1) 区间，报告值 {eta_sq} 不合法，无法换算（请核对是否把百分比 14 当成了 0.14）。",
+            ))
+        elif df_between is not None and int(df_between) >= 2:
+            # 🔴 2026-09-16 新增「适用条件闸门」：d = 2√(η²/(1-η²)) 是 η² = d²/(d²+4)
+            #    的逆运算，而该恒等式**只在两组比较时成立**。三组及以上时 η² 描述整体模型，
+            #    同一个 η² 可以对应多组之间各不相同的两两 d，硬算必然误判。
+            #    处理沿用校验 3 的纪律：说「未校验」，既不猜「一致」放过错误，也不报「矛盾」误伤正确报告。
+            checks.append(StatCheck(
+                metric="η² ↔ Cohen's d（未校验）",
+                value_reported=f"d = {d}",
+                value_expected="—（多组 ANOVA 无唯一对应 d）",
+                consistent=True,
+                explanation=(
+                    f"组间自由度 df_between={int(df_between)}（≥2，即三组及以上）时，η² 是**整体模型**的效应量，"
+                    f"而 Cohen's d 描述的是**两两**组间差异 —— 同一个 η² 可以对应多组之间各不相同的 d，"
+                    f"不存在唯一换算值，故不作判定。若要比对，请给出**两两比较**的 d 及其对应的两组 η²，"
+                    f"或改用 η² 直接报告效应量。"
+                ),
+            ))
+        else:
+            # d = 2√(η²/(1-η²))
+            d_expected = 2 * math.sqrt(float(eta_sq) / (1 - float(eta_sq)))
+            tolerance = 0.15  # 允许 15% 误差
+            # 只比量级：η² 恒正，对应的是 |d|；d 的符号取决于哪组减哪组
+            ratio = abs(abs(d) - d_expected) / max(abs(d_expected), 0.001)
+            consistent = ratio < tolerance
+            _hint = (
+                ""
+                if df_between is not None
+                else "若该 η² 来自三组及以上 ANOVA，此换算不适用（请补 df_between 以启用多组判定）。"
+            )
+            checks.append(StatCheck(
+                metric="η² ↔ Cohen's d",
+                value_reported=f"d = {d}",
+                value_expected=f"d = {d_expected:.3f} (from η²={eta_sq})",
+                consistent=consistent,
+                explanation=(
+                    f"根据 η²={eta_sq} 换算 d 应为 {d_expected:.3f}，"
+                    f"论文报告 d={d}，{'一致' if consistent else f'偏差 {ratio:.0%}，超出 {tolerance:.0%} 容忍范围'}。"
+                    f"{_hint}"
+                ),
+            ))
 
-    # ── 校验 2: t ↔ d (独立样本) ──
-    if t is not None and df is not None and d is not None:
-        # d = 2t/√df
-        d_from_t = 2 * t / math.sqrt(df)
+    # ── 校验 2: t ↔ d ──
+    # 🔴 2026-09-16 修正：原实现只认 d = 2t/√df —— 这仅是**独立样本**的教科书近似式，
+    #    于是两类真实且正确的论文报告被误判成「矛盾」：
+    #    ① 配对样本：正确换算是 d_z = t/√(df+1)（df = 配对对数-1）。
+    #       实测 t=6.92, df=39：正确的 d_z = 1.094，旧式给 2.216，**偏差 51%** → 误报。
+    #    ② 独立样本小 df：严格式是 d = 2t/√(df+2)，旧式 2t/√df 系统性偏高，
+    #       df=4 时偏高 18.4%（已超 15% 容差）、df=10 偏高 8.7% → 小样本误报。
+    #    修法：改为「候选集」——三个式子任一吻合即判一致；可用 t_test_type 指定类型缩小候选集。
+    if t is not None and df is not None and d is not None and float(df) > 0:
         tolerance = 0.15
-        ratio = abs(d - d_from_t) / max(abs(d_from_t), 0.001)
-        consistent = ratio < tolerance
+        # 三元组 (简称, 公式, 值)。简称必须**互不相同** —— 早期版本用「独立样本」统一称呼
+        # 严格式与近似式，导致解释文本里出现「独立样本 → 2.161；独立样本 → 2.216」这种
+        # 分不清谁是谁的输出，读者根本无法据此判断该用哪个口径。
+        candidates: list[tuple[str, str, float]] = []
+        if t_test_type in ("paired", "配对", "related", "within", "repeated"):
+            candidates.append(("配对样本 d_z", "t/√(df+1)", float(t) / math.sqrt(float(df) + 1)))
+        elif t_test_type in ("independent", "独立", "unrelated", "between"):
+            candidates.append(("独立样本·严格式", "2t/√(df+2)", 2 * float(t) / math.sqrt(float(df) + 2)))
+            candidates.append(("独立样本·教科书近似", "2t/√df", 2 * float(t) / math.sqrt(float(df))))
+        else:
+            # 未指定 → 三种都试（口径最宽，宁可放过）
+            candidates.append(("独立样本·严格式", "2t/√(df+2)", 2 * float(t) / math.sqrt(float(df) + 2)))
+            candidates.append(("独立样本·教科书近似", "2t/√df", 2 * float(t) / math.sqrt(float(df))))
+            candidates.append(("配对样本 d_z", "t/√(df+1)", float(t) / math.sqrt(float(df) + 1)))
+
+        # 只比量级：d 的符号取决于哪组减哪组，正负号不构成矛盾（否则误报率极高）
+        d_abs = abs(float(d))
+        best_name, best_formula, best_val, best_ratio = "", "", 0.0, None
+        for name, formula, val in candidates:
+            ratio = abs(d_abs - abs(val)) / max(abs(val), 0.001)
+            if best_ratio is None or ratio < best_ratio:
+                best_name, best_formula, best_val, best_ratio = name, formula, val, ratio
+        consistent = best_ratio is not None and best_ratio < tolerance
+        all_forms = "；".join(f"{n} {f} → {v:.3f}" for n, f, v in candidates)
+        if consistent:
+            detail = (
+                f"一致（已指定 t_test_type={t_test_type!r}）"
+                if t_test_type
+                else f"一致（未指定检验类型，三种候选式取最贴近者：{all_forms}）"
+            )
+        else:
+            detail = (
+                f"偏差 {best_ratio:.0%} —— 候选式均不吻合（{all_forms}）。"
+                f"t↔d 的换算式随检验类型而变：配对样本 d_z = t/√(df+1)，"
+                f"独立样本 d = 2t/√df（严格为 2t/√(df+2)）。"
+                f"若三者都对不上，通常是 d 与 t 并非来自同一次检验（例如 d 来自两两比较、t 来自整体模型）。"
+            )
         checks.append(StatCheck(
             metric="t ↔ Cohen's d",
             value_reported=f"d = {d}",
-            value_expected=f"d = {d_from_t:.3f} (from t={t}, df={df})",
+            value_expected=f"d = {best_val:.3f} (from t={t}, df={df}，{best_name} {best_formula})",
             consistent=consistent,
             explanation=(
-                f"根据 t={t}, df={df} 换算 d 应为 {d_from_t:.3f}，"
-                f"论文报告 d={d}，{'一致' if consistent else f'偏差 {ratio:.0%}'}"
+                f"根据 t={t}, df={df} 按「{best_name} {best_formula}」换算 d 应为 {best_val:.3f}，"
+                f"论文报告 d={d}，{detail}"
             ),
         ))
 
@@ -614,26 +815,81 @@ def check_statistics_consistency(
             ),
         ))
 
-    # ── 校验 5: p值合理性 ──
+    # ── 校验 4b: d ↔ r（点二列相关）──
+    # 2026-09-16 新增：docstring 里早就承诺了「4. d ↔ r: r = d/√(d²+4)」，
+    #   但**代码里从来没有实现过**（全文搜 r_value / pearson 均无校验逻辑）——
+    #   属于「文档承诺未兑现」，用户按说明传了 r 却看不到任何校验项。
+    #   实现上比教科书式更严一层：r = d/√(d²+A)，A = (n1+n2)(n1+n2-2)/(n1·n2)。
+    #   等样本量的大样本极限 A→4，即回归到教科书式 r = d/√(d²+4)。
+    if r is not None and d is not None:
+        A = 4.0
+        form = "等样本量近似式（A=4）"
+        if n1 and n2 and float(n1) > 0 and float(n2) > 0:
+            n_total = float(n1) + float(n2)
+            A = n_total * (n_total - 2) / (float(n1) * float(n2))
+            form = f"精确式 A={A:.3f}（n1={n1}, n2={n2}）"
+        if A > 0:
+            r_expected = abs(float(d)) / math.sqrt(float(d) ** 2 + A)
+            ratio = abs(abs(float(r)) - r_expected) / max(r_expected, 0.001)
+            consistent = ratio < 0.15
+            checks.append(StatCheck(
+                metric="d ↔ r",
+                value_reported=f"r = {r}",
+                value_expected=f"r = {r_expected:.3f} (from d={d}，{form})",
+                consistent=consistent,
+                explanation=(
+                    f"根据 d={d} 按{form}换算 r 应为 {r_expected:.3f}（只比量级，符号取决于分组编码），"
+                    f"论文报告 r={r}，{'一致' if consistent else f'偏差 {ratio:.0%}，超出 15% 容忍范围'}。"
+                    f"⚠️ 适用前提：该换算要求 r 是**二分组与连续变量的点二列相关**；"
+                    f"若 r 是两个连续变量的 Pearson 相关，或 d 来自配对样本（d_z），二者不能直接互推。"
+                ),
+            ))
+
+    # ── 校验 5: p值 ↔ 统计量 ──
+    # 🔴 2026-09-16 修正：原来只有两条粗启发式（|t|>3.29 应 p<.001 / |t|<1.0 应 p>.05），
+    #    且**只在 df>30 时生效** —— 小样本（df≤30）完全不校验，而小样本恰恰是心理学/教育学
+    #    论文里最常见、也最容易抄错 p 的场景。现改为精确计算：
+    #      · t：双尾 p = I_{df/(df+t²)}(df/2, 1/2)
+    #      · F：右尾 p = I_{df2/(df2+df1·F)}(df2/2, df1/2)
+    #    实现在 `_betai`（纯 Python，与 scipy 相对误差 ~1e-15），不引入 scipy 依赖。
+    #    判定纪律（宁可放过、不可误伤）见 `_p_verdict` 注释。
     if p is not None and t is not None and df is not None:
-        # 对于大 df，|t| > 1.96 对应 p < 0.05（双尾）
-        if df > 30:
-            if abs(t) > 3.29 and p > 0.001:
-                checks.append(StatCheck(
-                    metric="p值 ↔ t统计量",
-                    value_reported=f"p = {p}",
-                    value_expected=f"p < 0.001 (|t|={abs(t)} > 3.29, df={df})",
-                    consistent=False,
-                    explanation=f"|t|={abs(t)} 远大于 3.29 但 p={p}，p 值可能过大",
-                ))
-            elif abs(t) < 1.0 and p < 0.05:
-                checks.append(StatCheck(
-                    metric="p值 ↔ t统计量",
-                    value_reported=f"p = {p}",
-                    value_expected=f"p > 0.05 (|t|={abs(t)} < 1.0, df={df})",
-                    consistent=False,
-                    explanation=f"|t|={abs(t)} 小于 1.0 但 p={p} < 0.05，p 值可能过小",
-                ))
+        expected_p = t_p_two_tailed(t, df)
+        verdict = _p_verdict(expected_p, float(p))
+        if verdict:
+            checks.append(StatCheck(
+                metric="p值 ↔ t统计量",
+                value_reported=f"p = {p}",
+                value_expected=f"p = {expected_p:.3g} (精确双尾, |t|={abs(float(t))}, df={df})",
+                consistent=False,
+                explanation=(
+                    f"由 t={t}, df={df} 精确计算双尾 p = {expected_p:.3g}，论文报告 p={p}，"
+                    f"报告值明显{'过大' if verdict == '过大' else '过小'}。"
+                    + ("（若该 p 是「p < .001」这类上界写法则属正常，请按上界理解。）"
+                       if verdict == "过大" else
+                       "（若该 p 为单尾值，与双尾恰好差 2 倍，不会触发本判定。）")
+                ),
+            ))
+
+    if p is not None and f is not None and df_between is not None and df_error is not None:
+        expected_p = f_p_right_tail(f, df_between, df_error)
+        verdict = _p_verdict(expected_p, float(p))
+        if verdict:
+            checks.append(StatCheck(
+                metric="p值 ↔ F统计量",
+                value_reported=f"p = {p}",
+                value_expected=(
+                    f"p = {expected_p:.3g} (精确右尾, F={f}, df1={df_between}, df2={df_error})"
+                ),
+                consistent=False,
+                explanation=(
+                    f"由 F={f}, df1={df_between}, df2={df_error} 精确计算右尾 p = {expected_p:.3g}，"
+                    f"论文报告 p={p}，报告值明显{'过大' if verdict == '过大' else '过小'}。"
+                    + ("（若该 p 是「p < .001」这类上界写法则属正常，请按上界理解。）"
+                       if verdict == "过大" else
+                       "（F 检验只有右尾，不存在单尾/双尾差异；若确为合法报告请核对 F 值与自由度。）")
+                ),
+            ))
 
     # ── 校验 6: 效应量大小分类 ──
     if d is not None:

@@ -2850,7 +2850,7 @@ async def _handle_scholarforge_apply_template(args: dict, **kw: Any) -> str:
 SCHOLARFORGE_CHECK_STATS_SCHEMA = {
     "name": "scholarforge_check_stats",
     "description": (
-        "校验统计指标的内部一致性。自动检验 η²↔Cohen's d、t↔d、F↔η²、d↔均值差/标准差 等换算关系。"
+        "校验统计指标的内部一致性。自动检验 η²↔Cohen's d、t↔d、F↔η²、d↔r、d↔均值差/标准差、p↔t/F 等换算关系。"
         "适用于：论文投稿前统计核查、确保报告的统计指标数学一致、防止计算错误。"
     ),
     "parameters": {
@@ -2860,6 +2860,18 @@ SCHOLARFORGE_CHECK_STATS_SCHEMA = {
             "cohens_d": {"type": "number", "description": "Cohen's d 效应量"},
             "t_value": {"type": "number", "description": "t 统计量"},
             "df": {"type": "integer", "description": "自由度"},
+            "t_test_type": {
+                "type": "string",
+                "enum": ["paired", "independent"],
+                "description": "t 检验类型：paired=配对/重复测量样本，independent=独立样本。"
+                               "两种类型的 t↔d 换算式不同（配对 d_z=t/√(df+1)、独立 d=2t/√df），"
+                               "指定后判定更准；不指定则三种候选式都试（口径最宽）。",
+            },
+            "r_value": {
+                "type": "number",
+                "description": "相关系数 r。应为**二分组与连续变量的点二列相关**——"
+                               "只有这种 r 才能与 Cohen's d 互推；两个连续变量的 Pearson 相关不适用。",
+            },
             "f_value": {"type": "number", "description": "F 统计量"},
             "df_between": {
                 "type": "integer",

@@ -219,6 +219,9 @@ _CONSISTENCY_KEYS = {
     # df_between：从 `F(2,87)=4.12` 里解析出的组间自由度。传进去才能让 F↔η² 走正确公式
     # （见 validators.py 校验 3 的 2026-09-16 修正）——这正是「解析器 + 校验器」接力的价值。
     "df_between", "df_error", "p_value", "n_group1", "n_group2", "mean_diff", "pooled_sd",
+    # 2026-09-16 新增：r_value 启用 d↔r 校验（此前 docstring 承诺了但代码未实现）；
+    # t_test_type 用于指定配对/独立样本，让 t↔d 不必在三种候选式里宽判。
+    "r_value", "t_test_type",
 }
 
 
@@ -230,7 +233,11 @@ def stats_summary_table(stats: dict[str, Any], caption: str = "") -> str:
             continue
         val = stats[key]
         if key == "p_value" and stats.get("p_raw"):
-            text = f"{stats['p_raw']}"
+            # p_raw 形如 "< .001" / "= .52"。表格里「p 值 | = .52」读着别扭，
+            # 等号是冗余的（列名已经是「p 值」），去掉；不等号必须保留（那是语义）。
+            text = stats["p_raw"].strip()
+            if text.startswith("="):
+                text = text[1:].strip()
         elif isinstance(val, float):
             text = f"{val:g}"
         else:
