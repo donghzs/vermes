@@ -59,11 +59,37 @@ _RE_M_CN = re.compile(r"均值\s*(?:=|\s)\s*(-?\d+(?:\.\d+)?)")
 _RE_SD_CN = re.compile(r"标准差\s*(?:=|\s)\s*(-?\d+(?:\.\d+)?)")
 
 
+# SPSS 单元格的两种装饰，不剥掉会让整行数据"认不出来" → 校验静默不跑：
+#   · 脚注字母：`6.857a`（卡方值带脚注 a，说明"有单元格期望频数 < 5"）
+#   · 显著性星号：`.482**` / `.035*`（相关矩阵、回归系数表里的显著性标记）
+# 实测（2026-09-17）：一张 4 行的卡方表因此**一个数字都提不出来**。
+_RE_TRAIL_STAR = re.compile(r"[\s*†‡]+$")
+_RE_TRAIL_ALPHA = re.compile(r"[A-Za-z]+$")
+
+
 def _f(s: str) -> Optional[float]:
-    try:
-        return float(s)
-    except (TypeError, ValueError):
+    """解析数字；剥离脚注/星号后仍解析不出来则返回 None（宁可漏不可错）。
+
+    🔴 顺序不能反：先去星号再去尾字母，否则 `.482**` 的尾字符是 `*`，
+    尾字母正则匹配不上，`float(".482**")` 直接失败。
+    """
+    t = _clean_cell(s)
+    if not t:
         return None
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def _clean_cell(s: str) -> str:
+    """剥掉脚注字母与显著性星号，返回可直接排进三线表的数字文本。
+
+    🔴 为什么 `_raw`（数字保真的原文透传）也要剥：脚注 `a` 与显著性 `**` 是 SPSS
+    的**表格装饰**，不进论文三线表（写 `6.857a` 会被当成笔误），而剥掉后数字本身
+    仍与源表逐位一致，用户照样能回表核对 —— 保真保的是**数字**，不是装饰。
+    """
+    return _RE_TRAIL_STAR.sub("", _RE_TRAIL_ALPHA.sub("", (s or "").strip()))
 
 
 def parse_inline_stats(text: str) -> dict[str, Any]:
@@ -199,12 +225,37 @@ _HEADER_MAP: dict[str, set[str]] = {
     "n": {"个案数", "样本量", "个数", "n"},
 }
 
-# 行标签 → 角色（ANOVA 表的「组之间 / 组内」决定 F 的两个自由度取自哪行）
-_ROW_BETWEEN = {"组之间", "组间", "组间变异", "between groups", "between", "模型", "回归"}
-_ROW_ERROR = {"组内", "组内变异", "within groups", "within", "误差", "error", "残差"}
+# ── 行标签 → 角色 ────────────────────────────────────────────────────────
+# 🔴 关键教训（2026-09-17 实测）：SPSS 同一类分析有**多种表名 / 行标签**，
+#    只认「组之间 / 组内」会漏掉 GLM 单变量（「组别 / 误差」）与重复测量
+#    （「时间·采用的球形度 / 误差(时间)」）—— 这两张表在教育学论文里比
+#    单因素 ANOVA 还常见，而它们此前**一次校验都没跑过**（静默空）。
+_ROW_BETWEEN = {"组之间", "组间", "组间变异", "between groups", "between"}
+_ROW_ERROR = {"组内", "组内变异", "within groups", "within",
+              "误差", "error", "残差", "residual"}
+# GLM「主体间效应检验」里**不是**单个效应的行：整模型 / 截距 / 总计。
+# 取它们的 F 去算 η² 会得到一个答非所问的数（模型整体效应量 ≠ 组别效应量）。
+_ROW_MODEL = {"修正模型", "模型", "回归", "corrected model", "model", "regression"}
+_ROW_INTERCEPT = {"截距", "intercept"}
+_ROW_TOTAL = {"总计", "修正后总计", "total", "corrected total"}
+# 重复测量「主体内效应检验」：同一个效应有 4 行（球形度成立 + 3 种校正）。
+# 论文默认报「采用的球形度」；三种校正行的 F 相同但 df 被 ε 修正过，
+# 混用会让 p↔F 对不上 —— 必须认出来并跳过。
+_ROW_SPHERE_OK = {"采用的球形度", "假设球形度", "sphericity assumed"}
+_ROW_SPHERE_CORR = {"格林豪斯-盖斯勒", "辛-费德特", "下限",
+                    "greenhouse-geisser", "huynh-feldt", "lower-bound"}
 # 独立样本 t 检验有两行：假定等方差（默认取这行）/ 不假定等方差（Welch，跳过）
 _ROW_EQUAL_VAR = {"假定等方差", "假设方差相等", "equal variances assumed"}
 _ROW_UNEQUAL_VAR = {"不假定等方差", "假设方差不相等", "equal variances not assumed"}
+# 卡方检验：只有「皮尔逊卡方」行是标准 χ²，似然比 / 线性关联是别的检验
+_ROW_CHI_PEARSON = {"皮尔逊卡方", "皮尔逊 卡方", "pearson chi-square", "chi-square"}
+# 相关矩阵：每个变量占一个块，块内三行（皮尔逊相关性 / Sig. / 个案数）
+_ROW_R = {"皮尔逊相关性", "pearson 相关性", "pearson correlation", "相关性"}
+_ROW_SIG = {"sig", "显著性", "p"}
+_ROW_N = {"个案数", "样本量", "个数", "n"}
+# 卡方表里 χ² 所在列的表头就叫「值」—— 这个词太泛，不进 `_HEADER_MAP`
+# （否则任何带「值」列的表都会被贴上 chi 标签），只在**行标签已确认是卡方**时才认。
+_CHI_ALIASES = {"值", "卡方", "卡方值", "χ²", "χ2", "chi-square", "chi2"}
 
 
 def _row_label(rows: list[list[str]], i: int) -> str:
@@ -214,14 +265,55 @@ def _row_label(rows: list[list[str]], i: int) -> str:
     所以取「最后一个非数值单元格」，而不是固定取第 0 列。
     🔴 判定数值后必须**先 break 再赋值**，否则标签会被覆盖成第一个数字。
     """
-    label = ""
+    return _row_parts(rows, i)[1]
+
+
+def _row_parts(rows: list[list[str]], i: int) -> tuple[str, str]:
+    """返回 (主标签, 子标签) = 数值区之前的**第一个**与**最后一个**非空单元格。
+
+    为什么要两个：重复测量「主体内效应检验」把效应名与球形度条件分列 ——
+    `时间 | 采用的球形度 | 45.625 | ...`，而它的误差行是 `误差(时间) | 采用的球形度 | ...`。
+    两者**子标签完全相同**，只靠子标签（旧 `_row_label`）根本区分不出效应行与误差行。
+    """
+    head = ""
+    tail = ""
     for c in rows[i]:
         if not c:
             continue
         if _f(c) is not None:  # 进入数据区，标签到此为止
             break
-        label = c
-    return (label or "").strip()
+        if not head:
+            head = c
+        tail = c
+    return (head or "").strip(), (tail or "").strip()
+
+
+def _label_of(head: str, tail: str) -> str:
+    """拼人类可读的行标签：`时间` + `采用的球形度` → `时间（采用的球形度）`；相同时只给一个。"""
+    head, tail = (head or "").strip(), (tail or "").strip()
+    if head and tail and head != tail:
+        return f"{head}（{tail}）"
+    return head or tail
+
+
+_ALL_ALIASES: set[str] = set().union(*_HEADER_MAP.values())
+
+
+def _pick_header_row(rows: list[list[str]]) -> int:
+    """在**多层表头**里定位真正带列名的那一行（返回行下标）。
+
+    🔴 旧实现固定取 `rows[0]`，而 SPSS「成对样本检验」的表头有两层：
+       第 0 行 `  |  | 成对差值 | …`（只是分组大标题）
+       第 1 行 `  |  | 平均值 | 标准差 | … | t | 自由度 | 显著性`（真正的列名）
+    取第 0 行 → 一个语义列都匹配不上 → 整张表提取为空 → 校验静默不跑。
+    判据：认出语义别名最多的一行；并列时取**靠前**的（数据行几乎不可能并列）。
+    """
+    best_i, best = 0, 0
+    for i in range(len(rows) - 1):  # 最后一行不可能是表头（后面得有数据）
+        score = sum(1 for c in rows[i] if _canon_header(c) in _ALL_ALIASES)
+        if score > best:
+            best_i, best = i, score
+    return best_i
 
 
 def _pick_p_col(p_cols: list[int], stat_col: Optional[int]) -> Optional[int]:
@@ -257,15 +349,35 @@ def _p_from_cell(cell: str, op_hint: str = "=") -> Optional[dict[str, Any]]:
 def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
     """按表头语义从已识别的表格里提取统计量（纯函数，认不出就返回空）。
 
-    只处理两类能真正喂给一致性校验的表：
-      · 有 t 列 → 独立样本 t 检验（取「假定等方差」行；忽略莱文 F，那不是均值差异检验）
-      · 只有 F 列 → 单因素 ANOVA（组之间行出 F/p/df_between，组内行出 df_error）
+    支持的表（教育学/心理学论文里 SPSS 的高频输出）：
+      · 相关矩阵   → r / p / n（变量名在**列**，每变量占三行）
+      · t 检验     → 独立样本（取「假定等方差」行）、成对样本、单样本
+      · 卡方检验   → χ² / df / p（只取「皮尔逊卡方」行）
+      · F 类       → 单因素 ANOVA「组之间/组内」、GLM「主体间效应检验」（组别/误差）、
+                     重复测量「主体内效应检验」（时间·采用的球形度 / 误差(时间)）
     描述统计（个案数/平均值/标准差）也提取，但它本身没有可校验的推论统计量。
+
+    🔴 宁可漏不可错：行标签认不出来就返回空（校验不跑），绝不"猜"一行。
     """
     if not rows or len(rows) < 2:
         return {}
 
-    header = rows[0]
+    out: dict[str, Any] = {}
+    # 🔴 **原始单元格文本**（数字保真）：表里是 `.83` 就必须输出 `.83`，
+    # 不能被 float 化后再 `f"{v:g}"` 成 `0.83`。汇总表展示时优先用这里的原文。
+    raws: dict[str, str] = {}
+
+    # ── ① 相关矩阵（形态特殊，必须**先于**表头定位处理）─────────────────
+    # 相关矩阵的 rows[0] 放的是变量名（` | | 成绩 | 学习动机`），而下面每行的
+    # 第二列是「皮尔逊相关性 / Sig.（双尾）/ 个案数」——这些都会被 `_pick_header_row`
+    # 判成表头（各命中一个语义别名）。形态不同就得先短路，否则必错。
+    r_probe = next((i for i in range(1, len(rows))
+                    if _canon_header(_row_parts(rows, i)[1]) in _ROW_R), None)
+    if r_probe is not None:
+        return _extract_correlation(rows, r_probe)
+
+    h = _pick_header_row(rows)
+    header = rows[h]
     canon = [_canon_header(c) for c in header]
     cols: dict[str, int] = {}
     for idx, c in enumerate(canon):
@@ -293,17 +405,17 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
         if v is None:
             return
         out[key] = int(v) if as_int and float(v).is_integer() else v
-        raws[key] = cell.strip()
+        raws[key] = _clean_cell(cell)
 
-    # ── t 检验分支（优先：独立样本检验表里也有 F，但那是莱文方差齐性检验）──
+    # ── ② t 检验分支（优先：独立样本检验表里也有 F，但那是莱文方差齐性检验）──
     if "t" in cols and p_cols and "df" in cols:
         target = None
         target_label = ""
-        for i in range(1, len(rows)):
-            raw = _row_label(rows, i)
-            if _canon_header(raw) in _ROW_UNEQUAL_VAR:
+        for i in range(h + 1, len(rows)):
+            head, tail = _row_parts(rows, i)
+            if _canon_header(tail) in _ROW_UNEQUAL_VAR:
                 continue
-            target, target_label = i, raw
+            target, target_label = i, _label_of(head, tail)
             break
         if target is not None:
             row = rows[target]
@@ -317,14 +429,63 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
             out["_raw"] = raws
             return out
 
-    # ── ANOVA 分支 ──
+    # ── ③ 卡方检验分支 ──
+    chi_i = next((i for i in range(h + 1, len(rows))
+                  if _canon_header(_row_parts(rows, i)[1]) in _ROW_CHI_PEARSON), None)
+    if chi_i is not None:
+        # 「值」这个词太泛，只在**已确认本行是卡方行**的前提下才当 χ² 取值列。
+        chi_col = next((j for j, c in enumerate(canon) if c in _CHI_ALIASES), None)
+        if chi_col is None:  # 表头不叫「值」也没有「卡方」→ 取该行第一个可解析的数字
+            chi_col = next((j for j, c in enumerate(rows[chi_i])
+                            if _f(c) is not None), None)
+        row = rows[chi_i]
+        _put("chi_square", _cell(row, chi_col))
+        if "df" in cols:
+            _put("df", _cell(row, cols["df"]), as_int=True)
+        pinfo = _p_from_cell(_cell(row, _pick_p_col(p_cols, chi_col)))
+        if pinfo:
+            out.update(pinfo)
+            raws["p_value"] = pinfo.get("p_raw", "")
+        out["_source_row"] = _label_of(*_row_parts(rows, chi_i)) or f"第 {chi_i} 行"
+        out["_raw"] = raws
+        return out
+
+    # ── ④ F 分支（单因素 ANOVA / GLM 主体间效应 / 重复测量主体内效应）──
     if "f" in cols and p_cols:
-        between_i = next((i for i in range(1, len(rows))
-                          if _canon_header(_row_label(rows, i)) in _ROW_BETWEEN), None)
-        error_i = next((i for i in range(1, len(rows))
-                        if _canon_header(_row_label(rows, i)) in _ROW_ERROR), None)
-        # 认不出「组之间/组内」行标签时，**不要**盲取第一行 —— ANOVA 表的第二行
-        # 可能是「组内」（F 列为空），盲取会拿到空值或错值。宁可漏。
+        data = list(range(h + 1, len(rows)))
+        # 误差行：主标签或子标签命中「组内 / 误差 / 残差」均可
+        # （重复测量的误差行主标签是「误差(时间)」，canon 后即「误差」）。
+        error_i = next((i for i in data
+                        if _canon_header(_row_parts(rows, i)[1]) in _ROW_ERROR
+                        or _canon_header(_row_parts(rows, i)[0]) in _ROW_ERROR), None)
+        between_i = next((i for i in data
+                          if _canon_header(_row_parts(rows, i)[1]) in _ROW_BETWEEN), None)
+        others: list[str] = []
+        if between_i is None and error_i is not None:
+            # GLM / 重复测量没有「组之间」行：取第一个**非**整模型/截距/总计/误差、
+            # **非**球形度校正、且 F 列非空的行 —— 那才是用户要报的那个效应。
+            #
+            # 🔴 为什么必须**先认出误差行**才敢取名字未知的效应行：
+            #    GLM 的效应行标签就是用户自己的变量名（组别 / 性别 / 教学法 …），
+            #    不可能预先枚举，所以不能只认固定标签；但一张连「组内 / 误差 /
+            #    残差」都没有的表，取出来的 F 既算不出 df_error、也跑不了任何
+            #    一致性校验 —— 那就是在给用户一个**没验过的数**，宁可不给。
+            #    （旧行为「认不出组之间/组内就返回空」的保守精神由此保留。）
+            for i in data:
+                head, tail = _row_parts(rows, i)
+                ch, ct = _canon_header(head), _canon_header(tail)
+                if (ct in _ROW_MODEL or ct in _ROW_INTERCEPT or ct in _ROW_TOTAL
+                        or ct in _ROW_ERROR or ch in _ROW_ERROR
+                        or ct in _ROW_SPHERE_CORR):
+                    continue
+                if _f(_cell(rows[i], cols["f"])) is None:
+                    continue
+                if between_i is None:
+                    between_i = i
+                else:
+                    others.append(_label_of(head, tail))
+        # 认不出效应行时**不要**盲取第一行 —— ANOVA 表第二行可能就是「组内」
+        # （F 列为空），盲取会拿到空值或错值。宁可漏。
         if between_i is None:
             return out
         brow = rows[between_i]
@@ -337,17 +498,88 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
             _put("df_between", _cell(brow, cols["df"]), as_int=True)
             if error_i is not None:
                 _put("df_error", _cell(rows[error_i], cols["df"]), as_int=True)
-        out["_source_row"] = _row_label(rows, between_i) or f"第 {between_i} 行"
+        out["_source_row"] = _label_of(*_row_parts(rows, between_i)) or f"第 {between_i} 行"
+        if others:
+            # 多因素 / 多效应表：只校一个，但必须告诉用户还有哪些没校。
+            out["_extra_effects"] = others
         out["_raw"] = raws
         return out
 
-    # ── 描述统计：无推论统计量，只把 n / M / SD 提出来展示 ──
-    for key in ("n", "mean", "sd"):
-        if key in cols and len(rows) > 1:
-            _put(key, _cell(rows[1], cols[key]), as_int=(key == "n"))
+    # ── ⑤ 描述统计：无推论统计量，只把 n / M / SD 提出来展示 ──
+    if h + 1 < len(rows):
+        for key in ("n", "mean", "sd"):
+            if key in cols:
+                _put(key, _cell(rows[h + 1], cols[key]), as_int=(key == "n"))
     if out:
-        out["_source_row"] = _row_label(rows, 1) or "第 1 行"
+        out["_source_row"] = _label_of(*_row_parts(rows, h + 1)) or "第 1 行"
         out["_raw"] = raws
+    return out
+
+
+def _extract_correlation(rows: list[list[str]], r_i: int) -> dict[str, Any]:
+    """从 SPSS 相关矩阵里取**一对**变量的相关（r / p / n）。
+
+    矩阵是「块」结构：每个变量占三行（皮尔逊相关性 / Sig.（双尾）/ 个案数），
+    变量名**只写在块的第一行**，后两行行首为空。所以必须沿行序继承「当前块」，
+    不能按行首单元格匹配 —— 后两行的行首是空的。
+
+    🔴 只取**第一对**并显式告知：4 变量矩阵有 6 对相关，把它们混成一个"校验"
+    等于把 6 个不同检验揉在一起，比不校验更糟。多对时由调用方提示用户。
+    """
+    header = rows[0]
+    canon = [_canon_header(c) for c in header]
+    out: dict[str, Any] = {}
+    raws: dict[str, str] = {}
+
+    def _at(row: list[str], j: int) -> str:
+        return (row[j] or "").strip() if j < len(row) else ""
+
+    # 当前块变量名（沿行序继承；只认非数字的单元格，避免把数字当变量名）
+    blocks: dict[int, str] = {}
+    cur = ""
+    for i in range(1, len(rows)):
+        c0 = _at(rows[i], 0)
+        if c0 and _f(c0) is None:
+            cur = c0
+        blocks[i] = cur
+
+    vname = blocks.get(r_i) or ""
+    row = rows[r_i]
+    # 对角线 = 表头里与本行变量同名的那一列（相关矩阵必然自相关 = 1）
+    diag_j = next((j for j in range(1, len(header))
+                   if canon[j] and canon[j] == _canon_header(vname)), None)
+    vals = [(j, _f(c)) for j, c in enumerate(row) if _f(c) is not None]
+    if diag_j is not None:
+        off = [(j, v) for j, v in vals if j != diag_j]
+    else:
+        off = [(j, v) for j, v in vals if abs(v - 1.0) > 1e-9]
+    if not off:
+        return {}
+    j, rv = off[0]
+    out["r_value"] = rv
+    raws["r_value"] = _at(row, j)
+    pair = _at(header, j) or f"第 {j + 1} 列"
+
+    def _in_block(i: int, aliases: set[str]) -> bool:
+        return blocks.get(i) == vname and _canon_header(_at(rows[i], 1)) in aliases
+
+    p_i = next((i for i in range(1, len(rows)) if _in_block(i, _ROW_SIG)), None)
+    if p_i is not None:
+        pinfo = _p_from_cell(_at(rows[p_i], j))
+        if pinfo:
+            out.update(pinfo)
+            raws["p_value"] = pinfo.get("p_raw", "")
+    n_i = next((i for i in range(1, len(rows)) if _in_block(i, _ROW_N)), None)
+    if n_i is not None:
+        v = _f(_at(rows[n_i], j))
+        if v is not None and float(v).is_integer():
+            out["n"] = int(v)
+            raws["n"] = _at(rows[n_i], j)
+
+    out["_source_row"] = f"{vname} × {pair}".strip(" ×")
+    if len(off) > 1:
+        out["_corr_pairs"] = len(off)
+    out["_raw"] = raws
     return out
 
 
@@ -430,6 +662,9 @@ _CONSISTENCY_KEYS = {
     # 2026-09-16 新增：r_value 启用 d↔r 校验（此前 docstring 承诺了但代码未实现）；
     # t_test_type 用于指定配对/独立样本，让 t↔d 不必在三种候选式里宽判。
     "r_value", "t_test_type",
+    # 2026-09-17 新增：chi_square 启用 χ²↔p 校验；n 供 r↔p 换算
+    # （t = r·√((n-2)/(1-r²))，df = n-2）。二者缺一，对应的表就只是"能看不能校"。
+    "chi_square", "n",
 }
 
 
@@ -577,6 +812,18 @@ def build_stats_report(raw_text: str, caption: str = "") -> str:
         notes.append(
             "⚠️ 表中「显著性」显示为 `.000`：这是 SPSS 三位小数的舍入显示，"
             "**不是 p = 0**。已按学术惯例记为 **p < .001**，论文里请照此书写。"
+        )
+    if (stats.get("_corr_pairs") or 0) > 1:
+        notes.append(
+            f"本表共 {stats['_corr_pairs']} 对相关，一致性校验只针对"
+            f"**「{stats.get('_source_row', '')}」**这一对 —— 多对相关的 F/df/p 各不相同，"
+            "揉在一起校验没有意义；其余各对请单独粘贴两变量的相关表。"
+        )
+    if stats.get("_extra_effects"):
+        notes.append(
+            f"本表还有其它效应行（{'、'.join(stats['_extra_effects'])}），一致性校验只针对"
+            f"**「{stats.get('_source_row', '')}」**行 —— 各效应行的 F 与自由度不同，"
+            "不能混校。"
         )
     if stats.get("_derived"):
         notes.append(

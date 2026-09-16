@@ -530,6 +530,82 @@ def f_p_right_tail(f: float, df_between: float, df_error: float) -> float:
     return _betai(df2 / 2.0, df1 / 2.0, df2 / (df2 + df1 * f))
 
 
+def _gammq(a: float, x: float) -> float:
+    """正则化**上**不完全 Gamma 函数 Q(a, x) = 1 − P(a, x)（纯 Python）。
+
+    🔴 scipy 被 `vermes-backend.spec` 列进 EXCLUDES，打包后的后端 `import scipy`
+    必抛 `ModuleNotFoundError` —— 与 `_betai` 同样必须自己实现。
+    走 Numerical Recipes 的两段式（与 `_betai` 同构，精度 ~1e-15）：
+      · x < a+1：级数求 P(a,x) 再取补（收敛快）
+      · x ≥ a+1：修正 Lentz 连分式直接求 Q（级数此时收敛慢且会抵消丢失精度）
+    """
+    if x < 0.0 or a <= 0.0:
+        return float("nan")
+    if x == 0.0:
+        return 1.0
+    if x < a + 1.0:
+        ap, term, total = a, 1.0 / a, 1.0 / a
+        for _ in range(1000):
+            ap += 1.0
+            term *= x / ap
+            total += term
+            if abs(term) < abs(total) * 1e-16:
+                break
+        return 1.0 - total * math.exp(-x + a * math.log(x) - math.lgamma(a))
+    tiny = 1e-300
+    b = x + 1.0 - a
+    c = 1.0 / tiny
+    d = 1.0 / b
+    h = d
+    for i in range(1, 1000):
+        an = -i * (i - a)
+        b += 2.0
+        d = an * d + b
+        if abs(d) < tiny:
+            d = tiny
+        c = b + an / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < 1e-16:
+            break
+    return math.exp(-x + a * math.log(x) - math.lgamma(a)) * h
+
+
+def chi2_p_right_tail(chi2: float, df: float) -> float:
+    """χ² 检验右尾 p 值：p = Q(df/2, χ²/2)。非法输入返回 NaN。
+
+    卡方在教育学的**类别变量**分析里是主力（性别×是否留守、生源地×入学准备水平…），
+    此前本模块只能校 t / F，卡方表粘进来是"能看不能校"。
+    """
+    try:
+        a = float(df) / 2.0
+        x = float(chi2) / 2.0
+    except (TypeError, ValueError):
+        return float("nan")
+    if a <= 0 or x < 0:
+        return float("nan")
+    if x == 0.0:
+        return 1.0
+    return _gammq(a, x)
+
+
+def r_p_two_tailed(r: float, n: float) -> float:
+    """Pearson 相关 r 的双尾 p 值：t = r·√((n−2)/(1−r²))，df = n−2。非法输入 NaN。"""
+    try:
+        nn = float(n)
+        rr = float(r)
+    except (TypeError, ValueError):
+        return float("nan")
+    if nn <= 2.0 or abs(rr) >= 1.0:
+        return float("nan")
+    if rr == 0.0:
+        return 1.0
+    return t_p_two_tailed(rr * math.sqrt((nn - 2.0) / (1.0 - rr * rr)), nn - 2.0)
+
+
 def _p_verdict(expected_p: float, reported_p: float) -> str:
     """判断「精确 p 值」与「论文报告的 p 值」是否构成可断言的矛盾。
 
@@ -585,6 +661,10 @@ def check_statistics_consistency(
     6. p值 ↔ t / F:  **精确计算**双尾（右尾）p 值，不再用 |t|>3.29 之类的粗启发式，
        且小样本（df ≤ 30）同样覆盖。判定纪律见 `_p_verdict` 的注释 ——
        只在跨过显著性阈值且数量级差 10 倍以上时断言，以兼容单尾 p 与「p < .001」上界写法。
+    7. p值 ↔ χ²:  右尾 p = Q(df/2, χ²/2)（纯 Python 上不完全 Gamma，见 `_gammq`）。
+       2026-09-17 新增：卡方表此前"能看不能校"。
+    8. p值 ↔ r:   t = r·√((n−2)/(1−r²))，df = n−2，再走 t 双尾（见 `r_p_two_tailed`）。
+       要求提供样本量 n，否则无法换算（缺 n 就不校验，不猜）。
 
     Args:
         stats: 统计指标字典，可含:
@@ -623,6 +703,8 @@ def check_statistics_consistency(
     n2 = stats.get("n_group2")
     mean_diff = stats.get("mean_diff")
     pooled_sd = stats.get("pooled_sd")
+    chi2 = stats.get("chi_square")
+    n = stats.get("n")
 
     # ── 校验 1: η² ↔ Cohen's d ──
     if eta_sq is not None and d is not None:
@@ -900,7 +982,48 @@ def check_statistics_consistency(
                 ),
             ))
 
-    # ── 校验 6: 效应量大小分类 ──
+    # ── 校验 7: p值 ↔ χ² ──
+    if p is not None and chi2 is not None and df is not None:
+        expected_p = chi2_p_right_tail(chi2, df)
+        verdict = _p_verdict(expected_p, float(p))
+        if verdict:
+            checks.append(StatCheck(
+                metric="p值 ↔ χ²统计量",
+                value_reported=f"p = {p}",
+                value_expected=f"p = {expected_p:.3g} (精确右尾, χ²={chi2}, df={df})",
+                consistent=False,
+                explanation=(
+                    f"由 χ²={chi2}, df={df} 精确计算右尾 p = {expected_p:.3g}，"
+                    f"论文报告 p={p}，报告值明显{'过大' if verdict == '过大' else '过小'}。"
+                    "（卡方只有右尾，不存在单尾/双尾差异；若确为合法报告请核对 χ² 值与自由度，"
+                    "并确认报的是「皮尔逊卡方」而非似然比或线性关联。）"
+                ),
+            ))
+
+    # ── 校验 8: p值 ↔ r ──
+    if p is not None and r is not None and n is not None:
+        expected_p = r_p_two_tailed(r, n)
+        verdict = _p_verdict(expected_p, float(p))
+        if verdict:
+            try:
+                t_from_r = float(r) * math.sqrt((float(n) - 2.0) / (1.0 - float(r) ** 2))
+            except (TypeError, ValueError, ZeroDivisionError):
+                t_from_r = float("nan")
+            checks.append(StatCheck(
+                metric="p值 ↔ 相关系数 r",
+                value_reported=f"p = {p}",
+                value_expected=f"p = {expected_p:.3g} (精确双尾, r={r}, n={n})",
+                consistent=False,
+                explanation=(
+                    f"由 r={r}, n={n} 换算 t={t_from_r:.3f}、df={float(n) - 2.0:g}，"
+                    f"精确双尾 p = {expected_p:.3g}，论文报告 p={p}，"
+                    f"报告值明显{'过大' if verdict == '过大' else '过小'}。"
+                    "（⚠️ 该换算要求 r 是两连续变量的 Pearson 相关；若为 Spearman ρ 或"
+                    "点二列相关，p 的换算式不同，请按实际检验类型理解。）"
+                ),
+            ))
+
+    # ── 附带：效应量大小分类（只在已有矛盾时顺带给出，放在所有校验之后）──
     if d is not None:
         size = "小" if abs(d) < 0.2 else "中" if abs(d) < 0.8 else "大" if abs(d) < 1.3 else "极大"
         # 只在有其他指标矛盾时才报告
