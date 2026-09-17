@@ -1327,3 +1327,201 @@ class TestSpssLogisticRegression:
         r = build_stats_report(SPSS_LOGISTIC)
         assert "2.333" in r
         assert "统计一致性校验" in r
+
+
+# ════════════════════════════════════════════════════════════════════════
+# 2026-09-18 第十四轮：① 因子分析「总方差解释」
+#                    ② 正态性检验（K-S / S-W）—— p 的**方向相反**
+#                    ③ 莱文方差齐性检验（就是 F(df1, df2)，复用 F↔p）
+# ════════════════════════════════════════════════════════════════════════
+
+# 总方差解释：三组**共用**列名（总计 / 方差百分比 / 累积 %），
+# 只能靠上一行的分组名区分。旋转组的单个方差百分比与提取组不同。
+SPSS_TOTAL_VARIANCE = (
+    "总方差解释\n"
+    + "成分" + T + "初始特征值" + T + T + T + "提取载荷平方和" + T + T + T + "旋转载荷平方和" + "\n"
+    + T + "总计" + T + "方差百分比" + T + "累积 %" + T + "总计" + T + "方差百分比" + T + "累积 %"
+    + T + "总计" + T + "方差百分比" + T + "累积 %" + "\n"
+    + "1" + T + "3.842" + T + "38.420" + T + "38.420" + T + "3.842" + T + "38.420" + T + "38.420"
+    + T + "2.905" + T + "29.050" + T + "29.050" + "\n"
+    + "2" + T + "1.506" + T + "15.060" + T + "53.480" + T + "1.506" + T + "15.060" + T + "53.480"
+    + T + "2.443" + T + "24.430" + T + "53.480"
+)
+
+# 正态性检验：n=120（>50）→ 按 SPSS 惯例报 K-S；两个检验结论一致（都偏离正态）
+SPSS_NORMALITY_LARGE_N = (
+    "正态性检验\n"
+    + T + "柯尔莫戈洛夫-斯米诺夫a" + T + T + T + "夏皮洛-威尔克" + T + T + "\n"
+    + T + "统计" + T + "自由度" + T + "显著性" + T + "统计" + T + "自由度" + T + "显著性" + "\n"
+    + "学习动机" + T + ".112" + T + "120" + T + ".002" + T + ".943" + T + "120" + T + ".000"
+)
+
+# 小样本 n=30（≤50）→ 按惯例报 S-W；且两个检验**结论不一致**
+# （K-S p=.200 符合正态，S-W p=.014 偏离正态）—— 学生最容易在这里写错
+SPSS_NORMALITY_SMALL_N = (
+    "正态性检验\n"
+    + T + "柯尔莫戈洛夫-斯米诺夫a" + T + T + T + "夏皮洛-威尔克" + T + T + "\n"
+    + T + "统计" + T + "自由度" + T + "显著性" + T + "统计" + T + "自由度" + T + "显著性" + "\n"
+    + "学习焦虑" + T + ".112" + T + "30" + T + ".200" + T + ".943" + T + "30" + T + ".014"
+)
+
+# 莱文方差齐性检验：本质是 F(df1, df2)
+SPSS_LEVENE = (
+    "方差齐性检验\n"
+    + "莱文统计" + T + "自由度 1" + T + "自由度 2" + T + "显著性" + "\n"
+    + "1.234" + T + "2" + T + "117" + T + ".294"
+)
+
+
+class TestSpssTotalVarianceExplained:
+    """因子分析「总方差解释」：三组共用列名，靠上一行的分组名区分。"""
+
+    def test_eigen_variance_cumulative_are_extracted(self):
+        s = _extract(SPSS_TOTAL_VARIANCE)
+        assert s["eigen_value"] == pytest.approx(3.842)
+        assert s["variance_pct"] == pytest.approx(38.420)
+        assert s["cumulative_pct"] == pytest.approx(53.480)
+
+    def test_primary_group_is_extraction_not_initial(self):
+        """🔴 论文报的「累计方差贡献率」来自**提取 / 旋转**组，不是「初始特征值」组
+        —— 后者列出**全部**成分，末行累积恒为 100%，抄它等于抄了个没意义的数。
+        """
+        s = _extract(SPSS_TOTAL_VARIANCE)
+        assert "提取载荷平方和" in s["_source_row"]
+
+    def test_all_three_groups_are_listed_with_values(self):
+        """三组数值不同（旋转会重新分配解释率）→ 必须全部列出让用户挑（不猜）。"""
+        s = _extract(SPSS_TOTAL_VARIANCE)
+        groups = {g["group"]: g for g in s["_variance_groups"]}
+        assert set(groups) == {"初始特征值", "提取载荷平方和", "旋转载荷平方和"}
+        # 累积 % 不受旋转影响（三组末行相同）
+        assert all(g["cum"] == "53.480" for g in groups.values())
+        # 但**单个**因子的方差百分比会变
+        assert groups["旋转载荷平方和"]["var"] == "29.050"
+        assert groups["提取载荷平方和"]["var"] == "38.420"
+
+    def test_report_discloses_the_three_groups(self):
+        r = build_stats_report(SPSS_TOTAL_VARIANCE)
+        assert "旋转载荷平方和" in r and "初始特征值" in r
+        assert "末行累积恒为 100%" in r
+
+    def test_correct_cumulative_passes_consistency(self):
+        payload = {k: v for k, v in _extract(SPSS_TOTAL_VARIANCE).items()
+                   if k in ("variance_pct", "cumulative_pct", "variance_pct_sum")}
+        assert check_statistics_consistency(payload) == []
+
+    def test_miscopied_cumulative_is_caught(self):
+        """累积 % 抄成 55.48（53.48 的十位数字抄错）—— 与 Σ方差百分比对不上。"""
+        bad = [c for c in check_statistics_consistency(
+            {"variance_pct": 38.42, "cumulative_pct": 55.48,
+             "variance_pct_sum": 53.48}) if not c.consistent]
+        assert bad and "累积 %" in bad[0].metric
+
+    def test_cumulative_sum_is_computed_for_check(self):
+        """`variance_pct_sum` 是各成分之和，用于校验累积 %（否则无从判断抄错）。"""
+        s = _extract(SPSS_TOTAL_VARIANCE)
+        assert s["variance_pct_sum"] == pytest.approx(53.480)
+
+
+class TestSpssNormality:
+    """🔴 正态性检验的 p **方向与所有其它检验相反**：
+    p > .05 才说明**符合正态**；p < .05 说明**偏离正态**。
+    学生看到 p=.000 就写「显著」，实际含义是**不服从正态** —— 必须显式说清方向。
+    """
+
+    def test_both_tests_are_extracted(self):
+        s = _extract(SPSS_NORMALITY_LARGE_N)
+        assert s["ks_value"] == pytest.approx(0.112)
+        assert s["sw_value"] == pytest.approx(0.943)
+        assert s["n"] == 120
+        assert s["p_value"] == pytest.approx(0.002)
+
+    def test_large_sample_reports_ks(self):
+        """n=120 > 50 → 按 SPSS 惯例报 K-S（n ≤ 50 时 S-W 更敏感）。"""
+        s = _extract(SPSS_NORMALITY_LARGE_N)
+        assert s["_normality"]["primary"] == "K-S"
+        assert "n=120" in s["_normality"]["rule"]
+
+    def test_small_sample_reports_sw(self):
+        s = _extract(SPSS_NORMALITY_SMALL_N)
+        assert s["_normality"]["primary"] == "S-W"
+        assert s["p_value"] == pytest.approx(0.014)   # S-W 的 p，不是 K-S 的 .200
+
+    def test_direction_is_explicitly_stated(self):
+        """方向提示必须出现在报告里 —— 只给一个 p 值会被误读成「显著=好」。"""
+        r = build_stats_report(SPSS_NORMALITY_LARGE_N)
+        assert "方向" in r
+        assert "p **> .05 才说明符合正态分布**" in r
+        assert "偏离正态**" in r
+
+    def test_conflicting_verdicts_are_disclosed(self):
+        """🔴 K-S p=.200（符合正态）vs S-W p=.014（偏离正态）—— 两个检验结论
+        不一致时必须点破，否则学生会挑一个"好看的"写进论文。
+        """
+        r = build_stats_report(SPSS_NORMALITY_SMALL_N)
+        assert "结论不一致" in r
+        assert "明确写出用的是哪一个检验" in r
+
+    def test_consistent_verdicts_do_not_warn(self):
+        """两个检验结论一致时不该报「不一致」（避免噪音）。"""
+        r = build_stats_report(SPSS_NORMALITY_LARGE_N)
+        assert "结论不一致" not in r
+
+    def test_p_cannot_be_back_computed_is_disclosed(self):
+        """K-S / S-W 的 p 来自专用分布，无法由统计量反算 → 必须显式说"未校验"，
+        否则「✅ 未发现矛盾」会被读成"已核对"（§27）。
+        """
+        s = _extract(SPSS_NORMALITY_LARGE_N)
+        assert s.get("_unchecked")
+        r = build_stats_report(SPSS_NORMALITY_LARGE_N)
+        assert "未校验" in r
+
+    def test_variable_name_is_the_source_row(self):
+        assert _extract(SPSS_NORMALITY_LARGE_N)["_source_row"] == "学习动机"
+
+
+class TestSpssLevene:
+    """莱文方差齐性检验：它就是 F(df1, df2) → 直接复用 F↔p，不新造校验。"""
+
+    def test_f_df1_df2_p_are_extracted(self):
+        s = _extract(SPSS_LEVENE)
+        assert s["f_value"] == pytest.approx(1.234)
+        assert s["df_between"] == 2
+        assert s["df_error"] == 117
+        assert s["p_value"] == pytest.approx(0.294)
+
+    def test_correct_p_passes_consistency(self):
+        """F(2,117)=1.234 的精确右尾 p=0.29489，表里 .294 → 一致。"""
+        payload = {k: v for k, v in _extract(SPSS_LEVENE).items()
+                   if k in ("f_value", "df_between", "df_error", "p_value")}
+        assert check_statistics_consistency(payload) == []
+
+    def test_miscopied_p_is_caught(self):
+        bad = [c for c in check_statistics_consistency(
+            {"f_value": 1.234, "df_between": 2, "df_error": 117, "p_value": .024})
+            if not c.consistent]
+        assert bad and "F" in bad[0].metric
+
+    def test_direction_note_is_shown(self):
+        """🔴 莱文的 p 方向也相反：p > .05 才是**方差齐**（前提满足）。"""
+        r = build_stats_report(SPSS_LEVENE)
+        assert "方差齐" in r
+        assert "不是 ANOVA 的效应检验" in r
+
+
+class TestRound14Regression:
+    """本轮改了 `_HEADER_MAP`（新增别名）与分支顺序 —— 既有表型必须仍正常。"""
+
+    def test_previous_table_types_still_work(self):
+        assert _extract(SPSS_ANOVA)["f_value"] == pytest.approx(4.123)
+        assert _extract(SPSS_CHI)["chi_square"] == pytest.approx(6.857)
+        assert _extract(SPSS_PAIRED)["t_value"] == pytest.approx(-3.522)
+        assert _extract(SPSS_GLM)["f_value"] == pytest.approx(8.971)
+        assert _extract(SPSS_MWU)["z_value"] == pytest.approx(-2.271)
+        assert _extract(SPSS_KMO)["kmo"] == pytest.approx(0.812)
+        assert _extract(SPSS_COEF)["b_value"] == pytest.approx(0.482)
+        assert _extract(SPSS_LOGISTIC)["exp_b"] == pytest.approx(2.333)
+
+    def test_ancova_multi_effect_still_works(self):
+        s = _extract(SPSS_ANCOVA)
+        assert len(s["_all_effects"]) == 2

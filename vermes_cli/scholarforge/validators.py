@@ -1136,6 +1136,32 @@ def check_statistics_consistency(
                 ),
             ))
 
+    # ── 校验 12: 累积% ↔ Σ各成分方差百分比（因子分析「总方差解释」）──
+    # 🔴 与校验 10 同理，这是**确定性代数关系**（不是统计推断），用严格容差。
+    #    容差 0.06：SPSS 各成分方差百分比保留 2 位小数，N 个成分累积后的
+    #    舍入误差最多约 0.005×N（N=10 时 0.05），0.06 足以容纳 —— 但抄错
+    #    一位数（53.48 → 55.48，差 2）必然被抓。
+    cum_pct = stats.get("cumulative_pct")
+    var_sum = stats.get("variance_pct_sum")
+    if cum_pct is not None and var_sum is not None:
+        try:
+            rep_cum, exp_cum = float(cum_pct), float(var_sum)
+        except (TypeError, ValueError):
+            rep_cum = exp_cum = None
+        if rep_cum is not None and abs(rep_cum - exp_cum) > 0.06:
+            checks.append(StatCheck(
+                metric="累积 % ↔ 各成分方差百分比之和",
+                value_reported=f"累积 % = {rep_cum}",
+                value_expected=f"累积 % = {exp_cum:.4g}（= 各成分方差百分比之和）",
+                consistent=False,
+                explanation=(
+                    f"累积 % 是各成分方差百分比的**逐行累加**，二者必须相等。"
+                    f"本表各成分之和为 {exp_cum:.4g}，而（末行）累积 % 是 {rep_cum}，"
+                    "二者不符 —— 通常是抄错了某个方差百分比或累积值，"
+                    "也可能是把另一组（初始特征值 / 提取 / 旋转）的数混抄在了一起。"
+                ),
+            ))
+
     # ── 附带：效应量大小分类（只在已有矛盾时顺带给出，放在所有校验之后）──
     if d is not None:
         size = "小" if abs(d) < 0.2 else "中" if abs(d) < 0.8 else "大" if abs(d) < 1.3 else "极大"

@@ -272,6 +272,13 @@ _HEADER_MAP: dict[str, set[str]] = {
     "beta": {"beta", "β"},
     "vif": {"vif"},
     "tolerance": {"容差", "tolerance"},
+    # 2026-09-18 因子分析「总方差解释」：三组（初始特征值 / 提取载荷平方和 /
+    # 旋转载荷平方和）**共用** `总计 / 方差百分比 / 累积 %` 三个列名，
+    # 只能靠**上一行**的分组名区分 —— 与巴特利特「分组名 + 统计量名」同类结构。
+    "eigen": {"总计", "特征值", "特征根", "total", "eigenvalue"},
+    "var_pct": {"方差百分比", "方差的百分比", "方差贡献率", "variance %", "% of variance"},
+    "cum_pct": {"累积 %", "累积%", "累积百分比", "累计 %", "累计%", "累计百分比",
+                "cumulative %"},
 }
 
 # ── 行标签 → 角色 ────────────────────────────────────────────────────────
@@ -301,6 +308,10 @@ _COL_MODEL_NO = {"模型", "model"}
 # 回归「系数」表首行是 `(常量)`：它的 t 检验是"截距是否为 0"，
 # 与任何研究假设无关，且 p 几乎恒为 .000 —— 取它会答非所问。
 _ROW_CONSTANT = {"(常量)", "常量", "(constant)", "constant"}
+
+# 正态性检验的两个检验名（出现在**分组行**，不是列名行）
+_KS_NAMES = ("柯尔莫戈洛夫", "柯尔莫戈洛夫-斯米诺夫", "kolmogorov", "k-s", "ks")
+_SW_NAMES = ("夏皮洛", "shapiro", "s-w", "sw")
 # 卡方检验：只有「皮尔逊卡方」行是标准 χ²，似然比 / 线性关联是别的检验
 _ROW_CHI_PEARSON = {"皮尔逊卡方", "皮尔逊 卡方", "pearson chi-square", "chi-square"}
 # 相关矩阵：每个变量占一个块，块内三行（皮尔逊相关性 / Sig. / 个案数）
@@ -383,6 +394,27 @@ def _col_keys(cell: str) -> list[str]:
             if tok in aliases and key not in out:
                 out.append(key)
     return out
+
+
+def _group_of_column(rows: list[list[str]], h: int, j: int) -> str:
+    """多层表头里第 j 列属于哪个**分组**（分组名在上一行，跨多列，向右填充）。
+
+    SPSS 的「总方差解释」「正态性检验」都是这个结构：上一行是分组名
+    （`初始特征值` / `柯尔莫戈洛夫-斯米诺夫`），下一行才是列名
+    （`总计 / 方差百分比 / 累积 %`、`统计 / 自由度 / 显著性`），
+    且**同一批列名重复出现多次** —— 不认分组就无法区分。
+
+    🔴 向右填充（取左侧最近的分组名）与 `_extract_kv` 里巴特利特三行的处理
+    同源：`巴特利特球形度检验 | 近似卡方 | 326.450` 的分组名也在左边。
+    """
+    if h < 1:
+        return ""
+    g_row = rows[h - 1]
+    for k in range(min(j, len(g_row) - 1), -1, -1):
+        c = (g_row[k] or "").strip()
+        if c:
+            return _canon_header(c)
+    return ""
 
 
 def _score_row(cells: list[str]) -> int:
@@ -842,6 +874,163 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
             out["_raw"] = raws
             return out
 
+    # ── ④c 莱文方差齐性检验（F(df1, df2)）────────────────────────────
+    # 独立样本 t 检验 / ANOVA 之前必看的假设检验。它**就是**一个 F 检验
+    # （F = 莱文统计，df1/df2 在表里直接给了）→ 归到 f_value 复用 F↔p，
+    # 不新造校验。🔴 注意它**不该**被当成 ANOVA 的效应 F —— 故单独成支。
+    lev_col = next((j for j, c in enumerate(canon)
+                    if "莱文" in c or "levene" in c), None)
+    if lev_col is not None:
+        d1 = next((j for j, c in enumerate(canon)
+                   if c.startswith("自由度") and "1" in c), None)
+        d2 = next((j for j, c in enumerate(canon)
+                   if c.startswith("自由度") and "2" in c), None)
+        if h + 1 < len(rows) and d1 is not None and d2 is not None:
+            row = rows[h + 1]
+            _put("f_value", _cell(row, lev_col))
+            _put("df_between", _cell(row, d1), as_int=True)
+            _put("df_error", _cell(row, d2), as_int=True)
+            pinfo = _p_from_cell(_cell(row, _pick_p_col(p_cols, lev_col)))
+            if pinfo:
+                out.update(pinfo)
+                raws["p_value"] = pinfo.get("p_raw", "")
+            out["_source_row"] = "莱文方差齐性检验"
+            # 🔴 方向同样与常规相反：p > .05 才说明**方差齐**（满足前提），
+            #    p < .05 是方差不齐。写反了会把"前提不满足"写成"满足"。
+            out["_levene_note"] = True
+            out["_raw"] = raws
+            return out
+
+    # ── ④d 因子分析「总方差解释」────────────────────────────────────
+    # 三组（初始特征值 / 提取载荷平方和 / 旋转载荷平方和）**共用**列名
+    # `总计 / 方差百分比 / 累积 %`，只能靠**上一行的分组名**区分 ——
+    # 与巴特利特「分组名 + 统计量名」是同一类结构（故同样向右填充取分组名）。
+    # 🔴 论文报的「累计方差贡献率」来自**提取 / 旋转**组，不是「初始特征值」组：
+    #    后者列的是**全部**成分（末行累积恒为 100%），前者只列被提取的因子。
+    if "var_pct" in cols and "cum_pct" in cols:
+        groups: dict[str, dict[str, list[int]]] = {}
+        for j, c in enumerate(canon):
+            key = next((k for k in _col_keys(c)
+                        if k in ("eigen", "var_pct", "cum_pct")), None)
+            if key is None:
+                continue
+            g = _group_of_column(rows, h, j)
+            groups.setdefault(g, {}).setdefault(key, []).append(j)
+        # 主组优先「提取载荷平方和」：不受是否旋转影响，且是"提取的因子"的标准口径。
+        primary = None
+        for kw in ("提取载荷平方和", "旋转载荷平方和", "初始特征值"):
+            primary = next((g for g in groups
+                            if kw in g and {"eigen", "var_pct", "cum_pct"} <= set(groups[g])),
+                           None)
+            if primary:
+                break
+        if primary is None:
+            primary = next((g for g in groups
+                            if {"var_pct", "cum_pct"} <= set(groups[g])), None)
+        if primary is not None:
+            m = groups[primary]
+            vp, cp = m["var_pct"][0], m["cum_pct"][0]
+            good = [i for i in range(h + 1, len(rows))
+                    if _f(_cell(rows[i], vp)) is not None
+                    and _f(_cell(rows[i], cp)) is not None]
+            if good:
+                first, last = good[0], good[-1]
+                if "eigen" in m:
+                    _put("eigen_value", _cell(rows[first], m["eigen"][0]))
+                _put("variance_pct", _cell(rows[first], vp))
+                _put("cumulative_pct", _cell(rows[last], cp))
+                # 各成分方差百分比之和 —— 用于校验累积%（校验 12）
+                total = sum(_f(_cell(rows[i], vp)) for i in good)
+                out["variance_pct_sum"] = round(total, 3)
+                raws["variance_pct_sum"] = f"{total:g}"
+                out["_source_row"] = f"成分 {_cell(rows[first], 0)}（{primary}）"
+                # 三组数值不同（旋转会改变各因子的解释率）→ 全部列出，
+                # 让用户能直接挑论文要报的那一组（不猜）。
+                vg = []
+                for g, mm in groups.items():
+                    if not {"var_pct", "cum_pct"} <= set(mm):
+                        continue
+                    gi = [i for i in range(h + 1, len(rows))
+                          if _f(_cell(rows[i], mm["var_pct"][0])) is not None
+                          and _f(_cell(rows[i], mm["cum_pct"][0])) is not None]
+                    if gi:
+                        vg.append({
+                            "group": g,
+                            "var": _cell(rows[gi[0]], mm["var_pct"][0]),
+                            "cum": _cell(rows[gi[-1]], mm["cum_pct"][0]),
+                        })
+                out["_variance_groups"] = vg
+                out["_raw"] = raws
+                return out
+
+    # ── ④e 正态性检验（K-S / S-W）────────────────────────────────────
+    # 🔴 **方向陷阱**：这里的 p **< .05 是「偏离正态」**，与所有其它检验相反。
+    #    学生看到 p=.000 就写"显著"，实际含义是**不服从正态分布** —— 写反了
+    #    会把"前提不满足"写成"满足"，后续 t 检验 / ANOVA 的适用性结论整个反过来。
+    #    故结论必须**显式写清方向**，不能只给一个数。
+    ng: dict[str, list[int]] = {}
+    for j in range(len(canon)):
+        name = _group_of_column(rows, h, j)
+        if name:
+            ng.setdefault(name, []).append(j)
+    ks_g = next((g for g in ng if any(k in g for k in _KS_NAMES)), None)
+    sw_g = next((g for g in ng if any(k in g for k in _SW_NAMES)), None)
+    if ks_g or sw_g:
+        info: dict[str, dict[str, str]] = {}
+        for tag, g in (("ks", ks_g), ("sw", sw_g)):
+            cs = ng.get(g) or []
+            # SPSS 固定三列一组：统计 / 自由度 / 显著性
+            if len(cs) == 3:
+                info[tag] = {"cols": cs}
+        probe = (ng.get(ks_g) or ng.get(sw_g) or [None])[0]
+        row_i = next((i for i in range(h + 1, len(rows))
+                      if _cell(rows[i], 0).strip()
+                      and _f(_cell(rows[i], probe)) is not None), None)
+        if row_i is not None and info:
+            row = rows[row_i]
+            vals = {}
+            for tag, d in info.items():
+                cs = d["cols"]
+                vals[tag] = {"stat": _cell(row, cs[0]), "df": _cell(row, cs[1]),
+                             "p": _cell(row, cs[2])}
+            n_val = _f(next(iter(vals.values()))["df"])
+            # SPSS 惯例：n ≤ 50 用 S-W（对小样本更敏感），n > 50 用 K-S
+            primary = "ks" if (n_val is not None and n_val > 50 and "ks" in vals) else "sw"
+            if primary not in vals:
+                primary = "ks" if "ks" in vals else "sw"
+            if "ks" in vals:
+                _put("ks_value", vals["ks"]["stat"])
+            if "sw" in vals:
+                _put("sw_value", vals["sw"]["stat"])
+            pv = vals[primary]
+            pinfo = _p_from_cell(pv["p"])
+            if pinfo:
+                out.update(pinfo)
+                raws["p_value"] = pinfo.get("p_raw", "")
+            _put("n", pv["df"], as_int=True)
+            other = "sw" if primary == "ks" else "ks"
+            out["_source_row"] = _cell(row, 0).strip()
+            out["_normality"] = {
+                "primary": "K-S" if primary == "ks" else "S-W",
+                "stat": pv["stat"],
+                "p_raw": (pinfo or {}).get("p_raw") or pv["p"],
+                "other": ("K-S" if other == "ks" else "S-W") if other in vals else "",
+                "other_stat": vals.get(other, {}).get("stat", ""),
+                "other_p_raw": vals.get(other, {}).get("p", ""),
+                "rule": (f"样本量 n={int(n_val) if n_val else '?'}，"
+                         f"按 SPSS 惯例报告 {'K-S' if primary == 'ks' else 'S-W'}"
+                         f"（n ≤ 50 时 {'S-W' if primary == 'ks' else 'K-S'} 更敏感）"),
+            }
+            # 🔴 K-S / S-W 的 p 由**专用分布**给出（K-S 分布、S-W 的 W 分布），
+            #    没有像 t/F/χ² 那样的闭式函数可反算 → 本表**校不了 p↔统计量**。
+            #    必须显式告知，否则「✅ 未发现矛盾」会被读成"核对过了"（§27）。
+            out["_unchecked"] = [
+                "p ↔ 正态性检验统计量：K-S / S-W 的 p 来自专用分布表，"
+                "无法由统计量反算，请直接对照 SPSS 原表核对"
+            ]
+            out["_raw"] = raws
+            return out
+
     # ── ⑤ 描述统计：无推论统计量，只把 n / M / SD 提出来展示 ──
     if h + 1 < len(rows):
         for key in ("n", "mean", "sd", "cronbach_alpha"):
@@ -997,6 +1186,14 @@ _DISPLAY = [
     ("exp_b", "Exp(B)（优势比 OR）"),
     ("kmo", "KMO（取样适切性量数）"),
     ("cronbach_alpha", "Cronbach's α"),
+    # 2026-09-18 因子分析「总方差解释」
+    ("eigen_value", "特征根（总计）"),
+    ("variance_pct", "方差百分比"),
+    ("cumulative_pct", "累积 %（累计方差贡献率）"),
+    ("variance_pct_sum", "各成分方差百分比之和（校验用）"),
+    # 正态性检验：两个统计量一起给，主报哪个由样本量决定（见 `_normality`）
+    ("ks_value", "K-S 统计量 D（柯尔莫戈洛夫-斯米诺夫）"),
+    ("sw_value", "S-W 统计量 W（夏皮洛-威尔克）"),
     ("n", "样本量 n"),
     ("mean", "均值 M"),
     ("sd", "标准差 SD"),
@@ -1020,6 +1217,9 @@ _CONSISTENCY_KEYS = {
     "r_squared", "adj_r_squared",
     # 2026-09-18 逻辑回归：Exp(B) = e^B 是**确定性关系**，用相对容差断言（校验 11）。
     "exp_b",
+    # 2026-09-18 因子分析「总方差解释」：累积% = Σ各成分方差百分比（校验 12）。
+    # 同样是**确定性代数关系**，用严格容差。
+    "variance_pct", "cumulative_pct", "variance_pct_sum",
 }
 
 
@@ -1201,6 +1401,51 @@ def build_stats_report(raw_text: str, caption: str = "") -> str:
         notes.append(
             "η² 是**由 F 与自由度推算**的（`F·df₁/(F·df₁+df₂)`）—— SPSS 的 ANOVA 表不直接给，"
             "论文几乎必报效应量。🔴 它**不参与**一致性校验（否则等于自己验自己）。"
+        )
+    if stats.get("_variance_groups") and len(stats["_variance_groups"]) > 1:
+        lst = "；".join(
+            f"{g['group']}（方差 {g['var']}%、累积 {g['cum']}%）"
+            for g in stats["_variance_groups"])
+        notes.append(
+            f"🔴 **本表有 {len(stats['_variance_groups'])} 组方差解释量**：{lst}。\n> "
+            "本次取的是**「提取 / 旋转」组**（见上方「取自」行）—— 论文的"
+            "「累计方差贡献率」应来自**提取载荷平方和或旋转载荷平方和**组，"
+            "**不是**「初始特征值」组（后者列出**全部**成分，末行累积恒为 100%）。\n> "
+            "旋转会重新分配各因子的解释率（**单个因子**的方差百分比会变），"
+            "但**累积 % 不变** —— 若你论文报的是旋转后各因子的解释率，"
+            "请用「旋转载荷平方和」那一组的数。"
+        )
+    norm = stats.get("_normality")
+    if norm:
+        def _pv(s: str) -> Optional[float]:
+            s = (s or "").replace("<", "").replace("=", "").strip()
+            try:
+                return float(s)
+            except (TypeError, ValueError):
+                return None
+
+        p1, p2 = _pv(norm.get("p_raw")), _pv(norm.get("other_p_raw"))
+        c1 = "**偏离正态**" if (p1 is not None and p1 < 0.05) else "**符合正态**"
+        extra = ""
+        if norm.get("other") and p2 is not None:
+            c2 = "偏离正态" if p2 < 0.05 else "符合正态"
+            extra = (f"；另一检验 {norm['other']}：统计量 {norm['other_stat']}, "
+                     f"p={norm['other_p_raw']} → {c2}")
+            if p1 is not None and (p1 < 0.05) != (p2 < 0.05):
+                extra += ("。🔴 两个检验**结论不一致**（S-W 更敏感，大样本下轻微偏离"
+                          "也会显著）—— 请在论文里**明确写出用的是哪一个检验**，"
+                          "不要只写「正态性检验显著」。")
+        notes.append(
+            "🔴 **正态性检验的 p 值方向与所有其它检验相反**："
+            "p **> .05 才说明符合正态分布**；p < .05 说明**偏离正态**。\n> "
+            f"本次报告 {norm['primary']}（{norm.get('rule', '')}）："
+            f"统计量 {norm['stat']}, p={norm['p_raw']} → {c1}{extra}。"
+        )
+    if stats.get("_levene_note"):
+        notes.append(
+            "🔴 这是**莱文方差齐性检验**，不是 ANOVA 的效应检验 —— "
+            "它的 p 值方向与常规检验**相反**：p > .05 才说明**方差齐**（前提满足），"
+            "p < .05 是方差不齐。写反了会把「前提不满足」写成「满足」。"
         )
     if notes:
         parts.append("\n".join(f"> {n}" for n in notes) + "\n")
