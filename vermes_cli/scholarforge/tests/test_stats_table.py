@@ -1162,3 +1162,168 @@ class TestHeaderMergeRegression:
         rows = ST.detect_table_rows(SPSS_ANOVA)
         nr, h = ST._normalize_header(rows)
         assert len(nr) == len(rows)          # 没有少行 = 没合并
+
+
+# ════════════════════════════════════════════════════════════════════════
+# 2026-09-18 第十三轮：① ANCOVA 多效应「静默取错行」修复
+#                    ② 逻辑回归（瓦尔德 Wald ↔ χ²、Exp(B) ↔ B）
+# ════════════════════════════════════════════════════════════════════════
+
+# 协方差分析：**协变量**（前测成绩）与**分组变量**（组别）在表上长得一样
+SPSS_ANCOVA = (
+    "主体间效应检验\n"
+    + "因变量:   后测成绩\n"
+    + "源" + T + "III 类平方和" + T + "自由度" + T + "均方" + T + "F" + T + "显著性" + "\n"
+    + "修正模型" + T + "512.300a" + T + "3" + T + "170.767" + T + "16.204" + T + ".000" + "\n"
+    + "截距" + T + "88.450" + T + "1" + T + "88.450" + T + "8.396" + T + ".005" + "\n"
+    + "前测成绩" + T + "330.120" + T + "1" + T + "330.120" + T + "31.323" + T + ".000" + "\n"
+    + "组别" + T + "142.680" + T + "1" + T + "142.680" + T + "13.540" + T + ".001" + "\n"
+    + "误差" + T + "589.700" + T + "56" + T + "10.530" + T + T
+)
+
+# 逻辑回归：瓦尔德 Wald（不是 t），且有 Exp(B) 与 95% 置信区间
+SPSS_LOGISTIC = (
+    "方程中的变量\n"
+    + T + "B" + T + "标准误差" + T + "瓦尔德" + T + "自由度" + T + "显著性" + T + "Exp(B)"
+    + T + "95% 置信区间 下限" + T + "95% 置信区间 上限" + "\n"
+    + "性别(1)" + T + ".847" + T + ".312" + T + "7.365" + T + "1" + T + ".007" + T + "2.333"
+    + T + "1.265" + T + "4.302" + "\n"
+    + "常量" + T + "-1.204" + T + ".385" + T + "9.782" + T + "1" + T + ".002" + T + ".300"
+)
+
+
+class TestAncovaMultipleEffects:
+    """🔴 ANCOVA：协变量与分组变量在表上长得一样，系统**无法判断**你要报哪个。
+
+    此前默认取第一个（恰好是协变量「前测成绩」）—— 给出的是
+    **一个看起来合理的错数**，那比"提取不出来"危险得多。
+    修法不是猜，而是把**所有**效应行的 F/p 都列出来让用户自己挑。
+    """
+
+    def test_all_effect_rows_are_listed_with_values(self):
+        """光说"还有其它行"不够 —— 用户得能看到那些数，才判断得出选哪个。"""
+        s = _extract(SPSS_ANCOVA)
+        eff = s.get("_all_effects") or []
+        assert len(eff) == 2
+        assert {e["label"] for e in eff} == {"前测成绩", "组别"}
+        by = {e["label"]: e for e in eff}
+        assert by["组别"]["f"] == pytest.approx(13.540)     # 用户真正想报的那个
+        assert by["前测成绩"]["f"] == pytest.approx(31.323)  # 协变量
+
+    def test_report_shows_every_effect_row(self):
+        """两个 F 值都必须出现在报告里 —— 否则用户看不到自己要的那一行。"""
+        r = build_stats_report(SPSS_ANCOVA)
+        assert "13.54" in r and "31.323" in r
+        assert "无法判断你要报哪一个" in r
+
+    def test_single_effect_table_has_no_all_effects(self):
+        """普通单因素 ANOVA 只有一个效应行，不需要这套提示（避免噪音）。"""
+        assert "_all_effects" not in _extract(SPSS_ANOVA)
+
+    def test_glm_single_effect_has_no_all_effects(self):
+        """🔴 变异实证 Q3 的教训：只测 `SPSS_ANOVA` **压不住**这条闸门。
+
+        ANOVA 有「组之间」行，走的是 `_ROW_BETWEEN` 分支，**根本不进** `eff_rows`
+        循环 —— 所以删掉 `len(eff_rows) > 1` 的判断，那条用例照样通过。
+        必须用一个**走 eff_rows 路径但只有一个效应行**的表才能真正承重
+        （否则每张 GLM 表都会挂上一个无用警告，变成噪音）。
+        """
+        txt = ("主体间效应检验\n"
+               + "源" + T + "III 类平方和" + T + "自由度" + T + "均方" + T + "F" + T + "显著性" + "\n"
+               + "组别" + T + "180.500" + T + "2" + T + "90.250" + T + "8.971" + T + ".000" + "\n"
+               # 🔴 误差行的 F / 显著性是**空单元格**，真实 SPSS 复制出来会保留
+               # 尾部 tab（仍是 6 列）。若不补这两个空列，该行只有 4 列 →
+               # 被列数过滤丢掉 → 整张表认不出误差行 → 根本走不到效应行循环，
+               # 这条用例就形同虚设（变异实证 Q3 就是这样漏网的）。
+               + "误差" + T + "560.250" + T + "56" + T + "10.004" + T + T)
+        assert "_all_effects" not in _extract(txt)
+
+    def test_covariate_and_group_are_both_mentioned(self):
+        """提示语必须点名"协变量 vs 分组变量"，否则用户不知道风险在哪。"""
+        r = build_stats_report(SPSS_ANCOVA)
+        assert "协变量" in r and "分组变量" in r
+
+
+class TestSpssLogisticRegression:
+    """逻辑回归：没有 t 值，用 **Wald 统计量** = (B/SE)²，渐近服从 χ²(df=1)。"""
+
+    def test_b_se_wald_df_p_expb_are_extracted(self):
+        s = _extract(SPSS_LOGISTIC)
+        assert s["b_value"] == pytest.approx(0.847)
+        assert s["se_value"] == pytest.approx(0.312)
+        assert s["chi_square"] == pytest.approx(7.365)   # Wald 归到 χ²
+        assert s["df"] == 1
+        assert s["p_value"] == pytest.approx(0.007)
+        assert s["exp_b"] == pytest.approx(2.333)
+
+    def test_wald_is_disclosed_as_chi_square(self):
+        """展示名写的是「χ²」，必须说清它来自 Wald ——
+        否则用户拿去和卡方拟合度检验的 χ² 对照，会以为认错了表。
+        """
+        s = _extract(SPSS_LOGISTIC)
+        assert "瓦尔德" in s["_chi_from"] or "Wald" in s["_chi_from"]
+
+    def test_constant_row_is_skipped(self):
+        assert _extract(SPSS_LOGISTIC)["_source_row"] == "性别(1)"
+
+    def test_constant_row_first_is_also_skipped(self):
+        """🔴 变异实证 Q5 的教训：常量行在**末位**时压不住这条守卫。
+
+        删掉跳过逻辑后 `picks[0]` 仍是第一个变量行 → 测试照样通过（Q5 漏网）。
+        必须让常量行排在**首位**才真正走到那个分支 —— 而 SPSS 的
+        「方程中的变量」表在不同版本/选项下两种顺序都出现过。
+        """
+        txt = ("方程中的变量\n"
+               + T + "B" + T + "标准误差" + T + "瓦尔德" + T + "自由度" + T + "显著性" + T + "Exp(B)" + "\n"
+               + "(常量)" + T + "-1.204" + T + ".385" + T + "9.782" + T + "1" + T + ".002" + T + ".300" + "\n"
+               + "性别(1)" + T + ".847" + T + ".312" + T + "7.365" + T + "1" + T + ".007" + T + "2.333")
+        s = _extract(txt)
+        assert s["_source_row"] == "性别(1)"
+        assert s["b_value"] == pytest.approx(0.847)
+
+    def test_exp_b_column_is_recognised(self):
+        """🔴 `Exp(B)` 经 `_canon_header` 变成 `exp`（括号及其内容被删），
+        别名里若只有 `exp(b)` 就永远认不出来。
+        """
+        from vermes_cli.scholarforge import stats_table as ST
+        assert "exp_b" in ST._col_keys("Exp(B)")
+
+    def test_wald_p_consistency_passes_for_correct_report(self):
+        """Wald=7.365, df=1 → 精确 p=.00665，表里 .007 → 一致。"""
+        payload = {k: v for k, v in _extract(SPSS_LOGISTIC).items()
+                   if k in ("chi_square", "df", "p_value")}
+        assert check_statistics_consistency(payload) == []
+
+    def test_wald_wrong_p_is_caught(self):
+        bad = [c for c in check_statistics_consistency(
+            {"chi_square": 7.365, "df": 1, "p_value": 0.919}) if not c.consistent]
+        assert bad and "χ²" in bad[0].metric
+
+    def test_exp_b_matches_e_to_the_b(self):
+        payload = {k: v for k, v in _extract(SPSS_LOGISTIC).items()
+                   if k in ("b_value", "exp_b")}
+        assert check_statistics_consistency(payload) == []
+
+    def test_miscopied_exp_b_is_caught(self):
+        bad = [c for c in check_statistics_consistency(
+            {"b_value": .847, "exp_b": 3.333}) if not c.consistent]
+        assert bad and "Exp(B)" in bad[0].metric
+
+    def test_confidence_bound_mistaken_for_exp_b_is_caught(self):
+        """🔴 真实高频错误：把 95% CI 下限（1.265）当成 Exp(B) 抄进论文。"""
+        bad = [c for c in check_statistics_consistency(
+            {"b_value": .847, "exp_b": 1.265}) if not c.consistent]
+        assert bad and "Exp(B)" in bad[0].metric
+
+    def test_exp_b_without_b_is_not_checked(self):
+        assert check_statistics_consistency({"exp_b": 2.333}) == []
+
+    def test_negative_b_still_works(self):
+        """B 为负时 Exp(B) < 1，相对容差必须同样成立。"""
+        assert check_statistics_consistency(
+            {"b_value": -1.204, "exp_b": .300}) == []
+
+    def test_logistic_report_runs_consistency(self):
+        r = build_stats_report(SPSS_LOGISTIC)
+        assert "2.333" in r
+        assert "统计一致性校验" in r

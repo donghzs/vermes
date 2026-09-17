@@ -263,6 +263,12 @@ _HEADER_MAP: dict[str, set[str]] = {
     # 由 `_normalize_header` 按列拼接后再匹配。
     "b": {"b"},
     "se": {"标准错误", "标准误差", "se", "std. error", "standard error"},
+    # 逻辑回归：瓦尔德 Wald = (B/SE)² 渐近服从 χ²(df=1) → 归 chi_square 复用 χ²↔p；
+    # Exp(B) = e^B 是确定性关系 → 单独校验（校验 11）。
+    "wald": {"瓦尔德", "wald", "瓦尔德检验"},
+    # 🔴 `Exp(B)` 经 `_canon_header` 会变成 `exp`（括号及其内容被删掉），
+    #    所以别名里必须含裸的 `exp`，否则这一列永远认不出来。
+    "exp_b": {"exp(b)", "exp b", "expb", "exp", "or", "比值比", "优势比", "odds ratio"},
     "beta": {"beta", "β"},
     "vif": {"vif"},
     "tolerance": {"容差", "tolerance"},
@@ -690,6 +696,44 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
             out["_raw"] = raws
             return out
 
+    # ── ②c 逻辑回归系数表（瓦尔德 Wald）────────────────────────────────
+    # 逻辑回归**没有 t 值**，用的是 Wald 统计量 = (B/SE)²，**渐近服从 χ²(df=1)**
+    # → 归到 chi_square，直接复用上一轮的 χ²↔p 校验（校验 7），不重复造轮子。
+    # Exp(B) = e^B 是确定性关系 → 校验 11。
+    if "wald" in cols and p_cols:
+        name_col = 1 if _canon_header(rows[h][0]) in _COL_MODEL_NO else 0
+        picks, labels = [], []
+        for i in range(h + 1, len(rows)):
+            label = _cell(rows[i], name_col).strip()
+            if _canon_header(re.sub(r"[()（）]", "", label)) in _ROW_CONSTANT:
+                continue
+            if _f(_cell(rows[i], cols["wald"])) is None:
+                continue
+            picks.append(i)
+            labels.append(label)
+        if picks:
+            row = rows[picks[0]]
+            for key in ("b", "se"):
+                if key in cols:
+                    _put(key + "_value", _cell(row, cols[key]))
+            _put("chi_square", _cell(row, cols["wald"]))
+            if "exp_b" in cols:
+                _put("exp_b", _cell(row, cols["exp_b"]))
+            if "df" in cols:
+                _put("df", _cell(row, cols["df"]), as_int=True)
+            pinfo = _p_from_cell(_cell(row, _pick_p_col(p_cols, cols["wald"])))
+            if pinfo:
+                out.update(pinfo)
+                raws["p_value"] = pinfo.get("p_raw", "")
+            out["_source_row"] = labels[0] or f"第 {picks[0]} 行"
+            # 🔴 展示名写的是「χ²」，得说清它来自 Wald —— 否则用户拿去和
+            #    卡方拟合度检验的 χ² 对照，会以为系统认错了表。
+            out["_chi_from"] = "逻辑回归的瓦尔德 Wald 统计量（渐近服从 χ²）"
+            if len(picks) > 1:
+                out["_extra_effects"] = labels[1:]
+            out["_raw"] = raws
+            return out
+
     # ── ③ 卡方检验分支 ──
     chi_i = next((i for i in range(h + 1, len(rows))
                   if _canon_header(_row_parts(rows, i)[1]) in _ROW_CHI_PEARSON), None)
@@ -722,6 +766,12 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
         between_i = next((i for i in data
                           if _canon_header(_row_parts(rows, i)[1]) in _ROW_BETWEEN), None)
         others: list[str] = []
+        # 🔴 ANCOVA（协方差分析）里，**协变量**与**分组变量**在表上长得一模一样
+        #    （`前测成绩 F=31.323` 与 `组别 F=13.540`）—— 无法从表本身判断
+        #    哪个是研究假设要报的效应。默认取第一个就会给出**一个看起来合理的
+        #    错数**，那比"提取不出来"危险得多。故把**所有**效应行的 F/p 都列出来，
+        #    让用户自己挑（不猜）。
+        eff_rows: list[int] = []
         if between_i is None and error_i is not None:
             # GLM / 重复测量没有「组之间」行：取第一个**非**整模型/截距/总计/误差、
             # **非**球形度校正、且 F 列非空的行 —— 那才是用户要报的那个效应。
@@ -741,10 +791,10 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
                     continue
                 if _f(_cell(rows[i], cols["f"])) is None:
                     continue
-                if between_i is None:
-                    between_i = i
-                else:
-                    others.append(_label_of(head, tail))
+                eff_rows.append(i)
+            if eff_rows:
+                between_i = eff_rows[0]
+                others = [_label_of(*_row_parts(rows, i)) for i in eff_rows[1:]]
         # 认不出效应行时**不要**盲取第一行 —— ANOVA 表第二行可能就是「组内」
         # （F 列为空），盲取会拿到空值或错值。宁可漏。
         if between_i is None:
@@ -763,6 +813,18 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
         if others:
             # 多因素 / 多效应表：只校一个，但必须告诉用户还有哪些没校。
             out["_extra_effects"] = others
+        if len(eff_rows) > 1:
+            # 把**每个**效应行的 F 与 p 都列出来 —— 光说"还有其它行"不够，
+            # 用户得能看到那些数，才判断得出自己要报的是哪一个。
+            all_eff = []
+            for i in eff_rows:
+                pv = _p_from_cell(_cell(rows[i], _pick_p_col(p_cols, cols["f"])))
+                all_eff.append({
+                    "label": _label_of(*_row_parts(rows, i)) or f"第 {i} 行",
+                    "f": _f(_cell(rows[i], cols["f"])),
+                    "p": (pv or {}).get("p_raw", ""),
+                })
+            out["_all_effects"] = all_eff
         out["_raw"] = raws
         return out
 
@@ -932,6 +994,7 @@ _DISPLAY = [
     ("b_value", "B（未标准化系数）"),
     ("se_value", "标准误 SE"),
     ("beta_value", "Beta（标准化系数）"),
+    ("exp_b", "Exp(B)（优势比 OR）"),
     ("kmo", "KMO（取样适切性量数）"),
     ("cronbach_alpha", "Cronbach's α"),
     ("n", "样本量 n"),
@@ -955,6 +1018,8 @@ _CONSISTENCY_KEYS = {
     # R² = R² 是**确定性代数关系**（非统计推断），可用严格容差断言；
     # 而 r↔p 需要样本量 n，模型摘要没有 n → 那条自然不触发，不会误伤。
     "r_squared", "adj_r_squared",
+    # 2026-09-18 逻辑回归：Exp(B) = e^B 是**确定性关系**，用相对容差断言（校验 11）。
+    "exp_b",
 }
 
 
@@ -1109,7 +1174,18 @@ def build_stats_report(raw_text: str, caption: str = "") -> str:
             f"**「{stats.get('_source_row', '')}」**这一对 —— 多对相关的 F/df/p 各不相同，"
             "揉在一起校验没有意义；其余各对请单独粘贴两变量的相关表。"
         )
-    if stats.get("_extra_effects"):
+    if stats.get("_all_effects"):
+        lst = "；".join(
+            f"「{e['label']}」F={e['f']}, p={e['p']}" for e in stats["_all_effects"])
+        notes.append(
+            f"🔴 **本表有 {len(stats['_all_effects'])} 个效应行**：{lst}。"
+            "它们是**不同的检验**，本次只校"
+            f"**「{stats.get('_source_row', '')}」** 行。\n> "
+            "协方差分析（ANCOVA）里**协变量与分组变量在表上长得一样**，"
+            "系统**无法判断你要报哪一个** —— 请确认上面取的正是你要的那一行；"
+            "若不是，把它单独粘贴一次即可。"
+        )
+    elif stats.get("_extra_effects"):
         notes.append(
             f"本表还有其它效应行（{'、'.join(stats['_extra_effects'])}），一致性校验只针对"
             f"**「{stats.get('_source_row', '')}」**行 —— 各效应行的 F 与自由度不同，"

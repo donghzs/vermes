@@ -1110,6 +1110,32 @@ def check_statistics_consistency(
         except (TypeError, ValueError):
             pass
 
+    # ── 校验 11: Exp(B) ↔ B（逻辑回归的优势比）──
+    # Exp(B) = e^B 是**确定性代数关系**，故用严格容差（与校验 10 同理，
+    # 不走 `_p_verdict` 那套统计判据）。用**相对**容差 1%：Exp(B) 量级跨度大
+    # （B=3 时 Exp(B)≈20），固定绝对容差会在大值处失效。
+    b_coef = stats.get("b_value")
+    exp_b = stats.get("exp_b")
+    if b_coef is not None and exp_b is not None:
+        try:
+            expected_eb = math.exp(float(b_coef))
+            reported_eb = float(exp_b)
+        except (TypeError, ValueError, OverflowError):
+            expected_eb = reported_eb = None
+        if (expected_eb is not None and reported_eb > 0
+                and abs(reported_eb - expected_eb) > 0.01 * abs(expected_eb)):
+            checks.append(StatCheck(
+                metric="Exp(B) ↔ 系数 B",
+                value_reported=f"Exp(B) = {reported_eb}",
+                value_expected=f"Exp(B) = {expected_eb:.4g}（= e^B，B={b_coef}）",
+                consistent=False,
+                explanation=(
+                    f"Exp(B) 与 B 是确定性关系：Exp(B) = e^B。由 B={b_coef} 得 "
+                    f"Exp(B)={expected_eb:.4g}，表中 Exp(B)={reported_eb}，二者不符 —— "
+                    "通常是抄串行，或把 95% 置信区间的边界误当成了 Exp(B)。"
+                ),
+            ))
+
     # ── 附带：效应量大小分类（只在已有矛盾时顺带给出，放在所有校验之后）──
     if d is not None:
         size = "小" if abs(d) < 0.2 else "中" if abs(d) < 0.8 else "大" if abs(d) < 1.3 else "极大"
