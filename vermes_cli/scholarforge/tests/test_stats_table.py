@@ -995,3 +995,170 @@ class TestZConsistency:
         from vermes_cli.scholarforge.validators import z_p_two_tailed
         got = z_p_two_tailed("x")
         assert got != got  # NaN
+
+
+# ════════════════════════════════════════════════════════════════════════
+# 2026-09-18 第十二轮：SPSS **回归分析**（模型摘要 + 系数表）+ 双层表头合并
+#
+# 实测：教育学论文里线性回归几乎必用的三张表，此前「模型摘要」与「系数」
+# 两张**都返回空**（ANOVA 那张因行标签是「回归/残差」意外已支持）。
+# ════════════════════════════════════════════════════════════════════════
+
+# 模型摘要：注意 `R 方` 是**一个**列名（含空格）
+SPSS_MODEL_SUMMARY = (
+    "模型摘要b\n"
+    + "模型" + T + "R" + T + "R 方" + T + "调整后 R 方" + T + "标准估算的误差" + T + "德宾-沃森" + "\n"
+    + "1" + T + ".685a" + T + ".469" + T + ".451" + T + "3.241" + T + "1.892"
+)
+
+# 系数表：双层表头 —— `t` / `显著性` 在**上层**，`B` / `标准错误` / `Beta` 在**下层**
+SPSS_COEF = (
+    "系数a\n"
+    + "模型" + T + T + "未标准化系数" + T + T + "标准化系数" + T + "t" + T + "显著性" + T + "共线性统计" + "\n"
+    + T + T + "B" + T + "标准错误" + T + "Beta" + T + T + T + "容差" + T + "VIF" + "\n"
+    + "1" + T + "(常量)" + T + "12.345" + T + "2.108" + T + T + "5.857" + T + ".000" + T + T + "\n"
+    + T + "学习动机" + T + ".482" + T + ".121" + T + ".453" + T + "3.983" + T + ".000" + T + ".912" + T + "1.096" + "\n"
+    + T + "学习焦虑" + T + "-.217" + T + ".098" + T + "-.251" + T + "-2.214" + T + ".032" + T + ".912" + T + "1.096"
+)
+
+# 单层表头的系数表（省略「模型」列）—— 变量名在第 0 列
+SPSS_COEF_NO_MODEL_COL = (
+    "系数\n"
+    + T + "B" + T + "标准错误" + T + "Beta" + T + "t" + T + "显著性" + "\n"
+    + "(常量)" + T + "12.345" + T + "2.108" + T + T + "5.857" + T + ".000" + "\n"
+    + "学习动机" + T + ".482" + T + ".121" + T + ".453" + T + "3.983" + T + ".000"
+)
+
+
+class TestSpssModelSummary:
+    """回归「模型摘要」：R / R² / 调整后 R²。"""
+
+    def test_r_r2_adj_r2_are_extracted(self):
+        s = _extract(SPSS_MODEL_SUMMARY)
+        assert s["r_value"] == pytest.approx(0.685)
+        assert s["r_squared"] == pytest.approx(0.469)
+        assert s["adj_r_squared"] == pytest.approx(0.451)
+
+    def test_r_squared_column_is_not_mistaken_for_r(self):
+        """🔴 `R 方` 若被拆成 `R` + `方`，这一列会被当成**相关系数** r，
+        与真正的 R 列撞车 —— 两个不同的数都进了 r_value，后者覆盖前者。
+        """
+        from vermes_cli.scholarforge import stats_table as ST
+        keys = ST._col_keys("R 方")
+        assert keys[0] == "r_squared"      # 整体优先，不是 r
+        s = _extract(SPSS_MODEL_SUMMARY)
+        assert s["r_value"] == pytest.approx(0.685)   # 是 R，不是 R²
+        assert s["r_squared"] == pytest.approx(0.469)
+
+    def test_correct_summary_passes_consistency(self):
+        """R=.685 → R²=.469225，表里 .469（三位小数舍入）→ 通过。"""
+        payload = {k: v for k, v in _extract(SPSS_MODEL_SUMMARY).items()
+                   if k in ("r_value", "r_squared", "adj_r_squared")}
+        assert check_statistics_consistency(payload) == []
+
+    def test_miscopied_r_squared_is_caught(self):
+        """R² 抄成 .496（.469 的两位调换）—— 学术写作里最常见的串行错误。"""
+        bad = [c for c in check_statistics_consistency(
+            {"r_value": .685, "r_squared": .496}) if not c.consistent]
+        assert bad and "R²" in bad[0].metric
+
+    def test_adj_r_squared_must_not_exceed_r_squared(self):
+        """调整后 R² 是对自变量个数的惩罚，**恒不大于** R²。"""
+        bad = [c for c in check_statistics_consistency(
+            {"r_value": .685, "r_squared": .469, "adj_r_squared": .480})
+            if not c.consistent]
+        assert bad and "调整后" in bad[0].metric
+
+    def test_r_squared_without_r_is_not_checked(self):
+        """只有 R²、没有 R → 换算不出期望值，不校验、不猜。"""
+        assert check_statistics_consistency({"r_squared": .469}) == []
+
+    def test_model_summary_runs_consistency_in_report(self):
+        r = build_stats_report(SPSS_MODEL_SUMMARY)
+        assert ".469" in r
+        assert "统计一致性校验" in r
+
+
+class TestSpssRegressionCoefficients:
+    """回归「系数」表：双层表头 + 每行一个自变量。"""
+
+    def test_two_row_header_is_merged(self):
+        """`t`/`显著性` 在上层、`B`/`Beta` 在下层 —— 单层定位无论取哪行都只命中一半。"""
+        s = _extract(SPSS_COEF)
+        assert s["b_value"] == pytest.approx(0.482)
+        assert s["beta_value"] == pytest.approx(0.453)
+        assert s["se_value"] == pytest.approx(0.121)
+        assert s["t_value"] == pytest.approx(3.983)
+
+    def test_constant_row_is_skipped(self):
+        """🔴 取 `(常量)` 行等于在检验"截距是否为 0"，与研究假设毫无关系。
+        而常量行的 p 几乎恒为 .000，看上去还"很显著" —— 极易蒙混过关。
+        """
+        s = _extract(SPSS_COEF)
+        assert s["_source_row"] == "学习动机"
+        assert s["t_value"] != pytest.approx(5.857)   # 常量行的 t
+
+    def test_paren_is_stripped_before_constant_check(self):
+        """🔴 `_canon_header('(常量)')` 返回**空串**（该函数删括号及其内容），
+        直接判就永远跳不过常量行。必须先剥括号再 canon。
+        """
+        from vermes_cli.scholarforge import stats_table as ST
+        assert ST._canon_header("(常量)") == ""
+        assert ST._canon_header("常量") in ST._ROW_CONSTANT
+
+    def test_other_predictors_are_disclosed(self):
+        s = _extract(SPSS_COEF)
+        assert s["_extra_effects"] == ["学习焦虑"]
+
+    def test_no_df_means_t_p_is_not_checked(self):
+        """系数表没有自由度列 → 换算不出精确 p。
+        🔴 关键：这必须**告知**，不能静默返回"未发现矛盾"（那是假安全）。
+        """
+        s = _extract(SPSS_COEF)
+        assert s.get("_unchecked")
+        payload = {k: v for k, v in s.items()
+                   if k in ("t_value", "p_value", "df")}
+        assert "df" not in payload          # 确实没有 df
+        assert check_statistics_consistency(payload) == []
+
+    def test_unchecked_note_appears_in_report(self):
+        r = build_stats_report(SPSS_COEF)
+        assert "未校验" in r
+        assert "自由度" in r
+
+    def test_single_row_header_coef_table_also_works(self):
+        """没有「模型」列时变量名在第 0 列 —— 不能写死取第 1 列。"""
+        s = _extract(SPSS_COEF_NO_MODEL_COL)
+        assert s["_source_row"] == "学习动机"
+        assert s["b_value"] == pytest.approx(0.482)
+
+    def test_model_number_column_does_not_break_label(self):
+        """🔴 第 0 列是**模型编号**（数字 1），`_row_parts` 一遇数字就 break
+        → 行标签恒为空 → 常量行跳不掉。故系数表必须用「变量名列」取值。
+        """
+        from vermes_cli.scholarforge import stats_table as ST
+        rows = ST.detect_table_rows(SPSS_COEF)
+        nr, h = ST._normalize_header(rows)
+        assert ST._row_parts(nr, h + 1) == ("", "")   # 佐证：通用取法确实取不到
+        assert _extract(SPSS_COEF)["_source_row"] == "学习动机"
+
+
+class TestHeaderMergeRegression:
+    """🔴 双层表头合并是**通用**改动，必须确认没把既有表型搞坏。"""
+
+    def test_horizontal_tables_still_work(self):
+        assert _extract(SPSS_ANOVA)["f_value"] == pytest.approx(4.123)
+        assert _extract(SPSS_CHI)["chi_square"] == pytest.approx(6.857)
+        assert _extract(SPSS_PAIRED)["t_value"] == pytest.approx(-3.522)
+        assert _extract(SPSS_GLM)["f_value"] == pytest.approx(8.971)
+
+    def test_vertical_kv_tables_still_work(self):
+        assert _extract(SPSS_MWU)["z_value"] == pytest.approx(-2.271)
+        assert _extract(SPSS_KMO)["kmo"] == pytest.approx(0.812)
+
+    def test_single_header_table_is_not_merged(self):
+        """合并只在**划算**时发生（命中数严格变大），否则原样返回。"""
+        from vermes_cli.scholarforge import stats_table as ST
+        rows = ST.detect_table_rows(SPSS_ANOVA)
+        nr, h = ST._normalize_header(rows)
+        assert len(nr) == len(rows)          # 没有少行 = 没合并

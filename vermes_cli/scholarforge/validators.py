@@ -1067,6 +1067,49 @@ def check_statistics_consistency(
                 ),
             ))
 
+    # ── 校验 10: R² ↔ R 与 调整后 R² ≤ R²（回归「模型摘要」）──
+    # 🔴 这两条是**确定性代数关系**（不是统计推断），故用**严格数值容差**，
+    #    不走 `_p_verdict` 那套"宁可放过不可误伤"的统计判据 ——
+    #    R² 必须等于 R 的平方，抄错就是抄错，没有"口径不同"的余地。
+    rsq = stats.get("r_squared")
+    if r is not None and rsq is not None:
+        try:
+            expected_rsq = float(r) ** 2
+            reported_rsq = float(rsq)
+        except (TypeError, ValueError):
+            expected_rsq = reported_rsq = None
+        # 容差 0.002：SPSS 通常显示 3 位小数（R=.685 → R²=.469225 → 显示 .469），
+        # 舍入误差 ≤ 0.0005；留 4 倍余量仍能抓住"抄成 .496"这类真实错误。
+        if expected_rsq is not None and abs(reported_rsq - expected_rsq) > 0.002:
+            checks.append(StatCheck(
+                metric="R² ↔ 相关系数 R",
+                value_reported=f"R² = {reported_rsq}",
+                value_expected=f"R² = {expected_rsq:.4g}（即 R 的平方，R={r}）",
+                consistent=False,
+                explanation=(
+                    f"R² 与 R 是确定性关系：R² 恒等于 R 的平方。由 R={r} 得 "
+                    f"R²={expected_rsq:.4g}，表中 R²={reported_rsq}，二者不符 —— "
+                    "通常是抄串行，或把「调整后 R²」误当成 R² 抄进了论文。"
+                ),
+            ))
+    adj = stats.get("adj_r_squared")
+    if rsq is not None and adj is not None:
+        try:
+            if float(adj) > float(rsq) + 1e-9:
+                checks.append(StatCheck(
+                    metric="调整后 R² ≤ R²",
+                    value_reported=f"调整后 R² = {adj}",
+                    value_expected=f"≤ R² = {rsq}",
+                    consistent=False,
+                    explanation=(
+                        "调整后 R² 是对自变量个数的惩罚，**恒不大于** R²"
+                        "（自变量数 ≥1 且样本量大于参数数时）。"
+                        f"表中调整后 R²={adj} > R²={rsq}，二者应有其一抄错。"
+                    ),
+                ))
+        except (TypeError, ValueError):
+            pass
+
     # ── 附带：效应量大小分类（只在已有矛盾时顺带给出，放在所有校验之后）──
     if d is not None:
         size = "小" if abs(d) < 0.2 else "中" if abs(d) < 0.8 else "大" if abs(d) < 1.3 else "极大"

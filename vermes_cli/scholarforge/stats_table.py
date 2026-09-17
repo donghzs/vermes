@@ -205,6 +205,19 @@ def detect_table_rows(text: str) -> list[list[str]]:
             continue
         if r[0].strip() and _f(r[0]) is None and _f(r[1]) is not None:
             kept.append(r)
+
+    # 🔴 多层表头的例外（2026-09-18 实测）：回归「系数」表的**上层**表头
+    #   `模型 | | 未标准化系数 | | 标准化系数 | t | 显著性 | 共线性统计`（8 列）
+    # 与数据行（9 列）列数不同 → 被上面的过滤**直接丢掉**。
+    # 而 `t` 与 `显著性` 两个关键列名**只在上层**，丢了就整张表提取为空。
+    # 只放行：位于**首个数据行之前** 且 **整行不含数字**（形态上是表头 / 分组标题）。
+    # 宁可漏：数据区里的异形行一律不放行，避免把说明文字当数据。
+    first_kept = next((i for i, r in enumerate(raw_rows) if len(r) == common), None)
+    if first_kept:
+        extra = [r for i, r in enumerate(raw_rows)
+                 if i < first_kept and len(r) != common
+                 and all(_f(c) is None for c in r)]
+        kept = extra + kept
     return kept
 
 
@@ -238,6 +251,21 @@ _HEADER_MAP: dict[str, set[str]] = {
     # 问卷信度（可靠性统计）：α 没有可校验的 p，只进汇总表展示，故不入校验键。
     "cronbach_alpha": {"cronbach's alpha", "cronbach alpha", "克龙巴赫 alpha",
                        "克隆巴赫 alpha", "α"},
+    # 2026-09-18 回归分析「模型摘要」：R / R² / 调整后 R²。
+    # 🔴 `r 方` 是**一个**别名（含空格），不能拆成 `r` + `方` 去匹配 —— 否则
+    #    R² 那一列会被误认成相关系数 r。故 `_col_keys` 采用「整体优先、分词回退」。
+    "r": {"r"},
+    "r_squared": {"r 方", "r方", "r²", "r-square", "r-squared", "r square"},
+    "adj_r_squared": {"调整后 r 方", "调整 r 方", "调整后r方", "调整r方",
+                      "adjusted r square", "adjusted r-squared", "adjusted r²"},
+    # 回归「系数」表：列名**分散在两层表头**（上层 `未标准化系数 / 标准化系数`、
+    # 下层 `B / 标准错误 / Beta`），故这里登记的是**下层那个词**，
+    # 由 `_normalize_header` 按列拼接后再匹配。
+    "b": {"b"},
+    "se": {"标准错误", "标准误差", "se", "std. error", "standard error"},
+    "beta": {"beta", "β"},
+    "vif": {"vif"},
+    "tolerance": {"容差", "tolerance"},
 }
 
 # ── 行标签 → 角色 ────────────────────────────────────────────────────────
@@ -262,6 +290,11 @@ _ROW_SPHERE_CORR = {"格林豪斯-盖斯勒", "辛-费德特", "下限",
 # 独立样本 t 检验有两行：假定等方差（默认取这行）/ 不假定等方差（Welch，跳过）
 _ROW_EQUAL_VAR = {"假定等方差", "假设方差相等", "equal variances assumed"}
 _ROW_UNEQUAL_VAR = {"不假定等方差", "假设方差不相等", "equal variances not assumed"}
+# 回归「系数」表首列是**模型编号**（`1`）—— 数字，会干扰行标签提取（见提取分支）。
+_COL_MODEL_NO = {"模型", "model"}
+# 回归「系数」表首行是 `(常量)`：它的 t 检验是"截距是否为 0"，
+# 与任何研究假设无关，且 p 几乎恒为 .000 —— 取它会答非所问。
+_ROW_CONSTANT = {"(常量)", "常量", "(constant)", "constant"}
 # 卡方检验：只有「皮尔逊卡方」行是标准 χ²，似然比 / 线性关联是别的检验
 _ROW_CHI_PEARSON = {"皮尔逊卡方", "皮尔逊 卡方", "pearson chi-square", "chi-square"}
 # 相关矩阵：每个变量占一个块，块内三行（皮尔逊相关性 / Sig. / 个案数）
@@ -326,14 +359,72 @@ def _pick_header_row(rows: list[list[str]]) -> int:
     return _best_header(rows)[0]
 
 
+def _col_keys(cell: str) -> list[str]:
+    """一个表头单元格对应的语义键候选，**整体优先、分词回退**。
+
+    🔴 为什么要回退：SPSS 回归「系数」表的列名分散在**两层**表头里，
+    `_normalize_header` 拼接后一个单元格是 `未标准化系数 B` —— 整体匹配不上，
+    但分词后 `B` 命中。
+    🔴 为什么要**优先整体**：`R 方` 若先分词会得到 `R`（相关系数）与 `方`，
+    把 R² 那一列误认成相关系数 r。整体优先可避免。
+    """
+    cn = _canon_header(cell)
+    if not cn:
+        return []
+    out = []
+    for tok in [cn] + cn.split():
+        for key, aliases in _HEADER_MAP.items():
+            if tok in aliases and key not in out:
+                out.append(key)
+    return out
+
+
+def _score_row(cells: list[str]) -> int:
+    """一行"像表头"的程度：每列最多 1 分（与 `_best_header` 的旧口径一致）。"""
+    return sum(1 for c in cells if _col_keys(c))
+
+
 def _best_header(rows: list[list[str]]) -> tuple[int, int]:
     """返回 (表头行下标, 命中数)。见 `_pick_header_row`；命中数用于判是否横向表。"""
     best_i, best = 0, 0
     for i in range(len(rows) - 1):  # 最后一行不可能是表头（后面得有数据）
-        score = sum(1 for c in rows[i] if _canon_header(c) in _ALL_ALIASES)
+        score = _score_row(rows[i])
         if score > best:
             best_i, best = i, score
     return best_i, best
+
+
+def _normalize_header(rows: list[list[str]]) -> tuple[list[list[str]], int]:
+    """把**双层表头**按列拼接成一行，返回 (新 rows, 表头下标)。
+
+    SPSS 回归「系数」表是两层表头：
+        第 0 行：模型 |  | 未标准化系数 |     | 标准化系数 | t | 显著性 | 共线性统计
+        第 1 行：     |  | B | 标准错误 | Beta |   |       | 容差 | VIF
+    `t` / `显著性` 在上层，`B` / `标准错误` / `Beta` 在下层 —— **单层定位
+    无论取哪行都只能命中一半列名**，必须按列纵向拼接。
+
+    🔴 闸门（宁可漏，绝不拿数据行当表头）：
+      · 只试前 3 行（表头不会更低）
+      · 参与合并的两行**都不得含数字单元格**
+      · 合并后命中数必须**严格大于**单层最佳 —— 不划算就不合并
+    """
+    best_i, best = _best_header(rows)
+    pick_i, pick_score, pick_row = None, best, None
+    for i in range(min(3, len(rows) - 2)):
+        a, b = rows[i], rows[i + 1]
+        if any(_f(c) is not None for r in (a, b) for c in r):
+            continue
+        w = max(len(a), len(b))
+        cand = [" ".join(x for x in (
+            (a[j] if j < len(a) else ""), (b[j] if j < len(b) else "")) if x.strip())
+            for j in range(w)]
+        score = _score_row(cand)
+        if score > pick_score:
+            pick_i, pick_score, pick_row = i, score, cand
+    if pick_i is None:
+        return rows, best_i
+    # 合并后两行变一行，原 `range(h+1, ...)` 的数据区口径自动保持正确
+    return rows[:pick_i] + [pick_row] + rows[pick_i + 2:], pick_i
 
 
 # ── 纵向键值对表（统计量名在**行**，值在列）────────────────────────────
@@ -499,19 +590,21 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
             return kv
         # 认不出任何统计量名就继续走横向路径（不吞掉本来能认的表）
 
-    h = _pick_header_row(rows)
-    header = rows[h]
-    canon = [_canon_header(c) for c in header]
+    # 双层表头（回归系数表）先合并成一行；单层表原样返回
+    rows, h = _normalize_header(rows)
+    canon = [_canon_header(c) for c in rows[h]]
     cols: dict[str, int] = {}
     for idx, c in enumerate(canon):
         if not c:
             continue
-        for key, aliases in _HEADER_MAP.items():
+        # 「整体优先、分词回退」：见 `_col_keys`（防 `R 方` 被当成相关系数 r）
+        for key in _col_keys(c):
             if key == "p":
                 continue  # p 可能有多列，单独处理
-            if c in aliases and key not in cols:
+            if key not in cols:
                 cols[key] = idx
-    p_cols = [i for i, c in enumerate(canon) if c in _HEADER_MAP["p"]]
+            break
+    p_cols = [i for i, c in enumerate(canon) if "p" in _col_keys(c)]
 
     out: dict[str, Any] = {}
     # 🔴 **原始单元格文本**（数字保真）：表里是 `.83` 就必须输出 `.83`，
@@ -549,6 +642,51 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
                 out.update(pinfo)
                 raws["p_value"] = pinfo.get("p_raw", "")
             out["_source_row"] = target_label or f"第 {target} 行"
+            out["_raw"] = raws
+            return out
+
+    # ── ②b 回归系数表（有 t 列，但**没有 df 列**）────────────────────────
+    # 标志：t 列 +（B 或 Beta 列）+ 无 df 列。
+    # 🔴 系数表的 t 检验自由度在**另一张** ANOVA 表里（残差 df），本表没有 →
+    #    换算不出精确 p。故**不校 t↔p**（宁可漏），但必须显式告知为什么没校 ——
+    #    否则用户拿到"未发现矛盾"会以为校过了，那就又是一个假安全。
+    if ("t" in cols and p_cols and "df" not in cols
+            and ("b" in cols or "beta" in cols)):
+        # 🔴 变量名**不能**用 `_row_parts` 取：系数表第 0 列是**模型编号**（数字 1），
+        #    `_row_parts` 一遇到数字就 break → 标签恒为空 → `(常量)` 行跳不掉，
+        #    于是校的是"截距是否为 0"，与研究假设毫无关系。
+        #    判据：表头第 0 列若叫「模型」，变量名就在第 1 列；否则在第 0 列。
+        name_col = 1 if _canon_header(rows[h][0]) in _COL_MODEL_NO else 0
+        picks: list[int] = []
+        labels: list[str] = []
+        for i in range(h + 1, len(rows)):
+            label = _cell(rows[i], name_col).strip()
+            # 🔴 `(常量)` 经 `_canon_header` 会变成**空串** —— 该函数会删掉
+            #    括号及其内容，而 `(常量)` 整个都在括号里。直接判就永远跳不过
+            #    常量行（会去校"截距是否为 0"）。必须先剥括号再 canon。
+            if _canon_header(re.sub(r"[()（）]", "", label)) in _ROW_CONSTANT:
+                continue
+            if _f(_cell(rows[i], cols["t"])) is None:
+                continue
+            picks.append(i)
+            labels.append(label)
+        if picks:
+            row = rows[picks[0]]
+            for key in ("b", "se", "beta"):
+                if key in cols:
+                    _put(key + "_value", _cell(row, cols[key]))
+            _put("t_value", _cell(row, cols["t"]))
+            pinfo = _p_from_cell(_cell(row, _pick_p_col(p_cols, cols["t"])))
+            if pinfo:
+                out.update(pinfo)
+                raws["p_value"] = pinfo.get("p_raw", "")
+            out["_source_row"] = labels[0] or f"第 {picks[0]} 行"
+            if len(picks) > 1:
+                out["_extra_effects"] = labels[1:]
+            out["_unchecked"] = [
+                "t ↔ p（系数表没有自由度列；自由度在回归 ANOVA 表的「残差」行，"
+                "把两张表一起粘贴即可校）"
+            ]
             out["_raw"] = raws
             return out
 
@@ -627,6 +765,20 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
             out["_extra_effects"] = others
         out["_raw"] = raws
         return out
+
+    # ── ④b 回归模型摘要（R / R² / 调整后 R²）───────────────────────────
+    # 🔴 `R 方` 必须**整体**匹配（见 `_col_keys`）：若被拆成 `R` + `方`，
+    #    这一列会被当成相关系数 r，与真正的 R 列撞车。
+    if "r_squared" in cols or "adj_r_squared" in cols:
+        if h + 1 < len(rows):
+            row = rows[h + 1]
+            _put("r_value", _cell(row, cols.get("r")))
+            _put("r_squared", _cell(row, cols.get("r_squared")))
+            _put("adj_r_squared", _cell(row, cols.get("adj_r_squared")))
+        if out:
+            out["_source_row"] = "模型摘要"
+            out["_raw"] = raws
+            return out
 
     # ── ⑤ 描述统计：无推论统计量，只把 n / M / SD 提出来展示 ──
     if h + 1 < len(rows):
@@ -775,6 +927,11 @@ _DISPLAY = [
     ("eta_squared", "η²（效应量）"),
     ("cohens_d", "Cohen's d（效应量）"),
     ("r_value", "r（相关系数）"),
+    ("r_squared", "R²（决定系数）"),
+    ("adj_r_squared", "调整后 R²"),
+    ("b_value", "B（未标准化系数）"),
+    ("se_value", "标准误 SE"),
+    ("beta_value", "Beta（标准化系数）"),
     ("kmo", "KMO（取样适切性量数）"),
     ("cronbach_alpha", "Cronbach's α"),
     ("n", "样本量 n"),
@@ -794,6 +951,10 @@ _CONSISTENCY_KEYS = {
     # 2026-09-17 新增：chi_square 启用 χ²↔p 校验；n 供 r↔p 换算
     # （t = r·√((n-2)/(1-r²))，df = n-2）。二者缺一，对应的表就只是"能看不能校"。
     "chi_square", "n", "z_value",
+    # 2026-09-18 新增：回归「模型摘要」的 R / R² / 调整后 R²。
+    # R² = R² 是**确定性代数关系**（非统计推断），可用严格容差断言；
+    # 而 r↔p 需要样本量 n，模型摘要没有 n → 那条自然不触发，不会误伤。
+    "r_squared", "adj_r_squared",
 }
 
 
@@ -953,6 +1114,12 @@ def build_stats_report(raw_text: str, caption: str = "") -> str:
             f"本表还有其它效应行（{'、'.join(stats['_extra_effects'])}），一致性校验只针对"
             f"**「{stats.get('_source_row', '')}」**行 —— 各效应行的 F 与自由度不同，"
             "不能混校。"
+        )
+    if stats.get("_unchecked"):
+        notes.append(
+            "🔴 **以下项目本次未校验**：" + "；".join(stats["_unchecked"]) + "。"
+            "这**不等于**「校验通过」，而是**缺参数算不出来** —— "
+            "别把这里的「未发现矛盾」当成已经核对过了。"
         )
     if stats.get("_derived"):
         notes.append(
