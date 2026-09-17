@@ -606,6 +606,25 @@ def r_p_two_tailed(r: float, n: float) -> float:
     return t_p_two_tailed(rr * math.sqrt((nn - 2.0) / (1.0 - rr * rr)), nn - 2.0)
 
 
+def z_p_two_tailed(z: float) -> float:
+    """标准正态双尾 p = erfc(|z|/√2)。非法输入返回 NaN。
+
+    🔴 `math.erfc` 是**标准库**，不需要 scipy（scipy 已被 spec excludes）——
+    这也是非参数检验里唯一能精确算的一类：Mann-Whitney U / Wilcoxon 的
+    「渐近显著性」本身就是 SPSS 用正态近似算出来的，与这里的口径**完全一致**。
+
+    注意：SPSS 的小样本会另给「精确显著性」（Exact），那是**精确分布**而非正态近似，
+    两者本就不同 —— 故本函数只用来校「渐近显著性」，不校精确 p（见调用处的闸门）。
+    """
+    try:
+        zz = abs(float(z))
+    except (TypeError, ValueError):
+        return float("nan")
+    if zz != zz:  # NaN
+        return float("nan")
+    return math.erfc(zz / math.sqrt(2.0))
+
+
 def _p_verdict(expected_p: float, reported_p: float) -> str:
     """判断「精确 p 值」与「论文报告的 p 值」是否构成可断言的矛盾。
 
@@ -665,6 +684,9 @@ def check_statistics_consistency(
        2026-09-17 新增：卡方表此前"能看不能校"。
     8. p值 ↔ r:   t = r·√((n−2)/(1−r²))，df = n−2，再走 t 双尾（见 `r_p_two_tailed`）。
        要求提供样本量 n，否则无法换算（缺 n 就不校验，不猜）。
+    9. p值 ↔ Z:   标准正态双尾 p = erfc(|Z|/√2)（math.erfc，stdlib）。
+       2026-09-17 新增。口径 = SPSS 的「渐近显著性」；小样本的「精确显著性」
+       是精确分布、与正态近似本就不同，故只校前者。
 
     Args:
         stats: 统计指标字典，可含:
@@ -682,6 +704,9 @@ def check_statistics_consistency(
             - n_group2: int (组2样本量)
             - mean_diff: float (均值差)
             - pooled_sd: float (合并标准差)
+            - chi_square: float (χ²；卡方检验 / 克鲁斯卡尔-沃利斯 H / 巴特利特球形度检验)
+            - n: int (样本量；供 r↔p 换算使用)
+            - z_value: float (Z；Mann-Whitney U / Wilcoxon 的正态近似)
     Returns:
         StatCheck 列表，空列表表示无矛盾
     """
@@ -1020,6 +1045,25 @@ def check_statistics_consistency(
                     f"报告值明显{'过大' if verdict == '过大' else '过小'}。"
                     "（⚠️ 该换算要求 r 是两连续变量的 Pearson 相关；若为 Spearman ρ 或"
                     "点二列相关，p 的换算式不同，请按实际检验类型理解。）"
+                ),
+            ))
+
+    # ── 校验 9: p值 ↔ Z（非参数检验的正态近似）──
+    z = stats.get("z_value")
+    if p is not None and z is not None:
+        expected_p = z_p_two_tailed(z)
+        verdict = _p_verdict(expected_p, float(p))
+        if verdict:
+            checks.append(StatCheck(
+                metric="p值 ↔ Z统计量",
+                value_reported=f"p = {p}",
+                value_expected=f"p = {expected_p:.3g} (精确双尾, |Z|={abs(float(z))})",
+                consistent=False,
+                explanation=(
+                    f"由 Z={z} 按标准正态精确计算双尾 p = {expected_p:.3g}，"
+                    f"论文报告 p={p}，报告值明显{'过大' if verdict == '过大' else '过小'}。"
+                    "（⚠️ 该口径对应 SPSS 的「渐近显著性」；若论文报的是小样本的"
+                    "「精确显著性」，那是精确分布而非正态近似，两者本就不同，请按实际口径理解。）"
                 ),
             ))
 

@@ -193,7 +193,19 @@ def detect_table_rows(text: str) -> list[list[str]]:
         return []
 
     # 只保留与该列数一致的行（避免把表格上方的一句说明混进来）
-    return [r for r in raw_rows if len(r) == common]
+    kept = [r for r in raw_rows if len(r) == common]
+
+    # 🔴 混合型表的例外：「KMO 和巴特利特检验」里，KMO 那行只有 2 列
+    # （`KMO 取样适切性量数\t.812`），而巴特利特的三行是 3 列 —— 按列数过滤
+    # 会把**问卷效度分析里最常被抄进论文的那个数**直接丢掉。
+    # 只放行**形态明确**的两列行：首列非数字（是标签）、次列是数字（是值）。
+    # 宁可漏：宁可放过一行，也不能把说明文字当数据混进来。
+    for r in raw_rows:
+        if len(r) != 2 or len(r) == common:
+            continue
+        if r[0].strip() and _f(r[0]) is None and _f(r[1]) is not None:
+            kept.append(r)
+    return kept
 
 
 # ── 表头驱动的统计量提取（让粘贴的 SPSS 表也能跑一致性校验）──────────────
@@ -223,6 +235,9 @@ _HEADER_MAP: dict[str, set[str]] = {
     "mean": {"平均值", "均值", "平均数", "mean", "m"},
     "sd": {"标准差", "标准偏差", "sd", "std. deviation"},
     "n": {"个案数", "样本量", "个数", "n"},
+    # 问卷信度（可靠性统计）：α 没有可校验的 p，只进汇总表展示，故不入校验键。
+    "cronbach_alpha": {"cronbach's alpha", "cronbach alpha", "克龙巴赫 alpha",
+                       "克隆巴赫 alpha", "α"},
 }
 
 # ── 行标签 → 角色 ────────────────────────────────────────────────────────
@@ -308,12 +323,113 @@ def _pick_header_row(rows: list[list[str]]) -> int:
     取第 0 行 → 一个语义列都匹配不上 → 整张表提取为空 → 校验静默不跑。
     判据：认出语义别名最多的一行；并列时取**靠前**的（数据行几乎不可能并列）。
     """
+    return _best_header(rows)[0]
+
+
+def _best_header(rows: list[list[str]]) -> tuple[int, int]:
+    """返回 (表头行下标, 命中数)。见 `_pick_header_row`；命中数用于判是否横向表。"""
     best_i, best = 0, 0
     for i in range(len(rows) - 1):  # 最后一行不可能是表头（后面得有数据）
         score = sum(1 for c in rows[i] if _canon_header(c) in _ALL_ALIASES)
         if score > best:
             best_i, best = i, score
-    return best_i
+    return best_i, best
+
+
+# ── 纵向键值对表（统计量名在**行**，值在列）────────────────────────────
+# SPSS 有一大类表是「转置」的：`Z | -2.271` / `渐近显著性（双尾） | .023`，
+# 例如非参数检验的「检验统计」、问卷的「KMO 和巴特利特检验」。
+# 此前这类表**全部返回空** —— 而它们在小样本 / 非正态 / 问卷信效度分析里是主力。
+
+# 统计量名（canon 后）→ 输出键
+_KV_MAP: dict[str, str] = {
+    "z": "z_value",
+    "曼-惠特尼 u": "u_value", "mann-whitney u": "u_value",
+    "威尔科克森 w": "w_value", "wilcoxon w": "w_value",
+    # 🔴 克鲁斯卡尔-沃利斯 H **渐近服从 χ²(df=k−1)**，可直接复用 χ²↔p 校验；
+    #    巴特利特球形度检验的「近似卡方」同理。故二者都归到 chi_square。
+    "克鲁斯卡尔-沃利斯 h": "chi_square", "kruskal-wallis h": "chi_square",
+    "克-瓦氏 h": "chi_square",
+    "近似卡方": "chi_square", "近似 χ²": "chi_square", "近似 chi-square": "chi_square",
+    "自由度": "df", "df": "df",
+    "kmo 取样适切性量数": "kmo", "kmo": "kmo",
+}
+# 出处标签（人类可读）+ 主统计量的优先级（一张表只报一个"出处"）
+_KV_LABEL = {
+    "z_value": "Z", "u_value": "曼-惠特尼 U", "w_value": "威尔科克森 W",
+    "chi_square": "χ²", "df": "自由度", "kmo": "KMO",
+}
+_KV_PRIMARY = ("chi_square", "z_value", "u_value", "w_value", "kmo")
+# p 的候选名，按**优先级**排列：渐近显著性是论文最常报的那个
+_KV_P_ORDER = ("渐近显著性", "asymp. sig", "显著性", "sig", "p", "精确显著性", "exact sig")
+
+
+def _is_vertical_kv(rows: list[list[str]]) -> bool:
+    """是不是「纵向键值对」表？
+
+    判据（宁可漏，两个条件缺一不可）：
+      · 表头行**认不出 ≥2 个语义列名**（横向统计表通常一认就是 4–5 个）；
+      · 且**至少 2 行**的最后一个单元格是可解析的数字（真的是"名 → 值"）。
+    """
+    if _best_header(rows)[1] >= 2:
+        return False
+    n_val = sum(1 for r in rows if r and _f(r[-1]) is not None)
+    return n_val >= 2
+
+
+def _extract_kv(rows: list[list[str]]) -> dict[str, Any]:
+    """从纵向键值对表里取统计量：每行「最后一个单元格 = 值」，其余是标签。
+
+    🔴 标签取**最后一个非空**单元格（不是第一个）：KMO 表里巴特利特的三行是
+    `巴特利特球形度检验 | 近似卡方 | 326.450` —— 第一个是**分组名**，
+    最后一个才是统计量名。取错就会把「巴特利特球形度检验」当成统计量名。
+    """
+    out: dict[str, Any] = {}
+    raws: dict[str, str] = {}
+    p_best: tuple[int, str, str] | None = None  # (优先级, 名字, 原始值)
+
+    for r in rows:
+        if len(r) < 2:
+            continue
+        val_raw = r[-1]
+        v = _f(val_raw)
+        if v is None:
+            continue
+        name = ""
+        for c in reversed(r[:-1]):
+            if c.strip():
+                name = c
+                break
+        if not name:
+            continue
+        cn = _canon_header(name)
+
+        p_rank = next((i for i, p in enumerate(_KV_P_ORDER) if cn.startswith(p)), None)
+        if p_rank is not None:
+            if p_best is None or p_rank < p_best[0]:
+                p_best = (p_rank, name, val_raw.strip())
+            continue
+        key = _KV_MAP.get(cn)
+        if key is None:
+            continue
+        out[key] = int(v) if key == "df" and float(v).is_integer() else v
+        raws[key] = _clean_cell(val_raw)
+
+    if p_best is not None:
+        pinfo = _p_from_cell(p_best[2])
+        if pinfo:
+            out.update(pinfo)
+            raws["p_value"] = pinfo.get("p_raw", "")
+
+    if not out:
+        return {}
+    # 出处只报**主统计量**（一张表一个），便于回表核对
+    for k in _KV_PRIMARY:
+        if k in out:
+            out["_source_row"] = _KV_LABEL.get(k, k)
+            break
+    out["_raw"] = raws
+    return out
 
 
 def _pick_p_col(p_cols: list[int], stat_col: Optional[int]) -> Optional[int]:
@@ -375,6 +491,13 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
                     if _canon_header(_row_parts(rows, i)[1]) in _ROW_R), None)
     if r_probe is not None:
         return _extract_correlation(rows, r_probe)
+
+    # ── 纵向键值对表（统计量名在行）：先判，因为它**没有**表头行 ──
+    if _is_vertical_kv(rows):
+        kv = _extract_kv(rows)
+        if kv:
+            return kv
+        # 认不出任何统计量名就继续走横向路径（不吞掉本来能认的表）
 
     h = _pick_header_row(rows)
     header = rows[h]
@@ -507,7 +630,7 @@ def extract_table_stats(rows: list[list[str]]) -> dict[str, Any]:
 
     # ── ⑤ 描述统计：无推论统计量，只把 n / M / SD 提出来展示 ──
     if h + 1 < len(rows):
-        for key in ("n", "mean", "sd"):
+        for key in ("n", "mean", "sd", "cronbach_alpha"):
             if key in cols:
                 _put(key, _cell(rows[h + 1], cols[key]), as_int=(key == "n"))
     if out:
@@ -642,12 +765,18 @@ _DISPLAY = [
     ("f_value", "F 值"),
     ("df_between", "自由度（组间）"),
     ("df_error", "自由度（误差）"),
+    ("chi_square", "χ²（卡方值）"),
     ("t_value", "t 值"),
     ("df", "自由度"),
+    ("z_value", "Z（标准正态检验量）"),
+    ("u_value", "曼-惠特尼 U"),
+    ("w_value", "威尔科克森 W"),
     ("p_value", "p 值"),
     ("eta_squared", "η²（效应量）"),
     ("cohens_d", "Cohen's d（效应量）"),
     ("r_value", "r（相关系数）"),
+    ("kmo", "KMO（取样适切性量数）"),
+    ("cronbach_alpha", "Cronbach's α"),
     ("n", "样本量 n"),
     ("mean", "均值 M"),
     ("sd", "标准差 SD"),
@@ -664,7 +793,7 @@ _CONSISTENCY_KEYS = {
     "r_value", "t_test_type",
     # 2026-09-17 新增：chi_square 启用 χ²↔p 校验；n 供 r↔p 换算
     # （t = r·√((n-2)/(1-r²))，df = n-2）。二者缺一，对应的表就只是"能看不能校"。
-    "chi_square", "n",
+    "chi_square", "n", "z_value",
 }
 
 

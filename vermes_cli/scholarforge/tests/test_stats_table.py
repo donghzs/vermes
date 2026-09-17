@@ -784,3 +784,214 @@ class TestNewTableTypesEndToEnd:
         assert "8.971" in r
         assert "η²" in r          # F+df 推算出的效应量
         assert "统计一致性校验" in r
+
+
+# ════════════════════════════════════════════════════════════════════════
+# 2026-09-17 第十一轮：SPSS **纵向键值对**表（统计量名在行、值在列）
+# —— 非参数检验「检验统计」/ KMO 与巴特利特检验 / 可靠性统计 + z↔p 校验。
+#
+# 另含一条**元守卫**：`test_every_extractable_key_has_display_label`。
+# 它的来历：第 10 轮我曾对同一文件**并行发两个 Edit**，导致往 `_DISPLAY` 里
+# 加 `chi_square` 的那次被静默覆盖 —— χ² 能提取、能校验，**却不显示在汇总表里**，
+# 而所有测试都没抓到（源表里也能看到 6.857）。这类丢失必须靠守卫拦，不能靠自觉。
+# ════════════════════════════════════════════════════════════════════════
+
+# 曼-惠特尼 U（两个独立样本，非正态/小样本时教育学论文常用）
+SPSS_MWU = (
+    "检验统计b\n"
+    + T + "成绩" + "\n"
+    + "曼-惠特尼 U" + T + "245.000" + "\n"
+    + "威尔科克森 W" + T + "680.000" + "\n"
+    + "Z" + T + "-2.271" + "\n"
+    + "渐近显著性（双尾）" + T + ".023" + "\n"
+    + "精确显著性[2*（单尾显著性）]" + T + ".023a"
+)
+
+# 威尔科克森符号秩（成对，前测-后测）：Z 单元格带脚注 b
+SPSS_WILCOXON = (
+    "检验统计b\n"
+    + T + "后测 - 前测" + "\n"
+    + "Z" + T + "-3.180b" + "\n"
+    + "渐近显著性（双尾）" + T + ".001"
+)
+
+# 克鲁斯卡尔-沃利斯 H：渐近服从 χ²(df=k−1)，可直接复用 χ²↔p
+SPSS_KW = (
+    "检验统计a,b\n"
+    + T + "成绩" + "\n"
+    + "克鲁斯卡尔-沃利斯 H" + T + "9.412" + "\n"
+    + "自由度" + T + "2" + "\n"
+    + "渐近显著性" + T + ".009"
+)
+
+# KMO 和巴特利特检验：KMO 行 2 列、巴特利特三行 3 列（混合列数）
+SPSS_KMO = (
+    "KMO 和巴特利特检验\n"
+    + T + T + "\n"
+    + "KMO 取样适切性量数" + T + ".812" + "\n"
+    + "巴特利特球形度检验" + T + "近似卡方" + T + "326.450" + "\n"
+    + T + "自由度" + T + "15" + "\n"
+    + T + "显著性" + T + ".000"
+)
+
+# 可靠性统计：横向表，α 只展示不校验（α 没有可校的 p）
+SPSS_ALPHA = (
+    "可靠性统计\n"
+    + "Cronbach's Alpha" + T + "基于标准化项的 Cronbach's Alpha" + T + "项数" + "\n"
+    + ".842" + T + ".851" + T + "12"
+)
+
+
+class TestDisplayLabelGuard:
+    """🔴 元守卫：防止「能提取却不展示」这类静默丢失再次发生。"""
+
+    def test_every_extractable_key_has_display_label(self):
+        """所有能被提取出来的统计量键，都必须在 `_DISPLAY` 里有中文展示名。
+
+        否则该统计量能进校验、却**不出现在汇总表里** —— 用户以为没识别到。
+        """
+        import re
+        from vermes_cli.scholarforge import stats_table as ST
+        src = open(ST.__file__, encoding="utf-8").read()
+        shown = {k for k, _ in ST._DISPLAY}
+        # 收集所有产出键：`_put("key"` 的字面量 + `_KV_MAP` 的目标键
+        produced = set(re.findall(r'_put\(\s*"(\w+)"', src))
+        produced |= set(ST._KV_MAP.values())
+        produced |= set(re.findall(r'out\["(\w+)"\]\s*=', src))
+        produced -= {"p_op", "p_raw", "p_zero_display"}   # p 的附属字段，不单独展示
+        missing = {k for k in produced if not k.startswith("_") and k not in shown}
+        assert not missing, f"以下键能被提取但没进 _DISPLAY（会静默不展示）: {missing}"
+
+    def test_display_labels_are_translated_not_raw_keys(self):
+        """🔴 展示名不得就是键名本身。
+
+        只查「键在 _DISPLAY 里」是不够的 —— 若展示名退化成裸键名（如 `kmo`、
+        `z_value`），键**仍在** `_DISPLAY` 里，上一条守卫抓不到，但用户看到的
+        就是一个英文标识符。变异实证 N9 正是这样溜过网的。
+        """
+        from vermes_cli.scholarforge import stats_table as ST
+        raw = [(k, label) for k, label in ST._DISPLAY if label == k]
+        assert not raw, f"以下展示名就是裸键名（用户看不懂）: {raw}"
+
+    def test_chi_square_is_actually_displayed(self):
+        """第 10 轮丢失过的那一条：χ² 必须出现在汇总表里。"""
+        from vermes_cli.scholarforge.stats_table import stats_summary_table
+        tbl = stats_summary_table(
+            {"chi_square": 6.857, "df": 1, "p_value": .009, "p_raw": "= .009",
+             "_raw": {"chi_square": "6.857", "p_value": ".009"}}
+        )
+        assert "χ²" in tbl and "6.857" in tbl
+
+
+class TestSpssNonparametric:
+    """非参数检验：SPSS 的「检验统计」是**纵向**表（统计量名在行）。"""
+
+    def test_mann_whitney_extracts_u_w_z_p(self):
+        s = _extract(SPSS_MWU)
+        assert s["u_value"] == pytest.approx(245.0)
+        assert s["w_value"] == pytest.approx(680.0)
+        assert s["z_value"] == pytest.approx(-2.271)
+        assert s["p_value"] == pytest.approx(0.023)
+
+    def test_asymptotic_sig_is_preferred_over_exact(self):
+        """表里同时有「渐近显著性」与「精确显著性」时取前者 —— 论文报的是它。"""
+        s = _extract(SPSS_MWU)
+        assert s["p_op"] == "="          # 精确显著性那格是 `.023a`（带脚注）
+        assert s["p_raw"] == ".023"
+
+    def test_wilcoxon_footnote_is_stripped(self):
+        s = _extract(SPSS_WILCOXON)
+        assert s["z_value"] == pytest.approx(-3.180)
+        assert s["p_value"] == pytest.approx(0.001)
+
+    def test_kruskal_wallis_h_becomes_chi_square(self):
+        """H 渐近服从 χ²(df=k−1) → 归到 chi_square，直接复用 χ²↔p。"""
+        s = _extract(SPSS_KW)
+        assert s["chi_square"] == pytest.approx(9.412)
+        assert s["df"] == 2
+        assert s["p_value"] == pytest.approx(0.009)
+
+    def test_kruskal_wallis_consistency_really_runs(self):
+        """端到端：χ²=9.412,df=2 精确 p=.009，与报告一致 → 无矛盾。"""
+        payload = {k: v for k, v in _extract(SPSS_KW).items()
+                   if k in ("chi_square", "df", "p_value")}
+        assert check_statistics_consistency(payload) == []
+
+    def test_kruskal_wallis_wrong_p_is_caught(self):
+        from vermes_cli.scholarforge.validators import check_statistics_consistency
+        bad = check_statistics_consistency(
+            {"chi_square": 9.412, "df": 2, "p_value": 0.919})
+        assert [c for c in bad if not c.consistent]
+
+    def test_vertical_table_does_not_break_horizontal_ones(self):
+        """🔴 回归：新增纵向分支后，横向表（ANOVA / 卡方 / 成对样本）仍走原路径。"""
+        assert _extract(SPSS_ANOVA)["f_value"] == pytest.approx(4.123)
+        assert _extract(SPSS_CHI)["chi_square"] == pytest.approx(6.857)
+        assert _extract(SPSS_PAIRED)["t_value"] == pytest.approx(-3.522)
+
+
+class TestSpssQuestionnaire:
+    """问卷信效度：KMO 与巴特利特（效度）、Cronbach α（信度）。"""
+
+    def test_kmo_row_survives_column_count_filter(self):
+        """🔴 回归：KMO 行只有 2 列，而巴特利特三行是 3 列 —— 曾被列数过滤丢掉。
+
+        KMO 恰恰是问卷效度分析里最常被抄进论文的那个数，丢了等于白识别。
+        """
+        from vermes_cli.scholarforge.stats_table import detect_table_rows
+        rows = detect_table_rows(SPSS_KMO)
+        assert any("KMO" in c for r in rows for c in r)
+
+    def test_kmo_and_bartlett_are_extracted(self):
+        s = _extract(SPSS_KMO)
+        assert s["kmo"] == pytest.approx(0.812)
+        assert s["chi_square"] == pytest.approx(326.450)
+        assert s["df"] == 15
+        assert s["p_value"] == pytest.approx(0.001)
+        assert s["p_zero_display"] is True
+
+    def test_bartlett_label_is_not_mistaken_for_statistic(self):
+        """🔴 标签必须取**最后一个**非空单元格：`巴特利特球形度检验 | 近似卡方 | 326.450`
+        里第一个是**分组名**，取错会把分组名当成统计量名。"""
+        assert _extract(SPSS_KMO)["_source_row"] == "χ²"
+
+    def test_cronbach_alpha_is_extracted(self):
+        s = _extract(SPSS_ALPHA)
+        assert s["cronbach_alpha"] == pytest.approx(0.842)
+
+    def test_alpha_is_display_only_not_checked(self):
+        """α 没有可校的 p —— 不得进 `_CONSISTENCY_KEYS`（否则会出现恒真的假校验）。"""
+        from vermes_cli.scholarforge.stats_table import _CONSISTENCY_KEYS
+        assert "cronbach_alpha" not in _CONSISTENCY_KEYS
+        assert "kmo" not in _CONSISTENCY_KEYS
+
+
+class TestZConsistency:
+    """校验 9：p ↔ Z（标准正态双尾 = erfc(|Z|/√2)，math.erfc 是 stdlib）。"""
+
+    @staticmethod
+    def _issues(**kw) -> list:
+        return [c for c in check_statistics_consistency(kw) if not c.consistent]
+
+    def test_z_p_matches_standard_critical_values(self):
+        from vermes_cli.scholarforge.validators import z_p_two_tailed
+        assert z_p_two_tailed(1.959964) == pytest.approx(0.05, abs=1e-6)
+        assert z_p_two_tailed(2.575829) == pytest.approx(0.01, abs=1e-6)
+        assert z_p_two_tailed(0.0) == pytest.approx(1.0)
+        assert z_p_two_tailed(-1.959964) == pytest.approx(0.05, abs=1e-6)  # 取绝对值
+
+    def test_z_catches_significant_reported_as_not(self):
+        issues = self._issues(z_value=-2.271, p_value=0.919)
+        assert issues and "Z" in issues[0].metric
+
+    def test_z_correct_report_not_flagged(self):
+        assert self._issues(z_value=-2.271, p_value=0.023) == []
+
+    def test_z_upper_bound_not_flagged(self):
+        """「p < .001」是上界写法，不得当成抄错。"""
+        assert self._issues(z_value=-3.180, p_value=0.001) == []
+
+    def test_z_invalid_input_is_nan(self):
+        from vermes_cli.scholarforge.validators import z_p_two_tailed
+        got = z_p_two_tailed("x")
+        assert got != got  # NaN
