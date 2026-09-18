@@ -328,8 +328,6 @@ _CORE_PKGS = [
     'ruamel.yaml',
     # 表单解析（FastAPI Form() 依赖）
     'multipart',
-    # 数值计算（ScholarForge/AI 工具链依赖）
-    'numpy',
     # 向量检索（RAG 后端）
     'sqlite_vec',
 ]
@@ -355,6 +353,10 @@ _CHANNEL_PKGS = [
     # 其他
     'pilk', 'nacl', 'brotlicffi', 'aiohttp_socks',
     'markdown',
+    # 数值计算（ScholarForge/AI 工具链依赖）。用 warn once 而非 raise：
+    # numpy.f2py.tests 子包 import pytest（构建机未装），核心功能不依赖它，
+    # warn once 会正常收集 numpy 核心、仅跳过 tests 子包
+    'numpy',
     # 重试逻辑（渠道连接）
     'tenacity',
 ]
