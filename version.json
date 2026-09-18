@@ -17,8 +17,8 @@
     },
     "windows": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-win-x64.exe",
-      "sha256": "f75f709f1ddc946503697ccbc70b9f251a3ec55bdef2e7c3207d1a35bd62e81d",
-      "size": 267748804
+      "sha256": "6cdabbed9f814ced2c305a839f28a4373fa69b92599a469fa45805779c421170",
+      "size": 267742645
     }
   },
   "mac": {
@@ -35,7 +35,7 @@
   },
   "windows": {
     "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-win-x64.exe",
-    "sha256": "f75f709f1ddc946503697ccbc70b9f251a3ec55bdef2e7c3207d1a35bd62e81d",
-    "size": 267748804
+    "sha256": "6cdabbed9f814ced2c305a839f28a4373fa69b92599a469fa45805779c421170",
+    "size": 267742645
   }
 }
