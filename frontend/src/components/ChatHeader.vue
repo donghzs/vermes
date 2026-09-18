@@ -76,8 +76,9 @@ watch(() => chat.filteredMessages?.length, refreshMemoryAfterFirstMessage)
 // 同上（原裸 setInterval，无清理且隐藏后仍轮询）→ 轻量接口，30s 刷新
 useVisiblePoll(fetchMemStatus, 30000)
 
-// 默认模型（未同步 provider 时的回退列表）
+// 默认模型（未同步 provider 时的回退列表）— 微信免费体验可选
 const defaultModels = [
+  { id: 'agnes-3.0-flash', name: '🚀 Agnes 3.0 Flash（免费）', provider: 'agnes' },
   { id: 'agnes-2.5-flash', name: '⚡ Agnes 2.5 Flash（免费）', provider: 'agnes' },
   { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
 ]

@@ -182,7 +182,7 @@ SCHOLARFORGE_REVIEW_SCHEMA = {
 # ──────────────────────────────────────────────────────────────
 
 _PROVIDER_FALLBACK_MODELS = {
-    "agnes": "agnes-2.5-flash",
+    "agnes": "agnes-3.0-flash",
     "deepseek": "deepseek-v4-flash",
     "openai": "gpt-4o-mini",
     "anthropic": "claude-sonnet-4-20250514",
@@ -233,7 +233,7 @@ def _resolve_credentials():
 
     model_cfg = cfg.get("model", {})
     provider = model_cfg.get("provider", "").strip() or "agnes"
-    default_model = model_cfg.get("default", "").strip() or "agnes-2.5-flash"
+    default_model = model_cfg.get("default", "").strip() or "agnes-3.0-flash"
     base_url = model_cfg.get("base_url", "").strip()
 
     # 从 providers 配置中读取 api_key 和 base_url

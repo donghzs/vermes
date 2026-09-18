@@ -70,12 +70,13 @@ async def claim_trial_token(request: Request):
 
         # 微信登录成功，返回 Agnes 免费模型 provider 配置
         # 用户登录后仍可自行配置其他 provider，这里只是自动加上免费选项
+        # 3.0 已发布：置于列表首位，供前端免费体验下拉优先展示
         return {
             "success": True,
             "message": "Agnes AI 免费模型已就绪",
             "provider": "agnes",
             "base_url": "https://apihub.agnes-ai.com/v1",
-            "models": ["agnes-2.0-flash", "agnes-2.5-flash"],
+            "models": ["agnes-3.0-flash", "agnes-2.5-flash", "agnes-2.0-flash"],
         }
     except Exception as e:
         return {"success": False, "error": str(e)}

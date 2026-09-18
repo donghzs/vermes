@@ -133,6 +133,7 @@ def _resolve_model_provider(
         "deepseek-reasoner": "deepseek",
         "deepseek-v4-flash": "deepseek",
         "deepseek-v4": "deepseek",
+        "agnes-3.0-flash": "agnes",
         "agnes-2.0-flash": "agnes",
         "agnes-": "agnes",
         "gpt-4o": "vbit",

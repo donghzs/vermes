@@ -10,7 +10,7 @@ agnes = ProviderProfile(
     env_vars=("AGNES_API_KEY",),
     base_url="https://apihub.agnes-ai.com/v1",
     auth_type="api_key",
-    default_aux_model="agnes-2.0-flash",
+    default_aux_model="agnes-3.0-flash",
 )
 
 register_provider(agnes)

@@ -512,6 +512,7 @@ const forgeModal = ref({ open: false, editing: null, name: '', description: '', 
 //   · 只列在「设置」里已配置的可用模型，杜绝用户选到用不了的；
 //   · 监听 providers-updated 事件，设置改动后下拉即时刷新（与单聊一致）。
 const defaultForgeModels = [
+  { id: 'agnes-3.0-flash', name: '🚀 Agnes 3.0 Flash（免费）', provider: 'agnes' },
   { id: 'agnes-2.5-flash', name: '⚡ Agnes 2.5 Flash（免费）', provider: 'agnes' },
   { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
 ]

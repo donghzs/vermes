@@ -520,7 +520,7 @@ _BUILTIN_PRESETS = [
         "label": "Agnes AI",
         "icon": "🧠",
         "baseUrl": "https://apihub.agnes-ai.com/v1",
-        "text": "agnes-2.0-flash",
+        "text": "agnes-3.0-flash",
         "image": "agnes-image-2.1-flash",
         "video": "agnes-video-v2.0",
         "keyEnv": "AGNES_API_KEY",
