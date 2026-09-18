@@ -306,10 +306,20 @@ async def test_handle_save_cards_via_tools(temp_db):
 
 @pytest.mark.asyncio
 async def test_handle_matrix_via_tools(temp_db):
-    """矩阵 handler"""
+    """矩阵 handler：无 topic/tag 时先被输入守卫拦下（P4-3），不再落到空库文案。"""
     from vermes_cli.scholarforge.tools import _handle_scholarforge_literature_matrix
 
     result = await _handle_scholarforge_literature_matrix({})
+    assert "topic 或 tag" in result
+    assert result.lstrip().startswith("❌")
+
+
+@pytest.mark.asyncio
+async def test_handle_matrix_empty_library_with_topic(temp_db):
+    """有检索条件且库为空时，应走到文献层空库提示，而不是输入守卫。"""
+    from vermes_cli.scholarforge.tools import _handle_scholarforge_literature_matrix
+
+    result = await _handle_scholarforge_literature_matrix({"topic": "machine learning"})
     assert "文献卡片库为空" in result
 
 

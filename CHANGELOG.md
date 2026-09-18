@@ -2,6 +2,44 @@
 
 All notable changes to Vermes will be documented in this file.
 
+## [Unreleased] — 2026-09-18（本地 main，基于 tag v2.4.8 之后）
+
+> 版本字段仍为 **2.4.8**；下列提交在 `v2.4.8`（`76c6bc0987`）之后、**尚未 push / 未传 vbit.top**。
+
+### ScholarForge · 论文写作
+
+- **统计结果 → 学术三线表**（`scholarforge_stats_table`，第 28 个工具）：粘贴 SPSS 表格或统计结论句 → GFM 三线表；纯规则、零 LLM、数字保真
+- SPSS 表型扩展：成对样本 / 卡方 / 相关矩阵 / GLM 与重复测量 / 纵向键值对（非参数、KMO-Bartlett、Cronbach α）/ 回归分析 / ANCOVA / 逻辑回归 / 因子分析 / 正态性 / 莱文方差齐性
+- 一致性校验修复与适用条件：F↔η² 公式（补 df_between）、t↔d 候选集、η²↔d 多组闸门、补齐 d↔r、p↔t 精确计算（无 scipy）、粘贴表格时校验真正生效
+- 28 个工具名中文化 + 工具箱分组归位 + **新手模式**（「写论文的 8 步」）
+- 兜底项目显形：未选项目时写回结果明确告知落到哪个项目
+- `learn_style`：500 字门槛显形（100–499 字警告「会被自动套用」）+ 空行短段落不再崩溃
+
+### 桌面端体验（流畅度 / 封装）
+
+- SQLite 移出 FastAPI 事件环；聊天/看板 markdown 渲染缓存；渠道轮询去抖；Sidebar 会话 Map 索引
+- 定时器与 watcher 泄漏修复；窗口隐藏时暂停纯 UI 轮询；渠道 WS 重连耗尽后转长跑重试
+- 主包代码分割 + highlight.js 全量语言移出首屏；路由懒加载；three.js 按需
+- 系统托盘 + 全局快捷键；窗口尺寸/位置记忆；设置页跨 tab 搜索
+- 引导页「能力地图」；删除 3 个确凿死组件；清理 9 个零引用依赖
+
+### 上手体验
+
+- 创作工作室：修「点了没反应」；空态引导；自动带入设置里已配模型；注册 `studio` blueprint
+- 论文页：环境自检条；项目下拉经 store 同步后端激活项目；跨会话记住当前项目
+
+### 更新与清单
+
+- `version.json` 支持 `downloads.*` 与 `mac.{arm64,x64}` 架构嵌套；`update.js` 宽松解析，避免 Mac 更新「弹窗有、下载空」
+- mac 清单 sha256/size 与本机 `dist-electron` DMG 对齐
+
+### 测试与工程
+
+- vitest `setup.js`：Node 26 下 localStorage 兜底，新手模式等前端测试可跑
+- 工具数守卫同步至 28（注册/logger/module.yaml/validation_coverage/benchmark）
+- memory richness 测试补 `is_active`；literature_matrix 输入守卫与测试契约对齐
+- registry 写路径测试补全 DB mock，避免假失败
+
 ## [2.4.5] - 2026-08-28
 
 - 本地模型智能发现：通用本地/自定义端点 + 端口范围扫描 + base_url 自动补 /v1

@@ -151,9 +151,22 @@ class TestWriteMissingProjectIdAutoDefault(unittest.TestCase):
         self.assertEqual(m_save.call_args[0][0], 7)
 
     def test_auto_default_via_registry_dispatch(self):
+        """registry 入口与 handler 同路径：必须同样 mock 落库依赖。
+
+        不 mock save_section 会打到真实 SQLite，mock 出的 project_id=7 不存在 →
+        FOREIGN KEY 失败，测试红与 registry 透传无关。
+        """
         with patch("vermes_cli.scholarforge.active_project.list_projects", return_value=[]), \
              patch("vermes_cli.scholarforge.active_project.create_project", return_value={"id": 7}), \
-             patch("vermes_cli.scholarforge.tools._call_llm", return_value="# 引言\n正文。"):
+             patch("vermes_cli.scholarforge.tools._call_llm", return_value="# 引言\n正文。"), \
+             patch("vermes_cli.scholarforge.project_context.auto_snapshot"), \
+             patch("vermes_cli.scholarforge.project_context.format_project_context_prompt", return_value=""), \
+             patch("vermes_cli.scholarforge.project_context.load_project_context",
+                   return_value={"title": "T", "paper_type": "本科论文"}), \
+             patch("vermes_cli.scholarforge.project_context.get_style_prompt", return_value=""), \
+             patch("vermes_cli.scholarforge.project_context.save_section", return_value=True), \
+             patch("vermes_cli.scholarforge.quality_gate.run_quality_gate",
+                   return_value=("# 引言\n正文。", "", False)):
             result = _sf_registry.dispatch("scholarforge_write", {"topic": "t", "section_type": "abstract"})
         self.assertFalse(result.lstrip().startswith("❌"), msg=f"registry 入口应透传成功结果，实际：{result[:80]!r}")
 
