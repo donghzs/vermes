@@ -107,8 +107,11 @@ if (-not $SkipFrontend) {
 
 # ── 4. 同步 web_dist ──
 Write-Step 4 "同步前端到 vermes_cli/web_dist"
-if (-not (Test-Path "$Root\frontend\dist")) { throw "frontend/dist 不存在，不能 SkipFrontend" }
-Copy-Item -Force "$Root\frontend\dist\*" "$Root\vermes_cli\web_dist\" -Recurse
+# vite outDir 已直出 ../vermes_cli/web_dist（见 frontend/vite.config.js build.outDir），
+# 与 Mac build.sh 一致；此处保留 frontend/dist 复制分支仅为兼容历史产物，非必需。
+if (Test-Path "$Root\frontend\dist") {
+    Copy-Item -Force "$Root\frontend\dist\*" "$Root\vermes_cli\web_dist\" -Recurse
+}
 $js = Get-ChildItem "$Root\vermes_cli\web_dist\assets\index-*.js" -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $js) { throw "web_dist 缺少 index-*.js，前端构建可能失败" }
 Write-Host "  JS: $($js.Name)"
