@@ -8,6 +8,8 @@ import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
 import { DOMPURIFY_BASE_CONFIG } from '../utils/security'
 import StateBlock from './StateBlock.vue'
+import SceneStatusBar from './SceneStatusBar.vue'
+import { useHarnessLight } from '../composables/useHarnessLight'
 
 const bot = useBotRoomStore()
 
@@ -911,6 +913,26 @@ function vis(refId) {
 
 function _onRoomUpdate(e) { bot.onRoomUpdate(e.detail) }
 
+const { harnessChip } = useHarnessLight()
+const sceneItems = computed(() => {
+  const items = []
+  if (!bot.botModeDisabled) items.push({ key: 'bot', icon: '⛩️', label: 'Bot Mode 已启用', title: '群聊多 Agent' })
+  if (bot.currentRoomId) {
+    const room = (bot.rooms || []).find(r => r.id === bot.currentRoomId)
+    items.push({
+      key: 'room',
+      icon: '💬',
+      label: room ? (room.title || room.id) : bot.currentRoomId,
+      title: '当前群',
+    })
+    const n = (bot.members || []).length
+    items.push({ key: 'members', icon: '👥', label: n ? `${n} 成员` : '成员加载中/暂无', title: '群成员' })
+  }
+  const h = harnessChip()
+  if (h) items.push(h)
+  return items
+})
+
 onMounted(async () => {
   window.addEventListener('vermes:room_update', _onRoomUpdate)
   await bot.loadRooms()
@@ -932,6 +954,10 @@ onUnmounted(() => {
       <div class="text-sm text-gray-400 max-w-sm">当前配置已关闭 Bot Mode（bot_mode.enabled=false）。开启后此处可进行群聊多 Agent 协作；单聊功能不受影响。</div>
     </div>
     <template v-else>
+    <!-- U-P0-6：Bot Mode 关闭时整页说明；开启后仅细状态 chips -->
+    <div class="flex-1 flex flex-col min-w-0">
+      <SceneStatusBar :items="sceneItems" />
+      <div class="flex-1 flex overflow-hidden">
     <!-- 左：群列表 + 新建群 -->
     <aside class="w-64 shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col">
       <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -1166,6 +1192,8 @@ onUnmounted(() => {
         </div>
       </div>
     </main>
+      </div><!-- /flex overflow -->
+    </div><!-- /scene flex-col -->
     </template>
 
     <!-- 新建群弹窗（2026-09-07：建群即建组织——模板搭岗指派，一键开干；不搭组织也可纯闲聊群） -->

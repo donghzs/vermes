@@ -8,6 +8,8 @@
         {{ showConfig ? '收起配置 ▲' : '模型配置 ▼' }}
       </button>
     </div>
+    <!-- U-P0-6：已配好才显示极细状态；未配置用空态卡片引导，不另加彩条 -->
+    <SceneStatusBar :items="studioSceneItems" />
 
     <!-- 配置区（折叠） -->
     <div v-if="showConfig" class="config-bar">
@@ -325,6 +327,8 @@ import { useRouter } from 'vue-router'
 import { logger } from '@/utils/logger'
 import { useConfirm } from '../composables/useConfirm'
 import StateBlock from './StateBlock.vue'
+import SceneStatusBar from './SceneStatusBar.vue'
+import { useHarnessLight } from '../composables/useHarnessLight'
 const { confirm } = useConfirm()
 
 const router = useRouter()
@@ -369,6 +373,19 @@ const showConfig = ref(true)
 // 用于空状态引导分支：没配 → 先教配置；配了 → 教怎么用。
 // 注意只判这两个：model 可由「🔄 拉取模型列表」或默认值补齐，不作为阻塞条件。
 const isConfigured = computed(() => !!(baseUrl.value && apiKey.value))
+const { harnessChip } = useHarnessLight()
+const studioSceneItems = computed(() => {
+  if (!isConfigured.value) return []
+  const items = [{
+    key: 'model',
+    icon: '🧠',
+    label: model.value || inheritedFrom.value || '已接入（未填模型名）',
+    title: '创作工作室当前模型',
+  }]
+  const h = harnessChip()
+  if (h) items.push(h)
+  return items
+})
 
 // 上手示例：点一下即填入输入框。刻意覆盖「文字 / 图片 / 视频 / 灵感」四类，
 // 让第一次进来的人不需要先想清楚「这个框该填什么」。

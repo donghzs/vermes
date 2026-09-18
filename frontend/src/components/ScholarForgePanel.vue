@@ -15,9 +15,12 @@ import QualityView from './scholar/QualityView.vue'
 import FlowGuide from './scholar/FlowGuide.vue'
 import Uploader from './scholar/Uploader.vue'
 import PrereqBanner from './PrereqBanner.vue'
+import SceneStatusBar from './SceneStatusBar.vue'
+import { useHarnessLight } from '../composables/useHarnessLight'
 
 const router = useRouter()
 const scholar = useScholarStore()
+const { harnessChip } = useHarnessLight()
 
 function goChat() { router.push('/') }
 
@@ -94,6 +97,24 @@ const projectNotPicked = computed(
         scholar.currentProjectId == null && !projectHintDismissed.value
 )
 
+const sceneReady = computed(
+  () => !envBlocked.value &&
+        scholar.projectsLoaded &&
+        scholar.projects.length > 0 &&
+        scholar.currentProjectId != null
+)
+const currentProjectTitle = computed(() => {
+  const p = (scholar.projects || []).find(x => x.id === scholar.currentProjectId)
+  return p ? `#${p.id} ${p.title}` : `#${scholar.currentProjectId}`
+})
+const sceneItems = computed(() => {
+  if (!sceneReady.value) return []
+  const items = [{ key: 'project', icon: '🗂️', label: currentProjectTitle.value, title: '当前论文项目' }]
+  const h = harnessChip()
+  if (h) items.push(h)
+  return items
+})
+
 onMounted(async () => {
   await Promise.all([scholar.loadProjects(), checkEnv()])
   let saved = null
@@ -160,6 +181,9 @@ onMounted(async () => {
         </select>
       </div>
     </header>
+
+    <!-- U-P0-6 场景状态：正常态仅一行细字；异常由下方 banner 承担 -->
+    <SceneStatusBar :items="sceneItems" />
 
     <!-- 环境自检（2026-09-16 非技术用户上手专项）
          背景：模型没配好时，工具箱 28 个工具点下去必然报错，而原先只有报错那一刻
