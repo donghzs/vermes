@@ -6,14 +6,23 @@ analysis (see harness_insights_for_vermes.html):
 - recoverable: structured, machine-readable feedback when a tool fails
   unexpectedly (harness capability #2 — "check failure state + recoverable
   feedback").
-- stability: opt-in best/worst-of-N probe for multi-run reliability
-  (harness capability #4 — "multi-run stability > single-run").
-- constraints: generic validation base + runner, generalized from
-  ScholarForge validators (harness capability #3 — "unified constraint
-  contract across domains").
+- tool_precheck / task_precheck: pre-execution constraint gates (H2.1/H1.1).
+- circuit_breaker + failure_learning + precision_matrix + result_validator
+  + outcome_verifier: quality gates wired into ``agent/tool_executor.py``
+  and orchestration paths on the **default request path** (fail-open).
+- stability: opt-in best/worst-of-N probe (guarded by agent flag;
+  historically dormant unless `_enable_stability_probe` is set).
+- constraints / release_constraints: ops/CLI release checks — **not** on
+  the default conversation path.
 
-These modules are side-effect free and intentionally opt-in: nothing in the
-default request path imports them unless a caller wires them in.
+Wiring reality (2026-09 E-P0 audit):
+- recoverable / task_precheck / tool_precheck / failure_learning /
+  precision_matrix / result_validator / outcome_verifier **are imported
+  from production agent paths** (tool_executor, turn_service, …).
+- Fail-open: missing modules or internal errors must not block tool
+  execution; E-P0-2 surfaces such failures via warning + counts
+  (``agent.tool_executor.get_harness_fail_counts``) instead of silent debug.
+- Stability probing is opt-in; do not assume it runs unless enabled.
 """
 
 from .recoverable import (

@@ -1407,7 +1407,76 @@ def _handle_search_files(args, **kw):
         respect_gitignore=args.get("respect_gitignore", True), task_id=tid)
 
 
+def _verify_file_write_outcome(
+    function_name: str,
+    function_args: dict,
+    function_result: str,
+    is_error: bool,
+) -> tuple[bool, str]:
+    """E-P0-3: write_file / patch 外证核验 — 不信任 handler 返回串 alone。
+
+    R1: 不单信 is_error；解析 result JSON 的 error 字段。
+    R3: 外证 — 目标 path 是否在磁盘上真实存在（写回类最小可验证事实）。
+    fail-open 边界：无法解析 path 时返回 (True, skip reason)，与 scholarforge
+    「无法定位校验对象则跳过」契约一致，避免误杀。
+    """
+    path = None
+    if isinstance(function_args, dict):
+        path = (
+            function_args.get("path")
+            or function_args.get("file_path")
+            or function_args.get("filepath")
+        )
+    if not path or not isinstance(path, str):
+        return (True, "no path in args — skip verification")
+
+    # handler 可能返回 tool_error 字符串或 JSON
+    if is_error:
+        return (False, f"tool reported error; path={path}")
+    result = function_result if isinstance(function_result, str) else str(function_result)
+    stripped = result.strip()
+    if stripped.startswith("{"):
+        try:
+            data = json.loads(stripped)
+            if isinstance(data, dict) and data.get("error"):
+                return (False, f"result JSON error: {str(data.get('error'))[:120]}")
+        except Exception:
+            pass
+    if stripped.startswith("❌") or "Error executing tool" in stripped:
+        return (False, f"error-shaped result; path={path}")
+
+    try:
+        resolved = path
+        try:
+            _resolved_try = _resolve_path_for_task(path, function_args.get("task_id") or "default")
+            if _resolved_try:
+                resolved = str(_resolved_try)
+        except Exception:
+            resolved = path
+        if not os.path.exists(resolved):
+            return (False, f"file not found after {function_name}: {resolved}")
+        if os.path.isfile(resolved) and os.path.getsize(resolved) == 0:
+            # 空文件可能是合法「清空」；仅在 write 且声明了非空 content 时失败
+            if function_name == "write_file":
+                content = function_args.get("content") if isinstance(function_args, dict) else None
+                if isinstance(content, str) and content:
+                    return (False, f"file exists but empty after non-empty write: {resolved}")
+        return (True, f"file exists: {resolved}")
+    except Exception as exc:
+        return (True, f"verifier error (fail-open): {exc}")
+
+
 registry.register(name="read_file", toolset="file", schema=READ_FILE_SCHEMA, handler=_handle_read_file, check_fn=_check_file_reqs, emoji="📖", max_result_size_chars=100_000)
-registry.register(name="write_file", toolset="file", schema=WRITE_FILE_SCHEMA, handler=_handle_write_file, check_fn=_check_file_reqs, emoji="✍️", max_result_size_chars=100_000)
-registry.register(name="patch", toolset="file", schema=PATCH_SCHEMA, handler=_handle_patch, check_fn=_check_file_reqs, emoji="🔧", max_result_size_chars=100_000)
+registry.register(
+    name="write_file", toolset="file", schema=WRITE_FILE_SCHEMA,
+    handler=_handle_write_file, check_fn=_check_file_reqs,
+    verify_fn=_verify_file_write_outcome,
+    emoji="✍️", max_result_size_chars=100_000,
+)
+registry.register(
+    name="patch", toolset="file", schema=PATCH_SCHEMA,
+    handler=_handle_patch, check_fn=_check_file_reqs,
+    verify_fn=_verify_file_write_outcome,
+    emoji="🔧", max_result_size_chars=100_000,
+)
 registry.register(name="search_files", toolset="file", schema=SEARCH_FILES_SCHEMA, handler=_handle_search_files, check_fn=_check_file_reqs, emoji="🔎", max_result_size_chars=100_000)
