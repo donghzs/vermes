@@ -1905,10 +1905,10 @@ async function toggleChannel(platformKey) {
               <div class="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center text-white font-bold">V</div>
               <div>
                 <div class="font-medium text-green-700 dark:text-green-300">🔥 vbit.top 免费体验</div>
-                <div class="text-xs text-green-600 dark:text-green-400">微信扫码登录即可免费使用 Agnes AI</div>
+                <div class="text-xs text-green-600 dark:text-green-400">微信扫码登录领取体验 token，聊天路径可自动写入，默认走 Agnes 免费模型</div>
               </div>
             </div>
-            <div class="text-xs text-green-600 dark:text-green-400">✅ 微信登录即用 · ✅ 无需 API Key · ✅ Agnes AI 免费驱动</div>
+            <div class="text-xs text-green-600 dark:text-green-400">✅ 扫码登录即用 · ✅ 无需自备 API Key · ✅ 默认模型 Agnes（可改）</div>
           </div>
 
           <!-- DeepSeek / Agnes / MiMo / Ollama — 使用 ProviderCard -->
@@ -2514,7 +2514,9 @@ async function toggleChannel(platformKey) {
           <div class="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700">
             <div>
               <div class="text-sm text-gray-800 dark:text-gray-200">TrustGate 严格模式</div>
-              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">开启后，中高危操作直接拒绝（不给建议），低危放行</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                工具声明层门禁（PermissionSpec + deny-unless-declared）。开启后，已声明的中高危操作更可能被拒；未声明工具仍可能 fail-open 放行。写回类工具另有独立核验信号，以状态灯/核验标签为准。
+              </div>
             </div>
             <button @click="toggleTrustGate" class="relative inline-flex h-5 w-9 items-center rounded-full transition" :class="trustGateStrict ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'">
               <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition" :class="trustGateStrict ? 'translate-x-5' : 'translate-x-1'" />

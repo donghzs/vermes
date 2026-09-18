@@ -8,7 +8,7 @@ description: "On-demand knowledge documents — progressive disclosure, agent-ma
 
 Skills are on-demand knowledge documents the agent can load when needed. They follow a **progressive disclosure** pattern to minimize token usage and are compatible with the [agentskills.io](https://agentskills.io/specification) open standard.
 
-All skills live in **`~/.vermes/skills/`** — the primary directory and source of truth. On fresh install, bundled skills are copied from the repo. Hub-installed and agent-created skills also go here. The agent can modify or delete any skill.
+All skills live in **`~/.vermes/skills/`** — the primary directory and source of truth. On fresh install, any **seed** skills from the repo’s thin `skills/` tree are copied here; the large **optional** catalog (`optional-skills/`, ~80+) is installed on demand. Hub-installed and agent-created skills also go here. The agent can modify or delete any skill.
 
 You can also point Vermes at **external skill directories** — additional folders scanned alongside the local one. See [External Skill Directories](#external-skill-directories) below.
 
@@ -711,7 +711,7 @@ Taps are stored in `~/.vermes/.hub/taps.json` (created on demand).
 
 ## Bundled skill updates (`vermes skills reset`)
 
-Vermes ships with a set of bundled skills in `skills/` inside the repo. On install and on every `vermes update`, a sync pass copies those into `~/.vermes/skills/` and records a manifest at `~/.vermes/skills/.bundled_manifest` mapping each skill name to the content hash at the time it was synced (the **origin hash**).
+Repo `skills/` is a **thin seed** (not a 30+/80+ “bundled catalog”). On install and on every `vermes update`, a sync pass may copy seed skills into `~/.vermes/skills/` and record a manifest at `~/.vermes/skills/.bundled_manifest` mapping each skill name to the content hash at the time it was synced (the **origin hash**). The large installable set remains under `optional-skills/` / Skillhub / `official/...` install IDs.
 
 On each sync, Vermes recomputes the hash of your local copy and compares it to the origin hash:
 

@@ -480,7 +480,7 @@ def build_catalog_md_bundled(entries: list[tuple[dict[str, Any], dict[str, Any]]
         "---",
         "sidebar_position: 5",
         'title: "Bundled Skills Catalog"',
-        'description: "Catalog of bundled skills that ship with Vermes"',
+        'description: "Catalog of installable skills (optional-skills + official IDs) that can be added to Vermes"',
         "---",
         "",
         "# Bundled Skills Catalog",

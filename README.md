@@ -8,7 +8,7 @@ Vermes 基于官方 [Vermes Agent](https://github.com/donghzs/vermes) 引擎，
 ## ✨ 特性
 
 - 🧠 **自进化 Agent** — 从经验中学习，创建和改进技能
-- 🛠 **30+ 内置技能** — 文档、搜索、邮件、天气、代码...
+- 🛠 **技能可扩展** — 仓内 `optional-skills/` 约 80+ 可选技能（文档/搜索/邮件/天气/代码…），装到 `~/.vermes/skills/` 即用
 - 🏪 **技能商店** — 随时通过 Skillhub 扩展能力
 - 🌐 **多模型支持** — DeepSeek、Qwen、OpenAI、Ollama...
 - 💻 **全平台** — macOS / Windows / Linux

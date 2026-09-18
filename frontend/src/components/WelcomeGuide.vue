@@ -239,7 +239,7 @@ onMounted(() => {
             <div class="w-12 h-12 bg-green-100 dark:bg-green-900/50 rounded-xl flex items-center justify-center text-2xl">💬</div>
             <div class="flex-1">
               <div class="font-semibold text-gray-800 dark:text-gray-200">微信扫码登录</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">最简单，Agnes AI 全模态免费</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">最简单，扫码后默认走 Agnes 免费体验</div>
             </div>
             <span class="text-xs bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400 px-2 py-1 rounded-full font-medium">推荐</span>
           </div>
@@ -337,9 +337,9 @@ onMounted(() => {
           <p class="text-gray-500 dark:text-gray-400 mb-4">请在弹出的窗口中用微信扫码</p>
           <div class="bg-green-50 dark:bg-green-900/30 rounded-2xl p-5 border border-green-200 dark:border-green-800 mb-5">
             <div class="text-sm text-green-700 dark:text-green-300 space-y-1.5">
-              <p>✅ Agnes AI 全模态免费</p>
-              <p>✅ 支持对话 / 图片 / 视频生成</p>
-              <p>✅ 扫码即用，无需其他注册</p>
+              <p>✅ Agnes AI 免费体验（扫码领取 token）</p>
+              <p>✅ 支持对话 / 图片 / 视频（视渠道配额）</p>
+              <p>✅ 扫码后可直接对话，默认模型 Agnes</p>
             </div>
           </div>
           <div class="flex items-center justify-center gap-2 mb-4">
