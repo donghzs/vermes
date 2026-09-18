@@ -1,7 +1,7 @@
 {
   "version": "2.4.9",
   "releaseDate": "2026-09-18",
-  "notes": "Vermes 2.4.9 正式版：① ScholarForge 统计转三线表（stats_table）——SPSS 表/统计结论句→GFM 三线表，覆盖成对样本/卡方/相关/GLM/回归/ANCOVA/逻辑回归/因子/正态性/莱文等，并修复 F↔η² 等校验适用条件；② 论文工具箱：28 工具中文化 + 新手模式「写论文的 8 步」+ 兜底项目显形 + learn_style 门槛显形；③ 桌面体验：首屏代码分割、轮询去抖、定时器/watcher 泄漏修复、托盘与全局快捷键、窗口记忆、设置页搜索；④ 上手：创作工作室打开即用与 studio blueprint 注册、论文页环境自检与项目归属同步；⑤ 更新链路：version.json 支持 downloads 与 mac 架构嵌套解析，避免 Mac 更新弹窗有、下载空；⑥ 免费体验：微信扫码可选模型加入 Agnes 3.0 Flash。本包为本机构建冒烟产物；对外上传与自动更新投放以验证通过后的清单为准。",
+  "notes": "Vermes 2.4.9 正式版：① ScholarForge 统计转三线表（stats_table）——SPSS 表/统计结论句→GFM 三线表，覆盖成对样本/卡方/相关/GLM/回归/ANCOVA/逻辑回归/因子/正态性/莱文等，并修复 F↔η² 等校验适用条件；② 论文工具箱：28 工具中文化 + 新手模式「写论文的 8 步」+ 兜底项目显形 + learn_style 门槛显形；③ 桌面体验：首屏代码分割、轮询去抖、定时器/watcher 泄漏修复、托盘与全局快捷键、窗口记忆、设置页搜索；④ 上手：创作工作室打开即用与 studio blueprint 注册、论文页环境自检与项目归属同步；⑤ 更新链路：version.json 支持 downloads 与 mac 架构嵌套解析，避免 Mac 更新弹窗有、下载空；⑥ 免费体验：微信扫码可选模型加入 Agnes 3.0 Flash；⑦ Windows 包修复：依赖安装改读 pyproject.toml 单一事实源（此前手写清单事务回滚导致 openai/anthropic/cryptography/pymupdf/python-docx/lxml/psutil/mcp 等核心依赖静默漏打），补回全部核心依赖并加 22 模块 import 硬断言；⑧ 修复 Windows 覆盖安装无法关进程（NSIS installer.nsh 进程名 vermes-backend.exe→vermes.exe，随包生效）。本包为本机构建冒烟产物；对外上传与自动更新投放以验证通过后的清单为准。",
   "downloads": {
     "mac": {
       "arm64": {
@@ -17,8 +17,8 @@
     },
     "windows": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-win-x64.exe",
-      "sha256": "a6e95a67ce94b36d08b3fb8483eac7010515b57d4d3fa012bce969f6a850f701",
-      "size": 211038301
+      "sha256": "f75f709f1ddc946503697ccbc70b9f251a3ec55bdef2e7c3207d1a35bd62e81d",
+      "size": 267748804
     }
   },
   "mac": {
@@ -35,7 +35,7 @@
   },
   "windows": {
     "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-win-x64.exe",
-    "sha256": "a6e95a67ce94b36d08b3fb8483eac7010515b57d4d3fa012bce969f6a850f701",
-    "size": 211038301
+    "sha256": "f75f709f1ddc946503697ccbc70b9f251a3ec55bdef2e7c3207d1a35bd62e81d",
+    "size": 267748804
   }
 }
