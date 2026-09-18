@@ -360,9 +360,10 @@ class TestContextRichness(unittest.TestCase):
                 CREATE TABLE IF NOT EXISTS raw_events (
                     id INTEGER PRIMARY KEY, session_id TEXT, tool_name TEXT);
                 CREATE TABLE IF NOT EXISTS clusters (
-                    id INTEGER PRIMARY KEY, lifecycle_stage TEXT);
+                    id INTEGER PRIMARY KEY, lifecycle_stage TEXT, is_active INTEGER DEFAULT 1);
             """)
             # 50 events, 3 stable clusters → should hit "learning" tier
+            # compute_richness 只计 lifecycle_stage IN (stable,declining) AND is_active=1
             for i in range(50):
                 conn.execute(
                     "INSERT INTO raw_events (session_id, tool_name) VALUES (?, ?)",
@@ -370,8 +371,8 @@ class TestContextRichness(unittest.TestCase):
                 )
             for i in range(3):
                 conn.execute(
-                    "INSERT INTO clusters (lifecycle_stage) VALUES (?)",
-                    ("stable",)
+                    "INSERT INTO clusters (lifecycle_stage, is_active) VALUES (?, ?)",
+                    ("stable", 1)
                 )
             conn.commit()
             conn.close()

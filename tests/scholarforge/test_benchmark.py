@@ -7,8 +7,11 @@
 3. 报告支持 LLM-tier 分层（跨切原则：弱/中/强各报一次，不混绝对分）。
 """
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/Users/dongzusheng/Projects/vermes-electron")
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from tools.registry import registry
 from vermes_cli.scholarforge import tools as sf_tools

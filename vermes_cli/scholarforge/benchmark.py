@@ -184,6 +184,14 @@ TASKS: List[BenchmarkTask] = [
         sample_args={"project_id": "1"}, llm_required=True,
     ),
     BenchmarkTask(
+        id="sf_stats_table", title="统计转三线表", kind="single", tools=["stats_table"],
+        category="tool_probe", description="SPSS 表/统计结论句 → GFM 三线表 + 一致性校验",
+        sample_args={
+            "text": "实验组后测显著高于对照组，t(58)=2.34, p=.023, d=0.61",
+        },
+        llm_required=False,
+    ),
+    BenchmarkTask(
         id="sf_detect_design_flaws", title="设计缺陷检测", kind="single", tools=["detect_design_flaws"],
         category="tool_probe", description="检测实验设计缺陷",
         sample_args={"project_id": "1"}, llm_required=True,
