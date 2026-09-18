@@ -1370,8 +1370,22 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
     if not explicit_pid and not get_active_project():
         return PROJECT_ID_MISSING_MSG
     project_id = resolve_project_id(args)
-    if len(sample.strip()) < 100:
+    n_chars = len(sample.strip())
+    if n_chars < 100:
         return "❌ 样本文本过短，至少需要 500 字才能提取风格特征。"
+    # 🔴 schema 与报错文案都承诺「至少 500 字」，但旧代码只在 < 100 时拒绝
+    #    —— 126 字就能拿到一份"✅ 已提取 8 维风格特征"，并被自动套用到后续
+    #    所有写作。2~3 句话算出的句长/段落/过渡词密度基本是噪声，**却看起来
+    #    像一份可靠的风格档案** —— 那比"不给"危险得多。
+    #    取舍：不阻断（短样本也有用），但**必须显形**可靠性质疑 + 给出补样本路径。
+    short_warn = ""
+    if n_chars < 500:
+        short_warn = (
+            f"⚠️ **样本仅 {n_chars} 字，低于 500 字门槛**：8 维特征（尤其句长变异、"
+            f"段落均匀度、过渡词密度）在小样本上可靠性有限，且本次风格会被"
+            f"**自动套用到后续所有写作**。建议补到 500 字以上重新学习一次，"
+            f"或先人工核对下面的特征是否真的符合你的习惯。\n\n"
+        )
 
     # ── 8 维风格特征提取 ──
     # 1. 平均句长
@@ -1387,8 +1401,14 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
         sent_cv = 0
 
     # 3. 段落长度均匀度
+    # 无合格空行分段时（全是短行/无 \n\n），整段样本视为一个段落 ——
+    # 否则 style_prompt 里 statistics.mean(para_lengths) 会 StatisticsError。
     paras = [p.strip() for p in sample.split("\n\n") if p.strip() and len(p.strip()) > 20]
     para_lengths = [len(p) for p in paras]
+    if not para_lengths:
+        whole = sample.strip()
+        paras = [whole] if whole else []
+        para_lengths = [len(whole)] if whole else [0]
     if len(para_lengths) > 1:
         para_cv = statistics.stdev(para_lengths) / statistics.mean(para_lengths) if statistics.mean(para_lengths) > 0 else 0
     else:
@@ -1458,6 +1478,7 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
 
     return (
         f"✅ 风格学习完成！已提取 8 维风格特征。\n\n"
+        f"{short_warn}"
         f"**风格摘要**: 句长{avg_sent_len:.0f}字、段落{'均匀' if para_cv < 0.3 else '变化'}、"
         f"术语密度{'高' if term_density > 3 else '中'}、过渡词{'多' if transition_density > 1.5 else '适中'}\n\n"
         f"{persist_line}"
@@ -4105,4 +4126,4 @@ def register_tools(host_api=None):
         emoji="📖",
         description="读取论文章节内容（单章或全部概览）",
     )
-    logger.info("[ScholarForge] 27 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project/read_section/run_pipeline")
+    logger.info("[ScholarForge] 28 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/stats_table/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project/read_section/run_pipeline")

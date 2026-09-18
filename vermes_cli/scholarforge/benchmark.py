@@ -63,7 +63,7 @@ class BenchmarkTask:
 
 
 TASKS: List[BenchmarkTask] = [
-    # ── 单工具探针（27 个，覆盖全部已注册工具）──
+    # ── 单工具探针（覆盖已注册工具；含 stats_table）──
     BenchmarkTask(
         id="sf_search", title="学术检索", kind="single", tools=["search"],
         category="tool_probe", description="arXiv/Crossref 等免费源检索文献",
@@ -182,6 +182,14 @@ TASKS: List[BenchmarkTask] = [
         id="sf_check_stats", title="统计一致性", kind="single", tools=["check_stats"],
         category="tool_probe", description="检查统计一致性",
         sample_args={"project_id": "1"}, llm_required=True,
+    ),
+    BenchmarkTask(
+        id="sf_stats_table", title="统计转三线表", kind="single", tools=["stats_table"],
+        category="tool_probe", description="SPSS 表/统计结论句 → GFM 三线表 + 一致性校验",
+        sample_args={
+            "text": "实验组后测显著高于对照组，t(58)=2.34, p=.023, d=0.61",
+        },
+        llm_required=False,
     ),
     BenchmarkTask(
         id="sf_detect_design_flaws", title="设计缺陷检测", kind="single", tools=["detect_design_flaws"],

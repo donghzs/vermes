@@ -163,6 +163,11 @@ def _extract_chinese_tokens(text: str, sizes: tuple = (2, 3)) -> List[str]:
     连续子串在两侧都会被产出，从而可以相交。
 
     停用字在切分前剔除，两侧做同样变换，故一致性不受影响。
+
+    可选第 3 档 ``sizes=(2, 3, 4)`` 让 4 字以上的长短语（如"重大改造"）
+    也能以完整 4-char 形式参与匹配——2/3-gram 只能给出"重大"、"改造"
+    等碎块，4-gram 额外覆盖"重大改造"这个整体 token，使 LIKE 匹配
+    更精准，减少因碎块歧义产生的误召回。
     """
     tokens: List[str] = []
     for seg in re.findall(r'[\u4e00-\u9fff]+', text or ""):
@@ -176,7 +181,11 @@ def _extract_chinese_tokens(text: str, sizes: tuple = (2, 3)) -> List[str]:
 def _extract_keywords(message: str, max_keywords: int = 5) -> List[str]:
     """Extract meaningful keywords from user message.
 
-    Filters out common stop words and short tokens.
+    Chinese: overlapping 2/3-char n-grams via _extract_chinese_tokens,
+    PLUS a dual-token expansion that also indexes 4-char n-grams so
+    longer phrases (e.g. "重大改造") can match on their full 4-char
+    form without relying on the individual 2/3-char pieces.
+    English: words >= 3 chars, stop-word filtered.
     """
     if not message:
         return []
@@ -185,9 +194,10 @@ def _extract_keywords(message: str, max_keywords: int = 5) -> List[str]:
     clean = re.sub(r'[*_`#\[\]()]', ' ', message)
 
     # Split into words (support both Chinese and English)
-    # Chinese: overlapping 2/3-char n-gram sliding window (see above)
+    # Chinese: overlapping 2/3/4-char n-gram sliding window — 4-gram 覆盖
+    # 长短语（如"重大改造"），减少碎块歧义导致的误召回
     # English: extract words >= 3 chars
-    chinese_tokens = _extract_chinese_tokens(clean)
+    chinese_tokens = _extract_chinese_tokens(clean, sizes=(2, 3, 4))
     english_tokens = re.findall(r'[a-zA-Z]{3,}', clean)
 
     # English stop words
@@ -214,13 +224,14 @@ def _extract_keywords(message: str, max_keywords: int = 5) -> List[str]:
 
     # CJK 重叠 n-gram 的词元密度约为字符数的 2 倍，远高于英文分词。沿用英文的
     # 小额度会让长句只有开头一小段进入索引（实测「进行的重大的改造」整段被截断，
-    # 导致「重大改造」类提问零命中）。故按 CJK 字符量自适应放宽，上限 20 —— 下游
-    # ``_query_recent_outcomes`` 每个词元展开 3 个 LIKE，20 即 60 个子句，是
+    # 导致「重大改造」类提问零命中）。故按 CJK 字符量自适应放宽，上限 25 ——
+    # 下游 ``_query_recent_outcomes`` 每个词元展开 3 个 LIKE，25 即 75 个子句，
+    # 覆盖 4-gram 扩展后的 token 量（~3 倍基础量 × 25/20），
     # 召回覆盖与 OR 爆炸之间的平衡点。英文路径不受影响。
     cjk_len = sum(1 for ch in clean if '\u4e00' <= ch <= '\u9fff')
     effective_max = max_keywords
     if cjk_len:
-        effective_max = min(20, max(max_keywords, cjk_len))
+        effective_max = min(25, max(max_keywords, cjk_len))
 
     return sorted_tokens[:effective_max]
 

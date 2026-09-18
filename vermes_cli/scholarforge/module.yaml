@@ -30,6 +30,7 @@ provides_tools:
   - scholarforge_polish
   - scholarforge_export
   - scholarforge_check_stats
+  - scholarforge_stats_table
   - scholarforge_citation_graph
   - scholarforge_deaigc
   - scholarforge_detect_design_flaws

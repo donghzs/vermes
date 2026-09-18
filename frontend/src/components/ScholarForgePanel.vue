@@ -29,7 +29,7 @@ const TABS = [
 ]
 
 // 记住用户上次用的 Tab。背景（2026-09-16「非技术用户上手」专项）：
-// 原先每次进来都固定落在「工具箱」——27 个工具卡全是 scholarforge_write /
+// 原先每次进来都固定落在「工具箱」——28 个工具卡全是 scholarforge_write /
 // section_type / p_value 这类术语，第一次来的人不知道先点哪个，会直接判定「用不了」。
 const TAB_KEY = 'vermes-scholar-last-tab'
 
@@ -161,7 +161,7 @@ onMounted(async () => {
     </header>
 
     <!-- 环境自检（2026-09-16 非技术用户上手专项）
-         背景：模型没配好时，工具箱 27 个工具点下去必然报错，而原先只有报错那一刻
+         背景：模型没配好时，工具箱 28 个工具点下去必然报错，而原先只有报错那一刻
          才在角落冒一行红字 —— 用户会判定「软件坏了」，而不是「我还没配模型」。
          这里在进页面时就显式说明缺什么，并给一键直达。 -->
     <div
@@ -170,7 +170,7 @@ onMounted(async () => {
              bg-rose-50 dark:bg-rose-900/25 border-b border-rose-200 dark:border-rose-800
              text-sm text-rose-800 dark:text-rose-200"
     >
-      <span>⚠️ <b>还差一步才能开始</b> —— {{ envMissingText }}。论文工具需要调用大模型，配好之后 27 个工具才跑得动。</span>
+      <span>⚠️ <b>还差一步才能开始</b> —— {{ envMissingText }}。论文工具需要调用大模型，配好之后 28 个工具才跑得动。</span>
       <span class="ml-auto flex items-center gap-2">
         <button
           @click="goSettings"
