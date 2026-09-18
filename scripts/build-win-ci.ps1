@@ -122,7 +122,7 @@ Write-Step 5 "PyInstaller 后端"
 Write-Host "  安装 Windows 渠道依赖 + sqlite_vec + numpy..."
 # A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑），且出口 IP 曾被 fail2ban 拒。
 # 必须 --proxy="" 绕过系统代理 + 阿里云镜像源，否则 pip 全量超时。
-cmd /c "$Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi qrcode --proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --quiet 2>NUL"
+cmd /c "$Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 openai anthropic slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi qrcode --proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --quiet 2>NUL"
 if ($LASTEXITCODE -ne 0) { Write-Host "  pip install warnings (non-fatal)" }
 # PyInstaller 日志写文件；用 cmd /c 包裹让 cmd.exe 处理重定向，避免 PowerShell 把 stderr 当 NativeCommandError 中止
 cmd /c "$Python -m PyInstaller vermes-backend.spec --noconfirm > $Root\pyinstaller.log 2>&1"
@@ -145,7 +145,9 @@ Remove-Item -Force "$Root\dist-electron\Vermes Setup*.exe" -ErrorAction Silently
 Write-Step 7 "electron-builder --win --x64 (前台阻塞)"
 # 关键：必须用 cmd /c 前台跑，不能 Start-Process（WinRM 会话结束会杀子进程）
 # --config.npmRebuild=false 跳过 @electron/rebuild（后端是 Python，无 native node 模块需要重建；rebuild 会因 GBK 损坏的 package.json 报错）
-cmd /c ".\node_modules\.bin\electron-builder.cmd --win --x64 --config.npmRebuild=false > $Root\eb_build.log 2>&1"
+# ELECTRON_MIRROR：A13 直连 GitHub 443 超时，改走 npmmirror 镜像下载 electron 二进制
+$env:ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/'
+cmd /c "set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/&& .\node_modules\.bin\electron-builder.cmd --win --x64 --config.npmRebuild=false > $Root\eb_build.log 2>&1"
 $exit = $LASTEXITCODE
 if ($exit -ne 0) {
     Write-Host "  [X] electron-builder 失败 (exit $exit)，日志尾：" -ForegroundColor Red
