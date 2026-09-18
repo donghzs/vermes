@@ -87,7 +87,9 @@ Start-Sleep -Seconds 2
 Write-Step 2 "清理旧构建产物"
 Remove-Item -Recurse -Force "$Root\dist" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "$Root\dist-electron" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$Root\build" -ErrorAction SilentlyContinue
+# build/ 目录混合了 PyInstaller 中间产物(vermes-backend)与 NSIS 自定义脚本(installer.nsh)。
+# 只清 PyInstaller 中间产物，保留 installer.nsh（electron-builder include 依赖它）。
+Remove-Item -Recurse -Force "$Root\build\vermes-backend" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "$Root\frontend\dist" -ErrorAction SilentlyContinue
 
 # ── 3. 前端依赖 + 构建 ──
@@ -179,6 +181,43 @@ foreach ($k in $checks.Keys) {
     Write-Host ("  [{0}] {1}" -f $(if($ok){'[OK]'}else{'[X]'}), "$k -> $($checks[$k])")
     if (-not $ok) { Write-Warning "缺失关键文件: $k" }
 }
+
+# ── 8b. 关键依赖不漏包硬校验 ──
+# 主链路硬依赖（延迟 import 的 PDF/DOCX 解析、核心 SDK、加解密等）。
+# 校验方式：检查 _internal 下真实模块目录/文件存在（PyInstaller 对 dist-info 复制不一致，
+# 用 dist-info 做断言会误报；模块目录才是真的会被 import 的东西）。缺一直接 throw。
+Write-Step "8b" "关键依赖不漏包校验"
+$internalDir = "$unpacked\resources\backend\_internal"
+# 映射：显示名 -> _internal 下相对路径（目录或 .py/.pyd 文件）
+$requiredMods = [ordered]@{
+    'openai'          = 'openai'                        # 核心 LLM SDK（process_bootstrap 硬依赖）
+    'anthropic'       = 'anthropic'                     # Anthropic 协议端点
+    'cryptography'    = 'cryptography'                  # 微信/企微/QQ AESGCM 加解密
+    'numpy'           = 'numpy'                         # 数值库
+    'ruamel.yaml'     = 'ruamel'                        # 配置原子写 utils.py
+    'pymupdf'         = 'pymupdf'                       # PDF 解析 chat.py:293
+    'fitz'            = 'fitz'                          # pymupdf 兼容壳（chat.py import fitz）
+    'python-docx'     = 'docx'                          # Word 解析/导出 chat.py:307
+    'lxml'            = 'lxml'                          # docx 硬依赖
+    'psutil'          = 'psutil'                        # Windows 进程树 main.py
+    'python-multipart'= 'multipart'                     # FastAPI Form()
+    'sqlite-vec'      = 'sqlite_vec'                    # 向量检索 RAG
+    'lark-oapi'       = 'lark_oapi'                     # 飞书渠道
+    'tiktoken'        = 'tiktoken'                      # 分词（openai 可选依赖）
+}
+$missingMods = @()
+foreach ($k in $requiredMods.Keys) {
+    $rel = $requiredMods[$k]
+    $candidates = @("$internalDir\$rel", "$internalDir\$rel.py", "$internalDir\$rel.pyc")
+    $ok = $false
+    foreach ($c in $candidates) { if (Test-Path $c) { $ok = $true; break } }
+    if (-not $ok) { $missingMods += $k }
+}
+if ($missingMods.Count -gt 0) {
+    Write-Host "  [X] 漏包: $($missingMods -join ', ')" -ForegroundColor Red
+    throw "关键依赖漏包: $($missingMods -join ', ')"
+}
+Write-Host "  [OK] 关键依赖齐全 ($($requiredMods.Count) 个模块)" -ForegroundColor Green
 
 Write-Host "`n═══════════════════════════════════════════════════"
 Write-Host "  [OK] BUILD COMPLETE" -ForegroundColor Green
