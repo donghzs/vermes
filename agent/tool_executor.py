@@ -1207,6 +1207,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                             skip_pre_tool_call_hook=True,
                         ),
                         function_name,
+                        max_attempts=_max_att,
                     )
                     if _precheck_ns is not None and not _precheck_ns.passed:
                         function_result = f"{function_result}\n\n[harness pre-check] {_precheck_ns.warning}"
