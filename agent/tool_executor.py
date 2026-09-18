@@ -73,21 +73,31 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # E-P0-2: harness/进化/验证 子系统 fail-open 失败可观测。
-# 设计：仍不阻塞工具执行；但失败必须 warning + 计数，供诊断/后续 UI 消费，
+# 设计：仍不阻塞工具执行；但失败必须可观测 + 计数，供诊断/后续 UI 消费，
 # 避免「系统像在跑、质量层其实在静默 no-op」（假安全）。
+# P2 降噪（审计）：同一组件首报 warning，后续同类失败降为 debug，计数仍累加。
 _HARNESS_FAIL_COUNTS: dict[str, int] = {}
+_HARNESS_FAIL_WARNED: set[str] = set()
 _HARNESS_FAIL_LOCK = threading.Lock()
 
 
 def _harness_fail_log(component: str, exc: BaseException, *, tool: str = "") -> None:
-    """记录 harness 侧 fail-open 异常：warning 日志 + 进程内计数。"""
+    """记录 harness 侧 fail-open 异常：计数 + 首报 warning / 续报 debug。"""
+    first = False
     try:
         with _HARNESS_FAIL_LOCK:
             _HARNESS_FAIL_COUNTS[component] = _HARNESS_FAIL_COUNTS.get(component, 0) + 1
+            first = component not in _HARNESS_FAIL_WARNED
+            if first:
+                _HARNESS_FAIL_WARNED.add(component)
     except Exception:
         pass
     suffix = f" tool={tool}" if tool else ""
-    logger.warning("[harness-obs] %s failed%s: %s", component, suffix, exc)
+    msg = "[harness-obs] %s failed%s: %s" % (component, suffix, exc)
+    if first:
+        logger.warning("%s (后续同类将降为 debug，计数仍累计)", msg)
+    else:
+        logger.debug("%s", msg)
 
 
 def get_harness_fail_counts() -> dict[str, int]:
@@ -97,9 +107,11 @@ def get_harness_fail_counts() -> dict[str, int]:
 
 
 def reset_harness_fail_counts() -> None:
-    """测试用：清空计数。"""
+    """测试用：清空计数与首报集合。"""
     with _HARNESS_FAIL_LOCK:
         _HARNESS_FAIL_COUNTS.clear()
+        _HARNESS_FAIL_WARNED.clear()
+
 
 
 

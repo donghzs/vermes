@@ -34,7 +34,7 @@ class TestHarnessFailLogUnit(unittest.TestCase):
         self.te.reset_harness_fail_counts()
 
     def test_counts_and_warning(self):
-        with self.assertLogs("agent.tool_executor", level=logging.WARNING) as cm:
+        with self.assertLogs("agent.tool_executor", level=logging.DEBUG) as cm:
             self.te._harness_fail_log("circuit_breaker", RuntimeError("boom"), tool="web_search")
             self.te._harness_fail_log("circuit_breaker", RuntimeError("boom2"))
             self.te._harness_fail_log("self_validator", ValueError("x"))
@@ -45,6 +45,9 @@ class TestHarnessFailLogUnit(unittest.TestCase):
         self.assertIn("[harness-obs] circuit_breaker failed", joined)
         self.assertIn("tool=web_search", joined)
         self.assertIn("[harness-obs] self_validator failed", joined)
+        # P2 降噪：同组件续报应是 debug 级，不再刷 warning
+        warn_lines = [l for l in cm.output if "circuit_breaker" in l and "WARNING" in l]
+        self.assertEqual(len(warn_lines), 1, "circuit_breaker 仅首报 WARNING，续报应 DEBUG")
 
     def test_reset(self):
         self.te._harness_fail_log("a", Exception("1"))
