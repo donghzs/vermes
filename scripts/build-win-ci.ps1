@@ -124,7 +124,7 @@ cmd /c "$Python -m pip install --upgrade pip --quiet 2>NUL"
 Write-Host "  安装 Windows 渠道依赖 + sqlite_vec + numpy..."
 # A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑），且出口 IP 曾被 fail2ban 拒。
 # 必须 --proxy="" 绕过系统代理 + 阿里云镜像源，否则 pip 全量超时。
-cmd /c "$Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 openai anthropic slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi qrcode --proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --quiet 2>NUL"
+cmd /c "$Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 openai anthropic slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi==1.5.3 qrcode --proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --quiet 2>NUL"
 if ($LASTEXITCODE -ne 0) { Write-Host "  pip install warnings (non-fatal)" }
 # PyInstaller 日志写文件；用 cmd /c 包裹让 cmd.exe 处理重定向，避免 PowerShell 把 stderr 当 NativeCommandError 中止
 cmd /c "$Python -m PyInstaller vermes-backend.spec --noconfirm > $Root\pyinstaller.log 2>&1"
