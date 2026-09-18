@@ -118,7 +118,9 @@ Write-Host "  JS: $($js.Name)"
 
 # ── 5. Python 依赖 + PyInstaller 后端 ──
 Write-Step 5 "PyInstaller 后端"
-& $Python -m pip install --upgrade pip --quiet 2>$null | Select-Object -Last 1
+# 用 cmd /c 包裹：避免 $ErrorActionPreference=Stop 下，pip 的 stderr warning
+# （Ignoring invalid distribution ~ip）被 PowerShell 当 NativeCommandError 中止脚本
+cmd /c "$Python -m pip install --upgrade pip --quiet 2>NUL"
 Write-Host "  安装 Windows 渠道依赖 + sqlite_vec + numpy..."
 # A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑），且出口 IP 曾被 fail2ban 拒。
 # 必须 --proxy="" 绕过系统代理 + 阿里云镜像源，否则 pip 全量超时。
