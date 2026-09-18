@@ -135,14 +135,17 @@ $pipBase = '--proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host
 # ── 5a. 核心批：主链路硬依赖，缺任一即构建失败必须中止 ──
 $corePkgs = 'pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 openai anthropic cryptography ruamel.yaml python-multipart sqlite-vec numpy pymupdf python-docx lxml psutil tiktoken'
 Write-Host "  [5a] 核心依赖（必成功）..."
-cmd /c "$Python -m pip install $corePkgs $pipBase --quiet 2>&1 | findstr /V /C:\"Ignoring invalid distribution\""
-if ($LASTEXITCODE -ne 0) { throw "核心依赖安装失败 (exit $LASTEXITCODE)" }
+# 输出重定向到日志（避免 pip 的 'Ignoring invalid distribution ~ip' warning 在
+# $ErrorActionPreference=Stop 下被当成 NativeCommandError 中止）；退出码取 cmd /c 的
+cmd /c "$Python -m pip install $corePkgs $pipBase --quiet > $Root\core_pip.log 2>&1"
+$coreExit = $LASTEXITCODE
+if ($coreExit -ne 0) { Get-Content "$Root\core_pip.log" -Tail 25; throw "核心依赖安装失败 (exit $coreExit)，见 $Root\core_pip.log" }
 Write-Host "      核心依赖 OK"
 # ── 5b. 渠道批：可选渠道依赖，逐包容错（pilk 需 Rust、alibabacloud 依赖链易失败）──
 $channelPkgs = @('tenacity','markdown','qrcode','lark-oapi==1.5.3','slack_bolt','slack_sdk','telegram','discord','mautrix','dingtalk_stream','coincurve','mutagen','pynacl','brotlicffi','aiohttp_socks','alibabacloud_dingtalk','pilk')
 Write-Host "  [5b] 渠道依赖（容错）..."
 foreach ($cp in $channelPkgs) {
-    cmd /c "$Python -m pip install $cp $pipBase --quiet 2>NUL"
+    cmd /c "$Python -m pip install $cp $pipBase --quiet > $Root\chan_pip.log 2>&1"
     if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] $cp 安装跳过（非致命）" } else { Write-Host "      [ok] $cp" }
 }
 # PyInstaller 日志写文件；用 cmd /c 包裹让 cmd.exe 处理重定向，避免 PowerShell 把 stderr 当 NativeCommandError 中止
