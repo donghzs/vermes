@@ -126,8 +126,25 @@ cmd /c "$Python -m pip install --upgrade pip --quiet 2>NUL"
 Write-Host "  安装 Windows 渠道依赖 + sqlite_vec + numpy..."
 # A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑），且出口 IP 曾被 fail2ban 拒。
 # 必须 --proxy="" 绕过系统代理 + 阿里云镜像源，否则 pip 全量超时。
-cmd /c "$Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 openai anthropic slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi==1.5.3 qrcode pymupdf python-docx lxml psutil --proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --quiet 2>NUL"
-if ($LASTEXITCODE -ne 0) { Write-Host "  pip install warnings (non-fatal)" }
+#
+# ⚠️ 重要：绝不能把 30+ 包塞进一条命令！pilk（需 Rust 编译）、alibabacloud_dingtalk
+#    （依赖链构建失败）任一失败会导致 pip 整个事务回滚——一个包都装不上，且被 2>NUL 吞错。
+#    这就是 2.4.9 漏包的真正根因。改为分两批：核心批必成功（exit≠0 直接 throw），
+#    渠道批逐包容错（失败的仅告警，不影响核心）。
+$pipBase = '--proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com'
+# ── 5a. 核心批：主链路硬依赖，缺任一即构建失败必须中止 ──
+$corePkgs = 'pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 openai anthropic cryptography ruamel.yaml python-multipart sqlite-vec numpy pymupdf python-docx lxml psutil tiktoken'
+Write-Host "  [5a] 核心依赖（必成功）..."
+cmd /c "$Python -m pip install $corePkgs $pipBase --quiet 2>&1 | findstr /V /C:\"Ignoring invalid distribution\""
+if ($LASTEXITCODE -ne 0) { throw "核心依赖安装失败 (exit $LASTEXITCODE)" }
+Write-Host "      核心依赖 OK"
+# ── 5b. 渠道批：可选渠道依赖，逐包容错（pilk 需 Rust、alibabacloud 依赖链易失败）──
+$channelPkgs = @('tenacity','markdown','qrcode','lark-oapi==1.5.3','slack_bolt','slack_sdk','telegram','discord','mautrix','dingtalk_stream','coincurve','mutagen','pynacl','brotlicffi','aiohttp_socks','alibabacloud_dingtalk','pilk')
+Write-Host "  [5b] 渠道依赖（容错）..."
+foreach ($cp in $channelPkgs) {
+    cmd /c "$Python -m pip install $cp $pipBase --quiet 2>NUL"
+    if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] $cp 安装跳过（非致命）" } else { Write-Host "      [ok] $cp" }
+}
 # PyInstaller 日志写文件；用 cmd /c 包裹让 cmd.exe 处理重定向，避免 PowerShell 把 stderr 当 NativeCommandError 中止
 cmd /c "$Python -m PyInstaller vermes-backend.spec --noconfirm > $Root\pyinstaller.log 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller 失败 (exit $LASTEXITCODE)，见 $Root\pyinstaller.log" }
