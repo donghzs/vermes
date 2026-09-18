@@ -120,34 +120,63 @@ Write-Host "  JS: $($js.Name)"
 
 # ── 5. Python 依赖 + PyInstaller 后端 ──
 Write-Step 5 "PyInstaller 后端"
-# 用 cmd /c 包裹：避免 $ErrorActionPreference=Stop 下，pip 的 stderr warning
-# （Ignoring invalid distribution ~ip）被 PowerShell 当 NativeCommandError 中止脚本
+# 依赖安装：单一事实源 = pyproject.toml（与 Mac build.sh 一致），不再手写包清单。
+# 教训（2.4.9 踩坑）：手写清单永远会漏，且 30+ 包塞一条 pip 命令时，
+#   pilk（需 Rust 编译）/alibabacloud_dingtalk（依赖链失败）任一失败 → pip 整个事务
+#   回滚 → 一个包都不装，且被 2>NUL 吞错，静默产出坏包。
+# 方案：
+#   5a 用 `uv pip install -e .[all]` 读 pyproject 全量依赖（核心+[all] extra），失败即 throw；
+#   5b 逐个装渠道/可选 extra（messaging/matrix/slack/dingtalk/feishu/bedrock/tts-premium/
+#      office/mfgcad/youtube/google/sms/homeassistant/acp/mcp/computer-use），逐项容错；
+#   5c 单独补 pyproject 未声明但主链路延迟 import 的包（pymupdf/docx/lxml/psutil/pilk），
+#      并做 import 硬断言（缺 → throw），绝不再静默出坏包。
 cmd /c "$Python -m pip install --upgrade pip --quiet 2>NUL"
-Write-Host "  安装 Windows 渠道依赖 + sqlite_vec + numpy..."
-# A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑），且出口 IP 曾被 fail2ban 拒。
-# 必须 --proxy="" 绕过系统代理 + 阿里云镜像源，否则 pip 全量超时。
-#
-# ⚠️ 重要：绝不能把 30+ 包塞进一条命令！pilk（需 Rust 编译）、alibabacloud_dingtalk
-#    （依赖链构建失败）任一失败会导致 pip 整个事务回滚——一个包都装不上，且被 2>NUL 吞错。
-#    这就是 2.4.9 漏包的真正根因。改为分两批：核心批必成功（exit≠0 直接 throw），
-#    渠道批逐包容错（失败的仅告警，不影响核心）。
-$pipBase = '--proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com'
-# ── 5a. 核心批：主链路硬依赖，缺任一即构建失败必须中止 ──
-$corePkgs = 'pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 openai anthropic cryptography ruamel.yaml python-multipart sqlite-vec numpy pymupdf python-docx lxml psutil tiktoken'
-Write-Host "  [5a] 核心依赖（必成功）..."
-# 输出重定向到日志（避免 pip 的 'Ignoring invalid distribution ~ip' warning 在
-# $ErrorActionPreference=Stop 下被当成 NativeCommandError 中止）；退出码取 cmd /c 的
-cmd /c "$Python -m pip install $corePkgs $pipBase --quiet > $Root\core_pip.log 2>&1"
-$coreExit = $LASTEXITCODE
-if ($coreExit -ne 0) { Get-Content "$Root\core_pip.log" -Tail 25; throw "核心依赖安装失败 (exit $coreExit)，见 $Root\core_pip.log" }
-Write-Host "      核心依赖 OK"
-# ── 5b. 渠道批：可选渠道依赖，逐包容错（pilk 需 Rust、alibabacloud 依赖链易失败）──
-$channelPkgs = @('tenacity','markdown','qrcode','lark-oapi==1.5.3','slack_bolt','slack_sdk','telegram','discord','mautrix','dingtalk_stream','coincurve','mutagen','pynacl','brotlicffi','aiohttp_socks','alibabacloud_dingtalk','pilk')
-Write-Host "  [5b] 渠道依赖（容错）..."
-foreach ($cp in $channelPkgs) {
-    cmd /c "$Python -m pip install $cp $pipBase --quiet > $Root\chan_pip.log 2>&1"
-    if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] $cp 安装跳过（非致命）" } else { Write-Host "      [ok] $cp" }
+Write-Host "  安装依赖（读 pyproject.toml 单一事实源）..."
+# A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑）。必须清空代理环境变量 + 阿里云镜像，否则 pip/uv 全量超时。
+$env:HTTP_PROXY = ""; $env:HTTPS_PROXY = ""; $env:http_proxy = ""; $env:https_proxy = ""
+$Uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
+$IndexUrl = 'https://mirrors.aliyun.com/pypi/simple/'
+# ── 5a. 核心：读 pyproject 全量依赖 + [all] extra（必成功）──
+Write-Host "  [5a] pyproject 全量依赖（必成功）..."
+$projArg = "-e `"$Root`""
+if ($Uv) {
+    cmd /c "`"$Uv`" pip install $projArg[all] --python `"$Python`" --index-url $IndexUrl > $Root\pip_core.log 2>&1"
+    $coreExit = $LASTEXITCODE
+} else {
+    cmd /c "$Python -m pip install $projArg[all] --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com > $Root\pip_core.log 2>&1"
+    $coreExit = $LASTEXITCODE
 }
+if ($coreExit -ne 0) { Get-Content "$Root\pip_core.log" -Tail 30; throw "核心依赖安装失败 (exit $coreExit)，见 $Root\pip_core.log" }
+Write-Host "      核心依赖 OK"
+# ── 5b. 渠道/可选 extra：逐个容错（matrix 在 Windows 无 wheel、pilk 需 Rust 等允许失败）──
+Write-Host "  [5b] 渠道 extras（容错）..."
+$extras = @('messaging','slack','dingtalk','feishu','bedrock','tts-premium','office','mfgcad','youtube','google','sms','homeassistant','acp','mcp','computer-use','matrix')
+foreach ($ex in $extras) {
+    if ($Uv) {
+        cmd /c "`"$Uv`" pip install $projArg[$ex] --python `"$Python`" --index-url $IndexUrl > $Root\pip_extra.log 2>&1"
+    } else {
+        cmd /c "$Python -m pip install $projArg[$ex] --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com --quiet > $Root\pip_extra.log 2>&1"
+    }
+    if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] extra '$ex' 安装跳过（非致命）" } else { Write-Host "      [ok] extra '$ex'" }
+}
+# ── 5c. 主链路延迟 import 的未声明依赖 + import 硬断言 ──
+Write-Host "  [5c] 主链路未声明依赖（pymupdf/docx/lxml/psutil）+ 硬断言..."
+$extraMods = 'pymupdf python-docx lxml psutil pilk'
+if ($Uv) {
+    cmd /c "`"$Uv`" pip install $extraMods --python `"$Python`" --index-url $IndexUrl > $Root\pip_extra2.log 2>&1"
+} else {
+    cmd /c "$Python -m pip install $extraMods --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com --quiet > $Root\pip_extra2.log 2>&1"
+}
+if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] 部分可选包安装跳过（pilk 需 Rust，非致命）" }
+# import 硬断言：主链路硬依赖缺一即构建失败
+$assertMods = @('openai','anthropic','cryptography','numpy','ruamel.yaml','pymupdf','fitz','docx','lxml','psutil','multipart','sqlite_vec','lark_oapi','tiktoken','rich','prompt_toolkit','croniter','jinja2','fire','tenacity','acp','mcp')
+$assertFail = @()
+foreach ($am in $assertMods) {
+    cmd /c "$Python -c `"import importlib.util as u,sys; sys.exit(0 if u.find_spec('$am') else 1)`" >NUL 2>&1"
+    if ($LASTEXITCODE -ne 0) { $assertFail += $am }
+}
+if ($assertFail.Count -gt 0) { throw "主链路依赖 import 断言失败: $($assertFail -join ', ')" }
+Write-Host "      import 断言 OK ($($assertMods.Count) 模块)"
 # PyInstaller 日志写文件；用 cmd /c 包裹让 cmd.exe 处理重定向，避免 PowerShell 把 stderr 当 NativeCommandError 中止
 cmd /c "$Python -m PyInstaller vermes-backend.spec --noconfirm > $Root\pyinstaller.log 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller 失败 (exit $LASTEXITCODE)，见 $Root\pyinstaller.log" }
