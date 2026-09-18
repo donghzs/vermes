@@ -41,12 +41,15 @@ def log(msg):
 # ── 1. 打包源码 ──
 def make_tar(dest_path: str):
     log("打包源码（排除 node_modules/dist/__pycache__/._*）...")
-    exclude_dirs = {'.git', 'node_modules', 'dist', 'dist-electron', 'build',
+    exclude_dirs = {'.git', 'node_modules', 'dist', 'dist-electron',
                     'dist-modules',
                     '__pycache__', '.mypy_cache', '.pytest_cache', '.venv',
                     'UNKNOWN.egg-info', 'VERMES_agent.egg-info', 'vermes.egg-info',
                     'downloads', 'website', 'archive', '.github'}
     exclude_files = {'.DS_Store', 'Thumbs.db'}
+    # build/ 目录不参与 os.walk 剪枝，改在文件层过滤：只打包 installer.nsh（NSIS 自定义脚本），
+    # 其余 build 产物（图标/临时文件等）排除。
+    include_under_build = {'build/installer.nsh'}
 
     def filt(member: tarfile.TarInfo):
         name = member.name
@@ -70,10 +73,15 @@ def make_tar(dest_path: str):
             for fn in files:
                 full = os.path.join(root, fn)
                 rel = os.path.relpath(full, REPO_ROOT)
+                rel = rel.replace(os.sep, '/')
                 if os.path.basename(rel).startswith('._'):
                     continue
                 if os.path.basename(rel) in exclude_files:
                     continue
+                # build/ 目录被排除，但 installer.nsh 例外
+                if rel.startswith('build/'):
+                    if rel not in include_under_build:
+                        continue
                 t.add(full, arcname=rel, filter=filt)
     size = os.path.getsize(dest_path)
     log(f"tar 完成: {dest_path} ({size/1e6:.1f} MB)")
