@@ -318,9 +318,25 @@ _extra_datas = []
 _extra_binaries = []
 _extra_hidden = []
 
-for _pkg in [
+# 核心包（缺失=致命，on_error='raise'）：缺了这些产物无法运行或核心功能崩溃
+_CORE_PKGS = [
     # LLM SDK（延迟导入，必须 collect_all 才能收全子模块）
     'openai', 'anthropic',
+    # WeCom / Weixin 加解密
+    'cryptography',
+    # 配置读写（atomic_yaml_write 依赖）
+    'ruamel.yaml',
+    # 表单解析（FastAPI Form() 依赖）
+    'multipart',
+    # 数值计算（ScholarForge/AI 工具链依赖）
+    'numpy',
+    # 向量检索（RAG 后端）
+    'sqlite_vec',
+]
+
+# 渠道包（可选依赖残缺不阻断，on_error='warn once'）：第三方渠道 SDK 可能带
+# 残缺 adapter（如 lark_oapi.adapter.flask 需要未装的 flask），这些不应让整个构建失败
+_CHANNEL_PKGS = [
     'lark_oapi', 'qrcode',
     # Telegram
     'telegram',
@@ -330,11 +346,8 @@ for _pkg in [
     'slack_bolt', 'slack_sdk',
     # DingTalk
     'dingtalk_stream', 'alibabacloud_dingtalk',
-    # WeCom / Weixin
-    'cryptography',
     # Matrix
     'mautrix',
-    # QQ Bot (自包含，无外部依赖)
     # Nostr
     'coincurve',
     # 音频
@@ -342,34 +355,35 @@ for _pkg in [
     # 其他
     'pilk', 'nacl', 'brotlicffi', 'aiohttp_socks',
     'markdown',
-    # 数值计算（ScholarForge/AI 工具链依赖）
-    'numpy',
-    # 表单解析（FastAPI Form() 依赖）
-    'multipart',
-    # 向量检索（RAG 后端）
-    'sqlite_vec',
-    # YAML 解析（配置文件）
-    'ruamel.yaml',
     # 重试逻辑（渠道连接）
     'tenacity',
-    # L2 通用操作层（SoftwareAdapter + 发现层 + 信任闸门 + 推荐层）
-    # 'vermes_cli.adapters' 不是 PyPI 包，collect_all 会 fail，用 collect_submodules 单独处理
-]:
+]
+
+for _pkg in _CORE_PKGS:
     try:
-        # on_error="raise"：包缺失时立即抛异常（默认 'warn once' 会静默返回空，
-        # 导致依赖未装全时 PyInstaller 静默漏打包，产物缺核心 SDK 却不报错）。
+        # 核心包缺失=致命，on_error='raise' 立即抛异常（防静默漏打包）
         _d, _b, _h = collect_all(_pkg, on_error="raise")
         _extra_datas.extend(_d)
         _extra_binaries.extend(_b)
         _extra_hidden.extend(_h)
-        print(f"[Vermes Backend] collect_all({_pkg}) OK")
+        print(f"[Vermes Backend] collect_all({_pkg}) OK [core]")
     except Exception as _e:
         import sys
-        # CRITICAL: collect_all 失败意味着该包不会进产物（如 telegram 缺失→渠道连不上）
-        # 必须用 stderr 明确报错，不能静默跳过
         print(f"[Vermes Backend] ❌ collect_all({_pkg}) FAILED: {_e}", file=sys.stderr)
         print(f"[Vermes Backend] ❌ {_pkg} will be MISSING from the build!", file=sys.stderr)
         raise
+
+for _pkg in _CHANNEL_PKGS:
+    try:
+        # 渠道包残缺（如 lark_oapi 的可选 adapter）不阻断构建，on_error='warn once'
+        _d, _b, _h = collect_all(_pkg, on_error="warn once")
+        _extra_datas.extend(_d)
+        _extra_binaries.extend(_b)
+        _extra_hidden.extend(_h)
+        print(f"[Vermes Backend] collect_all({_pkg}) OK [channel]")
+    except Exception as _e:
+        import sys
+        print(f"[Vermes Backend] ⚠️ collect_all({_pkg}) partial: {_e}", file=sys.stderr)
 
 hiddenimports.extend(_extra_hidden)
 
