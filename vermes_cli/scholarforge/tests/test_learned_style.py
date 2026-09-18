@@ -107,6 +107,34 @@ class TestSampleLengthGate(unittest.TestCase):
         self.assertIn("if n_chars < 500:", src)    # 代码判断
 
 
+class TestShortParagraphEdge(unittest.TestCase):
+    """空行分段全过短时不得 StatisticsError。
+
+    真实输入：笔记式短行 + 空行分隔，总长 ≥100 但每段 ≤20 字。
+    旧代码对空 para_lengths 调 statistics.mean 直接崩溃。
+    """
+
+    @staticmethod
+    def _learn_sample(sample: str) -> str:
+        with patch("vermes_cli.scholarforge.tools.resolve_project_id", return_value=1), \
+             patch("vermes_cli.scholarforge.tools.get_active_project", return_value=1):
+            return asyncio.run(_handle_scholarforge_learn_style(
+                {"sample_text": sample, "project_id": 1}))
+
+    def test_blankline_short_paras_do_not_crash(self):
+        sample = "\n\n".join(["字" * 19] * 6)  # 6 段 × 19 字，总长 ≥100
+        self.assertGreaterEqual(len(sample.strip()), 100)
+        r = self._learn_sample(sample)
+        self.assertTrue(r.startswith("✅"), f"短段落样本应成功返回，实际: {r[:80]!r}")
+        self.assertIn("# 写作风格指令", r)
+
+    def test_single_line_without_blanklines_still_works(self):
+        sample = "这是一句短话。\n" * 20
+        r = self._learn_sample(sample)
+        self.assertTrue(r.startswith("✅"))
+        self.assertIn("段落", r)
+
+
 # ───────────────────────── ② 落库 → 注入 全链 ─────────────────────────
 class TestStylePersistence(_TmpDb):
 

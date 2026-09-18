@@ -1401,8 +1401,14 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
         sent_cv = 0
 
     # 3. 段落长度均匀度
+    # 无合格空行分段时（全是短行/无 \n\n），整段样本视为一个段落 ——
+    # 否则 style_prompt 里 statistics.mean(para_lengths) 会 StatisticsError。
     paras = [p.strip() for p in sample.split("\n\n") if p.strip() and len(p.strip()) > 20]
     para_lengths = [len(p) for p in paras]
+    if not para_lengths:
+        whole = sample.strip()
+        paras = [whole] if whole else []
+        para_lengths = [len(whole)] if whole else [0]
     if len(para_lengths) > 1:
         para_cv = statistics.stdev(para_lengths) / statistics.mean(para_lengths) if statistics.mean(para_lengths) > 0 else 0
     else:
