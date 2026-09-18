@@ -87,7 +87,9 @@ Start-Sleep -Seconds 2
 Write-Step 2 "清理旧构建产物"
 Remove-Item -Recurse -Force "$Root\dist" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "$Root\dist-electron" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$Root\build" -ErrorAction SilentlyContinue
+# build/ 目录混合了 PyInstaller 中间产物(vermes-backend)与 NSIS 自定义脚本(installer.nsh)。
+# 只清 PyInstaller 中间产物，保留 installer.nsh（electron-builder include 依赖它）。
+Remove-Item -Recurse -Force "$Root\build\vermes-backend" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "$Root\frontend\dist" -ErrorAction SilentlyContinue
 
 # ── 3. 前端依赖 + 构建 ──
@@ -118,14 +120,63 @@ Write-Host "  JS: $($js.Name)"
 
 # ── 5. Python 依赖 + PyInstaller 后端 ──
 Write-Step 5 "PyInstaller 后端"
-# 用 cmd /c 包裹：避免 $ErrorActionPreference=Stop 下，pip 的 stderr warning
-# （Ignoring invalid distribution ~ip）被 PowerShell 当 NativeCommandError 中止脚本
+# 依赖安装：单一事实源 = pyproject.toml（与 Mac build.sh 一致），不再手写包清单。
+# 教训（2.4.9 踩坑）：手写清单永远会漏，且 30+ 包塞一条 pip 命令时，
+#   pilk（需 Rust 编译）/alibabacloud_dingtalk（依赖链失败）任一失败 → pip 整个事务
+#   回滚 → 一个包都不装，且被 2>NUL 吞错，静默产出坏包。
+# 方案：
+#   5a 用 `uv pip install -e .[all]` 读 pyproject 全量依赖（核心+[all] extra），失败即 throw；
+#   5b 逐个装渠道/可选 extra（messaging/matrix/slack/dingtalk/feishu/bedrock/tts-premium/
+#      office/mfgcad/youtube/google/sms/homeassistant/acp/mcp/computer-use），逐项容错；
+#   5c 单独补 pyproject 未声明但主链路延迟 import 的包（pymupdf/docx/lxml/psutil/pilk），
+#      并做 import 硬断言（缺 → throw），绝不再静默出坏包。
 cmd /c "$Python -m pip install --upgrade pip --quiet 2>NUL"
-Write-Host "  安装 Windows 渠道依赖 + sqlite_vec + numpy..."
-# A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑），且出口 IP 曾被 fail2ban 拒。
-# 必须 --proxy="" 绕过系统代理 + 阿里云镜像源，否则 pip 全量超时。
-cmd /c "$Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 openai anthropic slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi==1.5.3 qrcode pymupdf python-docx lxml psutil --proxy="" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --quiet 2>NUL"
-if ($LASTEXITCODE -ne 0) { Write-Host "  pip install warnings (non-fatal)" }
+Write-Host "  安装依赖（读 pyproject.toml 单一事实源）..."
+# A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑）。必须清空代理环境变量 + 阿里云镜像，否则 pip/uv 全量超时。
+$env:HTTP_PROXY = ""; $env:HTTPS_PROXY = ""; $env:http_proxy = ""; $env:https_proxy = ""
+$Uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
+$IndexUrl = 'https://mirrors.aliyun.com/pypi/simple/'
+# ── 5a. 核心：读 pyproject 全量依赖 + [all] extra（必成功）──
+Write-Host "  [5a] pyproject 全量依赖（必成功）..."
+$projArg = "-e `"$Root`""
+if ($Uv) {
+    cmd /c "`"$Uv`" pip install $projArg[all] --python `"$Python`" --index-url $IndexUrl > $Root\pip_core.log 2>&1"
+    $coreExit = $LASTEXITCODE
+} else {
+    cmd /c "$Python -m pip install $projArg[all] --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com > $Root\pip_core.log 2>&1"
+    $coreExit = $LASTEXITCODE
+}
+if ($coreExit -ne 0) { Get-Content "$Root\pip_core.log" -Tail 30; throw "核心依赖安装失败 (exit $coreExit)，见 $Root\pip_core.log" }
+Write-Host "      核心依赖 OK"
+# ── 5b. 渠道/可选 extra：逐个容错（matrix 在 Windows 无 wheel、pilk 需 Rust 等允许失败）──
+Write-Host "  [5b] 渠道 extras（容错）..."
+$extras = @('messaging','slack','dingtalk','feishu','bedrock','tts-premium','office','mfgcad','youtube','google','sms','homeassistant','acp','mcp','computer-use','matrix')
+foreach ($ex in $extras) {
+    if ($Uv) {
+        cmd /c "`"$Uv`" pip install $projArg[$ex] --python `"$Python`" --index-url $IndexUrl > $Root\pip_extra.log 2>&1"
+    } else {
+        cmd /c "$Python -m pip install $projArg[$ex] --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com --quiet > $Root\pip_extra.log 2>&1"
+    }
+    if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] extra '$ex' 安装跳过（非致命）" } else { Write-Host "      [ok] extra '$ex'" }
+}
+# ── 5c. 主链路延迟 import 的未声明依赖 + import 硬断言 ──
+Write-Host "  [5c] 主链路未声明依赖（pymupdf/docx/lxml/psutil）+ 硬断言..."
+$extraMods = 'pymupdf python-docx lxml psutil pilk'
+if ($Uv) {
+    cmd /c "`"$Uv`" pip install $extraMods --python `"$Python`" --index-url $IndexUrl > $Root\pip_extra2.log 2>&1"
+} else {
+    cmd /c "$Python -m pip install $extraMods --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com --quiet > $Root\pip_extra2.log 2>&1"
+}
+if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] 部分可选包安装跳过（pilk 需 Rust，非致命）" }
+# import 硬断言：主链路硬依赖缺一即构建失败
+$assertMods = @('openai','anthropic','cryptography','numpy','ruamel.yaml','pymupdf','fitz','docx','lxml','psutil','multipart','sqlite_vec','lark_oapi','tiktoken','rich','prompt_toolkit','croniter','jinja2','fire','tenacity','acp','mcp')
+$assertFail = @()
+foreach ($am in $assertMods) {
+    cmd /c "$Python -c `"import importlib.util as u,sys; sys.exit(0 if u.find_spec('$am') else 1)`" >NUL 2>&1"
+    if ($LASTEXITCODE -ne 0) { $assertFail += $am }
+}
+if ($assertFail.Count -gt 0) { throw "主链路依赖 import 断言失败: $($assertFail -join ', ')" }
+Write-Host "      import 断言 OK ($($assertMods.Count) 模块)"
 # PyInstaller 日志写文件；用 cmd /c 包裹让 cmd.exe 处理重定向，避免 PowerShell 把 stderr 当 NativeCommandError 中止
 cmd /c "$Python -m PyInstaller vermes-backend.spec --noconfirm > $Root\pyinstaller.log 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller 失败 (exit $LASTEXITCODE)，见 $Root\pyinstaller.log" }
@@ -179,6 +230,43 @@ foreach ($k in $checks.Keys) {
     Write-Host ("  [{0}] {1}" -f $(if($ok){'[OK]'}else{'[X]'}), "$k -> $($checks[$k])")
     if (-not $ok) { Write-Warning "缺失关键文件: $k" }
 }
+
+# ── 8b. 关键依赖不漏包硬校验 ──
+# 主链路硬依赖（延迟 import 的 PDF/DOCX 解析、核心 SDK、加解密等）。
+# 校验方式：检查 _internal 下真实模块目录/文件存在（PyInstaller 对 dist-info 复制不一致，
+# 用 dist-info 做断言会误报；模块目录才是真的会被 import 的东西）。缺一直接 throw。
+Write-Step "8b" "关键依赖不漏包校验"
+$internalDir = "$unpacked\resources\backend\_internal"
+# 映射：显示名 -> _internal 下相对路径（目录或 .py/.pyd 文件）
+$requiredMods = [ordered]@{
+    'openai'          = 'openai'                        # 核心 LLM SDK（process_bootstrap 硬依赖）
+    'anthropic'       = 'anthropic'                     # Anthropic 协议端点
+    'cryptography'    = 'cryptography'                  # 微信/企微/QQ AESGCM 加解密
+    'numpy'           = 'numpy'                         # 数值库
+    'ruamel.yaml'     = 'ruamel'                        # 配置原子写 utils.py
+    'pymupdf'         = 'pymupdf'                       # PDF 解析 chat.py:293
+    'fitz'            = 'fitz'                          # pymupdf 兼容壳（chat.py import fitz）
+    'python-docx'     = 'docx'                          # Word 解析/导出 chat.py:307
+    'lxml'            = 'lxml'                          # docx 硬依赖
+    'psutil'          = 'psutil'                        # Windows 进程树 main.py
+    'python-multipart'= 'multipart'                     # FastAPI Form()
+    'sqlite-vec'      = 'sqlite_vec'                    # 向量检索 RAG
+    'lark-oapi'       = 'lark_oapi'                     # 飞书渠道
+    'tiktoken'        = 'tiktoken'                      # 分词（openai 可选依赖）
+}
+$missingMods = @()
+foreach ($k in $requiredMods.Keys) {
+    $rel = $requiredMods[$k]
+    $candidates = @("$internalDir\$rel", "$internalDir\$rel.py", "$internalDir\$rel.pyc")
+    $ok = $false
+    foreach ($c in $candidates) { if (Test-Path $c) { $ok = $true; break } }
+    if (-not $ok) { $missingMods += $k }
+}
+if ($missingMods.Count -gt 0) {
+    Write-Host "  [X] 漏包: $($missingMods -join ', ')" -ForegroundColor Red
+    throw "关键依赖漏包: $($missingMods -join ', ')"
+}
+Write-Host "  [OK] 关键依赖齐全 ($($requiredMods.Count) 个模块)" -ForegroundColor Green
 
 Write-Host "`n═══════════════════════════════════════════════════"
 Write-Host "  [OK] BUILD COMPLETE" -ForegroundColor Green
