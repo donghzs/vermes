@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('vermes', {
   openTerminal: (command) => ipcRenderer.invoke('shell:openTerminal', command),
   showItemInFolder: (fullPath) => ipcRenderer.invoke('shell:showItemInFolder', fullPath),
   saveAs: (srcPath, defaultName) => ipcRenderer.invoke('shell:saveAs', srcPath, defaultName),
+  setTrayUnread: (n) => ipcRenderer.send('tray:unread', Number(n) || 0),
   version: appVersion,
 
   // ── 应用更新（electron-updater，双平台统一）──

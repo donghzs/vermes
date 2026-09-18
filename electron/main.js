@@ -155,6 +155,14 @@ function setupTray() {
     { label: '退出', click: () => app.quit() },   // before-quit 会停 backend / gateway
   ]))
   tray.on('click', () => toggleMainWindow())
+  // U-P0-5：渲染进程通知中心未读数 → 托盘 tooltip（无 Badge API 的跨平台兜底）
+  ipcMain.on('tray:unread', (_e, n) => {
+    try {
+      const count = Number(n) || 0
+      const base = `Vermes v${app.getVersion()}`
+      tray?.setToolTip(count > 0 ? `${base} · ${count} 条未读通知` : base)
+    } catch { /* tray may be null */ }
+  })
 }
 
 function setupGlobalShortcuts() {

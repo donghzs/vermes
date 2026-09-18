@@ -4,9 +4,12 @@ import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
 import { useVisiblePoll } from '../composables/useVisiblePoll'
 import HelpGuide from './HelpGuide.vue'
+import NotificationCenter from './NotificationCenter.vue'
+import { useNotifications } from '../stores/notifications'
 
 // ── 核心 store（必须在所有引用它的函数/computed 之前初始化） ──
 const chat = useChatStore()
+const notif = useNotifications()
 const { open: artifactOpen, togglePanel: toggleArtifactPanel } = useArtifactPanel()
 
 // ── 进化指示器 ──
@@ -42,7 +45,10 @@ const harnessStatus = ref(null)
 async function fetchHarnessStatus() {
   try {
     const r = await fetch('/api/harness/status')
-    if (r.ok) harnessStatus.value = await r.json()
+    if (r.ok) {
+      harnessStatus.value = await r.json()
+      notif.notifyHarnessDegraded(harnessStatus.value)
+    }
   } catch { /* 缺信号 → UI 显示暂无 */ }
 }
 useVisiblePoll(fetchHarnessStatus, 45000)
@@ -308,6 +314,8 @@ function closeDropdowns() {
         <span class="text-[10px] font-mono" :class="memoryBlocksList.length > 0 ? 'text-green-500' : 'text-gray-400'">{{ memoryBlocksList.length || '—' }}</span>
         <span class="header-tooltip group-hover:opacity-100">记忆 · {{ memoryBlocksList.length }} 个记忆块</span>
       </div>
+      <!-- U-P0-5 通知中心 -->
+      <NotificationCenter />
       <!-- U-P0-1 Harness 状态灯：degraded=琥珀；无信号=灰（禁止假绿灯） -->
       <button
         class="group relative flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"

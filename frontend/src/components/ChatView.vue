@@ -15,9 +15,11 @@ import WelcomeGuide from './WelcomeGuide.vue'
 import PrereqBanner from './PrereqBanner.vue'
 import { classifyFailure } from '../utils/failureActions.js'
 import { friendlyError } from '../stores/chat-quota.js'
+import { useNotifications } from '../stores/notifications.js'
 
 const router = useRouter()
 const chat = useChatStore()
+const notif = useNotifications()
 
 // ── P0-5: 错误友好化映射（文案）；可行动路径见 classifyFailure（U-P0-7）──
 const ERROR_MAP = {
@@ -149,6 +151,7 @@ async function onSend(input, files) {
     console.error('[Vermes📤] send() error:', e)
     const classified = classifyFailure(e)
     sendFailure.value = classified
+    notif.notifySendFailure(classified)
     toast.error(getFriendlyError(e))
   }
 }

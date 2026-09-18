@@ -1,7 +1,7 @@
 {
   "version": "2.4.9",
-  "gitHash": "a53a5e70c6e9-dirty",
-  "gitBranch": "feat/2.5-u-p0-5-timeline",
-  "buildTime": "2026-09-18T10:39:18.486Z",
+  "gitHash": "6f57c0ca4c8b-dirty",
+  "gitBranch": "feat/2.5-u-p0-5-notify",
+  "buildTime": "2026-09-18T10:42:42.963Z",
   "nodeVersion": "v22.22.3"
 }
