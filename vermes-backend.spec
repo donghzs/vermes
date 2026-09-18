@@ -356,7 +356,9 @@ for _pkg in [
     # 'vermes_cli.adapters' 不是 PyPI 包，collect_all 会 fail，用 collect_submodules 单独处理
 ]:
     try:
-        _d, _b, _h = collect_all(_pkg)
+        # on_error="raise"：包缺失时立即抛异常（默认 'warn once' 会静默返回空，
+        # 导致依赖未装全时 PyInstaller 静默漏打包，产物缺核心 SDK 却不报错）。
+        _d, _b, _h = collect_all(_pkg, on_error="raise")
         _extra_datas.extend(_d)
         _extra_binaries.extend(_b)
         _extra_hidden.extend(_h)
