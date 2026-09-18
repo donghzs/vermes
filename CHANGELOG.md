@@ -2,9 +2,9 @@
 
 All notable changes to Vermes will be documented in this file.
 
-## [Unreleased] — 2026-09-18（本地 main，基于 tag v2.4.8 之后）
+## [2.4.9] - 2026-09-18
 
-> 版本字段仍为 **2.4.8**；下列提交在 tag `v2.4.8`（`76c6bc0987`）之后，已合入并 **push 到 `origin/main`（`0d7285fb5c`）**；**未升版本、未传 vbit.top**。
+> 基于 tag `v2.4.8` 之后的本地/已合入改动。**本机先构建 + 冒烟通过后才对外发布**；tag / vbit.top 投放以冒烟结果为准。
 
 ### ScholarForge · 论文写作
 

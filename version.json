@@ -1,42 +1,43 @@
 {
-  "version": "2.4.8",
+  "version": "2.4.9",
   "releaseDate": "2026-09-18",
-  "notes": "Vermes 2.4.8 主要更新：① 神魔堂大升级——群聊四层协作（共享 transcript/roster/@接力/回合制 orchestrator）、秘书模式（1 agent 自动搭组织/派活/交付）、组织任务看板（岗位表/状态/审计流水/交付物）、分身(avatar)共享全局记忆与身份、蜂群看板收编；② 登堂降门槛——本机 CLI 登录态探测 + OpenClaw/Hermes/CodeBuddy 等 ACP recipe 直登，通用 wrapper CLI 运行时 env 自动补齐；③ 造神/接入 Sprint A-D——transport 放开 native→cli/acp、前端「+接入」按钮、/api/agents/onboard 端点、能力标签诚实标注；④ 产物面板（方案A）选区编辑 + 版本回退（A1/A2/A3）并闭合 /patch 选区重生成接缝；⑤ 安全——前端 XSS 修复（markdown DOMPurify 消毒 + iframe sandbox 收紧）、打包版默认关闭 /openapi.json；⑥ UX——导航文字标签 + /benchmark 入口 + Cmd+K 命令面板、群聊空态引导、神魔堂默认收起侧栏；⑦ 构建/发版——Electron 壳 + electron-updater 全链路自动更新、macOS 无签名降级方案（version.json 轮询 + 官网 DMG 下载），build.sh agent 沙箱内可复现构建；⑧ 本次收口——神魔堂造神 LLM 选择复用单聊同款单下拉；⑨ 2.4.8 验收 hotfix；⑩ 设置页「版本」显示 0.0.0 修复；⑪ 侧边栏 tooltip 单行横向。【收尾订正 2026-09-18】mac 下载清单按本机 dist-electron 实测 sha256/size 对齐；update.js 支持 downloads.* 与架构嵌套节点，避免 Mac 更新弹窗有、点下载无反应。",
+  "notes": "Vermes 2.4.9 正式版：① ScholarForge 统计转三线表（stats_table）——SPSS 表/统计结论句→GFM 三线表，覆盖成对样本/卡方/相关/GLM/回归/ANCOVA/逻辑回归/因子/正态性/莱文等，并修复 F↔η² 等校验适用条件；② 论文工具箱：28 工具中文化 + 新手模式「写论文的 8 步」+ 兜底项目显形 + learn_style 门槛显形；③ 桌面体验：首屏代码分割、轮询去抖、定时器/watcher 泄漏修复、托盘与全局快捷键、窗口记忆、设置页搜索；④ 上手：创作工作室打开即用与 studio blueprint 注册、论文页环境自检与项目归属同步；⑤ 更新链路：version.json 支持 downloads 与 mac 架构嵌套解析，避免 Mac 更新弹窗有、下载空。本包为本机构建冒烟产物；对外上传与自动更新投放以验证通过后的清单为准。",
   "downloads": {
     "mac": {
       "arm64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8-arm64.dmg",
-        "sha256": "1cf3fcaaf357c5841fae5adb4ab1cb0d03195c9334ad0cd46feaae3b936b6ad8",
-        "size": 277533304
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-arm64.dmg",
+        "sha256": "",
+        "size": 0
       },
       "x64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8.dmg",
-        "sha256": "9cc1c9072df52463a5e508be6c931969962e7b1409e9a69ecb2d3d4cac023739",
-        "size": 282718942
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9.dmg",
+        "sha256": "",
+        "size": 0
       }
     },
     "windows": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8-win-x64.exe",
-      "sha256": "a72d47f05a79c6d4c88e1c6d736698fe77dbe58d21682ca5d2a2a4e2511be8f9",
-      "size": 299734287,
-      "note": "Windows 包本机无产物可对；沿用既有清单值，上传前请以实际 exe 重算"
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-win-x64.exe",
+      "sha256": "",
+      "size": 0,
+      "note": "Windows 包待本机/CI 构建后以真实 exe 重算 sha256/size"
     }
   },
   "mac": {
     "arm64": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8-arm64.dmg",
-      "sha256": "1cf3fcaaf357c5841fae5adb4ab1cb0d03195c9334ad0cd46feaae3b936b6ad8",
-      "size": 277533304
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-arm64.dmg",
+      "sha256": "",
+      "size": 0
     },
     "x64": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8.dmg",
-      "sha256": "9cc1c9072df52463a5e508be6c931969962e7b1409e9a69ecb2d3d4cac023739",
-      "size": 282718942
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9.dmg",
+      "sha256": "",
+      "size": 0
     }
   },
   "windows": {
-    "url": "https://vbit.top/vermes/downloads/Vermes-2.4.8-win-x64.exe",
-    "sha256": "a72d47f05a79c6d4c88e1c6d736698fe77dbe58d21682ca5d2a2a4e2511be8f9",
-    "size": 299734287
+    "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-win-x64.exe",
+    "sha256": "",
+    "size": 0,
+    "note": "Windows 包待本机/CI 构建后以真实 exe 重算 sha256/size"
   }
 }
