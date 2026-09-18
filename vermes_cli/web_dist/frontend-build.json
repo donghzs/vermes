@@ -1,7 +1,7 @@
 {
   "version": "2.4.8",
-  "gitHash": "1c1fdb861636-dirty",
+  "gitHash": "5d06f647ba6c-dirty",
   "gitBranch": "main",
-  "buildTime": "2026-09-17T23:40:42.757Z",
-  "nodeVersion": "v22.22.2"
+  "buildTime": "2026-09-18T02:38:26.434Z",
+  "nodeVersion": "v26.0.0"
 }
