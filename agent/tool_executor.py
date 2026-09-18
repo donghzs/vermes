@@ -72,6 +72,36 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# E-P0-2: harness/进化/验证 子系统 fail-open 失败可观测。
+# 设计：仍不阻塞工具执行；但失败必须 warning + 计数，供诊断/后续 UI 消费，
+# 避免「系统像在跑、质量层其实在静默 no-op」（假安全）。
+_HARNESS_FAIL_COUNTS: dict[str, int] = {}
+_HARNESS_FAIL_LOCK = threading.Lock()
+
+
+def _harness_fail_log(component: str, exc: BaseException, *, tool: str = "") -> None:
+    """记录 harness 侧 fail-open 异常：warning 日志 + 进程内计数。"""
+    try:
+        with _HARNESS_FAIL_LOCK:
+            _HARNESS_FAIL_COUNTS[component] = _HARNESS_FAIL_COUNTS.get(component, 0) + 1
+    except Exception:
+        pass
+    suffix = f" tool={tool}" if tool else ""
+    logger.warning("[harness-obs] %s failed%s: %s", component, suffix, exc)
+
+
+def get_harness_fail_counts() -> dict[str, int]:
+    """返回 harness 子系统 fail-open 失败计数副本（供测试/诊断/状态面板）。"""
+    with _HARNESS_FAIL_LOCK:
+        return dict(_HARNESS_FAIL_COUNTS)
+
+
+def reset_harness_fail_counts() -> None:
+    """测试用：清空计数。"""
+    with _HARNESS_FAIL_LOCK:
+        _HARNESS_FAIL_COUNTS.clear()
+
+
 
 def _budget_for_agent(agent) -> BudgetConfig:
     """Resolve a tool-result BudgetConfig scaled to the agent's context window.
@@ -387,10 +417,10 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                         "[circuit-breaker] tool %s open; skip retry", function_name
                     )
             except Exception as e:
-                logger.debug("tool_executor.py: circuit_breaker check failed: %s", e)
+                _harness_fail_log("circuit_breaker", e, tool=function_name)
             _precheck_result = run_precheck(function_name, function_args, agent)
-        except Exception:
-            pass  # harness unavailable → no-op (additive design)
+        except Exception as _hp_exc:
+            _harness_fail_log("tool_precheck", _hp_exc, tool=function_name)
         if _precheck_result is not None and not _precheck_result.passed:
             if _precheck_result.block:
                 result = (
@@ -437,7 +467,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     from harness.failure_learning import get_ledger
                     get_ledger().record(function_name, tool_error, function_args)
                 except Exception as e:
-                    logger.debug("tool_executor.py:  run tool failed: %s", e)
+                    _harness_fail_log("failure_learning.record", e, tool=function_name)
             # Append pre-check warning to the result so the LLM sees it.
             if _precheck_result is not None and not _precheck_result.passed and not _precheck_result.block:
                 result = f"{result}\n\n[harness pre-check] {_precheck_result.warning}"
@@ -457,14 +487,14 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 agent, function_name, function_args, result, is_error, duration,
                 variant_hash=_variant_hash,
             )
-        except Exception:
-            pass  # 进化记录不应阻塞工具执行
+        except Exception as _evo_exc:
+            _harness_fail_log("evolution.record_tool_outcome", _evo_exc, tool=function_name)
         # 传递进化事件（成就/建议）给 SSE 流
         if _evo_event and hasattr(agent, "evolution_event_callback"):
             try:
                 agent.evolution_event_callback(_evo_event, function_name, is_error, duration)
             except Exception as e:
-                logger.debug("tool_executor.py:  run tool failed: %s", e)
+                _harness_fail_log("evolution.event_callback", e, tool=function_name)
         if is_error:
             logger.info("tool %s failed (%.2fs): %s", function_name, duration, result[:200])
         else:
@@ -478,8 +508,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             _suffix = _get_self_validator().format_for_result(_vr)
             if _suffix:
                 result = result + _suffix
-        except Exception:
-            pass  # 验证层永不阻塞工具执行
+        except Exception as _sv_exc:
+            _harness_fail_log("self_validator", _sv_exc, tool=function_name)
         # 并发路径透传：把真实 self_validator 判定带出 worker（post-loop 用于 P4）
         vr_ok_worker = getattr(_vr, "ok", True)
         # H3.1: result structure validation (runtime quality gate, fail-open).
@@ -489,8 +519,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             if _h3_warning:
                 result = f"{result}\n\n{_h3_warning}"
                 logger.warning("[H3.1] tool %s result validation: %s", function_name, _h3_warning)
-        except Exception:
-            pass  # H3.1 永不阻塞
+        except Exception as _h3_exc:
+            _harness_fail_log("result_validator", _h3_exc, tool=function_name)
         # H3.2: stability probe for hot-path tools (opt-in, fail-open, never blocks).
         try:
             from harness.stability_hotpath import probe_tool_stability
@@ -506,15 +536,15 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     result = f"{result}\n\n{_h4_2}"
                     logger.warning("[H4.2] low-precision routing guidance for %s", function_name)
             except Exception as e:
-                logger.debug("tool_executor.py:  run tool failed: %s", e)
+                _harness_fail_log("precision_matrix", e, tool=function_name)
                 # 融合 P0：稳定性 verdict 持久化到学习账本（复用 H4.1 落库，fail-open）
                 try:
                     from harness.failure_learning import get_ledger
                     get_ledger().record(function_name, _h3_2_warning, function_args)
-                except Exception:
-                    pass  # 学习落库失败不阻塞
-        except Exception:
-            pass  # H3.2 永不阻塞
+                except Exception as _fl_exc:
+                    _harness_fail_log("failure_learning.record_stability", _fl_exc, tool=function_name)
+        except Exception as _st_exc:
+            _harness_fail_log("stability_hotpath", _st_exc, tool=function_name)
         # H4.1: inject historical failure warning into the result so the model
         # sees "this tool has failed before — consider alternatives" (fail-open).
         # (The pre-exec should_warn above only logs; this is what actually reaches the LLM.)
@@ -526,8 +556,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     _h4_hist = f"{CB_PREFIX} {_h4_hist}"
                 result = f"{result}\n\n{_h4_hist}"
                 logger.warning("[H4.1] injected historical failure warning for %s", function_name)
-        except Exception:
-            pass  # H4.1 注入永不阻塞
+        except Exception as _h4_exc:
+            _harness_fail_log("failure_learning.inject", _h4_exc, tool=function_name)
         results[index] = (function_name, function_args, result, duration, is_error, False, vr_ok_worker)
         # 桥：记录工具完整性签名，防止上下文压缩后丢失操作证据
         if not is_error and hasattr(agent, "_record_tool_signature"):
@@ -664,7 +694,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                         function_name, function_args, function_result, is_error,
                     )
                 except Exception as _ver_err:
-                    logging.debug("file-mutation verifier record failed: %s", _ver_err)
+                    _harness_fail_log("file_mutation_record", _ver_err, tool=function_name)
 
             # P0-A: 通用 Outcome Verifier — 按名查 verify_fn，fail-open
             if not blocked:
@@ -681,13 +711,13 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                             str(function_result)[:200],
                         )
                 except Exception as _ov_exc:
-                    logging.debug("outcome verifier raised: %s", _ov_exc)
+                    _harness_fail_log("outcome_verifier.verify", _ov_exc, tool=function_name)
                 # P2 信号桥：把验证结果喂给任务级 Critic（只收集本回合，不跨回合）
                 try:
                     from harness.outcome_verifier import record_tool_verify
                     record_tool_verify(agent, function_name, _ov_ok, _ov_reason)
                 except Exception as _rec_exc:
-                    logging.debug("outcome verifier record failed: %s", _rec_exc)
+                    _harness_fail_log("outcome_verifier.record", _rec_exc, tool=function_name)
 
                 # P4: 持久化统一 verified 信号（复用已算出的 _ov_ok，绝不重调验证器）
                 # NOTE: 并发路径 _vr 在 _run_tool worker 内定义，post-execution
@@ -714,7 +744,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                         agent,
                     )
                 except Exception as _ver_exc:
-                    logging.debug("verified signal record failed: %s", _ver_exc)
+                    _harness_fail_log("verified_signal.record", _ver_exc, tool=function_name)
 
             if not blocked and agent.tool_progress_callback:
                 try:
@@ -1122,7 +1152,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                             "[circuit-breaker] tool %s open; skip retry", function_name
                         )
                 except Exception as e:
-                    logger.debug("tool_executor.py: circuit_breaker check failed: %s", e)
+                    _harness_fail_log("circuit_breaker", e, tool=function_name)
                 _precheck_seq = run_precheck(function_name, function_args, agent)
             except Exception as e:
                 logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
@@ -1186,7 +1216,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                             "[circuit-breaker] tool %s open; skip retry", function_name
                         )
                 except Exception as e:
-                    logger.debug("tool_executor.py: circuit_breaker check failed: %s", e)
+                    _harness_fail_log("circuit_breaker", e, tool=function_name)
                 _precheck_ns = run_precheck(function_name, function_args, agent)
             except Exception as e:
                 logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
@@ -1226,7 +1256,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                         from harness.failure_learning import get_ledger
                         get_ledger().record(function_name, tool_error, function_args)
                     except Exception as e:
-                        logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
+                        _harness_fail_log("failure_learning.record", e, tool=function_name)
             tool_duration = time.time() - tool_start_time
 
         if isinstance(function_result, str):
@@ -1267,8 +1297,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             _suffix = _get_self_validator().format_for_result(_vr)
             if _suffix:
                 function_result = function_result + _suffix
-        except Exception:
-            pass  # 验证层永不阻塞工具执行
+        except Exception as _sv_exc:
+            _harness_fail_log("self_validator", _sv_exc, tool=function_name)
 
         # Track file-mutation outcome for the turn-end verifier.  See
         # the concurrent path for the rationale; both paths must feed
@@ -1280,7 +1310,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     function_name, function_args, function_result, _is_error_result,
                 )
             except Exception as _ver_err:
-                logging.debug("file-mutation verifier record failed: %s", _ver_err)
+                _harness_fail_log("file_mutation_record", _ver_err, tool=function_name)
 
         # P0-A: 通用 Outcome Verifier — 按名查 verify_fn，fail-open
         if not _execution_blocked:
@@ -1297,13 +1327,13 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                         str(function_result)[:200],
                     )
             except Exception as _ov_exc:
-                logging.debug("outcome verifier raised: %s", _ov_exc)
+                _harness_fail_log("outcome_verifier.verify", _ov_exc, tool=function_name)
             # P2 信号桥：把验证结果喂给任务级 Critic（只收集本回合，不跨回合）
             try:
                 from harness.outcome_verifier import record_tool_verify
                 record_tool_verify(agent, function_name, _ov_ok, _ov_reason)
             except Exception as _rec_exc:
-                logging.debug("outcome verifier record failed: %s", _rec_exc)
+                _harness_fail_log("outcome_verifier.record", _rec_exc, tool=function_name)
 
             # P4: 持久化统一 verified 信号（复用已算出的 _vr / _ov_ok，绝不重调验证器）
             try:
@@ -1327,7 +1357,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     agent,
                 )
             except Exception as _ver_exc:
-                logging.debug("verified signal record failed: %s", _ver_exc)
+                _harness_fail_log("verified_signal.record", _ver_exc, tool=function_name)
 
         # 桥：记录工具完整性签名（sequential 路径）
         if not _execution_blocked and not _is_error_result and hasattr(agent, "_record_tool_signature"):
@@ -1393,7 +1423,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 function_result = f"{function_result}\n\n{_h3_seq}"
                 logger.warning("[H3.1-seq] tool %s result validation: %s", function_name, _h3_seq)
         except Exception as e:
-            logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
+            _harness_fail_log("result_validator", e, tool=function_name)
 
         # H3.2: stability probe for hot-path tools (sequential path, opt-in, fail-open).
         try:
@@ -1410,15 +1440,15 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     function_result = f"{function_result}\n\n{_h4_2_seq}"
                     logger.warning("[H4.2-seq] low-precision routing guidance for %s", function_name)
             except Exception as e:
-                logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
+                _harness_fail_log("precision_matrix", e, tool=function_name)
                 # 融合 P0：稳定性 verdict 持久化到学习账本（复用 H4.1 落库，fail-open）
                 try:
                     from harness.failure_learning import get_ledger
                     get_ledger().record(function_name, _h3_2_seq, function_args)
-                except Exception:
-                    pass  # 学习落库失败不阻塞
-        except Exception:
-            pass  # H3.2 永不阻塞
+                except Exception as _fl_exc:
+                    _harness_fail_log("failure_learning.record_stability", _fl_exc, tool=function_name)
+        except Exception as _st_exc:
+            _harness_fail_log("stability_hotpath", _st_exc, tool=function_name)
 
         # H4.1: inject historical failure warning into the result (fail-open).
         try:
@@ -1429,8 +1459,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     _h4_hist_seq = f"{CB_PREFIX} {_h4_hist_seq}"
                 function_result = f"{function_result}\n\n{_h4_hist_seq}"
                 logger.warning("[H4.1-seq] injected historical failure warning for %s", function_name)
-        except Exception:
-            pass  # H4.1 注入永不阻塞
+        except Exception as _h4_exc:
+            _harness_fail_log("failure_learning.inject", _h4_exc, tool=function_name)
 
         # Unwrap _multimodal dicts to an OpenAI-style content list
         # (see parallel path for rationale). String results pass through.
