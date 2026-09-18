@@ -112,6 +112,38 @@ function currentRunningTool(tools) {
   return map[t.name] || t.name + '...'
 }
 
+// U-P0-5：tool_step.harness → 时间线核验徽标（缺信号不显示假绿灯）
+function toolRunIcon(tool) {
+  if (tool.status === 'error' || tool.is_error || tool.phase === 'error') return '❌'
+  const h = tool.harness
+  if (!h) return '●' // 已跑完，但未声明核验 → 不画成 ✅
+  if (h.precheck === 'blocked' || tool.phase === 'blocked') return '⛔'
+  if (h.outcome === 'verified') return '✅'
+  if (h.outcome === 'verify_failed' || h.outcome === 'verifier_error') return '⚠️'
+  if (h.outcome === 'unverified_tool') return '◌'
+  return '●'
+}
+function harnessBadge(tool) {
+  const h = tool.harness
+  if (!h) return null
+  if (h.precheck === 'blocked') return { text: '已拦截', cls: 'text-red-500' }
+  if (h.outcome === 'verified') return { text: '已核验', cls: 'text-green-600 dark:text-green-400' }
+  if (h.outcome === 'verify_failed') return { text: '核验失败', cls: 'text-amber-600 dark:text-amber-400' }
+  if (h.outcome === 'verifier_error') return { text: '核验器异常', cls: 'text-amber-600 dark:text-amber-400' }
+  if (h.outcome === 'unverified_tool') return { text: '未独立核验', cls: 'text-gray-400' }
+  return null // unknown / 缺字段
+}
+function harnessTitle(tool) {
+  const h = tool.harness
+  if (!h) return 'Harness：暂无信号'
+  const parts = []
+  parts.push(`precheck=${h.precheck || 'unknown'}`)
+  if (h.max_attempts != null) parts.push(`max_attempts=${h.max_attempts}`)
+  parts.push(`outcome=${h.outcome || 'unknown'}`)
+  if (h.outcome_reason) parts.push(h.outcome_reason)
+  return 'Harness：' + parts.join(' · ')
+}
+
 // 汇总本条消息中所有产物（按 tool 收集去重）。工件产物的「点开会话内联」交互入口。
 function messageArtifacts(msg) {
   const out = []
@@ -988,9 +1020,11 @@ function streamElapsed(startTime) {
                   <span v-if="idx < 5 || _showAllTools[msg.id]"
                         class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                         :class="tool.status === 'error' ? 'text-red-500' : ''"
+                        :title="harnessTitle(tool)"
                         @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
-                    <span>{{ tool.status === 'error' ? '❌' : '✅' }}</span>
+                    <span>{{ toolRunIcon(tool) }}</span>
                     <span>{{ toolLabel(tool.name) }}</span>
+                    <span v-if="harnessBadge(tool)" class="opacity-80" :class="harnessBadge(tool).cls">{{ harnessBadge(tool).text }}</span>
                     <span v-if="tool.duration" class="opacity-60">{{ tool.duration }}s</span>
                     <span v-if="tool.result_preview">{{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}</span>
                   </span>

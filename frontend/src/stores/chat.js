@@ -1226,6 +1226,10 @@ export const useChatStore = defineStore('chat', () => {
               duration: data.duration || 0,
               is_error: data.is_error || false,
               preview: data.result_preview || '',
+              // U-P0-5 E-P0-5：tool_step.harness（缺信号=null → UI 暂无，禁止假绿灯）
+              harness: data.harness || null,
+              phase: data.phase || (data.is_error ? 'error' : 'completed'),
+              contract: data.contract || null,
               // 把产物附加到该 tool(MessageList 会基于此渲染「产物文件」可点击 chip)
               artifacts: data.artifacts && data.artifacts.length > 0
                 ? data.artifacts.map(a => ({ path: a.path, title: a.title || (a.path ? a.path.split('/').pop() : '产物'), mime: a.mime || '', source: a.source || data.name || 'tool' }))

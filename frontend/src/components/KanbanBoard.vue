@@ -470,7 +470,7 @@ function goChat() { router.push('/') }
     <!-- 错误提示 -->
     <div v-if="error" class="mx-4 mt-4 p-3 text-sm text-red-600 bg-red-50 dark:bg-red-950/30 rounded-lg flex items-center justify-between gap-2">
       <span class="min-w-0 flex-1">{{ error }}</span>
-      <button v-if="typeof loadBoard === 'function'" class="shrink-0 px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 text-xs" @click="loadBoard()">重试</button>
+      <button class="shrink-0 px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 text-xs" @click="loadBoard()">重试</button>
       <button @click="error = ''" class="shrink-0 text-red-400 hover:text-red-600">✕</button>
     </div>
 

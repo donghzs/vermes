@@ -1847,12 +1847,21 @@ async def chat_completions(req: ChatRequest, request: Request):
                     "step_total": step_total,
                 }
             else:
+                _is_err = bool(kwargs.get("is_error", False))
+                _phase = kwargs.get("phase") or ("error" if _is_err else "completed")
+                _harness = kwargs.get("harness") or None
+                _tool_call_id = _tool_ids.pop(tool_name, secrets.token_urlsafe(8))
                 event = {
                     "type": "tool_end",
-                    "tool_call_id": _tool_ids.pop(tool_name, secrets.token_urlsafe(8)),
+                    # U-P0-5 / E-P0-5 tool_step 契约扩展（可选字段；旧前端忽略）
+                    "contract": "v2.5-s1",
+                    "phase": _phase,
+                    "duration_ms": int(float(kwargs.get("duration") or 0) * 1000),
+                    "harness": _harness,
+                    "tool_call_id": _tool_call_id,
                     "tool_name": tool_name,
                     "duration": kwargs.get("duration", 0),
-                    "is_error": kwargs.get("is_error", False),
+                    "is_error": _is_err,
                     "result_preview": preview or "",
                     "step_id": step_id,
                     "step_index": step_index,

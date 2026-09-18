@@ -257,9 +257,12 @@ function iconFor(a) {
                class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
             <span v-if="act.status === 'running' && !_isStaleRunning(act)" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
             <span v-else-if="act.is_error && act.status === 'done'" class="flex-shrink-0">⚠️</span>
-            <span v-else-if="act.status === 'done'" class="flex-shrink-0 text-green-500">✓</span>
+            <span v-else-if="act.status === 'done' && act.harness?.outcome === 'verified'" class="flex-shrink-0 text-green-500" title="已核验">✓</span>
+            <span v-else-if="act.status === 'done' && act.harness?.outcome === 'unverified_tool'" class="flex-shrink-0 text-gray-400" title="未独立核验">◌</span>
+            <span v-else-if="act.status === 'done'" class="flex-shrink-0 text-gray-400" title="已完成（无核验信号）">●</span>
             <span v-else class="flex-shrink-0 text-gray-400">•</span>
             <span class="truncate">{{ chat.toolLabel(act.name) || act.name }}</span>
+            <span v-if="act.status === 'done' && act.harness?.outcome === 'unverified_tool'" class="flex-shrink-0 text-[10px] text-gray-400">未独立核验</span>
             <span v-if="act.status === 'done' && act.duration" class="flex-shrink-0 text-gray-400">· {{ act.duration < 1 ? '<1秒' : Math.round(act.duration) + '秒' }}</span>
           </div>
         </div>

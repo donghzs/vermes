@@ -170,6 +170,65 @@ def _guess_mime(path: str) -> str:
     }.get(ext, "")
 
 
+def _build_tool_harness_signal(
+    tool_name: str,
+    *,
+    precheck=None,
+    ov_ok=None,
+    ov_reason=None,
+    max_attempts=None,
+    is_error=False,
+    blocked=False,
+    circuit_open_flag=None,
+) -> dict:
+    """U-P0-5 / E-P0-5：组装 tool_step.harness 信号（缺字段=unknown，禁止假绿灯）。"""
+    h = {
+        "precheck": "unknown",
+        "precheck_msg": None,
+        "circuit_open": circuit_open_flag,
+        "retries_attempted": None,
+        "max_attempts": max_attempts,
+        "self_validator": "unknown",
+        "result_validator": "unknown",
+        "outcome": "unknown",
+        "outcome_reason": None,
+        "failure_learning_hint": None,
+    }
+    if precheck is not None:
+        if getattr(precheck, "block", False):
+            h["precheck"] = "blocked"
+        elif not getattr(precheck, "passed", True):
+            h["precheck"] = "warning"
+        else:
+            h["precheck"] = "ok"
+        h["precheck_msg"] = getattr(precheck, "warning", None)
+    if blocked or h["precheck"] == "blocked" or is_error:
+        return h
+    try:
+        has_vf = False
+        from tools.registry import registry as _reg
+        entry = _reg.get_entry(tool_name)
+        has_vf = bool(entry is not None and getattr(entry, "verify_fn", None))
+    except Exception:
+        has_vf = False
+    if ov_ok is None:
+        return h
+    reason = ov_reason or ""
+    if reason.startswith("verifier error") or reason.startswith("verifier returned"):
+        h["outcome"] = "verifier_error"
+        h["outcome_reason"] = reason or None
+    elif not has_vf:
+        h["outcome"] = "unverified_tool"
+        h["outcome_reason"] = reason or "no verify_fn registered"
+    elif ov_ok:
+        h["outcome"] = "verified"
+        h["outcome_reason"] = reason or None
+    else:
+        h["outcome"] = "verify_failed"
+        h["outcome_reason"] = reason or None
+    return h
+
+
 def _build_tool_artifacts(tool_name: str, result: Any, args: dict = None) -> list:
     """从工具执行结果 + 工具入参中提取结构化产物（供产物面板捕获，闭合 G3 生产端）。
 
@@ -420,11 +479,14 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         # H2.1: pre-execution constraint check (runtime quality gate).
         # Fail-open: warning = log + append to result; deny = skip handler.
         _precheck_result = None
+        _circuit_open_flag = None
+        _max_att = None
         try:
             from harness.tool_precheck import run_precheck
             # H4.1 / P3.5: circuit breaker — if recurring failures, skip retry.
             try:
                 if circuit_open is not None and circuit_open(function_name):
+                    _circuit_open_flag = True
                     logger.warning(
                         "[circuit-breaker] tool %s open; skip retry", function_name
                     )
@@ -570,7 +632,21 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 logger.warning("[H4.1] injected historical failure warning for %s", function_name)
         except Exception as _h4_exc:
             _harness_fail_log("failure_learning.inject", _h4_exc, tool=function_name)
-        results[index] = (function_name, function_args, result, duration, is_error, False, vr_ok_worker)
+        _blocked_pre = bool(_precheck_result is not None and getattr(_precheck_result, "block", False))
+        _harness_sig = _build_tool_harness_signal(
+            function_name,
+            precheck=_precheck_result,
+            ov_ok=_ov_ok,
+            ov_reason=_ov_reason,
+            max_attempts=_max_att,
+            is_error=bool(is_error),
+            blocked=_blocked_pre,
+            circuit_open_flag=_circuit_open_flag,
+        )
+        results[index] = (
+            function_name, function_args, result, duration, is_error,
+            _blocked_pre, vr_ok_worker, _harness_sig,
+        )
         # 桥：记录工具完整性签名，防止上下文压缩后丢失操作证据
         if not is_error and hasattr(agent, "_record_tool_signature"):
             try:
@@ -674,6 +750,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
     for i, (tc, name, args, block_result, blocked_by_guardrail) in enumerate(parsed_calls):
         r = results[i]
         blocked = False
+        worker_harness = None
         if r is None:
             # Tool was cancelled (interrupt) or thread didn't return
             if agent._interrupt_requested:
@@ -682,7 +759,9 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 function_result = f"Error executing tool '{name}': thread did not return a result"
             tool_duration = 0.0
         else:
-            function_name, function_args, function_result, tool_duration, is_error, blocked, vr_ok_worker = r
+            function_name, function_args, function_result, tool_duration, is_error, blocked, vr_ok_worker = r[:7]
+            if len(r) >= 8:
+                worker_harness = r[7]
 
             if not blocked:
                 function_result = agent._append_guardrail_observation(
@@ -709,6 +788,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     _harness_fail_log("file_mutation_record", _ver_err, tool=function_name)
 
             # P0-A: 通用 Outcome Verifier — 按名查 verify_fn，fail-open
+            _ov_ok, _ov_reason = None, None
             if not blocked:
                 _ov_ok, _ov_reason = True, ""
                 try:
@@ -774,10 +854,17 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                             result_preview = result_str[:preview_len] + ("..." if len(result_str) > preview_len else "")
                         except Exception:
                             result_preview = ""
+                    _harness_out = worker_harness or _build_tool_harness_signal(
+                        function_name,
+                        is_error=bool(is_error),
+                        blocked=bool(blocked),
+                    )
                     agent.tool_progress_callback(
                         "tool.completed", function_name, result_preview, None,
                         duration=tool_duration, is_error=is_error,
                         artifacts=_build_tool_artifacts(function_name, function_result, function_args),
+                        harness=_harness_out,
+                        phase=("error" if is_error else ("blocked" if blocked else "completed")),
                     )
                 except Exception as cb_err:
                     logging.debug(f"Tool progress callback error: {cb_err}")
@@ -960,6 +1047,13 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 agent.tool_progress_callback("tool.started", function_name, preview, function_args)
             except Exception as cb_err:
                 logging.debug(f"Tool progress callback error: {cb_err}")
+
+        # U-P0-5: sequential 路径 harness 信号载体（各分支写入，completed 时透传）
+        _seq_precheck = None
+        _seq_max_att = None
+        _seq_circuit = None
+        _seq_ov_ok = None
+        _seq_ov_reason = None
 
         if not _execution_blocked and agent.tool_start_callback:
             try:
@@ -1160,12 +1254,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 # H4.1 / P3.5: circuit breaker — if recurring failures, skip retry.
                 try:
                     if circuit_open is not None and circuit_open(function_name):
+                        _seq_circuit = True
                         logger.warning(
                             "[circuit-breaker] tool %s open; skip retry", function_name
                         )
                 except Exception as e:
                     _harness_fail_log("circuit_breaker", e, tool=function_name)
                 _precheck_seq = run_precheck(function_name, function_args, agent)
+                _seq_precheck = _precheck_seq
             except Exception as e:
                 logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
             try:
@@ -1179,6 +1275,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 if _precheck_seq is None or not _precheck_seq.block:
                     try:
                         _max_att = max_attempts_for(function_name) if max_attempts_for else 2
+                        _seq_max_att = _max_att
                         function_result = invoke_with_retry(
                             lambda: _ra().handle_function_call(
                                 function_name, function_args, effective_task_id,
@@ -1224,12 +1321,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 # H4.1 / P3.5: circuit breaker — if recurring failures, skip retry.
                 try:
                     if circuit_open is not None and circuit_open(function_name):
+                        _seq_circuit = True
                         logger.warning(
                             "[circuit-breaker] tool %s open; skip retry", function_name
                         )
                 except Exception as e:
                     _harness_fail_log("circuit_breaker", e, tool=function_name)
                 _precheck_ns = run_precheck(function_name, function_args, agent)
+                _seq_precheck = _precheck_ns
             except Exception as e:
                 logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
             if _precheck_ns is not None and not _precheck_ns.passed and _precheck_ns.block:
@@ -1332,6 +1431,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 _ov_ok, _ov_reason = verify_tool_outcome(
                     function_name, function_args, function_result, _is_error_result,
                 )
+                _seq_ov_ok, _seq_ov_reason = _ov_ok, _ov_reason
                 if not _ov_ok:
                     logger.warning(
                         "outcome verified FAIL: %s → %s | result=%s",
@@ -1340,6 +1440,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     )
             except Exception as _ov_exc:
                 _harness_fail_log("outcome_verifier.verify", _ov_exc, tool=function_name)
+                _seq_ov_ok, _seq_ov_reason = _ov_ok, _ov_reason
             # P2 信号桥：把验证结果喂给任务级 Critic（只收集本回合，不跨回合）
             try:
                 from harness.outcome_verifier import record_tool_verify
@@ -1380,10 +1481,22 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
 
         if not _execution_blocked and agent.tool_progress_callback:
             try:
+                _harness_out = _build_tool_harness_signal(
+                    function_name,
+                    precheck=_seq_precheck,
+                    ov_ok=_seq_ov_ok,
+                    ov_reason=_seq_ov_reason,
+                    max_attempts=_seq_max_att,
+                    is_error=bool(_is_error_result),
+                    blocked=bool(_execution_blocked),
+                    circuit_open_flag=_seq_circuit,
+                )
                 agent.tool_progress_callback(
                     "tool.completed", function_name, None, None,
                     duration=tool_duration, is_error=_is_error_result,
                     artifacts=_build_tool_artifacts(function_name, function_result, function_args),
+                    harness=_harness_out,
+                    phase=("error" if _is_error_result else "completed"),
                 )
             except Exception as cb_err:
                 logging.debug(f"Tool progress callback error: {cb_err}")
