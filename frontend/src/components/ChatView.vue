@@ -12,11 +12,14 @@ import TaskFlowCard from './TaskFlowCard.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import WechatLogin from './WechatLogin.vue'
 import WelcomeGuide from './WelcomeGuide.vue'
+import PrereqBanner from './PrereqBanner.vue'
+import { classifyFailure } from '../utils/failureActions.js'
+import { friendlyError } from '../stores/chat-quota.js'
 
 const router = useRouter()
 const chat = useChatStore()
 
-// ── P0-5: 错误友好化映射 ──
+// ── P0-5: 错误友好化映射（文案）；可行动路径见 classifyFailure（U-P0-7）──
 const ERROR_MAP = {
   'NetworkError': '🌐 网络连接失败，请检查网络后重试',
   'Failed to fetch': '🌐 网络连接失败，请检查网络后重试',
@@ -42,11 +45,44 @@ const ERROR_MAP = {
 }
 
 function getFriendlyError(error) {
-  const msg = error.message || String(error)
+  // 优先用 chat-quota 的详细中文文案，失败再退回本地 ERROR_MAP
+  try {
+    const detailed = friendlyError(typeof error === 'string' ? error : (error?.message || String(error)))
+    if (detailed && detailed.startsWith('❌')) return detailed
+  } catch { /* fall through */ }
+  const msg = error?.message || String(error)
   for (const [key, friendly] of Object.entries(ERROR_MAP)) {
     if (msg.includes(key)) return friendly
   }
   return '❌ 出了点问题，请重试'
+}
+
+// ── U-P0-7 失败可行动：发送失败 → 可点击修复横幅 ──
+const lastSendPayload = ref({ input: '', files: null })
+const sendFailure = ref(null) // { text, code, action }
+
+function clearSendFailure() { sendFailure.value = null }
+
+async function runFailureAction() {
+  const act = sendFailure.value?.action
+  if (!act) return
+  if (act.type === 'settings') {
+    router.push('/settings')
+    clearSendFailure()
+  } else if (act.type === 'wechat') {
+    openWeChatQR()
+  } else if (act.type === 'quota') {
+    chat.showQuotaModal = true
+  } else if (act.type === 'new_session') {
+    clearSendFailure()
+    chat.newSession()
+  } else if (act.type === 'retry') {
+    const { input, files } = lastSendPayload.value
+    clearSendFailure()
+    if (input || files?.length) await onSend(input, files)
+  } else {
+    clearSendFailure()
+  }
 }
 
 // ── 引用子组件 ──
@@ -100,6 +136,7 @@ async function onSend(input, files) {
   const model = chat.currentModel
   const provider = chat.currentProvider
   if ((!input && !files?.length) || chat.loading) return
+  lastSendPayload.value = { input, files }
   try {
     // P3-8: 多模型对比模式
     if (chat.compareModels && chat.compareModels.length >= 2) {
@@ -107,9 +144,11 @@ async function onSend(input, files) {
     } else {
       await chat.sendMessage(input, files)
     }
-    // send completed
+    clearSendFailure()
   } catch(e) {
     console.error('[Vermes📤] send() error:', e)
+    const classified = classifyFailure(e)
+    sendFailure.value = classified
     toast.error(getFriendlyError(e))
   }
 }
@@ -194,6 +233,20 @@ onUnmounted(() => {
       @logout="logout"
       @openWeChatQR="openWeChatQR"
       @toggleHistory="toggleHistory"
+    />
+
+    <!-- U-P0-7：发送失败可行动横幅（缺模型/额度/Key → 一键去修） -->
+    <PrereqBanner
+      :visible="!!sendFailure"
+      :title="sendFailure?.text || ''"
+      :text="sendFailure?.action ? '点击右侧按钮直接处理，修好后再发即可' : ''"
+      tone="amber"
+      :primary-label="sendFailure?.action?.label || ''"
+      :secondary-label="sendFailure ? '忽略' : ''"
+      dismissible
+      @primary="runFailureAction"
+      @secondary="clearSendFailure"
+      @dismiss="clearSendFailure"
     />
 
     <!-- 中间内容区：消息列表 / 引导页 -->

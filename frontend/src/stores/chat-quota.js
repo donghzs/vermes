@@ -1,9 +1,11 @@
 /**
  * chat-quota.js — 配额检查 + 错误友好化 + 工具函数
  */
+import { classifyFailure } from '../utils/failureActions.js'
 
 /**
- * 错误友好化：翻译常见后端/AI错误为中文用户提示
+ * 错误友好化：翻译常见后端/AI错误为中文用户提示（文案兼容既有测试；
+ * 可行动路径请用 classifyFailure — U-P0-7）
  */
 export function friendlyError(msg) {
   const m = msg || ''
@@ -37,6 +39,8 @@ export function friendlyError(msg) {
   // 默认
   return '❌ 出错了：' + (m.length > 100 ? m.slice(0, 100) + '...' : m)
 }
+
+export { classifyFailure }
 
 /**
  * 文件大小格式化
