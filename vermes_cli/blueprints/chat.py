@@ -1285,6 +1285,28 @@ async def chat_completions(req: ChatRequest, request: Request):
     requested_model = req.model or "agnes-2.0-flash"
     provider, base_url, api_key, model = _resolve_model_provider(requested_model, req.provider)
 
+    # U-P0-3 / E-P0-5 route 契约：模型解析完成后固化本回合路由信号（缺字段=暂无信号）
+    _req_model_str = str(requested_model or "")
+    _route_strategy = "none"
+    if _req_model_str.startswith("auto"):
+        _route_strategy = (_req_model_str.split(":", 1)[1] or "balanced").strip() or "balanced"
+        if _route_strategy not in ("balanced", "cost", "speed"):
+            _route_strategy = "balanced"
+    _route_event = {
+        "contract": "v2.5-s1",
+        "type": "route",
+        "requested_model": requested_model,
+        "strategy": _route_strategy,
+        "resolved": {
+            "provider": provider,
+            "model": model,
+        },
+        "base_url": base_url or "",
+        "token_usage": None,
+        "cost_estimate": None,
+        "signal": "resolved" if provider and model else "unknown",
+    }
+
     if not base_url:
         raise HTTPException(status_code=500, detail=f"No base_url found for provider '{provider}'. Check config.yaml.")
 
@@ -1747,6 +1769,59 @@ async def chat_completions(req: ChatRequest, request: Request):
 
         _session_artifacts = []  # 会话级产物累积（供 delivery 事件）
         _session_changes = []     # 会话级变更累积（供 delivery 事件）
+        _session_deliverable_items = []  # U-P0-2: 契约 deliverable.items
+
+        def _make_deliverable_item(tool_name: str, args: dict, preview: str, artifacts: list) -> dict:
+            """从工具结果构造 deliverable item（缺字段=None，禁止编造）。"""
+            path = None
+            if isinstance(args, dict):
+                path = args.get("path") or args.get("file_path") or None
+            kind = "file" if path else "unknown"
+            title = path.split("/")[-1] if path else (tool_name or "")
+            project_id = None
+            project_title = None
+            section_key = None
+            verified = "unknown"
+            # scholarforge 写回：尝试从 preview 解析项目归属（兜底项目显形文案）
+            text = preview or ""
+            if "scholarforge" in (tool_name or "") or "项目 #" in text:
+                m_pid = re.search(r"项目 #(\d+)", text)
+                if m_pid:
+                    project_id = int(m_pid.group(1))
+                    kind = "project_section"
+                m_title = re.search(r"项目 #\d+「([^」]+)」", text)
+                if m_title:
+                    project_title = m_title.group(1)
+                m_sec = re.search(r"section_key['\"]?\s*[:=]\s*['\"]?([a-zA-Z0-9_-]+)", text)
+                if m_sec:
+                    section_key = m_sec.group(1)
+                if project_id is not None:
+                    title = f"项目 #{project_id}" + (f"「{project_title}」" if project_title else "")
+                    if section_key:
+                        title += f" {section_key}"
+            # write_file/patch 外证：磁盘存在 → verified；否则 unverified_tool
+            if path:
+                try:
+                    if os.path.exists(path):
+                        verified = "verified"
+                    else:
+                        verified = "verify_failed"
+                except Exception:
+                    verified = "unknown"
+            elif kind == "project_section":
+                verified = "unverified_tool"  # ScholarForge 之外未独立回读
+            item = {
+                "kind": kind,
+                "path": path,
+                "project_id": project_id,
+                "project_title": project_title,
+                "section_key": section_key,
+                "title": title,
+                "verified": verified,
+                "source_tool": tool_name,
+                "artifacts": artifacts or [],
+            }
+            return item
 
         def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
             _log.info(f"[ToolEvent] {event_type}: {tool_name}")
@@ -1832,6 +1907,19 @@ async def chat_completions(req: ChatRequest, request: Request):
                 if _artifacts:
                     event["artifacts"] = _artifacts
                     _session_artifacts.extend(_artifacts)
+                # U-P0-2: 交付条目 — 写回/产物类工具成功时登记（可核验）
+                if not kwargs.get("is_error", False) and (
+                    tool_name in ("write_file", "patch")
+                    or tool_name.startswith("scholarforge_write")
+                    or tool_name.startswith("scholarforge_export")
+                    or _artifacts
+                ):
+                    try:
+                        _item = _make_deliverable_item(tool_name, args or {}, preview or "", _artifacts)
+                        if _item:
+                            _session_deliverable_items.append(_item)
+                    except Exception:
+                        pass
                 # P1: 文件变更审计 — write_file/patch 成功后推 file_change 事件
                 if tool_name in ("write_file", "patch") and not kwargs.get("is_error", False):
                     _file_path = args.get("path", "") if args else ""
@@ -1880,12 +1968,32 @@ async def chat_completions(req: ChatRequest, request: Request):
                         if should_emit_delivery(_s):
                             # E1: 结构化 delivery 事件 — 只携带最终交付物（排除 agent 内核/中间产物）
                             _final_artifacts = _filter_delivery_artifacts(_session_artifacts)
+                            _items = _session_deliverable_items[-20:] if _session_deliverable_items else []
+                            _n_proj = sum(1 for it in _items if it.get("project_id") is not None)
+                            _n_ok = sum(1 for it in _items if it.get("verified") == "verified")
+                            if _items:
+                                _summary_text = (
+                                    f"本轮产出 {len(_items)} 项交付"
+                                    + (f"，其中 {_n_proj} 项归入论文项目" if _n_proj else "")
+                                    + (f"，{_n_ok} 项已外证" if _n_ok else "")
+                                )
+                            else:
+                                _summary_text = f"任务完成（{_s.get('completed', 0)}/{_s.get('total', 0)} 步）"
                             _delivery = {
+                                "contract": "v2.5-s1",
                                 "type": "delivery",
                                 "summary": _s,
+                                "text": _summary_text,
+                                "items": _items,
                                 "artifacts": _final_artifacts[-20:],  # 只保留最终交付物
                                 "changes_count": len(_session_changes),
                                 "changes": _session_changes[-20:],     # 最近20个变更
+                                "route": {
+                                    "requested_model": _route_event.get("requested_model"),
+                                    "strategy": _route_event.get("strategy"),
+                                    "provider": provider,
+                                    "model": model,
+                                },
                             }
                             _safe_put(_delivery)
                             _safe_put({"type": "task_complete", "summary": _s})
@@ -2068,6 +2176,11 @@ async def chat_completions(req: ChatRequest, request: Request):
         async def stream_generator():
             try:
                 yield f'data: {json.dumps({"type": "stream_start", "stream_id": _stream_id})}\n\n'
+                # U-P0-3: 路由信号 — 模型/Auto 解析结果，供 ChatHeader「本次路由」展示
+                try:
+                    yield f'data: {json.dumps(_route_event, ensure_ascii=False)}\n\n'
+                except Exception:
+                    pass
 
                 loop = asyncio.get_running_loop()
                 # 全局共享线程池，避免泄漏
@@ -2227,7 +2340,8 @@ async def chat_completions(req: ChatRequest, request: Request):
                 "message": {"role": "assistant", "content": final_response},
                 "finish_reason": "stop"
             }],
-            "usage": _usage
+            "usage": _usage,
+            "route": _route_event,
         }
 
 

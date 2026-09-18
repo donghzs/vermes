@@ -53,6 +53,19 @@ const harnessDegraded = computed(() => {
   return h.degraded === true && (h.fail_total ?? 0) > 0
 })
 
+// U-P0-3: 本回合模型 / Auto 路由（后端 SSE route 契约）
+const routeInfo = computed(() => chat.currentRouteInfo || null)
+const routeLabel = computed(() => {
+  const r = routeInfo.value
+  if (!r || r.signal === 'unavailable' || r.signal === 'unknown') return ''
+  const res = r.resolved || {}
+  const model = res.model || ''
+  const provider = res.provider || ''
+  const strat = r.strategy && r.strategy !== 'none' ? ` · ${r.strategy}` : ''
+  if (!model && !provider) return ''
+  return `${provider ? provider + '/' : ''}${model}${strat}`
+})
+
 // ── P0: Memory 指示器 ──
 const memStatus = ref(null)
 const showMemoryDetail = ref(false)
@@ -310,6 +323,16 @@ function closeDropdowns() {
         <span class="text-[10px] font-mono">{{ (!harnessStatus || harnessStatus.signal === 'unavailable') ? '—' : (harnessStatus.fail_total ?? '—') }}</span>
         <span class="header-tooltip group-hover:opacity-100">Harness{{ harnessDegraded ? ' · 异常' : '' }}</span>
       </button>
+      <!-- U-P0-3 本次路由：Auto/模型 解析结果；无信号不显示假值 -->
+      <div
+        v-if="routeLabel"
+        class="group relative flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-blue-600 dark:text-blue-300"
+        :title="`本回合路由：${routeLabel}`"
+      >
+        <span class="text-xs">🧭</span>
+        <span class="truncate max-w-[10rem]">{{ routeLabel }}</span>
+        <span class="header-tooltip group-hover:opacity-100">本次路由</span>
+      </div>
       <button @click="showHelp = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="使用帮助">❓<span class="header-tooltip group-hover:opacity-100">使用帮助</span></button>
       <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
         :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">

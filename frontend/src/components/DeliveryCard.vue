@@ -12,6 +12,28 @@
       </span>
     </div>
 
+    <!-- U-P0-2 契约摘要 + 路由 -->
+    <div v-if="text || routeLabel" class="px-4 pt-2 text-xs text-gray-600 dark:text-gray-300">
+      <div v-if="text">{{ text }}</div>
+      <div v-if="routeLabel" class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">本次路由：{{ routeLabel }}</div>
+    </div>
+
+    <!-- U-P0-2 交付条目（契约 items：项目/外证） -->
+    <div v-if="items.length > 0" class="px-4 pt-2">
+      <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">📋 交付清单 ({{ items.length }})</div>
+      <div class="space-y-1">
+        <div
+          v-for="(it, idx) in items.slice(0, 8)"
+          :key="idx"
+          class="flex items-start gap-2 px-2 py-1 rounded text-xs"
+        >
+          <span class="text-sm">{{ it.kind === 'project_section' ? '📝' : it.kind === 'file' ? '📄' : '📦' }}</span>
+          <span class="flex-1 text-gray-700 dark:text-gray-300 break-all">{{ it.title || it.path || it.source_tool || '交付项' }}</span>
+          <span class="text-[10px] shrink-0" :class="verifyClass(it.verified)">{{ verifyLabel(it.verified) }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- 交付产物列表（核心：用户真正关心的最终产物） -->
     <div v-if="artifacts.length > 0" class="px-4 py-2.5">
       <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">📦 交付产物 ({{ artifacts.length }})</div>
@@ -38,8 +60,8 @@
       </div>
     </div>
 
-    <!-- 空态 -->
-    <div v-if="artifacts.length === 0" class="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 text-center">
+    <!-- 空态：有 items 时不显示「无产物」误导 -->
+    <div v-if="artifacts.length === 0 && items.length === 0" class="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 text-center">
       任务已完成（无产物产出）
     </div>
   </div>
@@ -51,11 +73,39 @@ import { computed, ref } from 'vue'
 const props = defineProps({
   summary: { type: Object, default: () => ({ total: 0, completed: 0, in_progress: 0 }) },
   artifacts: { type: Array, default: () => [] },
+  // U-P0-2 E-P0-5：契约 items / text / route（缺省不编造）
+  items: { type: Array, default: () => [] },
+  text: { type: String, default: '' },
+  route: { type: Object, default: null },
   startTime: { type: Number, default: 0 },
   endTime: { type: Number, default: 0 },
 })
 
 const emit = defineEmits(['openArtifact', 'showAllArtifacts'])
+
+const routeLabel = computed(() => {
+  const r = props.route
+  if (!r || typeof r !== 'object') return ''
+  if (r.signal === 'unavailable' || r.ok === false) return ''
+  const res = r.resolved || {}
+  const model = res.model || r.model || ''
+  const provider = res.provider || r.provider || ''
+  const strategy = r.strategy && r.strategy !== 'none' ? ` · ${r.strategy}` : ''
+  if (!model && !provider) return ''
+  return `${provider ? provider + '/' : ''}${model || '—'}${strategy}`
+})
+
+function verifyLabel(v) {
+  if (v === 'verified') return '已核验'
+  if (v === 'unverified_tool') return '未独立核验'
+  if (v === 'verify_failed') return '核验失败'
+  return '暂无信号'
+}
+function verifyClass(v) {
+  if (v === 'verified') return 'text-green-600 dark:text-green-400'
+  if (v === 'verify_failed') return 'text-red-500 dark:text-red-400'
+  return 'text-gray-400 dark:text-gray-500'
+}
 
 // 默认显示最多 8 个产物，超出的折叠
 const showLimit = ref(8)

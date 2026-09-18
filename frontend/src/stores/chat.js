@@ -237,6 +237,7 @@ export const useChatStore = defineStore('chat', () => {
   const statusMessages = ref([])     // deprecated, use sessionStatusMessages
   const sessionStatusMessages = ref({})
   const sessionActiveStreamIds = ref({})
+  // U-P0-3: 每会话最近一次 route 事件（模型/Auto 解析结果）
   const evolutionEvents = ref([])    // 进化事件(成就/建议)
   const showAchievement = ref(false) // 成就弹窗
   const achievementData = ref(null)  // 当前展示的成就
@@ -250,12 +251,15 @@ export const useChatStore = defineStore('chat', () => {
   const sessionShowTodoPanel = ref({})        // sessionId → boolean
   // P0: 本回合新产生的产物 id 集合，用于无任务规划时自动聚合 delivery 消息
   const sessionPendingDeliveryArtifacts = ref({}) // sessionId → Set<string>
+  // U-P0-3: 每会话最近一次 route 事件（E-P0-5 契约；缺信号=null → UI 暂无）
+  const sessionRouteInfo = ref({}) // sessionId → route payload
 
   // ── 全局 UI 状态(跨会话共享,不需要分片)──
   const pendingApproval = ref(null)  // 工具审批请求
 
   // ── 当前会话的 computed 视图(自动跟随 currentSessionId)──
   const todoItems = computed(() => sessionTodoItems.value[currentSessionId.value] || [])
+  const currentRouteInfo = computed(() => sessionRouteInfo.value[currentSessionId.value] || null)
   // 任务树：按 parent_id 把扁平 todoItems 组装成带 children / depth 的层级结构，
   // 供中栏 TaskFlowCard 渲染 WorkBuddy 风格的可折叠任务流。
   const taskTree = computed(() => {
@@ -1086,6 +1090,11 @@ export const useChatStore = defineStore('chat', () => {
           sessionStatusMessages.value[sendSessionId] = arr
           scheduleScroll()
         },
+        onRoute: (route) => {
+          // U-P0-3: 本回合模型/Auto 路由（contract v2.5-s1）；缺字段不编造
+          if (!route || typeof route !== 'object') return
+          sessionRouteInfo.value = { ...sessionRouteInfo.value, [sendSessionId]: route }
+        },
         onReasoning: (text) => {
           // 推理链内容 delta:累加到 assistant message 的 reasoning 字段
           const am = messages.value.find(m => m.id === aid)
@@ -1278,6 +1287,9 @@ export const useChatStore = defineStore('chat', () => {
           // E1: 后端结构化 delivery 事件 — 只保留最终交付物（后端已过滤）
           const summary = data?.summary || {}
           const backendArtifacts = data?.artifacts || []
+          const deliverableItems = data?.items || []
+          const deliveryText = data?.text || ''
+          const routeInfo = data?.route || null
           const curItems = sessionTodoItems.value[sendSessionId] || []
           const startTime = curItems[0]?.started_at ? curItems[0].started_at * 1000 : 0
           const _va = window.__vermesArtifacts
@@ -1312,6 +1324,9 @@ export const useChatStore = defineStore('chat', () => {
             timestamp: Date.now(),
             delivery: {
               summary,
+              text: deliveryText,
+              items: deliverableItems,
+              route: routeInfo,
               artifacts: deliveryArtifacts,
               startTime,
               endTime: Date.now(),
@@ -1739,6 +1754,7 @@ export const useChatStore = defineStore('chat', () => {
     reasoningEffort, searchEnabled, searchMode, searchQuery,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,
+    sessionRouteInfo, currentRouteInfo,
     sessionActiveStreamIds, currentActiveStreamId,
     lastTokenUsage, streamConnected, isOnline, isWindows,
     cacheMetrics,
