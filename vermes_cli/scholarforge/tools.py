@@ -4126,4 +4126,4 @@ def register_tools(host_api=None):
         emoji="📖",
         description="读取论文章节内容（单章或全部概览）",
     )
-    logger.info("[ScholarForge] 27 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project/read_section/run_pipeline")
+    logger.info("[ScholarForge] 28 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/stats_table/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project/read_section/run_pipeline")

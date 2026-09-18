@@ -63,7 +63,7 @@ class BenchmarkTask:
 
 
 TASKS: List[BenchmarkTask] = [
-    # ── 单工具探针（27 个，覆盖全部已注册工具）──
+    # ── 单工具探针（覆盖已注册工具；含 stats_table）──
     BenchmarkTask(
         id="sf_search", title="学术检索", kind="single", tools=["search"],
         category="tool_probe", description="arXiv/Crossref 等免费源检索文献",

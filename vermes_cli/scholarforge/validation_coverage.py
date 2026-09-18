@@ -25,6 +25,7 @@ VALIDATED_TOOLS: Dict[str, List[int]] = {
     "score": [1, 3],                   # L1938 输入 + L1944 score_paper
     "verify_citations": [1, 3],        # L2267 输入 + L2272 verify_citation_authenticity
     "check_stats": [1, 3],             # L2882 输入 + L2887 check_statistics_consistency
+    "stats_table": [1, 2],             # 输入/表格解析 + 复用 check_statistics_consistency
     "detect_design_flaws": [1, 3],      # L2946 输入 + L2964 detect_design_flaws(+llm)
     "review_claims": [1, 3],           # L2329 输入 + L2340 review_claims
     "quality_gate": [1, 3],            # L3132 输入 + L3136 run_full_quality_gate→run_all_validators
@@ -35,7 +36,7 @@ VALIDATED_TOOLS: Dict[str, List[int]] = {
     "literature_matrix": [1],          # P4-3 补 L2571 T1：topic/tag 至少提供一个
     # ── 纯输入 / 转换 / 抓取（T1，深度校验预期之外，列为已校准）──
     "search": [1],                     # L567 查询非空
-    "learn_style": [1],                # L1367 项目守卫 + L1370 样本≥100
+    "learn_style": [1],                # 项目守卫 + 样本硬拒 <100；100~499 显形警告
     "outline": [1],                    # L1530 输入 + L3806 写回 verify_fn
     "polish": [1],                     # L1633 文本非空
     "export": [1],                     # L2068 标题/内容非空 + L2161 fmt 枚举

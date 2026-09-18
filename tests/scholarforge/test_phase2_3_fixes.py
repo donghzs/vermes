@@ -300,7 +300,7 @@ class TestUsageTracking:
         assert with_usage_calls == register_calls, (
             f"每个工具都须经 _with_usage 包装：register={register_calls}, with_usage={with_usage_calls}"
         )
-        # 当前 ScholarForge 工具总数（26 既有 + run_pipeline 元工具）
-        assert register_calls == 27, (
-            f"ScholarForge 工具数应为 27（新增 scholarforge_run_pipeline），实际 {register_calls}"
+        # 当前 ScholarForge 工具总数（26 既有 + run_pipeline + stats_table）
+        assert register_calls == 28, (
+            f"ScholarForge 工具数应为 28（含 scholarforge_stats_table），实际 {register_calls}"
         )

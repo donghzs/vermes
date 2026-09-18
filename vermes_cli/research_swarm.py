@@ -6,7 +6,7 @@ Why this module exists
 
 * ``tools/literature_search_tool.py:40`` → 工具 ``literature_search``
   （跨 provider 的文献检索）。
-* ``vermes_cli/scholarforge/`` → 27 个学术工具，见 ``module.yaml`` 的
+* ``vermes_cli/scholarforge/`` → 28 个学术工具，见 ``module.yaml`` 的
   ``provides_tools``（search / outline / write / review / quality_gate /
   verify_citations / literature_matrix / research_map ...）。
 * ``vermes_cli/kanban_swarm.py`` → ``create_swarm`` 蜂群原语：
