@@ -2510,6 +2510,38 @@ async def evolution_status():
         return {"active": False, "error": str(e)}
 
 
+async def harness_status():
+    """U-P0-1 / E-P0-5: harness fail-open 可观测状态（契约 v2.5-s1）。
+
+    消费 agent.tool_executor.get_harness_fail_counts()。
+    SSE 事件流尚未接线时，此 HTTP 端点作为 harness_status 的最小信号源；
+    缺信号时前端应显示「暂无信号」，禁止把空 counts 当成「全部正常」。
+    """
+    try:
+        from agent.tool_executor import get_harness_fail_counts
+        counts = get_harness_fail_counts() or {}
+        total = sum(int(v) for v in counts.values()) if counts else 0
+        return {
+            "contract": "v2.5-s1",
+            "type": "harness_status",
+            "ok": True,
+            "fail_counts": counts,
+            "fail_total": total,
+            "degraded": total > 0,
+            "signal": "http_poll",  # 非 SSE；后续可升为 event stream
+        }
+    except Exception as e:
+        return {
+            "contract": "v2.5-s1",
+            "type": "harness_status",
+            "ok": False,
+            "error": str(e),
+            "fail_counts": {},
+            "fail_total": None,
+            "signal": "unavailable",
+        }
+
+
 async def evolution_health():
     """M3 fail-loud: Return flywheel health status for observability.
 
@@ -6653,6 +6685,12 @@ def register_to(app):
         evolution_status,
         methods=["GET"],
         name="evolution_status",
+    )
+    app.add_api_route(
+        "/api/harness/status",
+        harness_status,
+        methods=["GET"],
+        name="harness_status",
     )
     app.add_api_route(
         "/api/evolution/health",

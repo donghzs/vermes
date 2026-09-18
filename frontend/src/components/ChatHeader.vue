@@ -37,6 +37,22 @@ function openEvolutionPanel() {
   })
 }
 
+// ── U-P0-1: Harness 可观测（E-P0-5 契约 harness_status，HTTP 轮询最小信号源）──
+const harnessStatus = ref(null)
+async function fetchHarnessStatus() {
+  try {
+    const r = await fetch('/api/harness/status')
+    if (r.ok) harnessStatus.value = await r.json()
+  } catch { /* 缺信号 → UI 显示暂无 */ }
+}
+useVisiblePoll(fetchHarnessStatus, 45000)
+
+const harnessDegraded = computed(() => {
+  const h = harnessStatus.value
+  if (!h || h.signal === 'unavailable' || h.ok === false) return false
+  return h.degraded === true && (h.fail_total ?? 0) > 0
+})
+
 // ── P0: Memory 指示器 ──
 const memStatus = ref(null)
 const showMemoryDetail = ref(false)
@@ -279,6 +295,21 @@ function closeDropdowns() {
         <span class="text-[10px] font-mono" :class="memoryBlocksList.length > 0 ? 'text-green-500' : 'text-gray-400'">{{ memoryBlocksList.length || '—' }}</span>
         <span class="header-tooltip group-hover:opacity-100">记忆 · {{ memoryBlocksList.length }} 个记忆块</span>
       </div>
+      <!-- U-P0-1 Harness 状态灯：degraded=琥珀；无信号=灰（禁止假绿灯） -->
+      <button
+        class="group relative flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+        :class="harnessDegraded ? 'text-amber-600 dark:text-amber-300' : 'text-gray-400'"
+        :title="!harnessStatus || harnessStatus.signal === 'unavailable'
+          ? 'Harness：暂无信号'
+          : harnessDegraded
+            ? `Harness：${harnessStatus.fail_total} 次 fail-open 失败`
+            : 'Harness：本进程暂无 fail-open 失败计数'"
+        @click="fetchHarnessStatus"
+      >
+        <span class="text-xs">🛡</span>
+        <span class="text-[10px] font-mono">{{ (!harnessStatus || harnessStatus.signal === 'unavailable') ? '—' : (harnessStatus.fail_total ?? '—') }}</span>
+        <span class="header-tooltip group-hover:opacity-100">Harness{{ harnessDegraded ? ' · 异常' : '' }}</span>
+      </button>
       <button @click="showHelp = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="使用帮助">❓<span class="header-tooltip group-hover:opacity-100">使用帮助</span></button>
       <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
         :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">
