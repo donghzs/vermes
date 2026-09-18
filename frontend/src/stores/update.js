@@ -173,20 +173,49 @@ export const useUpdateStore = defineStore('update', () => {
         hasUpdate.value = true
 
         // 解析下载 URL / 校验和。
-        // 历史上 version.json 出现过多种键名写法（mac / macOS / macos、url / dmg / zip），
-        // 线上实际投放的是 { mac: { url, sha256 }, windows: { url, sha256, size } }，
-        // 而旧解析器只认 macOS.dmg / windows.exe —— 两边对不上时 downloadUrl 会静默解析成
-        // 空串，表现为"更新弹窗出来了但点下载没反应"。这里改成宽松取值，任何一种写法都能命中。
+        // version.json 历史上出现过多种写法：
+        //   · downloads.{mac,windows}.{arm64,x64|url}
+        //   · 顶层 mac:{arm64,x64} / windows:{url}
+        //   · 顶层 mac:{url} / macOS / macos
+        // 旧解析器只认顶层 url，遇到 {mac:{arm64:{url}}} 会得到空 downloadUrl，
+        // 表现为「更新弹窗出来了但点下载没反应」。这里按 downloads → 顶层 → 架构嵌套 宽松取值。
         const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac')
+        const ua = navigator.userAgent || ''
+        const isArm = /arm|aarch64/i.test(ua) ||
+          (typeof navigator.userAgentData?.architecture === 'string' &&
+            /arm/i.test(navigator.userAgentData.architecture))
         const absolutize = (u) => (u && u.startsWith('/')) ? `https://vbit.top${u}` : (u || '')
-        // 平台节点：按 mac / macOS / macos / darwin（或 windows / win）依次探测
-        const platNode = isMac
-          ? (res.mac || res.macOS || res.macos || res.darwin || null)
-          : (res.windows || res.win || null)
-        // 节点内的下载地址：url / dmg / zip / exe / installer 任取其一
-        const nodeUrl = platNode && typeof platNode === 'object'
-          ? (platNode.url || platNode.dmg || platNode.zip || platNode.exe || platNode.installer || '')
-          : (typeof platNode === 'string' ? platNode : '')
+
+        const urlOf = (node) => {
+          if (!node) return ''
+          if (typeof node === 'string') return node
+          if (typeof node !== 'object') return ''
+          return node.url || node.dmg || node.zip || node.exe || node.installer || ''
+        }
+        const pickArchNode = (root) => {
+          if (!root || typeof root !== 'object') return null
+          // 已是扁平节点（含 url 等）
+          if (urlOf(root)) return root
+          // 架构嵌套：优先本机架构
+          const order = isMac
+            ? (isArm ? ['arm64', 'x64', 'mac'] : ['x64', 'arm64', 'mac'])
+            : (['x64', 'win', 'windows', 'ia32', 'arm64'])
+          for (const key of order) {
+            if (root[key] && urlOf(root[key])) return root[key]
+          }
+          // 兜底：任意一个带 url 的子节点
+          for (const v of Object.values(root)) {
+            if (v && typeof v === 'object' && urlOf(v)) return v
+          }
+          return null
+        }
+
+        const downloads = (res.downloads && typeof res.downloads === 'object') ? res.downloads : null
+        const platRoot = isMac
+          ? (downloads?.mac || res.mac || res.macOS || res.macos || res.darwin || null)
+          : (downloads?.windows || res.windows || res.win || null)
+        const platNode = pickArchNode(platRoot)
+        const nodeUrl = urlOf(platNode)
 
         if (typeof res.download_url === 'string') {
           downloadUrl.value = res.download_url
@@ -200,13 +229,13 @@ export const useUpdateStore = defineStore('update', () => {
           downloadUrl.value = absolutize(res.mac_url || res.win_url || '')
         }
 
-        // 校验和：顶层 sha256（字符串/对象）优先，其次取平台节点内的 sha256
+        // 校验和：顶层 sha256（字符串/对象）优先，其次取平台/架构节点内的 sha256
         if (typeof res.sha256 === 'string' && res.sha256) {
           sha256.value = res.sha256
         } else if (res.sha256 && typeof res.sha256 === 'object') {
           sha256.value = isMac
-            ? (res.sha256.macos_dmg || res.sha256.macos_zip || '')
-            : (res.sha256.windows_exe || res.sha256.windows_zip || '')
+            ? (res.sha256.macos_dmg || res.sha256.macos_zip || res.sha256.arm64 || res.sha256.x64 || '')
+            : (res.sha256.windows_exe || res.sha256.windows_zip || res.sha256.x64 || '')
         } else if (platNode && typeof platNode === 'object') {
           sha256.value = platNode.sha256 || platNode.sha_256 || ''
         }
