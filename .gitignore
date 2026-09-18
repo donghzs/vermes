@@ -21,7 +21,8 @@ privvy*
 cli-config.yaml
 
 # ── Build artifacts ──
-build/
+build/*
+!build/installer.nsh
 dist/
 dist-electron/
 dist-modules/*.tar.gz

@@ -330,6 +330,11 @@ _CORE_PKGS = [
     'multipart',
     # 向量检索（RAG 后端）
     'sqlite_vec',
+    # 文档解析（PDF/DOCX 上传解析 + ScholarForge 导出）
+    # 注意：代码 import fitz（chat.py:293），fitz 是 pymupdf 的兼容壳包，两者都要收
+    'pymupdf', 'fitz', 'docx', 'lxml',
+    # Windows 进程树扫描（main.py 依赖，pyproject 核心依赖）
+    'psutil',
 ]
 
 # 渠道包（可选依赖残缺不阻断，on_error='warn once'）：第三方渠道 SDK 可能带
