@@ -1,18 +1,18 @@
 {
   "version": "2.4.9",
   "releaseDate": "2026-09-18",
-  "notes": "Vermes 2.4.9 正式版：① ScholarForge 统计转三线表（stats_table）——SPSS 表/统计结论句→GFM 三线表，覆盖成对样本/卡方/相关/GLM/回归/ANCOVA/逻辑回归/因子/正态性/莱文等，并修复 F↔η² 等校验适用条件；② 论文工具箱：28 工具中文化 + 新手模式「写论文的 8 步」+ 兜底项目显形 + learn_style 门槛显形；③ 桌面体验：首屏代码分割、轮询去抖、定时器/watcher 泄漏修复、托盘与全局快捷键、窗口记忆、设置页搜索；④ 上手：创作工作室打开即用与 studio blueprint 注册、论文页环境自检与项目归属同步；⑤ 更新链路：version.json 支持 downloads 与 mac 架构嵌套解析，避免 Mac 更新弹窗有、下载空。本包为本机构建冒烟产物；对外上传与自动更新投放以验证通过后的清单为准。",
+  "notes": "Vermes 2.4.9 正式版：① ScholarForge 统计转三线表（stats_table）——SPSS 表/统计结论句→GFM 三线表，覆盖成对样本/卡方/相关/GLM/回归/ANCOVA/逻辑回归/因子/正态性/莱文等，并修复 F↔η² 等校验适用条件；② 论文工具箱：28 工具中文化 + 新手模式「写论文的 8 步」+ 兜底项目显形 + learn_style 门槛显形；③ 桌面体验：首屏代码分割、轮询去抖、定时器/watcher 泄漏修复、托盘与全局快捷键、窗口记忆、设置页搜索；④ 上手：创作工作室打开即用与 studio blueprint 注册、论文页环境自检与项目归属同步；⑤ 更新链路：version.json 支持 downloads 与 mac 架构嵌套解析，避免 Mac 更新弹窗有、下载空；⑥ 免费体验：微信扫码可选模型加入 Agnes 3.0 Flash。本包为本机构建冒烟产物；对外上传与自动更新投放以验证通过后的清单为准。",
   "downloads": {
     "mac": {
       "arm64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-arm64.dmg",
-        "sha256": "bb4256005c6171f56b80c2648af44d6a416dc8458683d2f6e9f1f59e58865056",
-        "size": 277753620
+        "sha256": "76b5353329ca3c59a0384730cec90569d433c45f95f7c2b896d709b37ee5ccb4",
+        "size": 277601158
       },
       "x64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9.dmg",
-        "sha256": "d964ee08796fdaa8a570e66cae2279927399258e03eb7a4f954268d76b48c2b6",
-        "size": 282748729
+        "sha256": "6a7b98ada76c2f07890a34c4ccfb5a62464103306f8f10753b0b931242e6a934",
+        "size": 282591613
       }
     },
     "windows": {
@@ -25,13 +25,13 @@
   "mac": {
     "arm64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-arm64.dmg",
-      "sha256": "bb4256005c6171f56b80c2648af44d6a416dc8458683d2f6e9f1f59e58865056",
-      "size": 277753620
+      "sha256": "76b5353329ca3c59a0384730cec90569d433c45f95f7c2b896d709b37ee5ccb4",
+      "size": 277601158
     },
     "x64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9.dmg",
-      "sha256": "d964ee08796fdaa8a570e66cae2279927399258e03eb7a4f954268d76b48c2b6",
-      "size": 282748729
+      "sha256": "6a7b98ada76c2f07890a34c4ccfb5a62464103306f8f10753b0b931242e6a934",
+      "size": 282591613
     }
   },
   "windows": {
