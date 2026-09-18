@@ -9,6 +9,7 @@ import ToolSkillDrawer from './components/ToolSkillDrawer.vue'
 import ArtifactPanel from './components/ArtifactPanel.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
 import CommandPalette from './components/CommandPalette.vue'
+import PrereqBanner from './components/PrereqBanner.vue'
 import { useChatStore } from './stores/chat'
 import { useBackendConnectionStore } from './stores/backendConnection'
 import { useUpdateStore } from './stores/update'
@@ -66,15 +67,21 @@ onMounted(async () => {
   </div>
   <div v-else class="flex flex-col h-screen bg-white dark:bg-gray-900" :data-theme="theme">
     <!-- G5 启动守卫：profile 错配横幅（不阻断，仅提醒） -->
-    <div v-if="profileMismatch" class="bg-amber-50 dark:bg-amber-900/30 border-b border-amber-300 dark:border-amber-700 px-4 py-2 text-sm text-amber-800 dark:text-amber-200 flex items-center justify-between">
-      <span>⚠️ 检测到 profile 配置不一致：当前激活 profile 与进程实际使用的 profile 不同，数据可能写入非预期位置。如无需保留旧目录数据可忽略；否则请在设置中校准 profile。</span>
-      <button class="ml-3 shrink-0 text-amber-600 dark:text-amber-400 underline" @click="profileMismatch = false">知道了</button>
-    </div>
+    <PrereqBanner
+      :visible="profileMismatch"
+      tone="amber"
+      text="检测到 profile 配置不一致：当前激活 profile 与进程实际使用的 profile 不同，数据可能写入非预期位置。如无需保留旧目录数据可忽略；否则请在设置中校准 profile。"
+      dismissible
+      @dismiss="profileMismatch = false"
+    />
     <!-- Bug B: 崩溃看门狗自动回滚通知 -->
-    <div v-if="rolledBackVersion" class="bg-orange-50 dark:bg-orange-900/30 border-b border-orange-300 dark:border-orange-700 px-4 py-2 text-sm text-orange-800 dark:text-orange-200 flex items-center justify-between">
-      <span>⚠️ 检测到上次启动异常，已自动回滚到 v{{ rolledBackVersion }}。如反复出现请联系支持。</span>
-      <button class="ml-3 shrink-0 text-orange-600 dark:text-orange-400 underline" @click="rolledBackVersion = null">知道了</button>
-    </div>
+    <PrereqBanner
+      :visible="!!rolledBackVersion"
+      tone="red"
+      :text="`检测到上次启动异常，已自动回滚到 v${rolledBackVersion}。如反复出现请联系支持。`"
+      dismissible
+      @dismiss="rolledBackVersion = null"
+    />
     <ErrorBoundary>
       <div class="flex flex-1 overflow-hidden">
         <Sidebar />

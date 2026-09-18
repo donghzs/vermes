@@ -89,8 +89,15 @@
           <span v-if="recipes.length" class="text-xs text-gray-400">{{ recipes.length }} 个</span>
           <span class="text-[11px] text-gray-400">· 点「⛩️ 登堂」接入神魔堂，进群聊即可 @ 拉入</span>
         </div>
-        <div v-if="loading && recipes.length === 0" class="text-center text-gray-400 py-6 text-sm">⏳ 加载食谱中…</div>
-        <div v-else-if="filteredRecipes.length === 0" class="text-center text-gray-400 py-6 text-sm">暂无匹配的可登堂食谱</div>
+        <StateBlock v-if="loading && recipes.length === 0" state="loading" text="加载食谱中…" compact />
+        <StateBlock
+          v-else-if="filteredRecipes.length === 0"
+          state="empty"
+          icon="🤖"
+          text="暂无匹配的可登堂食谱"
+          detail="可清空搜索关键词，或到「神魔架」查看本机 agent"
+          compact
+        />
         <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           <div
             v-for="r in filteredRecipes"
@@ -142,17 +149,26 @@
         </div>
       </div>
 
-      <div v-if="loading && agents.length === 0" class="text-center text-gray-400 py-12">
-        <p class="text-lg animate-pulse">⏳ 正在扫描本机 agent…</p>
-      </div>
-      <div v-else-if="error" class="text-center text-red-400 py-12">
-        <p class="text-lg">⚠️ 加载失败</p>
-        <p class="text-sm mt-2">{{ error }}</p>
-      </div>
-      <div v-else-if="filtered.length === 0" class="text-center text-gray-400 py-12">
-        <p class="text-lg">🤖 暂未发现智能体</p>
-        <p class="text-sm mt-2">本机未安装常见 CLI / App，或封神榜暂无数据</p>
-      </div>
+      <StateBlock
+        v-if="loading && agents.length === 0"
+        state="loading"
+        text="正在扫描本机 agent…"
+      />
+      <StateBlock
+        v-else-if="error"
+        state="error"
+        text="加载失败"
+        :detail="error"
+        action-label="重试"
+        @action="loadAgents(true)"
+      />
+      <StateBlock
+        v-else-if="filtered.length === 0"
+        state="empty"
+        icon="🤖"
+        text="暂未发现智能体"
+        detail="本机未安装常见 CLI / App，或封神榜暂无数据"
+      />
       <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <div
           v-for="a in filtered"
@@ -484,6 +500,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../services/api'
 import { showToast as toast } from '../utils/toast'
+import StateBlock from './StateBlock.vue'
 
 // 安全打开外链（在桌面壳里走系统浏览器，网页里新窗口）
 function windowOpen(url) {

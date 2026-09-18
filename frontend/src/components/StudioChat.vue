@@ -275,7 +275,14 @@
 
     <!-- 历史画廊 -->
     <div v-if="showGallery" class="gallery-panel">
-      <div v-if="gallery.length === 0" class="gallery-empty">暂无生成历史</div>
+      <StateBlock
+        v-if="gallery.length === 0"
+        state="empty"
+        icon="🖼️"
+        text="暂无生成历史"
+        detail="在创作页生成文/图/视频后会出现在这里"
+        compact
+      />
       <div v-else class="gallery-grid">
         <div v-for="item in gallery" :key="item.id" class="gallery-item" @click="reopenGalleryItem(item)">
           <img v-if="item.type === 'image'" :src="item.url" :alt="item.prompt" />
@@ -317,6 +324,7 @@ import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { logger } from '@/utils/logger'
 import { useConfirm } from '../composables/useConfirm'
+import StateBlock from './StateBlock.vue'
 const { confirm } = useConfirm()
 
 const router = useRouter()

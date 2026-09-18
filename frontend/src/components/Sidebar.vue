@@ -9,6 +9,7 @@ const { confirm } = useConfirm()
 import { loadMessagesFromIDB } from '../stores/chat-storage'
 import api from '../services/api'
 import KnowledgeBase from './KnowledgeBase.vue'
+import StateBlock from './StateBlock.vue'
 
 // ExpertCatalog 已迁至 ToolSkillDrawer 专家 tab
 import { useRightPanel } from '../composables/useRightPanel'
@@ -544,7 +545,14 @@ async function handleImportFile(e) {
             <span class="truncate">⚙️ {{ bg.name || 'curator 审查' }} <span class="text-gray-400 ml-1">#{{ (bg.id || '').slice(0, 8) }}</span></span>
             <button @click.stop="handleDelete(bg.id)" class="text-red-400 hover:text-red-600 transition ml-2 shrink-0" title="删除">×</button>
           </div>
-          <div v-if="backgroundSessions.length === 0" class="text-[10px] text-gray-400 px-1 py-1">暂无后台任务</div>
+          <StateBlock
+            v-if="backgroundSessions.length === 0"
+            state="empty"
+            icon="⚙️"
+            text="暂无后台任务"
+            detail="curator 等系统审查任务会出现在这里"
+            compact
+          />
         </div>
       </div>
 
@@ -662,17 +670,27 @@ async function handleImportFile(e) {
           </div>
         </template>
 
-        <!-- 空状态 -->
-        <div v-if="groupedSessions.pinned.length === 0 && groupedSessions.items.length === 0" class="text-center text-gray-400 dark:text-gray-500 text-xs py-6">
-          <template v-if="searchQuery">没有匹配的会话</template>
-          <template v-else>
-            <div class="mb-2">暂无会话</div>
-            <div class="flex items-center justify-center gap-2">
+        <StateBlock
+          v-if="groupedSessions.pinned.length === 0 && groupedSessions.items.length === 0 && searchQuery"
+          state="empty"
+          icon="🔍"
+          text="没有匹配的会话"
+          detail="换个关键词，或清空搜索查看全部会话"
+        />
+        <StateBlock
+          v-else-if="groupedSessions.pinned.length === 0 && groupedSessions.items.length === 0"
+          state="empty"
+          icon="💬"
+          text="暂无会话"
+          detail="新建对话，或组个队开启多 Agent 协作"
+        >
+          <template #actions>
+            <div class="mt-1.5 flex items-center justify-center gap-2">
               <button @click="chat.createSession('新会话')" class="px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition">💬 新建对话</button>
               <button @click="goShenmotang()" class="px-2 py-1 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition">⛩️ 组个队</button>
             </div>
           </template>
-        </div>
+        </StateBlock>
       </div>
 
       <!-- 底部工具栏（方案B：grid-cols-4 紧凑 + 悬停弹功能介绍，文字不再占高） -->

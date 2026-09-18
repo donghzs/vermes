@@ -3,6 +3,7 @@ import { ref, computed, watch, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
+import StateBlock from './StateBlock.vue'
 import MarkdownIt from 'markdown-it'
 // highlight.js 改为按需加载（见下方 loadHljs）—— 它整块 72.5 KB 原本被常驻挂载的
 // 本组件拖进首屏，而聊天页（MessageList）只用 markdown-it、根本不用 hljs。
@@ -1083,7 +1084,13 @@ async function runPatchDocx() {
                 <span>{{ chat.currentSession.name || '未命名会话' }}</span>
               </div>
             </div>
-            <div v-if="artifacts.length === 0" class="flex flex-col items-center justify-center text-gray-400 py-12"><div class="text-3xl mb-2">📄</div><div class="text-xs">暂无产物</div></div>
+            <StateBlock
+              v-if="artifacts.length === 0"
+              state="empty"
+              icon="📄"
+              text="暂无产物"
+              detail="对话中让 Agent 写文件后，产物会出现在这里"
+            />
             <div v-else class="space-y-0.5">
               <div v-for="a in artifacts" :key="a.id" class="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition" @click="openArtifactTab(a)">
                 <span class="shrink-0">{{ fileIconFor(a) }}</span>
@@ -1096,7 +1103,13 @@ async function runPatchDocx() {
 
           <!-- 工作空间 -->
           <div v-else-if="activeFunc?.id === 'workspace'" class="px-3 py-3">
-            <div v-if="workspaceFiles.length === 0" class="flex flex-col items-center justify-center text-gray-400 py-12"><div class="text-3xl mb-2">📁</div><div class="text-xs">暂无文件</div></div>
+            <StateBlock
+              v-if="workspaceFiles.length === 0"
+              state="empty"
+              icon="📁"
+              text="暂无文件"
+              detail="工作区读写过的文件会汇总到这里"
+            />
             <div v-else class="space-y-0.5">
               <div v-for="f in workspaceFiles" :key="f.path" class="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition" @click="openWorkspaceTab(f)">
                 <span class="shrink-0">{{ f.icon }}</span>
@@ -1108,7 +1121,13 @@ async function runPatchDocx() {
 
           <!-- 变更 -->
           <div v-else-if="activeFunc?.id === 'changes'" class="px-3 py-3">
-            <div v-if="changes.length === 0" class="flex flex-col items-center justify-center text-gray-400 py-12"><div class="text-3xl mb-2">📝</div><div class="text-xs">暂无文件变更</div></div>
+            <StateBlock
+              v-if="changes.length === 0"
+              state="empty"
+              icon="📝"
+              text="暂无文件变更"
+              detail="写文件 / 打补丁等变更会记录在这里"
+            />
             <div v-else class="space-y-0.5">
               <div v-for="c in changes" :key="c.id" class="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition" @click="openChangeTab(c)">
                 <span class="shrink-0">{{ c.action === 'write' ? '✍️' : c.action === 'patch' ? '🔧' : '📄' }}</span>

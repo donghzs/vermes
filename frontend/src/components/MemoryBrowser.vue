@@ -4,6 +4,7 @@ import api from '../services/api'
 import { useMemoryFlagsStore } from '../stores/memoryFlags'
 import MemoryFlags from './MemoryFlags.vue'
 import { showToast } from '../utils/toast'
+import StateBlock from './StateBlock.vue'
 
 const flagsStore = useMemoryFlagsStore()
 
@@ -154,8 +155,14 @@ onMounted(() => {
     </div>
 
     <!-- 记忆列表 -->
-    <div v-if="loading" class="text-center py-8 text-gray-400">加载中…</div>
-    <div v-else-if="memories.length === 0" class="text-center py-8 text-gray-400">无记忆</div>
+    <StateBlock v-if="loading" state="loading" text="加载记忆…" />
+    <StateBlock
+      v-else-if="memories.length === 0"
+      state="empty"
+      icon="🧠"
+      text="无记忆"
+      detail="可调整筛选条件，或先在对话中让 Agent 沉淀经验"
+    />
     <div v-else class="space-y-2">
       <div v-for="m in memories" :key="m.id"
            @click="openDetail(m.id)"

@@ -5,6 +5,7 @@
 // 交互: 点击任务卡展开详情抽屉、拖拽移列、新建任务、手动 dispatch
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import StateBlock from './StateBlock.vue'
 
 const router = useRouter()
 
@@ -472,27 +473,28 @@ function goChat() { router.push('/') }
       <button @click="error = ''" class="text-red-400 hover:text-red-600">✕</button>
     </div>
 
-    <!-- 加载态 -->
-    <div v-if="loading && !board" class="flex-1 flex items-center justify-center text-sm text-gray-400">
-      正在加载蜂群任务图…
-    </div>
+    <StateBlock
+      v-if="loading && !board"
+      state="loading"
+      text="正在加载蜂群任务图…"
+      class="flex-1"
+    />
 
-    <!-- 空态 -->
-    <div v-else-if="board && stats.total === 0" class="flex-1 flex flex-col items-center justify-center text-center gap-3 px-6">
-      <div class="text-5xl">🐝</div>
-      <p class="text-sm text-gray-500 max-w-md">
-        还没有蜂群任务。在对话里让 Vermes 用 <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">kanban swarm</code>
-        拆解复杂任务，或点击「新建」手动创建。
-      </p>
-      <div class="flex gap-2">
-        <button @click="showNewTask = true" class="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
-          新建任务
-        </button>
-        <button @click="goChat" class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
-          去对话
-        </button>
-      </div>
-    </div>
+    <StateBlock
+      v-else-if="board && stats.total === 0"
+      state="empty"
+      icon="🐝"
+      text="还没有蜂群任务"
+      detail="在对话里让 Vermes 用 kanban swarm 拆解复杂任务，或点击「新建」手动创建"
+      class="flex-1"
+    >
+      <template #actions>
+        <div class="mt-2 flex gap-2">
+          <button @click="showNewTask = true" class="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">新建任务</button>
+          <button @click="goChat" class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition">去对话</button>
+        </div>
+      </template>
+    </StateBlock>
 
     <!-- 统计面板（展开式） -->
     <div v-if="showStats && statsData" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0">

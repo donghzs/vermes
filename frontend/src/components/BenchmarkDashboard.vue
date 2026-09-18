@@ -106,16 +106,20 @@
       </div>
     </div>
 
-    <!-- 空态 -->
-    <div v-if="!running && runs.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500">
-      暂无 benchmark 记录。点击「触发 Dry-Run」开始第一次运行。
-    </div>
+    <StateBlock
+      v-if="!running && runs.length === 0"
+      state="empty"
+      icon="📈"
+      text="暂无 benchmark 记录"
+      detail="点击「触发 Dry-Run」开始第一次运行"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { envHeaders } from '../utils/env'
+import StateBlock from './StateBlock.vue'
 
 const runs = ref([])
 const tasks = ref([])

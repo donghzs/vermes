@@ -5,6 +5,7 @@
 // 全部复用既有端点/invoke，无新增后端逻辑（符合「A 面板统一收敛」纪律）。
 import { ref, computed } from 'vue'
 import { useScholarStore } from '../../stores/scholar'
+import PrereqBanner from '../PrereqBanner.vue'
 
 const scholar = useScholarStore()
 
@@ -136,7 +137,13 @@ function importText() {
       <p class="text-sm text-gray-500">
         上传 PDF 论文，后端用 PyMuPDF 抽取标题/作者/摘要/全文，并自动建成一条文献记录（归属当前项目）。
       </p>
-      <p v-if="!hasProject" class="text-sm text-amber-600">⚠️ 请先在顶部选择一个项目。</p>
+      <PrereqBanner
+        :visible="!hasProject"
+        title="还没选项目"
+        text="请先在顶部选择一个项目，上传的文献才会归到它下面"
+        primary-label="去项目空间"
+        @primary="scholar.activeTab = 'projects'"
+      />
       <input
         type="file"
         accept="application/pdf,.pdf"

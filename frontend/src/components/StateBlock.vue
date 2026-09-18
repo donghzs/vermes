@@ -17,7 +17,11 @@ const props = defineProps({
   icon: { type: String, default: '' },
   /** 紧凑模式（行内小块，用于面板内嵌而非整页占位） */
   compact: { type: Boolean, default: false },
+  /** U-P0-4：可行动按钮文案；有值时显示默认操作按钮（也可用 #actions 插槽自定义） */
+  actionLabel: { type: String, default: '' },
 })
+
+const emit = defineEmits(['action'])
 
 const PRESET = {
   loading: { icon: '⏳', text: '加载中…', cls: 'text-gray-400' },
@@ -42,6 +46,15 @@ const text = computed(() => props.text || preset.value.text)
     <div v-else class="text-base">{{ icon }}</div>
     <div :class="['text-xs', preset.cls]">{{ text }}</div>
     <div v-if="detail" class="text-[10px] text-gray-400 max-w-[300px] leading-snug">{{ detail }}</div>
+    <slot name="actions">
+      <button
+        v-if="actionLabel"
+        type="button"
+        data-testid="state-block-action"
+        class="mt-1.5 text-xs px-2.5 py-1 rounded-lg bg-green-500 text-white hover:bg-green-600 transition"
+        @click="emit('action')"
+      >{{ actionLabel }}</button>
+    </slot>
     <slot />
   </div>
 </template>

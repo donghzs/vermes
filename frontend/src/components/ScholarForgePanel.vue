@@ -14,6 +14,7 @@ import ProjectSpace from './scholar/ProjectSpace.vue'
 import QualityView from './scholar/QualityView.vue'
 import FlowGuide from './scholar/FlowGuide.vue'
 import Uploader from './scholar/Uploader.vue'
+import PrereqBanner from './PrereqBanner.vue'
 
 const router = useRouter()
 const scholar = useScholarStore()
@@ -188,51 +189,28 @@ onMounted(async () => {
     </div>
 
     <!-- 有项目但没选中：写回类成果会落进后端隐藏的默认兜底项目 -->
-    <div
-      v-if="!envBlocked && projectNotPicked"
-      class="shrink-0 flex items-center gap-3 px-4 py-2.5 flex-wrap
-             bg-amber-50 dark:bg-amber-900/25 border-b border-amber-200 dark:border-amber-800
-             text-sm text-amber-800 dark:text-amber-200"
-    >
-      <span>📌 <b>还没选项目</b> —— 现在点写回类工具，成果会落进一个隐藏的默认项目，你在「项目空间」里翻不到。</span>
-      <span class="ml-auto flex items-center gap-2">
-        <button
-          @click="switchTab('projects')"
-          class="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition"
-        >去选一个</button>
-        <button
-          @click="projectHintDismissed = true"
-          class="px-2 py-1 text-xs text-amber-600 dark:text-amber-400 hover:underline"
-        >知道了</button>
-      </span>
-    </div>
+    <PrereqBanner
+      :visible="!envBlocked && projectNotPicked"
+      title="还没选项目"
+      text="现在点写回类工具，成果会落进一个隐藏的默认项目，你在「项目空间」里翻不到"
+      primary-label="去选一个"
+      dismissible
+      @primary="switchTab('projects')"
+      @dismiss="projectHintDismissed = true"
+    />
 
-    <!-- 无项目时的上手提示（2026-09-16 非技术用户上手专项）
-         背景：此前没有任何项目也能直接点工具，而写回类工具在后端会**静默写进隐藏的
-         「默认兜底项目」**——用户回「项目空间」找不到自己的成果，只会以为「点了没用」。
-         这里把「先建项目」摆在最显眼处，并提供直达按钮。 -->
-    <div
-      v-if="scholar.projectsLoaded && scholar.projects.length === 0 && !hintDismissed"
-      class="shrink-0 flex items-center gap-3 px-4 py-2.5 flex-wrap
-             bg-amber-50 dark:bg-amber-900/25 border-b border-amber-200 dark:border-amber-800
-             text-sm text-amber-800 dark:text-amber-200"
-    >
-      <span>📌 <b>还没有论文项目</b> —— 先建一个，之后的文献、写作、质量检查都会归到它下面，成果不会散落。</span>
-      <span class="ml-auto flex items-center gap-2">
-        <button
-          @click="switchTab('projects')"
-          class="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition"
-        >＋ 新建项目</button>
-        <button
-          @click="switchTab('guide')"
-          class="px-3 py-1 rounded-lg border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs transition"
-        >看看写作流程</button>
-        <button
-          @click="hintDismissed = true"
-          class="px-2 py-1 text-xs text-amber-600 dark:text-amber-400 hover:underline"
-        >知道了</button>
-      </span>
-    </div>
+    <!-- 无项目时的上手提示（U-P0-4 PrereqBanner） -->
+    <PrereqBanner
+      :visible="scholar.projectsLoaded && scholar.projects.length === 0 && !hintDismissed"
+      title="还没有论文项目"
+      text="先建一个，之后的文献、写作、质量检查都会归到它下面，成果不会散落"
+      primary-label="＋ 新建项目"
+      secondary-label="看看写作流程"
+      dismissible
+      @primary="switchTab('projects')"
+      @secondary="switchTab('guide')"
+      @dismiss="hintDismissed = true"
+    />
 
     <main class="flex-1 overflow-y-auto">
       <ToolBox v-if="scholar.activeTab === 'tools'" />

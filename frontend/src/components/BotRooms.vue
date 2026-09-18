@@ -7,6 +7,7 @@ import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
 import { DOMPURIFY_BASE_CONFIG } from '../utils/security'
+import StateBlock from './StateBlock.vue'
 
 const bot = useBotRoomStore()
 
@@ -942,8 +943,20 @@ onUnmounted(() => {
       </div>
       <div class="flex-1 overflow-y-auto p-2 space-y-1">
         <!-- 仅当「尚无缓存」时才显示加载态；已有缓存则后台静默刷新，避免每次进入神魔堂空白闪烁 -->
-        <div v-if="bot.loadingRooms && bot.rooms.length === 0" class="text-xs text-gray-400 px-1">加载中…</div>
-        <div v-else-if="bot.rooms.length === 0" class="text-xs text-gray-400 px-1">还没有群，点「+ 建群」创建一个。</div>
+        <StateBlock
+          v-if="bot.loadingRooms && bot.rooms.length === 0"
+          state="loading"
+          text="加载群列表…"
+          compact
+        />
+        <StateBlock
+          v-else-if="bot.rooms.length === 0"
+          state="empty"
+          icon="👥"
+          text="还没有群"
+          detail="点「+ 建群」创建一个，可拉入多位 Agent 协作"
+          compact
+        />
         <button
           v-for="r in bot.rooms"
           :key="r.id"
@@ -1041,11 +1054,18 @@ onUnmounted(() => {
       <!-- 时间线 -->
       <div ref="timelineRef" class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         <!-- 同上：有缓存则后台刷新，不遮挡已加载的消息 -->
-        <div v-if="bot.loadingTimeline && bot.timeline.length === 0" class="text-xs text-gray-400">加载消息…</div>
-        <div v-else-if="messages.length === 0" class="text-sm text-gray-400 mt-8 text-center">
-          还没有消息。输入 @名字 点名 Agent，可 @ 多人协作；
-          Agent 回复中会 @ 接力其他成员，形成协作链。
-        </div>
+        <StateBlock
+          v-if="bot.loadingTimeline && bot.timeline.length === 0"
+          state="loading"
+          text="加载消息…"
+        />
+        <StateBlock
+          v-else-if="messages.length === 0"
+          state="empty"
+          icon="💬"
+          text="还没有消息"
+          detail="输入 @名字 点名 Agent，可 @ 多人协作；Agent 回复中会 @ 接力其他成员，形成协作链"
+        />
         <template v-for="m in messages" :key="m.id">
           <div v-if="m.author_type === 'user'" class="flex justify-end">
             <div class="max-w-[75%] px-3 py-2 rounded-2xl rounded-tr-sm bg-blue-500 text-white text-sm whitespace-pre-wrap break-words">
@@ -1220,7 +1240,14 @@ onUnmounted(() => {
           <div>
             <label class="text-xs text-gray-500 mb-1 block">补充拉人（可选：岗位指派外的助手）</label>
             <div v-if="loadingContacts" class="text-xs text-gray-400">加载联系人…</div>
-            <div v-else-if="contacts.length === 0" class="text-xs text-gray-400">暂无联系人（请先在「神魔架」造神或登堂）</div>
+            <StateBlock
+              v-else-if="contacts.length === 0"
+              state="empty"
+              icon="👤"
+              text="暂无联系人"
+              detail="请先在「神魔架」造神或登堂"
+              compact
+            />
             <div v-else class="max-h-36 overflow-y-auto space-y-1">
               <label
                 v-for="c in contacts"
@@ -1335,8 +1362,15 @@ onUnmounted(() => {
           <button @click="memberModal.open = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none px-1">✕</button>
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">点成员名可快速 @；移出后该 Agent 不再应答群消息。</p>
-        <div v-if="bot.loadingMembers" class="text-xs text-gray-400">加载成员…</div>
-        <div v-else-if="(bot.members || []).length === 0" class="text-sm text-gray-400 py-6 text-center">群里还没有成员，点「＋ 拉人」把 Agent 拉进来。</div>
+        <StateBlock v-if="bot.loadingMembers" state="loading" text="加载成员…" compact />
+        <StateBlock
+          v-else-if="(bot.members || []).length === 0"
+          state="empty"
+          icon="👥"
+          text="群里还没有成员"
+          detail="点「＋ 拉人」把 Agent 拉进来"
+          compact
+        />
         <div v-else class="space-y-1">
           <div
             v-for="m in bot.members"
