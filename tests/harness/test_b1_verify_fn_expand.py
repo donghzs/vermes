@@ -55,30 +55,34 @@ class TestVerifyFnExpansionWiring(unittest.TestCase):
 class TestVerifyFnBehaviors(unittest.TestCase):
     def test_kanban_create_rejects_error_text(self):
         src = (ROOT / "tools/kanban_tools.py").read_text(encoding="utf-8")
-        # isolate _verify_kanban_create + _connect stub
         start = src.index("def _verify_kanban_create")
-        end = src.index("registry.register", start)
+        end = src.index("\nregistry.register(", start)
         stub = '''
+class _FakeKB:
+    @staticmethod
+    def get_task(conn, tid):
+        return None if tid == "missing" else type("T", (), {"id": tid})()
+
+class _FakeConn:
+    def close(self):
+        pass
+
 def _connect(board=None):
-    class _KB:
-        @staticmethod
-        def get_task(conn, tid):
-            return None if tid == "missing" else type("T", (), {"id": tid})()
-    class _Conn:
-        def close(self):
-            pass
-    return _KB, _Conn()
+    return _FakeKB, _FakeConn()
 '''
-        exec(src[start:end] + stub, ns)
+        # 提取的函数依赖 json 模块，必须注入命名空间
+        ns = {"json": json}
+        exec(src[start:end] + "\n" + stub, ns)
         vf = ns["_verify_kanban_create"]
+        ok_err, reason_err = vf("kanban_create", {}, "❌ title is required", False)
+        self.assertFalse(ok_err)
         ok, reason = vf("kanban_create", {}, json.dumps({"ok": True, "task_id": "missing"}), False)
         self.assertFalse(ok)
         self.assertIn("not found", reason)
         ok2, _ = vf("kanban_create", {}, json.dumps({"ok": True, "task_id": "t1"}), False)
         self.assertTrue(ok2)
-        ok3, r3 = vf("kanban_create", {}, "❌ title is required", False)
-        self.assertFalse(ok3)
-        self.assertTrue(r3)
+        ok4, _ = vf("kanban_create", {}, json.dumps({"ok": True, "task_id": "t1"}), True)
+        self.assertFalse(ok4)
 
     def test_export_verify_missing_path(self):
         src = (ROOT / "vermes_cli/scholarforge/tools.py").read_text(encoding="utf-8")
