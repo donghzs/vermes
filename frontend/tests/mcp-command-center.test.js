@@ -1,0 +1,153 @@
+/**
+ * ⑤ C4/C5 真行为测试：MCP 指挥中心 + ⌘K quick-entry。
+ * 统计聚合/路由/命令清单/热键绑定均为可观察行为，不 mount 重依赖组件。
+ */
+import { describe, it, expect, vi } from 'vitest'
+import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import { nextTick } from 'vue'
+import { aggregateMcpStatsByServer, summarizeMcpStats } from '../src/utils/mcp-stats.js'
+import { isPaletteToggleEvent, attachPaletteHotkey } from '../src/utils/palette-hotkey.js'
+import {
+  buildPalettePageCommands,
+  buildPaletteActionCommands,
+  filterPaletteCommands,
+} from '../src/utils/palette-commands.js'
+import appRouter from '../src/router/index.js'
+import MCPCommandCenter from '../src/components/MCPCommandCenter.vue'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+describe('MCP 调用统计聚合（真行为）', () => {
+  it('per-tool 聚合成 per-server，并计算三态成功率', () => {
+    const byServer = aggregateMcpStatsByServer([
+      { server: 'fs', tool: 'read', calls: 10, errors: 1, interrupts: 1, total_ms: 1000, max_ms: 200 },
+      { server: 'fs', tool: 'write', calls: 6, errors: 0, interrupts: 0, total_ms: 600, max_ms: 100 },
+      { server: 'search', tool: 'web', calls: 4, errors: 0, interrupts: 0, total_ms: 400, max_ms: 50 },
+    ])
+    expect(byServer.fs.calls).toBe(16)
+    expect(byServer.fs.errors).toBe(1)
+    expect(byServer.fs.interrupts).toBe(1)
+    expect(byServer.fs.tools).toBe(2)
+    expect(byServer.fs.avg_ms).toBe(100)
+    expect(byServer.fs.rate).toBe(88)
+    expect(byServer.search.rate).toBe(100)
+  })
+
+  it('零调用 server 不显示成功率（null）', () => {
+    const byServer = aggregateMcpStatsByServer([{ server: 'empty', tool: 'x', calls: 0 }])
+    expect(byServer.empty.rate).toBeNull()
+  })
+
+  it('summary 有调用才展示总览；否则 null', () => {
+    expect(summarizeMcpStats(null)).toBeNull()
+    expect(summarizeMcpStats({ summary: { calls: 0 } })).toBeNull()
+    const s = summarizeMcpStats({
+      summary: { calls: 20, errors: 2, interrupts: 1, success_rate: 0.85 },
+      count: 3,
+    })
+    expect(s).toMatchObject({ calls: 20, errors: 2, interrupts: 1, tool_count: 3 })
+  })
+})
+
+describe('路由：MCP 指挥中心统一入口', () => {
+  it('/mcp 已注册且可 resolve', () => {
+    expect(appRouter.getRoutes().some(r => r.path === '/mcp')).toBe(true)
+    expect(appRouter.resolve('/mcp').path).toBe('/mcp')
+  })
+
+  it('MCPCommandCenter 挂载后可见四个分区标题', async () => {
+    setActivePinia(createPinia())
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({ summary: { calls: 9, errors: 1, success_rate: 0.8 }, count: 2, servers: {}, catalog: [], checks: [] }),
+    }))
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/mcp', component: MCPCommandCenter }],
+    })
+    router.push('/mcp')
+    await router.isReady()
+    const wrapper = mount(MCPCommandCenter, { global: { plugins: [router, createPinia()] } })
+    await nextTick()
+    const text = wrapper.text()
+    expect(text).toContain('MCP 指挥中心')
+    expect(text).toContain('服务与调用')
+    expect(text).toContain('目录安装')
+    expect(text).toContain('安全校验')
+    expect(text).toContain('专家目录')
+    wrapper.unmount()
+  })
+})
+
+describe('C5 quick-entry：⌘K 热键与命令面（真行为）', () => {
+  it('isPaletteToggleEvent 识别 Cmd/Ctrl+K', () => {
+    expect(isPaletteToggleEvent({ metaKey: true, key: 'k' })).toBe(true)
+    expect(isPaletteToggleEvent({ ctrlKey: true, key: 'k' })).toBe(true)
+    expect(isPaletteToggleEvent({ metaKey: true, key: 'K' })).toBe(false)
+    expect(isPaletteToggleEvent({ key: 'k' })).toBe(false)
+  })
+
+  it('attachPaletteHotkey：keydown 触发 toggle，解绑后失效', () => {
+    const listeners = new Map()
+    const fakeTarget = {
+      addEventListener: (t, fn) => listeners.set(t, fn),
+      removeEventListener: (t) => listeners.delete(t),
+    }
+    let n = 0
+    const detach = attachPaletteHotkey(fakeTarget, () => { n += 1 })
+    const ev = { metaKey: true, key: 'k', preventDefault: vi.fn() }
+    listeners.get('keydown')(ev)
+    expect(n).toBe(1)
+    expect(ev.preventDefault).toHaveBeenCalled()
+    // 非快捷键不触发
+    listeners.get('keydown')({ metaKey: true, key: 'x', preventDefault() {} })
+    expect(n).toBe(1)
+    detach()
+    expect(listeners.has('keydown')).toBe(false)
+  })
+
+  it('命令面含 MCP 指挥中心，选中后 router.push /mcp', () => {
+    const pushed = []
+    const router = { push: (p) => pushed.push(p) }
+    const chat = { createSession: vi.fn(), toggleTheme: vi.fn() }
+    const pages = buildPalettePageCommands(router)
+    const actions = buildPaletteActionCommands(router, chat)
+    const mcpPage = pages.find(c => c.key === 'page:mcp')
+    expect(mcpPage?.label).toBe('MCP 指挥中心')
+    mcpPage.action()
+    expect(pushed).toContain('/mcp')
+    const mcpAct = actions.find(c => c.key === 'act:mcp-center')
+    mcpAct.action()
+    expect(pushed.filter(p => p === '/mcp').length).toBe(2)
+  })
+
+  it('filterPaletteCommands 可按关键词命中 MCP', () => {
+    const router = { push: () => {} }
+    const chat = { createSession() {}, toggleTheme() {} }
+    const all = [...buildPalettePageCommands(router), ...buildPaletteActionCommands(router, chat)]
+    const hits = filterPaletteCommands(all, 'mcp')
+    expect(hits.some(c => c.key === 'page:mcp')).toBe(true)
+  })
+
+  it('CommandPalette.vue 使用共享 hotkey/commands 模块', () => {
+    const src = fs.readFileSync(path.join(frontendRoot, 'src/components/CommandPalette.vue'), 'utf8')
+    expect(src).toMatch(/palette-hotkey/)
+    expect(src).toMatch(/palette-commands/)
+  })
+
+  it('App 全局挂载 CommandPalette', () => {
+    const appSrc = fs.readFileSync(path.join(frontendRoot, 'src/App.vue'), 'utf8')
+    expect(appSrc).toMatch(/CommandPalette/)
+  })
+})
+
+describe('C5 Plugin SDK：本季显式递延', () => {
+  it('收口范围 = 指挥中心 + ⌘K quick-entry；不静默假装 Plugin SDK 已做', () => {
+    expect(fs.existsSync(path.join(frontendRoot, 'src/components/MCPCommandCenter.vue'))).toBe(true)
+  })
+})

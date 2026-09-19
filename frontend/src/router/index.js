@@ -15,6 +15,8 @@ import ChatView from '../components/ChatView.vue'
 const routes = [
   { path: '/', component: ChatView },
   { path: '/settings', component: () => import('../components/Settings.vue') },
+  // ⑤ C4：MCP 指挥中心统一页（server 管理 + 目录安装 + 安全 + 调用监控 + 专家目录）
+  { path: '/mcp', component: () => import('../components/MCPCommandCenter.vue') },
   { path: '/studio', component: () => import('../components/StudioChat.vue') },
   { path: '/scholarforge', component: () => import('../components/ScholarForgePanel.vue') },
   { path: '/3d-studio', component: () => import('../components/ThreeDStudio.vue') },

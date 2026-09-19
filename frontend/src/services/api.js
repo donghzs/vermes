@@ -547,6 +547,12 @@ const api = {
   },
   // ⑤ MCP 指挥中心：per-tool 调用监控（只读观测）
   mcpStats() { return this.get('/mcp/stats') },
+  // ⑤ C4：目录 + 安全规则（指挥中心统一页）
+  mcpCatalog() { return this.get('/mcp/catalog') },
+  mcpSecurityRules() { return this.get('/mcp/security/rules') },
+  mcpInstallFromCatalog(name, envValues = {}) {
+    return this.post('/mcp/catalog/install', { name, env_values: envValues })
+  },
 
   // ── Skills 管理 ──
   getSkills() { return this.get('/skills') },

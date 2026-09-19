@@ -50,6 +50,12 @@
 import { ref, computed, nextTick, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
+import { attachPaletteHotkey } from '../utils/palette-hotkey.js'
+import {
+  buildPalettePageCommands,
+  buildPaletteActionCommands,
+  filterPaletteCommands,
+} from '../utils/palette-commands.js'
 
 const router = useRouter()
 const chat = useChatStore()
@@ -59,25 +65,9 @@ const query = ref('')
 const sel = ref(0)
 const inputRef = ref(null)
 
-// 页面命令
-const pageCommands = [
-  { key: 'page:chat', icon: '💬', label: '对话', hint: '回到聊天', kind: '页面', action: () => router.push('/') },
-  { key: 'page:shenmotang', icon: '⛩️', label: '神魔堂', hint: '多 Agent 群聊 + 请神登堂', kind: '页面', action: () => router.push('/shenmotang') },
-  { key: 'page:studio', icon: '🎨', label: '创作工作室', kind: '页面', action: () => router.push('/studio') },
-  { key: 'page:scholarforge', icon: '📝', label: '论文写作', kind: '页面', action: () => router.push('/scholarforge') },
-  { key: 'page:3d', icon: '🏭', label: '3D 建模', kind: '页面', action: () => router.push('/3d-studio') },
-  { key: 'page:workflows', icon: '🔀', label: '工作流编排', kind: '页面', action: () => router.push('/workflows') },
-  { key: 'page:bricks', icon: '🧱', label: '积木市场', kind: '页面', action: () => router.push('/bricks') },
-  { key: 'page:growth', icon: '🌱', label: '成长', kind: '页面', action: () => router.push('/growth') },
-  { key: 'page:benchmark', icon: '📊', label: 'Benchmark 大盘', kind: '页面', action: () => router.push('/benchmark') },
-  { key: 'page:settings', icon: '⚙️', label: '设置', kind: '页面', action: () => router.push('/settings') },
-]
-
-// 动作命令
-const actionCommands = [
-  { key: 'act:new-chat', icon: '💬', label: '新建对话', kind: '动作', action: () => chat.createSession('新会话') },
-  { key: 'act:toggle-theme', icon: '🌙', label: '切换深色/浅色主题', kind: '动作', action: () => chat.toggleTheme() },
-]
+// 页面/动作命令（C4/C5：含 MCP 指挥中心入口）
+const pageCommands = buildPalettePageCommands(router)
+const actionCommands = buildPaletteActionCommands(router, chat)
 
 // 全部命令
 const allCommands = computed(() => [...pageCommands, ...actionCommands])
@@ -96,16 +86,9 @@ const sessionCommands = computed(() => {
 })
 
 // 搜索过滤
-const results = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  const all = [...allCommands.value, ...sessionCommands.value]
-  if (!q) return all.slice(0, 12)
-  return all.filter(c =>
-    c.label.toLowerCase().includes(q) ||
-    (c.hint && c.hint.toLowerCase().includes(q)) ||
-    (c.kind && c.kind.toLowerCase().includes(q))
-  ).slice(0, 20)
-})
+const results = computed(() =>
+  filterPaletteCommands([...allCommands.value, ...sessionCommands.value], query.value)
+)
 
 watch(results, () => { sel.value = 0 })
 
@@ -125,15 +108,13 @@ function moveSel(dir) {
   sel.value = (sel.value + dir + n) % n
 }
 
-// 全局快捷键 Cmd/Ctrl+K
-function onKeydown(e) {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-    e.preventDefault()
+// 全局快捷键 Cmd/Ctrl+K（C5 quick-entry：随处唤起）
+let detachHotkey = () => {}
+if (typeof window !== 'undefined') {
+  detachHotkey = attachPaletteHotkey(window, () => {
     open.value = !open.value
-    if (open.value) {
-      nextTick(() => inputRef.value?.focus())
-    }
-  }
+    if (open.value) nextTick(() => inputRef.value?.focus())
+  })
 }
 
 // 暴露给父组件
@@ -144,14 +125,9 @@ defineExpose({
   }
 })
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('keydown', onKeydown)
-}
 // 监听必须成对：组件卸载（HMR / KeepAlive 重建）时若不解绑，监听器会累积，
 // 每次 Cmd+K 触发多次 toggle —— 表现是「按了没反应」（开了又关）。
-onUnmounted(() => {
-  if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeydown)
-})
+onUnmounted(() => { detachHotkey() })
 </script>
 
 <style scoped>

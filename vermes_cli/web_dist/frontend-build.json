@@ -1,7 +1,7 @@
 {
   "version": "2.5.0",
-  "gitHash": "3b17bcec3611",
-  "gitBranch": "feat/2.5-c2-auth-writes",
-  "buildTime": "2026-09-19T11:26:55.703Z",
+  "gitHash": "70df241e4c82-dirty",
+  "gitBranch": "feat/2.5-c4-mcp-command-center",
+  "buildTime": "2026-09-19T22:36:28.571Z",
   "nodeVersion": "v22.22.3"
 }

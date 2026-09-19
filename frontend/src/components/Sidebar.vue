@@ -29,6 +29,8 @@ function go3DStudio() { router.push('/3d-studio') }
 function goBricks() { router.push('/bricks') }
 function goWorkflows() { router.push('/workflows') }
 function goGrowth() { router.push('/growth') }
+
+function goMcpCenter() { router.push('/mcp') }
 // 📊 Benchmark 大盘
 function goBenchmark() { router.push('/benchmark') }
 // ⛩️ 神魔堂：单一融合入口（诸神会晤群聊 + 神魔架请神/造神 + 蜂群看板）
@@ -721,6 +723,11 @@ async function handleImportFile(e) {
         <button @click="goGrowth()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/growth' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'">
           <span class="text-[15px] leading-none">🌱</span><span>成长</span>
           <span class="sidebar-tooltip group-hover:opacity-100">我的成长：成长轨迹 / 能力自检 / 我眼里的你</span>
+        </button>
+        <!-- ⑤ C4：MCP 指挥中心统一页 -->
+        <button @click="goMcpCenter()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/mcp' ? 'bg-teal-600 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'">
+          <span class="text-[15px] leading-none">🎛️</span><span>MCP</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">MCP 指挥中心：server / 目录 / 安全 / 调用监控</span>
         </button>
         <button @click="goBricks()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/bricks' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'">
           <span class="text-[15px] leading-none">🧱</span><span>积木</span>
