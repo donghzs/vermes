@@ -16,6 +16,7 @@ import {
 } from '../src/utils/palette-commands.js'
 import appRouter from '../src/router/index.js'
 import MCPCommandCenter from '../src/components/MCPCommandCenter.vue'
+import CommandPalette from '../src/components/CommandPalette.vue'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -134,20 +135,54 @@ describe('C5 quick-entry：⌘K 热键与命令面（真行为）', () => {
     expect(hits.some(c => c.key === 'page:mcp')).toBe(true)
   })
 
-  it('CommandPalette.vue 使用共享 hotkey/commands 模块', () => {
-    const src = fs.readFileSync(path.join(frontendRoot, 'src/components/CommandPalette.vue'), 'utf8')
-    expect(src).toMatch(/palette-hotkey/)
-    expect(src).toMatch(/palette-commands/)
+  it('CommandPalette 挂载后 toggle 打开，真渲染出 MCP 命令（真行为）', async () => {
+    setActivePinia(createPinia())
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<div>chat</div>' } },
+        { path: '/mcp', component: { template: '<div>mcp</div>' } },
+      ],
+    })
+    router.push('/')
+    await router.isReady()
+    const wrapper = mount(CommandPalette, { global: { plugins: [router, createPinia()] } })
+    // 初始关闭，不渲染结果
+    expect(wrapper.text()).not.toContain('MCP 指挥中心')
+    // 通过 defineExpose 的 toggle 打开
+    wrapper.vm.toggle()
+    await nextTick()
+    const text = wrapper.text()
+    expect(text).toContain('MCP 指挥中心')
+    expect(text).toContain('对话')
+    wrapper.unmount()
   })
 
-  it('App 全局挂载 CommandPalette', () => {
-    const appSrc = fs.readFileSync(path.join(frontendRoot, 'src/App.vue'), 'utf8')
-    expect(appSrc).toMatch(/CommandPalette/)
+  it('CommandPalette 响应 Cmd+K 唤起（真行为）', async () => {
+    setActivePinia(createPinia())
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: { template: '<div>chat</div>' } }],
+    })
+    router.push('/')
+    await router.isReady()
+    const wrapper = mount(CommandPalette, { global: { plugins: [router, createPinia()] } })
+    expect(wrapper.text()).not.toContain('MCP 指挥中心')
+    window.dispatchEvent(new KeyboardEvent('keydown', { metaKey: true, key: 'k', bubbles: true }))
+    await nextTick()
+    expect(wrapper.text()).toContain('MCP 指挥中心')
+    wrapper.unmount()
   })
 })
 
-describe('C5 Plugin SDK：本季显式递延', () => {
-  it('收口范围 = 指挥中心 + ⌘K quick-entry；不静默假装 Plugin SDK 已做', () => {
-    expect(fs.existsSync(path.join(frontendRoot, 'src/components/MCPCommandCenter.vue'))).toBe(true)
+describe('C5 Plugin SDK：本季显式递延（真行为）', () => {
+  it('命令面不含 plugin SDK 相关命令，不静默假装 Plugin SDK 已做', () => {
+    const router = { push: () => {} }
+    const chat = { createSession() {}, toggleTheme() {} }
+    const pages = buildPalettePageCommands(router)
+    const actions = buildPaletteActionCommands(router, chat)
+    const all = [...pages, ...actions]
+    expect(all.some(c => /plugin/i.test(c.key))).toBe(false)
+    expect(all.some(c => /plugin|插件/i.test(c.label))).toBe(false)
   })
 })

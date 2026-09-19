@@ -4,6 +4,7 @@ import api from '../services/api.js'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 import { useBrickEvents } from '../utils/brick-events'
+import { aggregateMcpStatsByServer } from '../utils/mcp-stats.js'
 // 2.4.9 桌面端体验专项 B1：统一状态块（替代散落的"加载中/暂无/失败"写法）
 import StateBlock from './StateBlock.vue'
 const { confirm } = useConfirm()
@@ -62,24 +63,8 @@ function refreshAll() {
 // per-tool → per-server 聚合（含派生字段 avg_ms / rate）
 // 三态：calls / errors / interrupts —— interrupts 是 ⑤ P2 观察后加的维度
 // （用户主动中断的次数，既非成功也非失败，UI 单独展示）。
-const statsByServer = computed(() => {
-  const m = {}
-  for (const t of (callStats.value?.tools || [])) {
-    const s = m[t.server] || (m[t.server] = { calls: 0, errors: 0, interrupts: 0, total_ms: 0, max_ms: 0, tools: 0 })
-    s.calls += t.calls || 0
-    s.errors += t.errors || 0
-    s.interrupts += t.interrupts || 0
-    s.total_ms += t.total_ms || 0
-    s.max_ms = Math.max(s.max_ms, t.max_ms || 0)
-    s.tools += 1
-  }
-  for (const s of Object.values(m)) {
-    s.avg_ms = s.calls ? Math.round(s.total_ms / s.calls) : 0
-    // 三态：成功率分母排除 interrupts（与后端 _record_mcp_call 语义一致）
-    s.rate = s.calls ? Math.round((s.calls - s.errors - s.interrupts) / s.calls * 100) : null
-  }
-  return m
-})
+// C4：聚合逻辑已抽离到 utils/mcp-stats.js 纯函数，与 MCPCommandCenter 共用。
+const statsByServer = computed(() => aggregateMcpStatsByServer(callStats.value?.tools || []))
 
 const statsSummary = computed(() => callStats.value?.summary || null)
 const hasAnyCall = computed(() => (statsSummary.value?.calls || 0) > 0)
