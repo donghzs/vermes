@@ -1,7 +1,7 @@
 {
   "version": "2.4.9",
-  "gitHash": "272caee7faf7-dirty",
-  "gitBranch": "main",
-  "buildTime": "2026-09-19T07:49:45.025Z",
+  "gitHash": "07d6ca52a375-dirty",
+  "gitBranch": "feat/2.5-c1-timeline-harness",
+  "buildTime": "2026-09-19T08:25:59.954Z",
   "nodeVersion": "v22.22.3"
 }

@@ -10,6 +10,13 @@ import { DOMPURIFY_BASE_CONFIG, enforceLinkSecurity } from '../utils/security'
 // 工具名 → 中文显示名。原先是一张 1000+ 字符的内联对象字面量写在模板里，
 // 现已连同论文工具（28 个）一起下沉到 utils/toolLabels.js 做单一真源。
 import { toolLabel } from '../utils/toolLabels'
+import {
+  HARNESS_FILTERS,
+  filterToolsByHarness,
+  harnessFilterCounts,
+  hasHarnessSignal,
+  harnessDetailLines,
+} from '../utils/harnessTimeline'
 
 // P3-4: 按需导入highlight.js核心和常用语言
 import hljs from 'highlight.js/lib/core'
@@ -134,14 +141,30 @@ function harnessBadge(tool) {
   return null // unknown / 缺字段
 }
 function harnessTitle(tool) {
-  const h = tool.harness
-  if (!h) return 'Harness：暂无信号'
-  const parts = []
-  parts.push(`precheck=${h.precheck || 'unknown'}`)
-  if (h.max_attempts != null) parts.push(`max_attempts=${h.max_attempts}`)
-  parts.push(`outcome=${h.outcome || 'unknown'}`)
-  if (h.outcome_reason) parts.push(h.outcome_reason)
-  return 'Harness：' + parts.join(' · ')
+  return harnessDetailLines(tool).join(' · ')
+}
+
+// C1：时间线 harness 筛选 + 详情展开（简洁：仅在有 harness 信号时露出筛选）
+const _harnessFilter = reactive({}) // msgId → filter id
+const _harnessDetailOpen = reactive({}) // toolKey → bool
+function harnessFilterOf(msg) { return _harnessFilter[msg.id] || 'all' }
+function setHarnessFilter(msg, id) { _harnessFilter[msg.id] = id }
+function toggleHarnessDetail(key) { _harnessDetailOpen[key] = !_harnessDetailOpen[key] }
+function onToolChipClick(tool) {
+  const key = tool.id || tool.name
+  toggleHarnessDetail(key)
+  if (tool.result_preview) toggleToolExpand(key)
+}
+function visibleTools(msg) {
+  return filterToolsByHarness(msg.toolInvocations || [], harnessFilterOf(msg))
+}
+function harnessChipsFor(msg) {
+  const tools = msg.toolInvocations || []
+  if (!hasHarnessSignal(tools) || msg.streaming) return []
+  const counts = harnessFilterCounts(tools)
+  return HARNESS_FILTERS
+    .filter(f => f.id === 'all' || counts[f.id] > 0)
+    .map(f => ({ ...f, count: counts[f.id] }))
 }
 
 // 汇总本条消息中所有产物（按 tool 收集去重）。工件产物的「点开会话内联」交互入口。
@@ -1014,27 +1037,59 @@ function streamElapsed(startTime) {
             </template>
             <!-- 完成后：紧凑时间线 -->
             <template v-else>
-              <div v-if="msg.toolInvocations.length > 0"
+              <!-- C1：harness 筛选（仅本条消息含 harness 信号时出现；平时不占视觉） -->
+              <div v-if="harnessChipsFor(msg).length"
+                   class="flex flex-wrap items-center gap-1 mb-1.5 text-[10px]">
+                <span class="text-gray-400 mr-0.5">核验</span>
+                <button
+                  v-for="c in harnessChipsFor(msg)"
+                  :key="c.id"
+                  type="button"
+                  class="px-1.5 py-0.5 rounded-full border transition"
+                  :class="harnessFilterOf(msg) === c.id
+                    ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
+                  :data-testid="'harness-filter-' + c.id"
+                  @click="setHarnessFilter(msg, c.id)"
+                >{{ c.label }}{{ c.count != null ? ` ${c.count}` : '' }}</button>
+              </div>
+              <div v-if="visibleTools(msg).length > 0"
                    class="flex flex-wrap gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-                <template v-for="(tool, idx) in msg.toolInvocations" :key="'done-' + (tool.id || tool.name)">
-                  <span v-if="idx < 5 || _showAllTools[msg.id]"
+                <template v-for="(tool, idx) in visibleTools(msg)" :key="'done-' + (tool.id || tool.name)">
+                  <span v-if="idx < 8 || _showAllTools[msg.id]"
                         class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                         :class="tool.status === 'error' ? 'text-red-500' : ''"
                         :title="harnessTitle(tool)"
-                        @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
+                        data-testid="tool-chip"
+                        @click="onToolChipClick(tool)">
                     <span>{{ toolRunIcon(tool) }}</span>
                     <span>{{ toolLabel(tool.name) }}</span>
                     <span v-if="harnessBadge(tool)" class="opacity-80" :class="harnessBadge(tool).cls">{{ harnessBadge(tool).text }}</span>
                     <span v-if="tool.duration" class="opacity-60">{{ tool.duration }}s</span>
-                    <span v-if="tool.result_preview">{{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}</span>
+                    <span v-if="tool.harness || tool.result_preview">{{ _harnessDetailOpen[tool.id || tool.name] || isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}</span>
                   </span>
                 </template>
-                <span v-if="msg.toolInvocations.length > 5 && !_showAllTools[msg.id]"
+                <span v-if="visibleTools(msg).length > 8 && !_showAllTools[msg.id]"
                       @click="_showAllTools[msg.id] = true"
                       class="px-2 py-0.5 rounded-full text-green-500 cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20">
-                  +{{ msg.toolInvocations.length - 5 }} 个工具
+                  +{{ visibleTools(msg).length - 8 }} 个工具
                 </span>
               </div>
+              <div v-else-if="harnessFilterOf(msg) !== 'all'"
+                   class="text-[11px] text-gray-400 px-1">当前筛选下无工具</div>
+              <!-- C1：harness 详情展开（与 result_preview 同层，点 chip 开关） -->
+              <template v-for="tool in visibleTools(msg)" :key="'hdet-' + (tool.id || tool.name)">
+                <div v-if="tool.harness && _harnessDetailOpen[tool.id || tool.name]"
+                     class="mt-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700"
+                     data-testid="harness-detail">
+                  <div class="text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                    🛡 {{ toolLabel(tool.name) }} · Harness
+                  </div>
+                  <ul class="text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5">
+                    <li v-for="(line, li) in harnessDetailLines(tool)" :key="li">{{ line }}</li>
+                  </ul>
+                </div>
+              </template>
               <!-- 产物文件行（WorkBuddy 风格）：消息流中可直接看到生成的产物文件，点击 → 右侧 drawer 渲染 -->
               <div v-if="messageArtifacts(msg).length > 0" class="flex flex-wrap gap-2 mt-2">
                 <button v-for="a in messageArtifacts(msg)" :key="a.path"
@@ -1047,7 +1102,7 @@ function streamElapsed(startTime) {
                 </button>
               </div>
               <!-- 可折叠的结果摘要 -->
-              <template v-for="tool in msg.toolInvocations" :key="'preview-' + (tool.id || tool.name)">
+              <template v-for="tool in visibleTools(msg)" :key="'preview-' + (tool.id || tool.name)">
                 <div v-if="tool.result_preview && isToolExpanded(tool.id || tool.name)"
                      class="mt-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                   <!-- terminal 工具模板 -->
