@@ -1,7 +1,7 @@
 /**
- * U-P0-5 通知中心 — 应用内关键事件聚合 + 可关。
+ * U-P0-5 / C2 通知中心 — 应用内关键事件聚合 + 可关 + 可选系统通知。
  * 信号源：Harness 降级 / Agent 变更账本 / 进化成就 / 发送失败。
- * 缺信号不编造；mute 后只入账不弹铃。
+ * 缺信号不编造；mute 后只入账不弹铃；系统通知默认关（需用户显式开启）。
  */
 import { ref, computed, watch } from 'vue'
 import { envHeaders } from '../utils/env'
@@ -23,6 +23,10 @@ export const CATEGORIES = [
   { id: 'send_fail', label: '发送失败' },
 ]
 
+function systemNotifySupported() {
+  return typeof window !== 'undefined' && typeof window.Notification === 'function'
+}
+
 export function useNotifications() {
   const items = ref(loadJson(ITEMS_KEY, []).slice(0, 80))
   const prefs = ref({
@@ -30,6 +34,7 @@ export function useNotifications() {
     change: true,
     achievement: true,
     send_fail: true,
+    system_notify: false,
     ...loadJson(PREFS_KEY, {}),
   })
   const panelOpen = ref(false)
@@ -51,6 +56,25 @@ export function useNotifications() {
     } catch { /* non-desktop */ }
   }
 
+  function maybeSystemNotify(item) {
+    if (!prefs.value.system_notify) return
+    if (!systemNotifySupported()) return
+    try {
+      const N = window.Notification
+      if (N.permission === 'granted') {
+        // eslint-disable-next-line no-new
+        new N(item.title, { body: item.detail || 'Vermes', tag: item.category })
+      } else if (N.permission === 'default') {
+        N.requestPermission?.().then((p) => {
+          if (p === 'granted') {
+            // eslint-disable-next-line no-new
+            new N(item.title, { body: item.detail || 'Vermes', tag: item.category })
+          }
+        }).catch(() => {})
+      }
+    } catch { /* 浏览器限制 / 用户拒绝 */ }
+  }
+
   function notify({ category, title, detail = '', key = null, level = 'info', ts = Date.now() }) {
     if (!prefs.value[category]) return null
     if (key && _seenKeys.has(key)) return null
@@ -68,6 +92,7 @@ export function useNotifications() {
     if (key) _seenKeys.add(key)
     persist()
     pushTrayBadge()
+    maybeSystemNotify(item)
     return item
   }
 
@@ -145,5 +170,6 @@ export function useNotifications() {
     items, prefs, panelOpen, unreadCount, CATEGORIES,
     notify, markRead, markAllRead, clearAll, setPref,
     syncChangeLedger, notifyHarnessDegraded, notifySendFailure,
+    systemNotifySupported,
   }
 }

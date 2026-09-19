@@ -58,6 +58,17 @@ function fmt(ts) {
           />
           {{ c.label }}
         </label>
+        <label class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 col-span-2">
+          <input
+            type="checkbox"
+            class="accent-green-500"
+            data-testid="notify-system-toggle"
+            :checked="!!notif.prefs.value.system_notify"
+            :disabled="!notif.systemNotifySupported()"
+            @change="notif.setPref('system_notify', $event.target.checked)"
+          />
+          系统通知（{{ notif.systemNotifySupported() ? '浏览器/桌面弹窗' : '当前环境不支持' }}）
+        </label>
       </div>
 
       <div v-if="notif.items.value.length === 0" class="text-xs text-gray-400 text-center py-6">

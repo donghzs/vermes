@@ -55,4 +55,18 @@ describe('U-P0-5 notification center', () => {
     const raw = JSON.parse(localStorage.getItem('vermes-notify-prefs') || '{}')
     expect(raw.send_fail).toBe(false)
   })
+
+  it('system_notify 默认关；打开后 persist', () => {
+    const n = useNotifications()
+    expect(n.prefs.value.system_notify).toBe(false)
+    n.setPref('system_notify', true)
+    const raw = JSON.parse(localStorage.getItem('vermes-notify-prefs') || '{}')
+    expect(raw.system_notify).toBe(true)
+  })
+
+  it('system_notify 打开时不因缺少 Notification 而抛错', () => {
+    const n = useNotifications()
+    n.setPref('system_notify', true)
+    expect(() => n.notify({ category: 'send_fail', title: 'x', key: 'sys1' })).not.toThrow()
+  })
 })

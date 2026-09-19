@@ -2554,10 +2554,14 @@ async function toggleChannel(platformKey) {
           <!-- U-P0-5 通知中心偏好 -->
           <div class="pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2">
             <div class="text-sm text-gray-800 dark:text-gray-200">🔔 通知中心</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">关键事件进入顶栏铃铛；可按类型关闭（桌面托盘 tooltip 同步未读数）。</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">关键事件进入顶栏铃铛；可按类型关闭。系统通知默认关，打开后走浏览器/桌面弹窗（托盘 tooltip 同步未读数）。</div>
             <label v-for="c in notify.CATEGORIES" :key="c.id" class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
               <input type="checkbox" class="accent-green-500" :checked="notify.prefs.value[c.id]" @change="notify.setPref(c.id, $event.target.checked)" />
               {{ c.label }}
+            </label>
+            <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+              <input type="checkbox" class="accent-green-500" :checked="!!notify.prefs.value.system_notify" @change="notify.setPref('system_notify', $event.target.checked)" />
+              系统通知
             </label>
           </div>
         </div>

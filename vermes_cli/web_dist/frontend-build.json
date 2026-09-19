@@ -1,7 +1,7 @@
 {
   "version": "2.4.9",
-  "gitHash": "7253a71928c2-dirty",
-  "gitBranch": "feat/2.5-b6-gate-fail-closed",
-  "buildTime": "2026-09-19T08:26:41.674Z",
+  "gitHash": "3390de11f968-dirty",
+  "gitBranch": "feat/2.5-c2-notify-system",
+  "buildTime": "2026-09-19T08:27:50.027Z",
   "nodeVersion": "v22.22.3"
 }
