@@ -56,6 +56,39 @@ class TestAuthTightening(unittest.TestCase):
         # 源码级：handler 签名收 request
         self.assertIn("async def session_token_refresh(request: Request)", self.src)
 
+    def test_ipv6_loopback_host_parsing(self):
+        """P2 修复：IPv6 回环 [::1]:9119 不得被误拒 403。
+        直接调 handler，验证 Host 头解析逻辑对 [::1] / ::1 / localhost / 127.0.0.1 全放行，
+        对 evil.test 拒绝。"""
+        import asyncio
+        import os
+        import tempfile
+        from types import SimpleNamespace
+        os.environ["VERMES_HOME"] = tempfile.mkdtemp(prefix="s6-ipv6-")
+        try:
+            from vermes_cli import web_server
+
+            def run(host_header):
+                req = SimpleNamespace(headers={"host": host_header})
+                try:
+                    return asyncio.get_event_loop().run_until_complete(
+                        web_server.session_token_refresh(req)
+                    )
+                except RuntimeError:
+                    return asyncio.run(web_server.session_token_refresh(req))
+
+            # 回环全放行
+            for good in ["localhost:9119", "127.0.0.1:9119", "[::1]:9119", "::1", "LOCALHOST"]:
+                out = run(good)
+                self.assertIn("token", out, f"loopback host {good!r} should pass, got {out!r}")
+
+            # 非回环拒绝（DNS rebinding 向量）
+            for bad in ["evil.test", "192.168.1.5:9119", "attacker.example.com:80"]:
+                with self.assertRaises(Exception, msg=f"host {bad!r} should be rejected"):
+                    run(bad)
+        finally:
+            os.environ.pop("VERMES_HOME", None)
+
 
 if __name__ == "__main__":
     unittest.main()

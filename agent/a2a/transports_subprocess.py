@@ -121,7 +121,11 @@ class SubprocessTransport(AgentTransport):
                     pass
 
     async def asend(self, envelope: A2AEnvelope) -> Any:
-        return self.send(envelope)
+        """真异步：send() 内部是同步阻塞的 Codex JSON-RPC 往返（timeout 最长 120s），
+        经 asyncio.to_thread 避免阻塞事件循环。"""
+        import asyncio
+
+        return await asyncio.to_thread(self.send, envelope)
 
 
 register_a2a_transport("subprocess", SubprocessTransport)

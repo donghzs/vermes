@@ -54,6 +54,22 @@ class TestLegAZombieCleared(unittest.TestCase):
         )
         self.assertEqual(_load_anti_patterns(conn), [])
 
+    def test_dag_endpoint_no_longer_reads_zombie_table(self):
+        """S3 P1 修复：/api/evolution/dag 不再 SELECT anti_patterns 死表，
+        否则表不存在时活数据（edges/top_documents）一起丢。"""
+        chat = (ROOT / "vermes_cli/blueprints/chat.py").read_text(encoding="utf-8")
+        # 定位 evolution_dag 函数体
+        start = chat.index("async def evolution_dag")
+        end = chat.index("async def self_modify_history", start)
+        dag_fn = chat[start:end]
+        self.assertNotIn("FROM anti_patterns", dag_fn)
+        self.assertNotIn("COUNT(*) FROM anti_patterns", dag_fn)
+        self.assertIn("anti_patterns = []", dag_fn)
+        self.assertIn("total_ap = 0", dag_fn)
+        # 字段结构保留（前端 EvolutionPanel 消费 dagData.anti_patterns）
+        self.assertIn('"anti_patterns": anti_patterns', dag_fn)
+        self.assertIn('"anti_patterns": total_ap', dag_fn)
+
 
 class TestLegBMultiDomainHandoff(unittest.TestCase):
     @classmethod

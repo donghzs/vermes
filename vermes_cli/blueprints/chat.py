@@ -3065,24 +3065,18 @@ async def evolution_dag(limit: int = 50):
             LIMIT 10
         """)
         top_docs = [{"doc_id": r[0], "query_count": r[1]} for r in c.fetchall()]
-        # Get top anti-patterns
-        c.execute("""
-            SELECT ap.id, ap.pattern, ap.frequency, ap.domain
-            FROM anti_patterns ap
-            ORDER BY ap.frequency DESC
-            LIMIT 10
-        """)
-        anti_patterns = [
-            {"id": r[0], "pattern": r[1], "frequency": r[2], "domain": r[3]}
-            for r in c.fetchall()
-        ]
+        # ⑮ 腿 A：anti_patterns 僵尸表 — 不再读表（P3 涌现洞察已接管）。
+        # 保留字段结构供前端 EvolutionPanel 兼容，但恒空 + count=0。
+        # 之前此处仍 SELECT anti_patterns 死表，表不存在时抛 OperationalError
+        # 会被外层 except 兜住，导致 edges/top_documents 活数据一起丢（隐性空图）。
+        anti_patterns = []
         # Total counts
         c.execute("SELECT COUNT(*) FROM outcomes")
         total_outcomes = c.fetchone()[0]
         c.execute("SELECT COUNT(*) FROM relations")
         total_edges = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM anti_patterns")
-        total_ap = c.fetchone()[0]
+        # anti_patterns 僵尸表 — 恒 0，不读表
+        total_ap = 0
         conn.close()
         return {
             "edges": edges,

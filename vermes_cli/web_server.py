@@ -3151,7 +3151,15 @@ async def session_token_refresh(request: Request):
     防 DNS rebinding：攻击者域名解析到本机后拿走 session token。
     桌面 Electron / 本地 Dashboard 均使用回环地址，行为不变。
     """
-    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    host = (request.headers.get("host") or "").strip().lower()
+    # 去除 IPv6 方括号："[::1]:9119" → "::1"；裸 IPv6（::1）整体保留；
+    # 其余（host:port）剥端口（rsplit 防 IPv6 冒号）。
+    if host.startswith("["):
+        host = host[1:host.index("]")] if "]" in host else host[1:]
+    elif host.count(":") > 1:
+        pass  # 裸 IPv6 地址，无端口，整体即 host
+    else:
+        host = host.split(":")[0]
     if host not in _LOOPBACK_HOST_VALUES:
         raise HTTPException(status_code=403, detail="session token only available on loopback host")
     return {"token": _SESSION_TOKEN}

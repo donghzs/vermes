@@ -1,4 +1,10 @@
-"""S2 — A2A http/mcp/subprocess transport 真接线契约。"""
+"""S2 — A2A http/mcp/subprocess transport 真接线契约。
+
+P0 修复版测试：MCP 不再依赖不存在的 ``mcp_tool.call_tool_by_name``，
+改为经 ``tools.registry`` 的 ``mcp_{server}_{tool}`` 真注册 + dispatch。
+这里的 MCP 测试是真行为测试（真注册 handler、真 dispatch、断言结果）。
+"""
+
 from __future__ import annotations
 
 import unittest
@@ -29,10 +35,11 @@ class TestTransportNoLongerStub(unittest.TestCase):
         self.assertIn("transport_ref", self.http)
         self.assertIn("no HTTP endpoint", self.http)
 
-    def test_mcp_declares_error_when_call_missing(self):
-        self.assertIn("call_tool_by_name", self.mcp)
-        self.assertIn("mcp target incomplete", self.mcp)
-        self.assertNotIn('"kind": envelope.kind,\n            "to":', self.mcp)
+    def test_mcp_uses_registry_dispatch_not_fake_entry(self):
+        # P0：MCP transport 必须走 registry.dispatch，不得再依赖不存在的 fake 入口
+        self.assertIn("registry.dispatch", self.mcp)
+        self.assertNotIn("MCPToolServer", self.mcp)
+        self.assertNotIn("getattr(mcp_mod", self.mcp)
 
     def test_subprocess_spawns_codex_client(self):
         self.assertIn("CodexAppServerClient", self.sub)
@@ -155,27 +162,51 @@ class TestMcpTransportBehavior(unittest.TestCase):
         out = McpTransport().send(env)
         self.assertIn("error", out)
 
-    def test_server_tool_dispatch_via_entrypoint(self):
-        import sys
-        import types
+    def test_unregistered_tool_errors_honestly(self):
+        """MCP server 未连接/工具未注册 → 诚实报错，不假成功。"""
         from agent.a2a.transports_mcp import McpTransport
         from agent.a2a.types import A2AEnvelope, MessageKind
 
-        fake = types.ModuleType("tools.mcp_tool")
-        fake.call_tool_by_name = lambda server, tool, arguments: {"server": server, "tool": tool, "args": arguments}
-        sys.modules["tools.mcp_tool"] = fake
+        env = A2AEnvelope(
+            from_handle="@a",
+            to_handle="@openclaw",
+            kind=MessageKind.TOOL.value,
+            payload={"server": "definitely_not_connected_server", "tool": "echo", "arguments": {"q": "hi"}},
+        )
+        out = McpTransport().send(env)
+        self.assertFalse(out.get("ok"))
+        self.assertIn("error", out)
+
+    def test_registered_tool_dispatches_for_real(self):
+        """真注册一个 mcp_{server}_{tool} 工具，断言 transport 走 registry.dispatch 拿到真实结果。"""
+        from tools.registry import registry
+        from agent.a2a.transports_mcp import McpTransport, _mcp_tool_name
+        from agent.a2a.types import A2AEnvelope, MessageKind
+
+        tool_name = _mcp_tool_name("openclaw_test_srv", "echo")
+        # 真注册 handler：echo 回显参数
+        registry.register(
+            tool_name,
+            toolset="mcp",
+            schema={"name": tool_name, "description": "echo test", "parameters": {}},
+            handler=lambda args, **kw: f"echoed:{args.get('q', '')}",
+            override=True,
+        )
         try:
             env = A2AEnvelope(
                 from_handle="@a",
                 to_handle="@openclaw",
                 kind=MessageKind.TOOL.value,
-                payload={"server": "openclaw", "tool": "echo", "arguments": {"q": "hi"}},
+                payload={"server": "openclaw_test_srv", "tool": "echo", "arguments": {"q": "hi"}},
             )
             out = McpTransport().send(env)
             self.assertTrue(out.get("ok"), out)
-            self.assertEqual(out["result"]["tool"], "echo")
+            self.assertEqual(out.get("result"), "echoed:hi")
+            self.assertEqual(out.get("tool_name"), tool_name)
         finally:
-            sys.modules.pop("tools.mcp_tool", None)
+            # 清理：不污染其他测试
+            with registry._lock:
+                registry._tools.pop(tool_name, None)
 
 
 if __name__ == "__main__":
