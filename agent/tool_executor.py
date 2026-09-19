@@ -80,23 +80,47 @@ _HARNESS_FAIL_COUNTS: dict[str, int] = {}
 _HARNESS_FAIL_WARNED: set[str] = set()
 _HARNESS_FAIL_LOCK = threading.Lock()
 # B3：SSE 钩子 — chat 流期间把 harness fail 推到前端（HTTP 轮询作兜底）
-_HARNESS_STATUS_HOOK = None
+# 多会话并行（P4）时每个流一个钩子；用 dict[hook_id -> fn] 广播，避免全局单例被后会话覆盖/串流。
+_HARNESS_STATUS_HOOKS: dict[int, object] = {}
+_HARNESS_HOOK_LOCK = threading.Lock()
+_HARNESS_HOOK_SEQ = 0
 
 
-def set_harness_status_hook(fn) -> None:
-    """注册/清除 harness_status SSE 钩子。fn(payload_dict) 或 None。"""
-    global _HARNESS_STATUS_HOOK
-    _HARNESS_STATUS_HOOK = fn
+def set_harness_status_hook(fn) -> int:
+    """注册/清除 harness_status SSE 钩子。fn(payload_dict) 或 None。
+
+    返回 hook_id（int）；fn=None 时清除本线程上下文关联的钩子。
+    为兼容旧单例调用（chat.py 的 set_harness_status_hook(None)），
+    None 会清空全部钩子（单会话路径行为不变）。
+    """
+    global _HARNESS_STATUS_HOOKS, _HARNESS_HOOK_SEQ
+    if fn is None:
+        with _HARNESS_HOOK_LOCK:
+            _HARNESS_STATUS_HOOKS.clear()
+        return 0
+    with _HARNESS_HOOK_LOCK:
+        _HARNESS_HOOK_SEQ += 1
+        _id = _HARNESS_HOOK_SEQ
+        _HARNESS_STATUS_HOOKS[_id] = fn
+    return _id
+
+
+def clear_harness_status_hook(hook_id: int) -> None:
+    """按 hook_id 清除单个钩子（多会话下不误删他人钩子）。"""
+    global _HARNESS_STATUS_HOOKS
+    with _HARNESS_HOOK_LOCK:
+        _HARNESS_STATUS_HOOKS.pop(hook_id, None)
 
 
 def _emit_harness_status_sse(component: str = "", error: str = "") -> None:
-    hook = _HARNESS_STATUS_HOOK
-    if hook is None:
+    with _HARNESS_HOOK_LOCK:
+        hooks = list(_HARNESS_STATUS_HOOKS.values())
+    if not hooks:
         return
     try:
         counts = get_harness_fail_counts() or {}
         total = sum(int(v or 0) for v in counts.values())
-        hook({
+        payload = {
             "contract": "v2.5-s1",
             "type": "harness_status",
             "ok": total == 0,
@@ -106,9 +130,14 @@ def _emit_harness_status_sse(component: str = "", error: str = "") -> None:
             "signal": "sse",
             "component": component or None,
             "error": error or None,
-        })
+        }
     except Exception:
-        pass
+        return
+    for hook in hooks:
+        try:
+            hook(payload)
+        except Exception:
+            pass
 
 
 def _harness_fail_log(component: str, exc: BaseException, *, tool: str = "") -> None:

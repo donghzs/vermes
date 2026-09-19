@@ -2080,8 +2080,10 @@ async def chat_completions(req: ChatRequest, request: Request):
 
         def run_sync():
             # B3：流期间注册 harness SSE 钩子（HTTP 轮询仍作兜底）
+            _harness_hook_id = 0
             try:
                 from agent.tool_executor import (
+                    clear_harness_status_hook,
                     get_harness_fail_counts,
                     set_harness_status_hook,
                 )
@@ -2092,7 +2094,7 @@ async def chat_completions(req: ChatRequest, request: Request):
                     except Exception:
                         pass
 
-                set_harness_status_hook(_on_harness_status)
+                _harness_hook_id = set_harness_status_hook(_on_harness_status)
                 _counts0 = get_harness_fail_counts() or {}
                 _total0 = sum(int(v or 0) for v in _counts0.values())
                 _safe_put({
@@ -2189,15 +2191,56 @@ async def chat_completions(req: ChatRequest, request: Request):
                         _safe_put(_tail)
                 except Exception as _fb_exc:
                     _log.error(f"[Stream] Final fallback emission failed: {_fb_exc}")
+                # ── B4 流式落账 ──────────────────────────────────────
+                # 非流式分支已在末尾落账 route_ledger + estimated_cost，但真实客户端
+                # 走 SSE 流式（chat-transport.js 硬编码 stream:true），此前流式路径
+                # 不触发落账 → estimated_cost 恒 None、route_ledger 表永远空。
+                # 此处补齐：agent 结束后按字符粗算 token（流式无真实 usage，口径与非流式一致），
+                # 落账 + 推送带费用的 route 更新事件，前端 onRoute 覆盖流开始时的空 cost。
+                try:
+                    from vermes_cli.route_economics import estimate_cost_usd
+                    from vermes_state import SessionDB
+                    _final_text = (result or {}).get("final_response") or ""
+                    _out_chars = len(_final_text) or len("".join(_streamed_text_parts))
+                    _in_chars = sum(len(str(m.get("content", ""))) for m in conversation_history)
+                    _stream_usage = {
+                        "prompt_tokens": max(1, _in_chars // 3),
+                        "completion_tokens": max(1, _out_chars // 3),
+                        "total_tokens": max(1, (_in_chars + _out_chars) // 3),
+                    }
+                    _est = estimate_cost_usd(
+                        provider,
+                        _stream_usage.get("prompt_tokens"),
+                        _stream_usage.get("completion_tokens"),
+                    )
+                    _route_event["token_usage"] = dict(_stream_usage)
+                    _route_event["estimated_cost"] = _est
+                    _route_event["cost_estimate"] = _est
+                    db = SessionDB()
+                    db.record_route_ledger(
+                        session_id=_session_id,
+                        requested_model=requested_model,
+                        strategy=_route_strategy,
+                        provider=provider,
+                        model=model,
+                        prompt_tokens=_stream_usage["prompt_tokens"],
+                        completion_tokens=_stream_usage["completion_tokens"],
+                        total_tokens=_stream_usage["total_tokens"],
+                        estimated_cost=_est,
+                    )
+                    # 推送 route 更新（带费用），前端 onRoute 覆盖流开始时的空 cost
+                    _safe_put(dict(_route_event))
+                except Exception as _rl_exc:
+                    _log.debug("[RouteLedger] stream persist failed", exc_info=True)
                 return result
             except Exception as e:
                 _log.error(f"[Stream] Agent error: {e}")
                 raise
             finally:
-                # B3：流结束清除 harness SSE 钩子，避免跨会话串流
+                # B3：流结束按 hook_id 清除本流钩子（多会话并行不误删他人）
                 try:
-                    from agent.tool_executor import set_harness_status_hook
-                    set_harness_status_hook(None)
+                    from agent.tool_executor import clear_harness_status_hook
+                    clear_harness_status_hook(_harness_hook_id)
                 except Exception:
                     pass
                 # P1-1: 预算退出收尾——agent 结束后将残留 in_progress 步骤标记为 interrupted
