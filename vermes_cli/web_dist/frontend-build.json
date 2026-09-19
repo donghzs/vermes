@@ -1,7 +1,7 @@
 {
-  "version": "2.4.9",
-  "gitHash": "5964fa240854-dirty",
-  "gitBranch": "feat/2.5-c3-stability-config",
-  "buildTime": "2026-09-19T08:36:35.289Z",
+  "version": "2.5.0",
+  "gitHash": "4297e0a10c16-dirty",
+  "gitBranch": "main",
+  "buildTime": "2026-09-19T09:09:55.030Z",
   "nodeVersion": "v22.22.3"
 }
