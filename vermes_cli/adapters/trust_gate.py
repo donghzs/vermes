@@ -31,6 +31,33 @@ SANDBOX_NONE = "none"
 SANDBOX_CONTAINER = "container"
 SANDBOX_SECCOMP = "seccomp"
 
+# B2：闸门模式 — default（观测期，行为与 2.4.x 一致）/ strict（收紧密缩）
+GATE_MODE_DEFAULT = "default"
+GATE_MODE_STRICT = "strict"
+_gate_mode = GATE_MODE_DEFAULT
+_gate_mode_lock = threading.Lock()
+
+
+def get_gate_mode() -> str:
+    """当前闸门模式：default | strict。"""
+    with _gate_mode_lock:
+        return _gate_mode
+
+
+def set_gate_mode(mode: str) -> str:
+    """切换闸门模式。非法值不改状态并 raise。"""
+    global _gate_mode
+    normalized = (mode or "").strip().lower()
+    if normalized not in (GATE_MODE_DEFAULT, GATE_MODE_STRICT):
+        raise ValueError(f"gate mode must be '{GATE_MODE_DEFAULT}' or '{GATE_MODE_STRICT}', got {mode!r}")
+    with _gate_mode_lock:
+        _gate_mode = normalized
+    return normalized
+
+
+def is_strict() -> bool:
+    return get_gate_mode() == GATE_MODE_STRICT
+
 
 @dataclass
 class PermissionSpec:
@@ -240,6 +267,12 @@ class TrustGate:
 
         默认 deny-unless-declared：spec 为 None（未声明）直接 DENY。
         每次判定都经 record_gate_hit 累计命中率（fail-open 观测数据）。
+
+        B2 strict 模式：
+        - 未声明（spec=None）仍 DENY（与 default 一致）
+        - 带 exec_external/network 但 requires_explicit_consent=False 的声明
+          （如 cli_native 默认分级）→ 升为 ASK_USER，不再静默 ALLOW
+        - default 模式行为与 2.4.x 零回归
         """
         if spec is None:
             res = GateResult(DENY, "未声明 PermissionSpec（deny-unless-declared）")
@@ -258,6 +291,16 @@ class TrustGate:
             res = GateResult(DENY, "network=true 但 sandbox=none，拒绝未沙箱化的外联", spec)
             res.rule = "network_no_sandbox"
             record_gate_hit(DENY, "network_no_sandbox")
+            return res
+
+        if is_strict() and (spec.exec_external or spec.network):
+            res = GateResult(
+                ASK_USER,
+                "严格模式：exec/network 类工具需显式授权（requires_explicit_consent）",
+                spec,
+            )
+            res.rule = "strict_exec_consent"
+            record_gate_hit(ASK_USER, "strict_exec_consent")
             return res
 
         res = GateResult(ALLOW, permission=spec)

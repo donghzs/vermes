@@ -205,17 +205,29 @@ def rotate_credential(provider_id: str) -> Tuple[bool, str]:
 
 # ── TrustGate + approvals 协同 ─────────────────────────────
 
-# 严格模式：deny-unless-declared（默认关，用户可开）
-_TRUST_GATE_STRICT = False
+# B2：严格模式单一真源 = vermes_cli.adapters.trust_gate.gate_mode
+# （Settings「TrustGate 严格模式」开关经 API 写到这里）
 
 def is_trust_gate_strict() -> bool:
     """返回 TrustGate 是否处于严格模式。"""
-    return _TRUST_GATE_STRICT
+    try:
+        from vermes_cli.adapters.trust_gate import is_strict
+        return bool(is_strict())
+    except Exception:
+        return False
 
 
 def set_trust_gate_strict(enabled: bool) -> None:
-    global _TRUST_GATE_STRICT
-    _TRUST_GATE_STRICT = enabled
+    try:
+        from vermes_cli.adapters.trust_gate import (
+            GATE_MODE_DEFAULT,
+            GATE_MODE_STRICT,
+            set_gate_mode,
+        )
+        set_gate_mode(GATE_MODE_STRICT if enabled else GATE_MODE_DEFAULT)
+    except Exception:
+        # trust_gate 不可用时保持 fail-open（模式切换失败不抛到 UI）
+        pass
 
 
 def suggest_approval(action: str, context: Dict[str, Any]) -> Dict[str, Any]:
