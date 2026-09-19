@@ -779,6 +779,7 @@ async function runPatchDocx() {
 
       <!-- 标签条：功能菜单按钮 + 文件标签（主角） + 工具按钮 -->
       <header class="shrink-0 border-b border-gray-200 dark:border-gray-700 flex items-center gap-0.5 px-1.5 py-1 relative z-20">
+        <span class="text-[11px] font-medium text-gray-500 dark:text-gray-400 px-1.5 shrink-0 select-none" title="工具产物 / 文件 / 变更统一入口">产物工作台</span>
         <!-- 功能菜单：小图标按钮，hover 展开下拉 -->
         <div class="relative shrink-0">
           <button

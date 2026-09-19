@@ -165,8 +165,10 @@ describe('真组件 mount 冒烟', () => {
     // 组件应成功挂载，有根元素
     expect(wrapper.exists()).toBe(true)
 
-    // 面板打开后应渲染标题区域（产物工作台）
+    // 面板打开后应渲染标题区域（产物工作台）—— U-P0-6 发版卫生拍板补上轻量标题
     expect(wrapper.text()).toContain('产物工作台')
+    // 空态引导仍应存在（U-P0-4 StateBlock 契约）
+    expect(wrapper.text()).toContain('点击列表中的文件可打开标签页')
 
     wrapper.unmount()
     // 重置状态

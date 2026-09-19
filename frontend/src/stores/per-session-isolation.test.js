@@ -16,8 +16,8 @@ vi.mock('pinia', () => ({
     }
   },
 }))
-vi.mock('vue', () => {
-  const refs = {}
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal()
   const ref = (initial) => {
     const obj = { value: initial }
     return obj
@@ -25,7 +25,10 @@ vi.mock('vue', () => {
   const computed = (fn) => {
     return { get value() { return fn() } }
   }
-  return { ref, computed, watch: vi.fn() }
+  // 局部 mock：仅替换 ref/computed/watch，其余导出（含 reactive）沿用真实实现。
+  // chat.js 的 per-session 分片状态用 reactive({})（chat.js:162），mock 缺该导出会直接
+  // 抛 "No 'reactive' export is defined on the 'vue' mock"。
+  return { ...actual, ref, computed, watch: vi.fn() }
 })
 vi.mock('../utils/toast', () => ({ showToast: vi.fn() }))
 vi.mock('./chat-session', () => ({
