@@ -62,17 +62,30 @@ def _current_platform_key() -> str:
 def _load_recipe_raw(name: str) -> Optional[dict[str, Any]]:
     try:
         from vermes_cli.a2a.recipes.loader import find_recipe
-        from vermes_cli.a2a.recipes.loader import RECIPES_DIR
+        from vermes_cli.a2a.recipes.loader import RECIPES_DIR, iter_recipe_files, load_recipe
         recipe = find_recipe(name, RECIPES_DIR, recursive=True)
         if recipe is None:
             return None
-        # RecipeConfig → dict（loader 可能不保留 binaries；回读 raw yaml）
         src = getattr(recipe, "source", "") or ""
         if src and Path(src).exists():
             import yaml
             data = yaml.safe_load(Path(src).read_text(encoding="utf-8"))
             return data if isinstance(data, dict) else None
-        return None
+        # RecipeConfig 可能不带 source：按 name 扫 yaml 读 raw
+        for path in iter_recipe_files(RECIPES_DIR, recursive=True):
+            try:
+                import yaml
+                data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if isinstance(data, dict) and (data.get("name") or "").strip() == name:
+                return data
+        # 最后兜底：从 dataclass 字段构造最小 raw
+        try:
+            from dataclasses import asdict
+            return asdict(recipe)
+        except Exception:
+            return None
     except Exception as exc:
         logger.debug("binary recipe load failed %s: %s", name, exc)
         return None

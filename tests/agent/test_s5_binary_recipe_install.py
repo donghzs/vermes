@@ -31,10 +31,15 @@ class TestBinaryInstall(unittest.TestCase):
 
     def test_npx_recipe_without_url_errors(self):
         from vermes_cli.a2a.binary_install import ensure_binary_recipe_installed
-        # copilot 是 npx，无 binaries.url 时应明确报错而非假装安装
+        # copilot 是 npx：无 binaries.url 时应明确拒绝，而非假装已安装
         out = ensure_binary_recipe_installed("copilot")
         self.assertFalse(out["ok"])
-        self.assertTrue("not binary" in out["error"] or "no download url" in out["error"] or "download" in out["error"].lower(), out)
+        self.assertTrue(
+            "not binary" in out["error"]
+            or "no download url" in out["error"]
+            or "download" in out["error"].lower(),
+            out,
+        )
 
     def test_download_unpack_local_zip(self):
         from vermes_cli.a2a.binary_install import ensure_binary_recipe_installed
