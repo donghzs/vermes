@@ -2770,6 +2770,54 @@ async def harness_status():
         }
 
 
+async def route_ledger_list(session_id: str = "", limit: int = 50):
+    """B8：路由账本查询（粗算，非精确账单）。
+
+    GET /api/route/ledger?session_id=&limit=
+    返回最近 N 行 route_ledger + 聚合（token 合计 / 粗算成本合计）。
+    """
+    try:
+        lim = max(1, min(int(limit or 50), 200))
+        from vermes_state import SessionDB
+        db = SessionDB()
+        try:
+            rows = db.list_route_ledger(session_id=session_id or None, limit=lim)
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+        total_tokens = sum(int(r.get("total_tokens") or 0) for r in rows)
+        total_cost = 0.0
+        for r in rows:
+            try:
+                if r.get("estimated_cost") is not None:
+                    total_cost += float(r["estimated_cost"])
+            except Exception:
+                pass
+        return {
+            "ok": True,
+            "contract": "v2.5-s1",
+            "type": "route_ledger",
+            "rows": rows,
+            "count": len(rows),
+            "summary": {
+                "total_tokens": total_tokens,
+                "estimated_cost_sum": round(total_cost, 6),
+                "note": "粗算，非精确账单",
+            },
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "contract": "v2.5-s1",
+            "type": "route_ledger",
+            "error": str(e),
+            "rows": [],
+            "count": 0,
+        }
+
+
 async def evolution_health():
     """M3 fail-loud: Return flywheel health status for observability.
 
@@ -6875,6 +6923,12 @@ def register_to(app):
         name="agent_onboard",
     )
     # ⑭ 造神：原生 agent 管理（per-agent 专属 API key）
+    app.add_api_route(
+        "/api/route/ledger",
+        route_ledger_list,
+        methods=["GET"],
+        name="route_ledger_list",
+    )
     app.add_api_route(
         "/api/agents/native",
         api_native_agent_profiles,

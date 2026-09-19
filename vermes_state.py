@@ -1940,6 +1940,28 @@ class SessionDB:
             self._conn.commit()
             return int(cur.lastrowid or 0)
 
+    def list_route_ledger(self, session_id: str = None, limit: int = 50) -> list:
+        """B8：查询路由账本（新→旧）。session_id 为空则全局最近 N 行。"""
+        lim = max(1, min(int(limit or 50), 200))
+        with self._lock:
+            if session_id:
+                rows = self._conn.execute(
+                    "SELECT * FROM route_ledger WHERE session_id=? ORDER BY id DESC LIMIT ?",
+                    (session_id, lim),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM route_ledger ORDER BY id DESC LIMIT ?",
+                    (lim,),
+                ).fetchall()
+        out = []
+        for r in rows or []:
+            if hasattr(r, "keys"):
+                out.append({k: r[k] for k in r.keys()})
+            else:
+                out.append(dict(r) if isinstance(r, dict) else r)
+        return out
+
     def get_cron_monitor_hash(self, job_id: str) -> Optional[str]:
         """Return the last stored monitor-target hash for a cron job, or None."""
         try:
