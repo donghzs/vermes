@@ -845,6 +845,16 @@ def kanban_command(args: argparse.Namespace) -> int:
 
     Returns a shell-style exit code (0 on success, non-zero on error).
     """
+    # Ensure CLI output reaches stdout. ``setup_logging(mode="cli")`` only
+    # installs file handlers (agent.log/errors.log); the stdout StreamHandler
+    # is added by ``vermes_cli.cli_output`` on import (the same mechanism
+    # setup/tools_config/mcp_config rely on). The kanban subcommand path does
+    # not otherwise import cli_output, so ``logger.info()`` here would write
+    # only to agent.log and leave the terminal silent. Importing it (idempotent)
+    # attaches the handler to the ``vermes_cli`` logger, which ``vermes_cli.kanban``
+    # propagates to.
+    import vermes_cli.cli_output  # noqa: F401 — attaches stdout handler
+
     action = getattr(args, "kanban_action", None)
     if not action:
         # No subaction given: print help via the stored parser reference.
@@ -852,7 +862,7 @@ def kanban_command(args: argparse.Namespace) -> int:
         if parser is not None:
             parser.print_help()
         else:
-            logger.info(
+            print(
                 "usage: vermes kanban <action> [options]\n"
                 "Run 'vermes kanban --help' for the full list of actions.",
                 file=sys.stderr,
@@ -895,7 +905,7 @@ def kanban_command(args: argparse.Namespace) -> int:
         # Boards other than 'default' must already exist — typoed slugs
         # would otherwise silently create an empty board.
         if normed != kb.DEFAULT_BOARD and not kb.board_exists(normed):
-            logger.info(
+            print(
                 f"kanban: board {normed!r} does not exist. "
                 f"Create it with `vermes kanban boards create {normed}`.",
                 file=sys.stderr,
@@ -1127,7 +1137,7 @@ def _cmd_boards_switch(args: argparse.Namespace) -> int:
         logger.warning("kanban boards switch: slug is required")
         return 2
     if not kb.board_exists(normed):
-        logger.info(
+        print(
             f"kanban boards switch: board {normed!r} does not exist. "
             f"Create it with `vermes kanban boards create {normed}`.",
             file=sys.stderr,
@@ -1159,7 +1169,7 @@ def _cmd_boards_rename(args: argparse.Namespace) -> int:
         logger.warning(f"kanban boards rename: {exc}")
         return 2
     if not normed or not kb.board_exists(normed):
-        logger.info(f"kanban boards rename: board {args.slug!r} does not exist",
+        print(f"kanban boards rename: board {args.slug!r} does not exist",
               file=sys.stderr)
         return 1
     meta = kb.write_board_metadata(normed, name=args.name)
@@ -1173,7 +1183,7 @@ def _cmd_boards_set_default_workdir(args: argparse.Namespace) -> int:
         logger.warning(f"kanban boards set-default-workdir: {exc}")
         return 2
     if not normed or not kb.board_exists(normed):
-        logger.info(f"kanban boards set-default-workdir: board {args.slug!r} does not exist",
+        print(f"kanban boards set-default-workdir: board {args.slug!r} does not exist",
               file=sys.stderr)
         return 1
     meta = kb.write_board_metadata(normed, default_workdir=args.path)
@@ -1192,7 +1202,7 @@ def _cmd_boards_set_git_remote(args: argparse.Namespace) -> int:
         logger.warning(f"kanban boards set-git-remote: {exc}")
         return 2
     if not normed or not kb.board_exists(normed):
-        logger.info(f"kanban boards set-git-remote: board {args.slug!r} does not exist",
+        print(f"kanban boards set-git-remote: board {args.slug!r} does not exist",
               file=sys.stderr)
         return 1
     meta = kb.write_board_metadata(normed, git_remote=args.remote)
@@ -1326,7 +1336,7 @@ def _cmd_create(args: argparse.Namespace) -> int:
         return 2
     max_retries = getattr(args, "max_retries", None)
     if max_retries is not None and max_retries < 1:
-        logger.info(
+        print(
             f"kanban: --max-retries must be >= 1 (got {max_retries}); "
             "use 1 to trip on the first failure.",
             file=sys.stderr,
@@ -1512,7 +1522,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
 def _cmd_show(args: argparse.Namespace) -> int:
     rsk = _run_state_kwargs(args)
     if rsk is None:
-        logger.info(
+        print(
             "kanban show: pass both --state-type and --state-name, or omit both",
             file=sys.stderr,
         )
@@ -1697,7 +1707,7 @@ def _cmd_reclaim(args: argparse.Namespace) -> int:
             reason=getattr(args, "reason", None),
         )
     if not ok:
-        logger.info(
+        print(
             f"cannot reclaim {args.task_id} (not running or unknown id)",
             file=sys.stderr,
         )
@@ -1714,7 +1724,7 @@ def _cmd_reassign(args: argparse.Namespace) -> int:
             reason=getattr(args, "reason", None),
         )
     if not ok:
-        logger.info(
+        print(
             f"cannot reassign {args.task_id} "
             f"(unknown id, or still running — pass --reclaim to release first)",
             file=sys.stderr,
@@ -1881,7 +1891,7 @@ def _cmd_claim(args: argparse.Namespace) -> int:
             if existing is None:
                 logger.warning(f"no such task: {args.task_id}")
                 return 1
-            logger.info(
+            print(
                 f"cannot claim {args.task_id}: status={existing.status} "
                 f"lock={existing.claim_lock or '(none)'}",
                 file=sys.stderr,
@@ -1931,7 +1941,7 @@ def _cmd_complete(args: argparse.Namespace) -> int:
     # copy-pasted identically across N runs — almost always a footgun.
     # Refuse instead of silently doing the wrong thing.
     if len(ids) > 1 and (summary or raw_meta):
-        logger.info(
+        print(
             "kanban: --summary / --metadata are per-task and can't be used "
             "with multiple ids (would apply the same handoff to every task). "
             "Complete tasks one at a time, or drop the flags for the bulk close.",
@@ -1982,7 +1992,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
             summary=getattr(args, "summary", None),
             metadata=metadata,
         ):
-            logger.info(
+            print(
                 f"cannot edit {args.task_id} (unknown id or task is not done)",
                 file=sys.stderr,
             )
@@ -2158,7 +2168,7 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
     # release cycle. Undocumented in `--help` so nobody discovers it
     # casually — intentional.
     if not getattr(args, "force", False):
-        logger.info(
+        print(
             "vermes kanban daemon: DEPRECATED — the dispatcher now runs\n"
             "inside the gateway. To use kanban:\n"
             "\n"
@@ -2193,7 +2203,7 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
             logger.warning(f"warning: could not write pidfile {pidfile}: {exc}")
 
     verbose = bool(getattr(args, "verbose", False))
-    logger.info(
+    print(
         f"Kanban dispatcher running STANDALONE via --force "
         f"(interval={args.interval}s, pid={os.getpid()}). "
         f"Ctrl-C to stop. NOTE: if a gateway is also running with "
@@ -2223,7 +2233,7 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
             now = int(time.time())
             # Rate-limit repeats: at most one warning per 5 minutes.
             if now - health_state["last_warn_at"] >= 300:
-                logger.info(
+                print(
                     f"[{_fmt_ts(now)}] WARN dispatcher stuck: "
                     f"ready queue non-empty for {health_state['bad_ticks']} "
                     f"consecutive ticks but 0 workers spawned successfully. "
@@ -2397,7 +2407,7 @@ def _cmd_notify_unsubscribe(args: argparse.Namespace) -> int:
 def _cmd_log(args: argparse.Namespace) -> int:
     content = kb.read_worker_log(args.task_id, tail_bytes=args.tail)
     if content is None:
-        logger.info(f"(no log for {args.task_id} — task may not have spawned yet)",
+        print(f"(no log for {args.task_id} — task may not have spawned yet)",
               file=sys.stderr)
         return 1
     sys.stdout.write(content)
@@ -2409,7 +2419,7 @@ def _cmd_runs(args: argparse.Namespace) -> int:
     """Show attempt history for a task."""
     rsk = _run_state_kwargs(args)
     if rsk is None:
-        logger.info(
+        print(
             "kanban runs: pass both --state-type and --state-name, or omit both",
             file=sys.stderr,
         )
@@ -2468,7 +2478,7 @@ def _cmd_specify(args: argparse.Namespace) -> int:
     want_json = bool(getattr(args, "json", False))
 
     if args.task_id and all_flag:
-        logger.info(
+        print(
             "kanban: pass either a task id OR --all, not both",
             file=sys.stderr,
         )
@@ -2490,7 +2500,7 @@ def _cmd_specify(args: argparse.Namespace) -> int:
     elif args.task_id:
         ids = [args.task_id]
     else:
-        logger.info(
+        print(
             "kanban: specify requires a task id or --all",
             file=sys.stderr,
         )
@@ -2519,7 +2529,7 @@ def _cmd_specify(args: argparse.Namespace) -> int:
             )
             logger.info(f"Specified {outcome.task_id} → todo{title_suffix}")
         else:
-            logger.info(
+            print(
                 f"kanban: specify {outcome.task_id}: {outcome.reason}",
                 file=sys.stderr,
             )
@@ -2541,7 +2551,7 @@ def _cmd_decompose(args: argparse.Namespace) -> int:
     want_json = bool(getattr(args, "json", False))
 
     if args.task_id and all_flag:
-        logger.info(
+        print(
             "kanban: pass either a task id OR --all, not both",
             file=sys.stderr,
         )
@@ -2563,7 +2573,7 @@ def _cmd_decompose(args: argparse.Namespace) -> int:
     elif args.task_id:
         ids = [args.task_id]
     else:
-        logger.info(
+        print(
             "kanban: decompose requires a task id or --all",
             file=sys.stderr,
         )
@@ -2601,7 +2611,7 @@ def _cmd_decompose(args: argparse.Namespace) -> int:
                     f"(no fanout){title_suffix}"
                 )
         else:
-            logger.info(
+            print(
                 f"kanban: decompose {outcome.task_id}: {outcome.reason}",
                 file=sys.stderr,
             )
