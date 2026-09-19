@@ -3144,9 +3144,16 @@ async def health_check():
 
 
 @app.get("/api/session-token")
-async def session_token_refresh():
-    """Return current session token. No auth required — used by frontend
-    to refresh token after server restart. Only accessible from localhost."""
+async def session_token_refresh(request: Request):
+    """Return current session token for SPA refresh after restart.
+
+    S6 收紧：仅允许回环 Host（localhost/127.0.0.1/::1）获取 token。
+    防 DNS rebinding：攻击者域名解析到本机后拿走 session token。
+    桌面 Electron / 本地 Dashboard 均使用回环地址，行为不变。
+    """
+    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    if host not in _LOOPBACK_HOST_VALUES:
+        raise HTTPException(status_code=403, detail="session token only available on loopback host")
     return {"token": _SESSION_TOKEN}
 
 
