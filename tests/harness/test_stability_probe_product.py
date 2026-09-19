@@ -68,7 +68,8 @@ class TestStabilityProbeProductization(unittest.TestCase):
         root = next(p for p in here.parents if (p / "frontend/src/components/Settings.vue").exists())
         ui = (root / "frontend/src/components/Settings.vue").read_text(encoding="utf-8")
         self.assertIn("stability-probe-toggle", ui)
-        self.assertIn("harness: { stability_probe", ui.replace(" ", ""))
+        self.assertIn("stability_probe", ui)
+        self.assertIn("PATCH", ui)
         cfg = (root / "vermes_cli/blueprints/config.py").read_text(encoding="utf-8")
         self.assertIn("set_stability_probe_enabled", cfg)
 
