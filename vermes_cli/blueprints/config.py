@@ -726,6 +726,13 @@ async def patch_config(body: Dict[str, Any]):
         from vermes_cli.config import read_raw_config
         merged = _deep_merge(read_raw_config(), _denormalize_config_from_web(body))
         save_config(merged)
+        # C3：harness.stability_probe 开关即时生效（进程内模块状态）
+        try:
+            harness_cfg = (merged or {}).get("harness") or {}
+            from harness.stability_hotpath import set_stability_probe_enabled
+            set_stability_probe_enabled(bool(harness_cfg.get("stability_probe")))
+        except Exception:
+            pass
         return {"ok": True}
     except HTTPException:
         raise

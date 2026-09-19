@@ -35,6 +35,34 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger("harness.stability_hotpath")
 
+# C3：产品化开关 — 进程级模块状态 + 环境变量；agent 属性优先级更高
+_MODULE_PROBE_ENABLED = False
+
+
+def set_stability_probe_enabled(enabled: bool) -> None:
+    """C3：运行时开关（Settings / config 写入后调用）。"""
+    global _MODULE_PROBE_ENABLED
+    _MODULE_PROBE_ENABLED = bool(enabled)
+
+
+def _env_probe_enabled() -> bool:
+    import os
+    raw = (os.environ.get("VERMES_STABILITY_PROBE") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def is_stability_probe_enabled(agent: Any = None) -> bool:
+    """是否启用热路径 stability 探针。
+
+    优先级：agent._enable_stability_probe > 模块开关 > 环境变量。
+    默认全关 → 正常路径零开销（零回归）。
+    """
+    if agent is not None and getattr(agent, "_enable_stability_probe", False):
+        return True
+    if _MODULE_PROBE_ENABLED:
+        return True
+    return _env_probe_enabled()
+
 
 # --------------------------------------------------------------------------- #
 # Constants                                                                    #
@@ -126,7 +154,7 @@ def probe_tool_stability(
         None if stable / not applicable, warning string if unstable.
     """
     # Guard: opt-in only.
-    if not getattr(agent, "_enable_stability_probe", False):
+    if not is_stability_probe_enabled(agent):
         return None
 
     # Guard: only hot-path tools.
@@ -231,13 +259,12 @@ async def _run_probe_async(
 
 def is_probe_enabled(agent: Any, tool_name: str) -> bool:
     """Return True if the stability probe would run for this agent + tool."""
-    return (
-        getattr(agent, "_enable_stability_probe", False) is True
-        and tool_name in _HOT_PATH_TOOLS
-    )
+    return bool(is_stability_probe_enabled(agent) and tool_name in _HOT_PATH_TOOLS)
 
 
 __all__ = [
     "probe_tool_stability",
     "is_probe_enabled",
+    "is_stability_probe_enabled",
+    "set_stability_probe_enabled",
 ]

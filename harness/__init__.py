@@ -38,7 +38,12 @@ from .constraints import (
     run_constraints,
 )
 from .task_precheck import TaskPreCheckResult, check_task_constraints
-from .stability_hotpath import probe_tool_stability, is_probe_enabled
+from .stability_hotpath import (
+    probe_tool_stability,
+    is_probe_enabled,
+    is_stability_probe_enabled,
+    set_stability_probe_enabled,
+)
 from .failure_learning import FailurePattern, FailureLedger, get_ledger
 from .metrics import MetricsCollector, get_metrics, track_recall_latency
 
@@ -57,6 +62,8 @@ __all__ = [
     "check_task_constraints",
     "probe_tool_stability",
     "is_probe_enabled",
+    "is_stability_probe_enabled",
+    "set_stability_probe_enabled",
     "FailurePattern",
     "FailureLedger",
     "get_ledger",

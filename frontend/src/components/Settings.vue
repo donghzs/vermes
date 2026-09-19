@@ -11,6 +11,33 @@ import ProviderCard from './ProviderCard.vue'
 import MCPManager from './MCPManager.vue'
 import { useNotifications } from '../stores/notifications'
 const notify = useNotifications()
+// C3：热路径 stability 探针（默认关；PATCH /api/config harness.stability_probe）
+const stabilityProbe = ref(false)
+async function loadStabilityProbe() {
+  try {
+    const r = await fetch('/api/config')
+    if (!r.ok) return
+    const d = await r.json()
+    stabilityProbe.value = !!((d.config || d).harness?.stability_probe)
+  } catch { /* 缺信号保持默认关 */ }
+}
+async function toggleStabilityProbe() {
+  const next = !stabilityProbe.value
+  stabilityProbe.value = next
+  try {
+    const r = await fetch('/api/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: { harness: { stability_probe: next } } }),
+    })
+    if (!r.ok) throw new Error('HTTP ' + r.status)
+    toast.success(next ? '已开启稳定性探测（实验）' : '已关闭稳定性探测')
+  } catch (e) {
+    stabilityProbe.value = !next
+    toast.error('写入失败: ' + (e.message || e))
+  }
+}
+onMounted(() => { loadStabilityProbe() })
 
 // P0-c 加固后 /api/env 需携带 session token（裸 fetch 不走 api.js 封装，否则 401）
 function envHeaders() {
@@ -2562,6 +2589,16 @@ async function toggleChannel(platformKey) {
             <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
               <input type="checkbox" class="accent-green-500" :checked="!!notify.prefs.value.system_notify" @change="notify.setPref('system_notify', $event.target.checked)" />
               系统通知
+            </label>
+            <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300" title="对 web_search/terminal 等热路径工具做 best-of-N 探测；默认关闭，开启会增加少量调用成本">
+              <input
+                type="checkbox"
+                class="accent-green-500"
+                data-testid="stability-probe-toggle"
+                :checked="stabilityProbe"
+                @change="toggleStabilityProbe"
+              />
+              工具稳定性探测（实验，热路径）
             </label>
           </div>
         </div>
