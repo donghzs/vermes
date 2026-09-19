@@ -104,43 +104,13 @@ def load_evolution_context(user_message: str = "") -> Optional[Dict[str, Any]]:
 
 
 def _load_anti_patterns(conn: sqlite3.Connection) -> List[Dict[str, str]]:
-    """⚠️ ZOMBIE（已死）— 读取永不建表的 anti_patterns 僵尸表。
+    """⑮ 腿 A：anti_patterns 僵尸表 — 生产不再读表，恒返回 []。
 
-    生产代码从不 CREATE anti_patterns 表（错题本已由 P3 涌现洞察管线取代，
-    见 agent/emergent_insight.py）。本函数仅在 load_evolution_context 的
-    legacy fallback 中被调用。
-
-    优雅降级：表不存在时捕获 OperationalError 返回空列表（与
-    evolution_manager.py:1040 的 except:pass 模式一致），避免僵尸表读取
-    失败连累同批的 strategies / self_model / recent_summary 活字段。
-    保留仅用于向后兼容 + 测试守护（test_evolution_injector.py 会建表）。
+    生产代码从不 CREATE anti_patterns（错题本已由 P3 涌现洞察接管）。
+    S3 清理：移除 SELECT，避免 memory_recall/injector 继续扫死表；
+    返回结构保持 list[dict]，不改下游消费形状。
     """
-    try:
-        rows = conn.execute(
-            "SELECT pattern, correct, domain, frequency "
-            "FROM anti_patterns "
-            "WHERE frequency > 2 "
-            "ORDER BY frequency DESC "
-            "LIMIT ?",
-            (_MAX_ANTI_PATTERNS,),
-        ).fetchall()
-    except sqlite3.OperationalError:
-        return []  # 僵尸表不存在 — 错题本已由 P3 涌现洞察管线接管
-
-    result = []
-    for r in rows:
-        # Skip overly generic patterns or corrections
-        pattern = r["pattern"]
-        correct = r["correct"]
-        if _is_too_generic(pattern) or _correct_is_generic(correct):
-            continue
-        result.append({
-            "pattern": pattern,
-            "correct": correct,
-            "domain": r["domain"],
-            "frequency": r["frequency"],
-        })
-    return result
+    return []
 
 
 def _is_too_generic(pattern: str) -> bool:

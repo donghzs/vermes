@@ -2007,6 +2007,19 @@ async def chat_completions(req: ChatRequest, request: Request):
                             }
                             _safe_put(_delivery)
                             _safe_put({"type": "task_complete", "summary": _s})
+                            # ⑮ 腿 B：GUI 交付时发射通用 handoff（与 CLI session-end 对齐）
+                            try:
+                                from agent.project_handoff import record_generic_handoff
+                                record_generic_handoff(
+                                    task_key=f"gui:{_session_id}",
+                                    title=f"会话交付 · {_s.get('completed', 0)}/{_s.get('total', 0)} 步",
+                                    status="done",
+                                    progress=f"{_s.get('completed', 0)}/{_s.get('total', 0)}",
+                                    last_section="delivery",
+                                    extra={"items": len(_items), "artifacts": len(_final_artifacts)},
+                                )
+                            except Exception:
+                                pass
                     except Exception:
                         pass
             _safe_put(event)

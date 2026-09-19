@@ -513,6 +513,20 @@ def _handle_complete(args: dict, **kw) -> str:
                     f"could not complete {tid} (unknown id or already terminal)"
                 )
             run = kb.latest_run(conn, tid)
+            # ⑮ 腿 B：蜂群任务完成 → 通用 handoff（continuity 第 7 源）
+            try:
+                from agent.project_handoff import record_generic_handoff
+                _summary = args.get("summary") or tid
+                record_generic_handoff(
+                    task_key=f"kanban:{tid}",
+                    title=str(_summary)[:200],
+                    status="done",
+                    progress="completed",
+                    last_section="kanban_complete",
+                    extra={"run_id": getattr(run, "id", None) if run else None},
+                )
+            except Exception:
+                pass
             return _ok(task_id=tid, run_id=run.id if run else None)
         finally:
             conn.close()

@@ -493,19 +493,9 @@ def _collect_relation_snippets(conn: sqlite3.Connection, limit: int = 3) -> List
                         "rel": rel["rel_type"],
                     })
             elif rel["target_type"] == "anti_pattern":
-                row = conn.execute(
-                    "SELECT pattern, correct, domain, frequency FROM anti_patterns WHERE id = ?",
-                    (rel["target_id"],),
-                ).fetchone()
-                if row and row["pattern"]:
-                    snippets.append({
-                        "type": "anti_pattern",
-                        "content": row["pattern"],
-                        "correct": row["correct"],
-                        "domain": row["domain"],
-                        "frequency": row["frequency"],
-                        "rel": rel["rel_type"],
-                    })
+                # ⑮ 腿 A：anti_patterns 僵尸表 — 生产不 CREATE，跳过读表
+                # （关系边若残留 anti_pattern 目标，仅忽略该边，不影响 strategies 等活字段）
+                continue
     except Exception as e:
         logger.debug("_collect_relation_snippets failed: %s", e)
 

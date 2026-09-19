@@ -1094,20 +1094,8 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         total, successes = row
         success_rate = (successes / total * 100) if total > 0 else 0
         
-        # anti_patterns table is a zombie (superseded by P3 emergent insights).
-        # Try to read for backward compat, but gracefully degrade if table absent.
+        # ⑮ 腿 A：anti_patterns 僵尸表 — 不再读表；错题本由 P3 涌现洞察接管。
         anti_patterns = []
-        try:
-            cursor.execute('''
-                SELECT pattern, correct, frequency
-                FROM anti_patterns
-                WHERE domain = ? OR domain = '通用'
-                ORDER BY frequency DESC
-                LIMIT 3
-            ''', (domain,))
-            anti_patterns = cursor.fetchall()
-        except Exception:
-            pass  # table may not exist
 
         
         # Build advice
@@ -1202,12 +1190,8 @@ def get_evolution_status(agent_id: Optional[str] = None) -> Dict[str, Any]:
         # Verified rate (P4): aggregated from __verified__ raw_events.
         verified_rate = get_verified_rate()
         
-        # anti_patterns is a zombie table — may not exist or be empty
-        try:
-            cursor.execute("SELECT COUNT(*) FROM anti_patterns")
-            anti_patterns_count = cursor.fetchone()[0]
-        except Exception:
-            anti_patterns_count = 0
+        # ⑮ 腿 A：anti_patterns 僵尸 — 恒 0，不读表（P3 涌现洞察已接管）
+        anti_patterns_count = 0
         
         # Top domains
         cursor.execute('''
