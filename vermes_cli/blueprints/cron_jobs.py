@@ -24,6 +24,9 @@ class CronJobCreate(BaseModel):
     name: str = ""
     deliver: str = "local"
     workflow: str = ""  # A2/G6: 关联工作流模板名 → 定时跑该工作流
+    # B5 / 路线图④：monitor-mode — 目标状态未变则 hash 短路，不调 LLM
+    monitor_mode: bool = False
+    monitor_target: Optional[str] = None
 
 
 class CronJobUpdate(BaseModel):
@@ -153,6 +156,8 @@ async def create_cron_job(body: CronJobCreate, profile: str = "default"):
             name=body.name,
             deliver=body.deliver,
             workflow=body.workflow or None,
+            monitor_mode=bool(body.monitor_mode),
+            monitor_target=(body.monitor_target or None),
         )
     except Exception as e:
         _log.exception("POST /api/cron/jobs failed")

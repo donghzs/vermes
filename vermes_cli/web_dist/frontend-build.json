@@ -1,7 +1,7 @@
 {
   "version": "2.4.9",
-  "gitHash": "f5ec73290e7a-dirty",
-  "gitBranch": "main",
-  "buildTime": "2026-09-19T05:35:39.323Z",
+  "gitHash": "331e39d46ab4-dirty",
+  "gitBranch": "feat/2.5-b5-cron-monitor-ui",
+  "buildTime": "2026-09-19T07:08:13.294Z",
   "nodeVersion": "v22.22.3"
 }

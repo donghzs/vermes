@@ -553,7 +553,7 @@ const cronJobs = ref([])
 const cronLoading = ref(false)
 const cronCreating = ref(false)
 const cronMsg = ref(null)
-const newCron = ref({ name: '', schedule: '', prompt: '', deliver: '' })
+const newCron = ref({ name: '', schedule: '', prompt: '', deliver: '', monitor_mode: false, monitor_target: '' })
 
 async function fetchCronJobs() {
   cronLoading.value = true
@@ -598,7 +598,9 @@ async function createCronJob() {
         name: newCron.value.name.trim() || undefined,
         schedule: newCron.value.schedule.trim(),
         prompt: newCron.value.prompt.trim(),
-        deliver: newCron.value.deliver.trim() || undefined
+        deliver: newCron.value.deliver.trim() || undefined,
+        monitor_mode: !!newCron.value.monitor_mode,
+        monitor_target: newCron.value.monitor_target.trim() || undefined
       })
     })
     const data = await r.json()
@@ -606,7 +608,7 @@ async function createCronJob() {
       cronMsg.value = { ok: false, error: (data.detail || JSON.stringify(data)).slice(0, 200) }
     } else {
       cronMsg.value = { ok: true, error: '✅ 已创建' }
-      newCron.value = { name: '', schedule: '', prompt: '', deliver: '' }
+      newCron.value = { name: '', schedule: '', prompt: '', deliver: '', monitor_mode: false, monitor_target: '' }
       fetchCronJobs()
     }
   } catch (e) {
@@ -643,6 +645,30 @@ async function deleteCronJob(job) {
       return
     }
     cronMsg.value = { ok: true, error: '✅ 已删除' }
+    fetchCronJobs()
+  } catch (e) {
+    cronMsg.value = { ok: false, error: e.message }
+  }
+}
+
+/** B5：切换已有作业的 monitor-mode（PUT /api/cron/jobs/{id} body.updates） */
+async function toggleCronMonitor(job) {
+  cronMsg.value = null
+  const next = !job.monitor_mode
+  const updates = { monitor_mode: next }
+  if (!next) updates.monitor_target = null
+  try {
+    const r = await fetch(`/api/cron/jobs/${encodeURIComponent(job.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates })
+    })
+    const data = await r.json().catch(() => ({}))
+    if (!r.ok) {
+      cronMsg.value = { ok: false, error: (data.detail || 'monitor 开关失败').slice(0, 200) }
+      return
+    }
+    cronMsg.value = { ok: true, error: next ? '✅ 已开启监控模式（目标未变将跳过 LLM）' : '✅ 已关闭监控模式' }
     fetchCronJobs()
   } catch (e) {
     cronMsg.value = { ok: false, error: e.message }
@@ -2883,6 +2909,20 @@ async function toggleChannel(platformKey) {
                 {{ cronCreating ? '⏳ 创建中...' : '➕ 创建' }}
               </button>
             </div>
+            <!-- B5 monitor-mode：监控类作业，目标状态未变则跳过 LLM -->
+            <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-gray-200/60 dark:border-gray-700/60">
+              <label class="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300 cursor-pointer">
+                <input type="checkbox" v-model="newCron.monitor_mode" class="accent-green-500" data-testid="cron-monitor-toggle" />
+                📡 监控模式（目标状态未变时跳过 LLM）
+              </label>
+              <input
+                v-if="newCron.monitor_mode"
+                v-model="newCron.monitor_target"
+                placeholder="监控目标：URL / 文件路径 / 纯文本状态…"
+                class="flex-1 min-w-0 px-2.5 py-1 rounded-lg text-[11px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
+                data-testid="cron-monitor-target"
+              />
+            </div>
           </div>
 
           <div v-if="cronMsg" class="text-xs rounded-lg p-3" :class="cronMsg.ok ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'">
@@ -2896,8 +2936,22 @@ async function toggleChannel(platformKey) {
                 <div class="flex items-center gap-2 min-w-0">
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{{ job.name }}</span>
                   <span class="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" :class="cronStateBadge(job.state)">{{ job.state || (job.enabled ? 'scheduled' : 'paused') }}</span>
+                  <span
+                    v-if="job.monitor_mode"
+                    class="text-[10px] px-1.5 py-0.5 rounded-full shrink-0 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300"
+                    :title="job.monitor_target ? `监控：${job.monitor_target}` : '监控模式（未填目标）'"
+                  >📡 监控</span>
                 </div>
                 <div class="flex gap-1 shrink-0">
+                  <button
+                    @click="toggleCronMonitor(job)"
+                    :title="job.monitor_mode ? '关闭监控模式' : '开启监控模式（目标未变跳过 LLM）'"
+                    class="px-2 py-1 rounded text-[10px] transition"
+                    :class="job.monitor_mode
+                      ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'"
+                    data-testid="cron-monitor-switch"
+                  >📡</button>
                   <button v-if="job.state !== 'paused' && job.enabled !== false" @click="cronJobAction(job, 'pause')" class="px-2 py-1 rounded text-[10px] bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition">⏸</button>
                   <button v-else @click="cronJobAction(job, 'resume')" class="px-2 py-1 rounded text-[10px] bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition">▶️</button>
                   <button @click="cronJobAction(job, 'trigger')" title="立即运行" class="px-2 py-1 rounded text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition">⚡</button>
@@ -2910,6 +2964,7 @@ async function toggleChannel(platformKey) {
                 <span>上次：{{ fmtCronTime(job.last_run_at) }}</span>
                 <span v-if="job.last_status">状态：{{ job.last_status }}</span>
                 <span v-if="job.deliver">投递：{{ job.deliver }}</span>
+                <span v-if="job.monitor_mode && job.monitor_target" class="truncate max-w-[16rem]" :title="job.monitor_target">目标：{{ job.monitor_target }}</span>
                 <span v-if="job.profile && !job.is_default_profile">配置：{{ job.profile }}</span>
               </div>
             </div>
