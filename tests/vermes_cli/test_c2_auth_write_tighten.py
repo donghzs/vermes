@@ -56,8 +56,6 @@ class TestPathPublicForMethod(unittest.TestCase):
             ("/api/gui/messages", "POST"),
             ("/api/gui/messages/s1", "DELETE"),
             ("/api/gui/sessions", "POST"),
-            ("/api/sessions", "POST"),
-            ("/api/sessions/batch", "DELETE"),
             ("/api/invoke", "POST"),
             ("/api/model-change", "POST"),
             ("/api/stop-generation", "POST"),
@@ -80,6 +78,16 @@ class TestPathPublicForMethod(unittest.TestCase):
         from vermes_cli.web_server import _path_public_for_method
         self.assertFalse(_path_public_for_method("/api/env", "PUT"))
         self.assertFalse(_path_public_for_method("/api/approve", "POST"))
+
+    def test_destructive_session_writes_require_token(self):
+        """C2 收紧：批量删除/一键清理会话属破坏性写，不得被 /api/sessions
+        前缀豁免（/api/sessions 只 GET 公开，写子路径前端带 token）。"""
+        from vermes_cli.web_server import _path_public_for_method
+        # 写子路径必须非公开（前端 stateDBHeaders 已注入 token）
+        self.assertFalse(_path_public_for_method("/api/sessions/batch", "DELETE"))
+        self.assertFalse(_path_public_for_method("/api/sessions/cleanup", "POST"))
+        # 读仍公开（列表加载无需 token）
+        self.assertTrue(_path_public_for_method("/api/sessions", "GET"))
 
 
 class TestClaimAudit(unittest.TestCase):

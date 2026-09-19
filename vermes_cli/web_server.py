@@ -546,10 +546,15 @@ _PUBLIC_WRITE_ALLOW: frozenset = frozenset({
     # Agent 核心 / 外部系统调用（与 C2 前同风险边界）
     "/api/chat/completions",
     "/api/agent/run",
-    # GUI / state.db 会话持久化（前端 chat-storage 部分裸 fetch）
+    # GUI / state.db 会话持久化（前端 chat-storage 部分裸 fetch，无 token）
     "/api/gui/messages",
     "/api/gui/sessions",
-    "/api/sessions",
+    # ⚠️ 注意：/api/sessions 不在此豁免。它自身只有 GET（读，在
+    # _PUBLIC_API_PATHS），而破坏性写子路径 /api/sessions/batch（DELETE
+    # 批量删除 ≤500 会话）与 /api/sessions/cleanup（POST 一键清理）的前端
+    # 调用（chat-storage.js stateDBHeaders()）都会注入 X-Vermes-Session-Token。
+    # 若把 /api/sessions 放这里，startswith("/api/sessions") 会把两个
+    # 破坏性端点对「无 token 的外部脚本」也放行——过度豁免。
     # P3-3 能力调度：invoke.js 明确「裸 fetch 不带 token 有意为之」
     "/api/invoke",
     # 模型切换广播 + SSE 控制（EventSource/裸 fetch 信道）
