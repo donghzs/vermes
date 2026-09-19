@@ -1283,12 +1283,53 @@ registry.register(
     emoji="💬",
 )
 
+def _verify_kanban_create(
+    function_name: str,
+    function_args: dict,
+    function_result: str,
+    is_error: bool,
+) -> tuple[bool, str]:
+    """B1：kanban_create 外证 — 回读 kanban.db，不信任 handler 字符串。
+
+    R1：is_error 不可信；handler 返回 ❌ 字符串时也必须能被识破。
+    """
+    if is_error:
+        return False, "tool marked is_error"
+    text = function_result if isinstance(function_result, str) else str(function_result or "")
+    try:
+        data = json.loads(text) if text.strip() else {}
+    except Exception:
+        if "❌" in text or text.strip().lower().startswith("error"):
+            return False, "handler returned error text"
+        return False, "result is not JSON; cannot verify task creation"
+    if not isinstance(data, dict):
+        return False, "result JSON is not an object"
+    if data.get("ok") is False or data.get("error"):
+        return False, f"handler reported error: {data.get('error') or 'ok=false'}"
+    new_tid = data.get("task_id")
+    if not new_tid:
+        return False, "result missing task_id"
+    try:
+        kb, conn = _connect(board=(function_args or {}).get("board"))
+        try:
+            task = kb.get_task(conn, str(new_tid))
+        finally:
+            conn.close()
+    except Exception as e:
+        # fail-open：验证器自身/DB 不可达不阻断工具结果，只记原因
+        return True, f"verifier error: {e}"
+    if task is None:
+        return False, f"task {new_tid} not found in kanban.db"
+    return True, f"task {new_tid} exists in kanban.db"
+
+
 registry.register(
     name="kanban_create",
     toolset="kanban",
     schema=KANBAN_CREATE_SCHEMA,
     handler=_handle_create,
     check_fn=_check_kanban_mode,
+    verify_fn=_verify_kanban_create,
     emoji="➕",
 )
 

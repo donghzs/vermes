@@ -3850,6 +3850,88 @@ def register_tools(host_api=None):
         except Exception as e:
             return (True, f"verifier error: {e}")
 
+    def _verify_scholarforge_export(
+        function_name: str, function_args: dict,
+        function_result: str, is_error: bool,
+    ) -> tuple[bool, str]:
+        """B1：export 外证 — 从结果串解析导出路径并确认文件真在磁盘。"""
+        import os as _os
+        import re as _re
+        if is_error:
+            return (False, "tool marked is_error")
+        text = function_result if isinstance(function_result, str) else str(function_result or "")
+        if "❌" in text:
+            return (False, "handler returned export failure text")
+        m = _re.search(r"已导出：\s*(\S+)", text)
+        if not m:
+            m = _re.search(r"(?:exported to|path)[:：]\s*(\S+)", text, _re.I)
+        if not m:
+            return (False, "no export path in result; cannot verify file on disk")
+        path = m.group(1).strip().strip("`\"'")
+        try:
+            if _os.path.isfile(path) and _os.path.getsize(path) > 0:
+                return (True, f"export file exists: {path}")
+            return (False, f"export file missing or empty: {path}")
+        except Exception as e:
+            return (True, f"verifier error: {e}")
+
+    def _verify_scholarforge_save_cards(
+        function_name: str, function_args: dict,
+        function_result: str, is_error: bool,
+    ) -> tuple[bool, str]:
+        """B1：save_literature_cards 外证 — 回读 literature_cards 表。"""
+        import re as _re
+        if is_error:
+            return (False, "tool marked is_error")
+        text = function_result if isinstance(function_result, str) else str(function_result or "")
+        if "❌" in text:
+            return (False, "handler returned save failure text")
+        m = _re.search(r"总计[:：]\s*(\d+)", text)
+        claimed_total = int(m.group(1)) if m else None
+        try:
+            from vermes_cli.scholarforge.database import get_conn, init_db
+            init_db()
+            with get_conn() as conn:
+                row = conn.execute("SELECT COUNT(*) FROM literature_cards").fetchone()
+            db_total = int(row[0]) if row else 0
+            if db_total <= 0:
+                return (False, "literature_cards table is empty after save")
+            if claimed_total is not None and claimed_total > 0 and db_total < claimed_total:
+                return (False, f"claimed total={claimed_total} but db has {db_total}")
+            return (True, f"literature_cards rows={db_total}")
+        except Exception as e:
+            return (True, f"verifier error: {e}")
+
+    def _verify_scholarforge_set_active_project(
+        function_name: str, function_args: dict,
+        function_result: str, is_error: bool,
+    ) -> tuple[bool, str]:
+        """B1：set_active_project 外证 — 回读激活项目是否真为请求值。"""
+        if is_error:
+            return (False, "tool marked is_error")
+        text = function_result if isinstance(function_result, str) else str(function_result or "")
+        if "❌" in text:
+            return (False, "handler returned failure text")
+        raw = function_args.get("project_id")
+        try:
+            pid = int(raw) if raw is not None else 0
+        except (TypeError, ValueError):
+            return (False, f"invalid project_id arg: {raw!r}")
+        if pid <= 0:
+            return (False, "project_id missing or non-positive")
+        try:
+            from vermes_cli.scholarforge.active_project import get_active_project
+            active = get_active_project()
+            try:
+                active_pid = int(active) if active is not None else 0
+            except (TypeError, ValueError):
+                active_pid = 0
+            if active_pid == pid:
+                return (True, f"active project == {pid}")
+            return (False, f"active project is {active!r}, expected {pid}")
+        except Exception as e:
+            return (True, f"verifier error: {e}")
+
     registry.register(
         name="scholarforge_search",
         toolset="scholarforge",
@@ -3950,6 +4032,7 @@ def register_tools(host_api=None):
         is_async=True,
         emoji="📤",
         description="导出论文（Word/PDF/LaTeX/Markdown/BibTeX）",
+        verify_fn=_verify_scholarforge_export,
     )
     registry.register(
         name="scholarforge_format_refs",
@@ -4025,6 +4108,7 @@ def register_tools(host_api=None):
         is_async=True,
         emoji="📇",
         description="文献知识沉淀（search→结构化卡片+LLM 抽取 7 字段+跨会话累积）",
+        verify_fn=_verify_scholarforge_save_cards,
     )
     registry.register(
         name="scholarforge_literature_matrix",
@@ -4088,6 +4172,7 @@ def register_tools(host_api=None):
         is_async=True,
         emoji="🎯",
         description="设置当前激活论文项目（写回类工具默认作用对象）",
+        verify_fn=_verify_scholarforge_set_active_project,
     )
     registry.register(
         name="scholarforge_run_pipeline",
