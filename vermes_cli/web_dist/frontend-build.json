@@ -1,7 +1,7 @@
 {
   "version": "2.4.9",
-  "gitHash": "c9cdcf48103b-dirty",
-  "gitBranch": "feat/2.5-b3-harness-sse",
-  "buildTime": "2026-09-19T07:47:21.974Z",
+  "gitHash": "272caee7faf7-dirty",
+  "gitBranch": "main",
+  "buildTime": "2026-09-19T07:49:45.025Z",
   "nodeVersion": "v22.22.3"
 }
