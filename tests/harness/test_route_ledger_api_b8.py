@@ -35,34 +35,40 @@ class TestRouteLedgerApiWiring(unittest.TestCase):
 
 class TestRouteLedgerApiBehavior(unittest.TestCase):
     def test_list_rows_and_summary(self):
+        import asyncio
+        import vermes_state
         from vermes_state import SessionDB
         from vermes_cli.blueprints.chat import route_ledger_list
 
         tmp = Path(tempfile.mkdtemp(prefix="route-api-"))
-        db = SessionDB(db_path=tmp / "state.db")
-        db.record_route_ledger(
-            session_id="s1", provider="deepseek", model="deepseek-chat",
-            prompt_tokens=1000, completion_tokens=500, total_tokens=1500,
-            estimated_cost=0.001,
-        )
-        db.record_route_ledger(
-            session_id="s2", provider="agnes", model="agnes-3.0-flash",
-            prompt_tokens=10, completion_tokens=5, total_tokens=15,
-            estimated_cost=0.0,
-        )
+        tmp_db = tmp / "state.db"
+        old_path = vermes_state.DEFAULT_DB_PATH
+        vermes_state.DEFAULT_DB_PATH = tmp_db
         try:
-            data = asyncio.get_event_loop().run_until_complete(route_ledger_list(session_id="", limit=10))
-        except RuntimeError:
-            data = asyncio.new_event_loop().run_until_complete(route_ledger_list(session_id="", limit=10))
-        self.assertTrue(data["ok"])
+            db = SessionDB(db_path=tmp_db)
+            db.record_route_ledger(
+                session_id="s1", provider="deepseek", model="deepseek-chat",
+                prompt_tokens=1000, completion_tokens=500, total_tokens=1500,
+                estimated_cost=0.001,
+            )
+            db.record_route_ledger(
+                session_id="s2", provider="agnes", model="agnes-3.0-flash",
+                prompt_tokens=10, completion_tokens=5, total_tokens=15,
+                estimated_cost=0.0,
+            )
+            loop = asyncio.new_event_loop()
+            try:
+                data = loop.run_until_complete(route_ledger_list(session_id="", limit=10))
+                one = loop.run_until_complete(route_ledger_list(session_id="s1", limit=10))
+            finally:
+                loop.close()
+        finally:
+            vermes_state.DEFAULT_DB_PATH = old_path
+        self.assertTrue(data["ok"], data)
         self.assertGreaterEqual(data["count"], 2)
         self.assertGreaterEqual(data["summary"]["total_tokens"], 1515)
         self.assertIn("粗算", data["summary"]["note"])
-        # 按 session 过滤
-        try:
-            one = asyncio.get_event_loop().run_until_complete(route_ledger_list(session_id="s1", limit=10))
-        except RuntimeError:
-            one = asyncio.new_event_loop().run_until_complete(route_ledger_list(session_id="s1", limit=10))
+        self.assertTrue(one["rows"])
         self.assertTrue(all(r["session_id"] == "s1" for r in one["rows"]))
 
 
