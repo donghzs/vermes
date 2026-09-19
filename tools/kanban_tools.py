@@ -1253,6 +1253,7 @@ registry.register(
     schema=KANBAN_COMPLETE_SCHEMA,
     handler=_handle_complete,
     check_fn=_check_kanban_mode,
+    verify_fn=_verify_kanban_complete,
     emoji="✔",
 )
 
@@ -1262,6 +1263,7 @@ registry.register(
     schema=KANBAN_BLOCK_SCHEMA,
     handler=_handle_block,
     check_fn=_check_kanban_mode,
+    verify_fn=_verify_kanban_block,
     emoji="⏸",
 )
 
@@ -1321,6 +1323,72 @@ def _verify_kanban_create(
     if task is None:
         return False, f"task {new_tid} not found in kanban.db"
     return True, f"task {new_tid} exists in kanban.db"
+
+
+def _verify_kanban_lifecycle(
+    function_name: str,
+    function_args: dict,
+    function_result: str,
+    is_error: bool,
+    *,
+    expect_statuses: tuple[str, ...],
+    label: str,
+) -> tuple[bool, str]:
+    """B7：complete/block 外证 — 回读 kanban.db 任务状态。"""
+    if is_error:
+        return False, "tool marked is_error"
+    text = function_result if isinstance(function_result, str) else str(function_result or "")
+    try:
+        data = json.loads(text) if text.strip() else {}
+    except Exception:
+        if "❌" in text:
+            return False, f"handler returned error text for {label}"
+        return False, f"result is not JSON for {label}"
+    if not isinstance(data, dict) or data.get("ok") is False or data.get("error"):
+        return False, f"handler reported error for {label}: {data.get('error') if isinstance(data, dict) else data}"
+    tid = data.get("task_id") or (function_args or {}).get("task_id") or os.environ.get("VERMES_KANBAN_TASK")
+    if not tid:
+        return False, f"{label}: missing task_id"
+    try:
+        kb, conn = _connect(board=(function_args or {}).get("board"))
+        try:
+            task = kb.get_task(conn, str(tid))
+        finally:
+            conn.close()
+    except Exception as e:
+        return True, f"verifier error: {e}"
+    if task is None:
+        return False, f"{label}: task {tid} not found"
+    status = str(getattr(task, "status", "") or "")
+    if status in expect_statuses:
+        return True, f"{label}: task {tid} status={status}"
+    return False, f"{label}: task {tid} status={status!r}, expected {expect_statuses}"
+
+
+def _verify_kanban_complete(
+    function_name: str,
+    function_args: dict,
+    function_result: str,
+    is_error: bool,
+) -> tuple[bool, str]:
+    return _verify_kanban_lifecycle(
+        function_name, function_args, function_result, is_error,
+        expect_statuses=("done", "completed", "complete"),
+        label="kanban_complete",
+    )
+
+
+def _verify_kanban_block(
+    function_name: str,
+    function_args: dict,
+    function_result: str,
+    is_error: bool,
+) -> tuple[bool, str]:
+    return _verify_kanban_lifecycle(
+        function_name, function_args, function_result, is_error,
+        expect_statuses=("blocked", "block"),
+        label="kanban_block",
+    )
 
 
 registry.register(

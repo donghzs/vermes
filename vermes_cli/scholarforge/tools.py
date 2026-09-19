@@ -3932,6 +3932,34 @@ def register_tools(host_api=None):
         except Exception as e:
             return (True, f"verifier error: {e}")
 
+    def _verify_scholarforge_manage_snapshots(
+        function_name: str, function_args: dict,
+        function_result: str, is_error: bool,
+    ) -> tuple[bool, str]:
+        """B7：仅 action=create 外证 — 快照 ID 真在库；其它 action 默认 skip。"""
+        import re as _re
+        if is_error:
+            return (False, "tool marked is_error")
+        action = (function_args or {}).get("action") or "list"
+        if str(action) != "create":
+            return (True, f"action={action} — skip snapshot verification")
+        text = function_result if isinstance(function_result, str) else str(function_result or "")
+        if "❌" in text:
+            return (False, "handler reported snapshot create failure")
+        m = _re.search(r"快照 ID[:：]\s*(\d+)", text)
+        if not m:
+            return (False, "no snapshot id in create result")
+        sid = int(m.group(1))
+        pid = (function_args or {}).get("project_id")
+        try:
+            from vermes_cli.scholarforge.project_context import list_snapshots
+            snaps = list_snapshots(int(pid)) if pid else []
+            if any(int(s.get("id") or 0) == sid for s in snaps or []):
+                return (True, f"snapshot {sid} exists for project {pid}")
+            return (False, f"snapshot {sid} not listed for project {pid}")
+        except Exception as e:
+            return (True, f"verifier error: {e}")
+
     registry.register(
         name="scholarforge_search",
         toolset="scholarforge",
@@ -4127,6 +4155,7 @@ def register_tools(host_api=None):
         is_async=True,
         emoji="📸",
         description="版本快照管理（创建/列出/恢复/查看/删除）",
+        verify_fn=_verify_scholarforge_manage_snapshots,
     )
     registry.register(
         name="scholarforge_apply_template",
