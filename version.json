@@ -1,41 +1,41 @@
 {
-  "version": "2.4.9",
-  "releaseDate": "2026-09-18",
-  "notes": "Vermes 2.4.9 正式版：① ScholarForge 统计转三线表（stats_table）——SPSS 表/统计结论句→GFM 三线表，覆盖成对样本/卡方/相关/GLM/回归/ANCOVA/逻辑回归/因子/正态性/莱文等，并修复 F↔η² 等校验适用条件；② 论文工具箱：28 工具中文化 + 新手模式「写论文的 8 步」+ 兜底项目显形 + learn_style 门槛显形；③ 桌面体验：首屏代码分割、轮询去抖、定时器/watcher 泄漏修复、托盘与全局快捷键、窗口记忆、设置页搜索；④ 上手：创作工作室打开即用与 studio blueprint 注册、论文页环境自检与项目归属同步；⑤ 更新链路：version.json 支持 downloads 与 mac 架构嵌套解析，避免 Mac 更新弹窗有、下载空；⑥ 免费体验：微信扫码可选模型加入 Agnes 3.0 Flash；⑦ Windows 包修复：依赖安装改读 pyproject.toml 单一事实源（此前手写清单事务回滚导致 openai/anthropic/cryptography/pymupdf/python-docx/lxml/psutil/mcp 等核心依赖静默漏打），补回全部核心依赖并加 22 模块 import 硬断言；⑧ 修复 Windows 覆盖安装无法关进程（NSIS installer.nsh 进程名 vermes-backend.exe→vermes.exe，随包生效）。本包为本机构建冒烟产物；对外上传与自动更新投放以验证通过后的清单为准。",
+  "version": "2.5.0",
+  "releaseDate": "2026-09-19",
+  "notes": "Vermes 2.5.0：① 可信显形（U-P0）— 聊天 Harness 状态灯 / Auto 路由头 / 交付摘要卡 / 失败可行动横幅 / 时间线 harness 核验徽标与筛选 / 全站空态 StateBlock + 前置条件 PrereqBanner / 通知中心（可关 + 可选系统通知 + 托盘未读）/ 论文·创作·神魔堂场景轻量状态条；② 工程门禁 — tool_step 契约 harness 信号双路径接入、harness_status SSE+HTTP 账本、route_ledger 粗算与 GET /api/route/ledger、cron monitor-mode 设置开关、verify_fn 写回类扩容、TrustGate 严格模式联动 dispatch fail-closed、stability 探针可配置（默认关）；③ 文案纠偏（E-P0-4）— 技能/TrustGate/微信体验宣称对齐真源；④ 发版卫生 — 前端门禁全绿、Monitor/API 契约测试。Mac 包为本机构建产物；Windows 需远端构建后回填 sha256 再投放。",
   "downloads": {
     "mac": {
       "arm64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-arm64.dmg",
-        "sha256": "81d57cc1e4b226a81d8e4e6dd1d3d68af48aa396beedcf0748bf939bdb537374",
-        "size": 279779414
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.0-arm64.dmg",
+        "sha256": "",
+        "size": 0
       },
       "x64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9.dmg",
-        "sha256": "3a8dba9f4d28e2db131a0309c9b672d4e9519c83225a2f0906739696b08a478a",
-        "size": 284729419
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.0.dmg",
+        "sha256": "",
+        "size": 0
       }
     },
     "windows": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-win-x64.exe",
-      "sha256": "6cdabbed9f814ced2c305a839f28a4373fa69b92599a469fa45805779c421170",
-      "size": 267742645
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.0-win-x64.exe",
+      "sha256": "",
+      "size": 0
     }
   },
   "mac": {
     "arm64": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-arm64.dmg",
-      "sha256": "81d57cc1e4b226a81d8e4e6dd1d3d68af48aa396beedcf0748bf939bdb537374",
-      "size": 279779414
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.0-arm64.dmg",
+      "sha256": "",
+      "size": 0
     },
     "x64": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9.dmg",
-      "sha256": "3a8dba9f4d28e2db131a0309c9b672d4e9519c83225a2f0906739696b08a478a",
-      "size": 284729419
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.0.dmg",
+      "sha256": "",
+      "size": 0
     }
   },
   "windows": {
-    "url": "https://vbit.top/vermes/downloads/Vermes-2.4.9-win-x64.exe",
-    "sha256": "6cdabbed9f814ced2c305a839f28a4373fa69b92599a469fa45805779c421170",
-    "size": 267742645
+    "url": "https://vbit.top/vermes/downloads/Vermes-2.5.0-win-x64.exe",
+    "sha256": "",
+    "size": 0
   }
 }
