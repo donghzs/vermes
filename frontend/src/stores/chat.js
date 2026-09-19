@@ -253,6 +253,8 @@ export const useChatStore = defineStore('chat', () => {
   const sessionPendingDeliveryArtifacts = ref({}) // sessionId → Set<string>
   // U-P0-3: 每会话最近一次 route 事件（E-P0-5 契约；缺信号=null → UI 暂无）
   const sessionRouteInfo = ref({}) // sessionId → route payload
+  // B3: harness_status — SSE 主信号；HTTP 轮询作兜底（signal 字段区分 sse/http_poll）
+  const sessionHarnessStatus = ref({}) // sessionId → harness_status payload
 
   // ── 全局 UI 状态(跨会话共享,不需要分片)──
   const pendingApproval = ref(null)  // 工具审批请求
@@ -260,6 +262,7 @@ export const useChatStore = defineStore('chat', () => {
   // ── 当前会话的 computed 视图(自动跟随 currentSessionId)──
   const todoItems = computed(() => sessionTodoItems.value[currentSessionId.value] || [])
   const currentRouteInfo = computed(() => sessionRouteInfo.value[currentSessionId.value] || null)
+  const currentHarnessStatus = computed(() => sessionHarnessStatus.value[currentSessionId.value] || null)
   // 任务树：按 parent_id 把扁平 todoItems 组装成带 children / depth 的层级结构，
   // 供中栏 TaskFlowCard 渲染 WorkBuddy 风格的可折叠任务流。
   const taskTree = computed(() => {
@@ -1095,6 +1098,14 @@ export const useChatStore = defineStore('chat', () => {
           if (!route || typeof route !== 'object') return
           sessionRouteInfo.value = { ...sessionRouteInfo.value, [sendSessionId]: route }
         },
+        onHarnessStatus: (payload) => {
+          // B3 E-P0-5：SSE harness_status；缺信号不编造
+          if (!payload || typeof payload !== 'object') return
+          sessionHarnessStatus.value = {
+            ...sessionHarnessStatus.value,
+            [sendSessionId]: { ...payload, signal: payload.signal || 'sse' },
+          }
+        },
         onReasoning: (text) => {
           // 推理链内容 delta:累加到 assistant message 的 reasoning 字段
           const am = messages.value.find(m => m.id === aid)
@@ -1759,6 +1770,7 @@ export const useChatStore = defineStore('chat', () => {
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,
     sessionRouteInfo, currentRouteInfo,
+    sessionHarnessStatus, currentHarnessStatus,
     sessionActiveStreamIds, currentActiveStreamId,
     lastTokenUsage, streamConnected, isOnline, isWindows,
     cacheMetrics,

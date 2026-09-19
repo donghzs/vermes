@@ -40,18 +40,29 @@ function openEvolutionPanel() {
   })
 }
 
-// ── U-P0-1: Harness 可观测（E-P0-5 契约 harness_status，HTTP 轮询最小信号源）──
-const harnessStatus = ref(null)
+// ── U-P0-1 / B3: Harness 可观测（SSE 主信号 + HTTP 轮询兜底）──
+const harnessPoll = ref(null)
 async function fetchHarnessStatus() {
   try {
     const r = await fetch('/api/harness/status')
     if (r.ok) {
-      harnessStatus.value = await r.json()
-      notif.notifyHarnessDegraded(harnessStatus.value)
+      harnessPoll.value = await r.json()
     }
   } catch { /* 缺信号 → UI 显示暂无 */ }
 }
 useVisiblePoll(fetchHarnessStatus, 45000)
+
+const harnessStatus = computed(() => {
+  const sse = chat.currentHarnessStatus
+  const poll = harnessPoll.value
+  // SSE 新鲜优先；无 SSE 时用 HTTP 轮询；都没有 → null（暂无信号）
+  if (sse && sse.signal === 'sse') return sse
+  return poll || sse || null
+})
+
+watch(harnessStatus, (h) => {
+  notif.notifyHarnessDegraded(h)
+})
 
 const harnessDegraded = computed(() => {
   const h = harnessStatus.value

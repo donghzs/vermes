@@ -25,8 +25,8 @@ class ChatTransport {
     throw new Error('implement in subclass')
   }
 
-  on(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onDelivery, onReasoning, onPlanCreated, onPlanUpdate, onRoute }) {
-    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onDelivery, onReasoning, onPlanCreated, onPlanUpdate, onRoute })
+  on(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onDelivery, onReasoning, onPlanCreated, onPlanUpdate, onRoute, onHarnessStatus }) {
+    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onDelivery, onReasoning, onPlanCreated, onPlanUpdate, onRoute, onHarnessStatus })
   }
 
   off(sessionId) {
@@ -156,6 +156,9 @@ export class SSETransport extends ChatTransport {
             } else if (data.type === 'route') {
               // U-P0-3 E-P0-5：模型/Auto 路由解析结果（缺 signal 时前端显示暂无）
               this._emit(sessionId, 'onRoute', data)
+            } else if (data.type === 'harness_status') {
+              // B3 E-P0-5：Harness fail-open 可观测（SSE；HTTP 轮询作兜底）
+              this._emit(sessionId, 'onHarnessStatus', data)
             } else if (data.type === 'task_complete') {
               this._emit(sessionId, 'onTaskComplete', data)
             } else if (data.type === 'approval_request') {

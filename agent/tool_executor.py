@@ -79,6 +79,36 @@ logger = logging.getLogger(__name__)
 _HARNESS_FAIL_COUNTS: dict[str, int] = {}
 _HARNESS_FAIL_WARNED: set[str] = set()
 _HARNESS_FAIL_LOCK = threading.Lock()
+# B3：SSE 钩子 — chat 流期间把 harness fail 推到前端（HTTP 轮询作兜底）
+_HARNESS_STATUS_HOOK = None
+
+
+def set_harness_status_hook(fn) -> None:
+    """注册/清除 harness_status SSE 钩子。fn(payload_dict) 或 None。"""
+    global _HARNESS_STATUS_HOOK
+    _HARNESS_STATUS_HOOK = fn
+
+
+def _emit_harness_status_sse(component: str = "", error: str = "") -> None:
+    hook = _HARNESS_STATUS_HOOK
+    if hook is None:
+        return
+    try:
+        counts = get_harness_fail_counts() or {}
+        total = sum(int(v or 0) for v in counts.values())
+        hook({
+            "contract": "v2.5-s1",
+            "type": "harness_status",
+            "ok": total == 0,
+            "fail_counts": counts,
+            "fail_total": total,
+            "degraded": total > 0,
+            "signal": "sse",
+            "component": component or None,
+            "error": error or None,
+        })
+    except Exception:
+        pass
 
 
 def _harness_fail_log(component: str, exc: BaseException, *, tool: str = "") -> None:
@@ -98,6 +128,11 @@ def _harness_fail_log(component: str, exc: BaseException, *, tool: str = "") -> 
         logger.warning("%s (后续同类将降为 debug，计数仍累计)", msg)
     else:
         logger.debug("%s", msg)
+    # B3：fail-open 同步推 SSE（≤1s 量级，hook 内 fail-open）
+    try:
+        _emit_harness_status_sse(component=component, error=str(exc)[:200])
+    except Exception:
+        pass
 
 
 def get_harness_fail_counts() -> dict[str, int]:

@@ -2078,6 +2078,33 @@ async def chat_completions(req: ChatRequest, request: Request):
                 _safe_put({"type": "reasoning", "content": text})
 
         def run_sync():
+            # B3：流期间注册 harness SSE 钩子（HTTP 轮询仍作兜底）
+            try:
+                from agent.tool_executor import (
+                    get_harness_fail_counts,
+                    set_harness_status_hook,
+                )
+
+                def _on_harness_status(evt: dict):
+                    try:
+                        _safe_put(evt)
+                    except Exception:
+                        pass
+
+                set_harness_status_hook(_on_harness_status)
+                _counts0 = get_harness_fail_counts() or {}
+                _total0 = sum(int(v or 0) for v in _counts0.values())
+                _safe_put({
+                    "contract": "v2.5-s1",
+                    "type": "harness_status",
+                    "ok": _total0 == 0,
+                    "fail_counts": _counts0,
+                    "fail_total": _total0,
+                    "degraded": _total0 > 0,
+                    "signal": "sse",
+                })
+            except Exception:
+                pass
             try:
                 _log.info(f"[Stream] Agent starting, model={model}, provider={provider}, stream_id={_stream_id}")
                 agent.stream_delta_callback = stream_callback
@@ -2166,6 +2193,12 @@ async def chat_completions(req: ChatRequest, request: Request):
                 _log.error(f"[Stream] Agent error: {e}")
                 raise
             finally:
+                # B3：流结束清除 harness SSE 钩子，避免跨会话串流
+                try:
+                    from agent.tool_executor import set_harness_status_hook
+                    set_harness_status_hook(None)
+                except Exception:
+                    pass
                 # P1-1: 预算退出收尾——agent 结束后将残留 in_progress 步骤标记为 interrupted
                 for _tid, _status in _prev_todo_states.items():
                     if _status == "in_progress":
