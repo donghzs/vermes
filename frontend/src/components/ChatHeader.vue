@@ -70,7 +70,7 @@ const harnessDegraded = computed(() => {
   return h.degraded === true && (h.fail_total ?? 0) > 0
 })
 
-// U-P0-3: 本回合模型 / Auto 路由（后端 SSE route 契约）
+// U-P0-3 / B4: 本回合模型 / Auto 路由（后端 SSE route 契约 + 费用粗算）
 const routeInfo = computed(() => chat.currentRouteInfo || null)
 const routeLabel = computed(() => {
   const r = routeInfo.value
@@ -81,6 +81,24 @@ const routeLabel = computed(() => {
   const strat = r.strategy && r.strategy !== 'none' ? ` · ${r.strategy}` : ''
   if (!model && !provider) return ''
   return `${provider ? provider + '/' : ''}${model}${strat}`
+})
+const routeTitle = computed(() => {
+  const r = routeInfo.value
+  if (!r || !routeLabel.value) return ''
+  let t = `本回合路由：${routeLabel.value}`
+  const tokens = r.token_usage
+  if (tokens && (tokens.total || tokens.total_tokens)) {
+    t += ` · tokens ${tokens.total ?? tokens.total_tokens}`
+  }
+  const cost = r.estimated_cost
+  if (cost !== undefined && cost !== null) {
+    t += cost > 0 ? ` · 粗算 ~$${Number(cost).toFixed(4)}` : ' · 粗算 ~0（免费档/未计价）'
+  } else if (r.cost_estimate !== undefined && r.cost_estimate !== null) {
+    t += Number(r.cost_estimate) > 0 ? ` · 粗算 ~$${Number(r.cost_estimate).toFixed(4)}` : ' · 粗算 ~0'
+  } else {
+    t += ' · 费用暂无信号'
+  }
+  return t
 })
 
 // ── P0: Memory 指示器 ──
@@ -346,7 +364,7 @@ function closeDropdowns() {
       <div
         v-if="routeLabel"
         class="group relative flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-blue-600 dark:text-blue-300"
-        :title="`本回合路由：${routeLabel}`"
+        :title="routeTitle || `本回合路由：${routeLabel}`"
       >
         <span class="text-xs">🧭</span>
         <span class="truncate max-w-[10rem]">{{ routeLabel }}</span>

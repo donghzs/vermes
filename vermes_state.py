@@ -595,6 +595,24 @@ CREATE TABLE IF NOT EXISTS cron_monitor_state (
     updated_at      REAL
 );
 
+-- B4：路由账本（粗算）— 每回合模型/Auto 解析 + token + 静态单价估算成本
+CREATE TABLE IF NOT EXISTS route_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    created_at REAL,
+    requested_model TEXT,
+    strategy TEXT,
+    provider TEXT,
+    model TEXT,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    total_tokens INTEGER,
+    estimated_cost REAL,
+    note TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_route_ledger_session ON route_ledger(session_id, created_at);
+
 CREATE TABLE IF NOT EXISTS cron_notepad (
     job_id          TEXT NOT NULL,
     note_key        TEXT NOT NULL,
@@ -1882,6 +1900,45 @@ class SessionDB:
     # monitor 任务的 job 级持久小状态：hash 短路 + 跨轮笔记。
     # 与 ⑮ 文档记忆层划清边界（见 cron-monitor-mode-spec.md §7）：这里只存
     # job 级瞬时小状态（快/小/结构化），agent/项目级阶段结论走 project_handoff。
+
+    def record_route_ledger(
+        self,
+        *,
+        session_id: str,
+        requested_model: str = "",
+        strategy: str = "none",
+        provider: str = "",
+        model: str = "",
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        total_tokens: int = 0,
+        estimated_cost=None,
+        note: str = "",
+    ) -> int:
+        """B4：写入一行路由账本（粗算成本）。"""
+        import time
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO route_ledger
+                   (session_id, created_at, requested_model, strategy, provider, model,
+                    prompt_tokens, completion_tokens, total_tokens, estimated_cost, note)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    session_id,
+                    time.time(),
+                    requested_model or "",
+                    strategy or "none",
+                    provider or "",
+                    model or "",
+                    int(prompt_tokens or 0),
+                    int(completion_tokens or 0),
+                    int(total_tokens or 0),
+                    float(estimated_cost) if estimated_cost is not None else None,
+                    note or "",
+                ),
+            )
+            self._conn.commit()
+            return int(cur.lastrowid or 0)
 
     def get_cron_monitor_hash(self, job_id: str) -> Optional[str]:
         """Return the last stored monitor-target hash for a cron job, or None."""

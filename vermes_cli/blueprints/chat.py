@@ -1305,6 +1305,7 @@ async def chat_completions(req: ChatRequest, request: Request):
         "token_usage": None,
         "cost_estimate": None,
         "signal": "resolved" if provider and model else "unknown",
+        "estimated_cost": None,
     }
 
     if not base_url:
@@ -2371,6 +2372,34 @@ async def chat_completions(req: ChatRequest, request: Request):
         wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
         if provider in ("vbit", "agnes"):
             _report_quota(wechat_openid, _usage["total_tokens"], "非流式")
+        try:
+            from vermes_cli.route_economics import estimate_cost_usd
+            _route_event["token_usage"] = dict(_usage)
+            _est = estimate_cost_usd(
+                provider,
+                _usage.get("prompt_tokens"),
+                _usage.get("completion_tokens"),
+            )
+            _route_event["estimated_cost"] = _est
+            _route_event["cost_estimate"] = _est
+            try:
+                from vermes_state import SessionDB
+                db = SessionDB()
+                db.record_route_ledger(
+                    session_id=_session_id,
+                    requested_model=requested_model,
+                    strategy=_route_strategy,
+                    provider=provider,
+                    model=model,
+                    prompt_tokens=_usage.get("prompt_tokens") or 0,
+                    completion_tokens=_usage.get("completion_tokens") or 0,
+                    total_tokens=_usage.get("total_tokens") or 0,
+                    estimated_cost=_est,
+                )
+            except Exception:
+                _log.debug("[RouteLedger] persist failed", exc_info=True)
+        except Exception:
+            _log.debug("[RouteLedger] estimate failed", exc_info=True)
 
         return {
             "id": "vermes-agent",
