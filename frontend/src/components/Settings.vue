@@ -5,6 +5,7 @@ import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
 import api from '../services/api'
 import { toast } from '../utils/toast'
+import { withSessionToken } from '../utils/env'
 import { useConfirm } from '../composables/useConfirm'
 const { confirm } = useConfirm()
 import ProviderCard from './ProviderCard.vue'
@@ -27,7 +28,7 @@ async function toggleStabilityProbe() {
   try {
     const r = await fetch('/api/config', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ config: { harness: { stability_probe: next } } }),
     })
     if (!r.ok) throw new Error('HTTP ' + r.status)
@@ -197,7 +198,7 @@ async function toggleYolo() {
   try {
     await fetch('/api/config', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ approvals: { yolo_default: yoloEnabled.value } }),
     })
   } catch (e) { console.error('[Config] Failed to sync yolo:', e) }
@@ -359,7 +360,7 @@ async function setTierMode(mode) {
   try {
     const resp = await fetch('/api/config', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ approvals: { tier_mode: mode } }),
     })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
@@ -414,7 +415,7 @@ async function uploadRagFile(file) {
     })
     const resp = await fetch('/api/rag/ingest', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ filename: file.name, content: b64, file_type: '' }),
     })
     const data = await resp.json()
@@ -446,7 +447,7 @@ function onRagDrop(e) {
 async function deleteRagDoc(id) {
   if (!await confirm({ title: '删除文档', message: '删除这个文档？', confirmText: '删除', danger: true })) return
   try {
-    const resp = await fetch(`/api/rag/delete/${id}`, { method: 'DELETE' })
+    const resp = await fetch(`/api/rag/delete/${id}`, { method: 'DELETE', headers: withSessionToken() })
     const data = await resp.json()
     if (data.deleted) {
       toast.success('已删除')
@@ -618,9 +619,9 @@ async function createCronJob() {
   }
   cronCreating.value = true
   try {
-    const r = await fetch('/api/cron/jobs?profile=default', {
+    const r = await fetch('/api/cron/jobs', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         name: newCron.value.name.trim() || undefined,
         schedule: newCron.value.schedule.trim(),
@@ -648,7 +649,10 @@ async function createCronJob() {
 async function cronJobAction(job, action) {
   cronMsg.value = null
   try {
-    const r = await fetch(`/api/cron/jobs/${encodeURIComponent(job.id)}/${action}`, { method: 'POST' })
+    const r = await fetch(`/api/cron/jobs/${encodeURIComponent(job.id)}/${action}`, {
+      method: 'POST',
+      headers: withSessionToken(),
+    })
     if (!r.ok) {
       const data = await r.json().catch(() => ({}))
       cronMsg.value = { ok: false, error: (data.detail || action + ' 失败').slice(0, 200) }
@@ -665,7 +669,10 @@ async function deleteCronJob(job) {
   if (!confirm(`删除定时任务「${job.name}」？`)) return
   cronMsg.value = null
   try {
-    const r = await fetch(`/api/cron/jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE' })
+    const r = await fetch(`/api/cron/jobs/${encodeURIComponent(job.id)}`, {
+      method: 'DELETE',
+      headers: withSessionToken(),
+    })
     if (!r.ok) {
       const data = await r.json().catch(() => ({}))
       cronMsg.value = { ok: false, error: (data.detail || '删除失败').slice(0, 200) }
@@ -687,7 +694,7 @@ async function toggleCronMonitor(job) {
   try {
     const r = await fetch(`/api/cron/jobs/${encodeURIComponent(job.id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ updates })
     })
     const data = await r.json().catch(() => ({}))
@@ -802,7 +809,7 @@ async function syncModels(p) {
     if (p.baseUrl && p.baseUrl !== DEFAULT_BASE_URLS[p.id]) body.base_url = p.baseUrl
     if (p.key && p.key !== '●●●●●●●●') body.api_key = p.key
     const resp = await fetch('/api/provider/sync-models', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      method: 'POST', headers: withSessionToken({ 'Content-Type': 'application/json' }), body: JSON.stringify(body)
     })
     const data = await resp.json()
     if (data.ok && data.models && data.models.length > 0) {
@@ -843,7 +850,7 @@ async function setCurrentModel(p, modelId) {
   const provider = p.id
   try {
     const resp = await fetch('/api/model/set', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ scope: 'main', provider, model: modelId })
     })
     const data = await resp.json()
@@ -865,7 +872,7 @@ async function saveMaxTokens() {
   const maxTokens = maxTokensInput.value > 0 ? maxTokensInput.value : 0
   try {
     const resp = await fetch('/api/model/set', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ scope: 'main', provider: localStorage.getItem('vermes-current-provider') || '', model: localStorage.getItem('vermes-current-model') || '', max_tokens: maxTokens })
     })
     const data = await resp.json()
@@ -915,7 +922,7 @@ async function save() {
       }
       if (p.key && p.key !== '●●●●●●●●') payload.api_key = p.key
       savePromises.push(
-        fetch('/api/provider/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        fetch('/api/provider/add', { method: 'POST', headers: withSessionToken({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
           .then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`) } })
           .catch((e) => { console.error(`保存 ${p.id} provider 配置失败:`, e); toast.error(`${p.name} 配置保存失败: ${e.message}`) })
       )
@@ -1498,14 +1505,14 @@ async function testProvider(p) {
     let data
     if (isLocal) {
       const body = p.baseUrl ? { base_url: p.baseUrl } : {}
-      const resp = await fetch('/api/model/discover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const resp = await fetch('/api/model/discover', { method: 'POST', headers: withSessionToken({ 'Content-Type': 'application/json' }), body: JSON.stringify(body) })
       data = await resp.json()
     } else {
       const body = { provider_id: p.id }
       if (p.baseUrl && p.baseUrl !== DEFAULT_BASE_URLS[p.id]) body.base_url = p.baseUrl
       if (p.key && p.key !== '●●●●●●●●') body.api_key = p.key
       const resp = await fetch('/api/provider/sync-models', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        method: 'POST', headers: withSessionToken({ 'Content-Type': 'application/json' }), body: JSON.stringify(body)
       })
       data = await resp.json()
     }

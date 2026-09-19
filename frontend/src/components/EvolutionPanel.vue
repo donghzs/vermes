@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from '../utils/toast'
+import { withSessionToken } from '../utils/env'
 import { useConfirm } from '../composables/useConfirm'
 import { useVisiblePoll } from '../composables/useVisiblePoll'
 import { useBackendConnectionStore } from '../stores/backendConnection'
@@ -63,9 +64,10 @@ const diaryHtml = computed(() => {
 function _fetchWithTimeout(url, opts = {}, ms = 3000) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
-  const t = (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) || ''
-  const headers = { ...opts.headers }
-  if (t) headers['X-Vermes-Session-Token'] = t
+  // C2：写方法必须带 session token（进化 self-modify 等已从公开写豁免剔除）
+  const method = (opts.method || 'GET').toUpperCase()
+  const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+  const headers = isWrite ? withSessionToken({ ...(opts.headers || {}) }) : { ...(opts.headers || {}) }
   return fetch(url, { ...opts, headers, signal: ctrl.signal })
     .finally(() => clearTimeout(timer))
 }

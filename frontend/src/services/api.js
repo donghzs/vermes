@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { logger } from '@/utils/logger'
+import { withSessionToken } from '../utils/env'
 
 const token = ref('')
 let baseUrl = ''
@@ -145,9 +146,12 @@ function buildHeaders(extra = {}) {
     // 在线模式：用 One-API Bearer token
     const onlineToken = localStorage.getItem('vermes_wechat_token') || localStorage.getItem('vermes_token')
     if (onlineToken) h['Authorization'] = `Bearer ${onlineToken}`
-  } else if (token.value) {
-    // 桌面模式：用 Vermes session token
-    h['X-Vermes-Session-Token'] = token.value
+  } else {
+    // 桌面模式：session token（ref 未同步时回退 SPA 注入的全局）
+    const t = token.value
+      || (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__)
+      || ''
+    if (t) h['X-Vermes-Session-Token'] = t
   }
   return h
 }
@@ -279,7 +283,7 @@ const api = {
   async post(path, data) {
     const resp = await request(path, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     })
     return resp.json()
@@ -288,21 +292,21 @@ const api = {
   async put(path, data) {
     const resp = await request(path, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     })
     return resp.json()
   },
 
   async del(path) {
-    const resp = await request(path, { method: 'DELETE' })
+    const resp = await request(path, { method: 'DELETE', headers: withSessionToken() })
     return resp.json()
   },
 
   async patch(path, data) {
     const resp = await request(path, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     })
     return resp.json()
@@ -316,7 +320,7 @@ const api = {
   deleteSessionsBatch(ids) {
     return request('/sessions/batch', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ ids }),
     }).then(r => r.json())
   },

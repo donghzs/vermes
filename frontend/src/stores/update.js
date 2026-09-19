@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { logger } from '@/utils/logger'
 import { useConfirm } from '@/composables/useConfirm'
+import { withSessionToken } from '@/utils/env'
 
 // 版本号从后端 /health 运行时读取，不编译时硬编码
 // 框架更新不触发前端重建
@@ -438,9 +439,9 @@ export const useUpdateStore = defineStore('update', () => {
         }
       } else {
         // Web 模式：HTTP 带 token
-        const token = getAgentToken()
-        const headers = { 'Content-Type': 'application/json' }
-        if (token) headers['X-Vermes-Session-Token'] = token
+        const agentToken = getAgentToken()
+        const headers = withSessionToken({ 'Content-Type': 'application/json' })
+        if (agentToken) headers['X-Vermes-Session-Token'] = agentToken
         const response = await fetch('/api/agent/update', {
           method: 'POST',
           headers,
@@ -522,7 +523,7 @@ export const useUpdateStore = defineStore('update', () => {
       // 1. SSE 流式下载
       const response = await fetch('/api/update/download', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withSessionToken({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           version: latestVersion.value,
           url: downloadUrl.value,
@@ -581,7 +582,7 @@ export const useUpdateStore = defineStore('update', () => {
 
       const applyRes = await fetch('/api/update/apply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withSessionToken({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ version: latestVersion.value })
       })
 
@@ -638,7 +639,7 @@ export const useUpdateStore = defineStore('update', () => {
 
       const res = await fetch('/api/update/rollback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withSessionToken({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ version })
       })
 

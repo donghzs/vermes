@@ -11,6 +11,7 @@ import { defineStore } from 'pinia'
 import { ref, reactive, computed } from 'vue'
 import { logger } from '../utils/logger'
 import { showToast } from '../utils/toast'
+import { withSessionToken } from '../utils/env'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
 import {
   SESSION_TEMPLATES,
@@ -1739,7 +1740,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       await fetch('/api/approve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withSessionToken({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ session_key, choice }),
       })
     } catch (e) { console.error('[Approval] Failed:', e) }
@@ -1756,7 +1757,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       fetch('/api/model-change', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withSessionToken({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ model: modelId, provider }),
       })
     } catch (e) { /* 广播失败静默 */ }

@@ -325,6 +325,7 @@
 import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { logger } from '@/utils/logger'
+import { withSessionToken } from '../utils/env'
 import { useConfirm } from '../composables/useConfirm'
 import StateBlock from './StateBlock.vue'
 import SceneStatusBar from './SceneStatusBar.vue'
@@ -1006,7 +1007,7 @@ async function confirmAddProvider() {
   try {
     const resp = await fetch('/api/studio/providers', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         name: p.name.trim(),
         label: p.label || p.name,
@@ -1043,7 +1044,10 @@ async function confirmAddProvider() {
 async function removeProvider(providerName) {
   if (!await confirm({ title: '删除厂商', message: `删除厂商「${providerName}」？`, confirmText: '删除', danger: true })) return
   try {
-    const resp = await fetch(`/api/studio/providers/${encodeURIComponent(providerName)}`, { method: 'DELETE' })
+    const resp = await fetch(`/api/studio/providers/${encodeURIComponent(providerName)}`, {
+      method: 'DELETE',
+      headers: withSessionToken(),
+    })
     const data = await resp.json()
     if (data.success) {
       statusMsg.value = `✅ 厂商「${providerName}」已删除`

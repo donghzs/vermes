@@ -8,3 +8,11 @@ export function envHeaders() {
     'X-Vermes-Session-Token': (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) || '',
   }
 }
+
+/** C2：写请求合并 session token（在业务 headers 之上注入） */
+export function withSessionToken(headers = {}) {
+  return {
+    ...headers,
+    'X-Vermes-Session-Token': (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) || headers['X-Vermes-Session-Token'] || '',
+  }
+}

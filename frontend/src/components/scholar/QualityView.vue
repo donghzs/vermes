@@ -5,6 +5,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useScholarStore } from '../../stores/scholar'
 import { invokeTool } from '../../utils/invokeTool'
+import { withSessionToken } from '../../utils/env'
 import MarkdownPreview from './MarkdownPreview.vue'
 
 const scholar = useScholarStore()
@@ -56,7 +57,7 @@ async function runFull() {
     // 落库，便于后续在报告中回溯
     await fetch('/api/scholar/quality', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         project_id: scholar.currentProjectId,
         section_key: '',

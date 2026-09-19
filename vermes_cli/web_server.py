@@ -530,6 +530,54 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/channels/events",
 })
 
+# C2 ⑨：公开路径上的**写**方法仍默认要 session token；下列写端点显式豁免。
+# 设计：桌面 loopback 信任 + SPA 注入 token；外部脚本写接口必须带 token。
+# 敏感写（config / provider / update / evolution self-modify / agents 登堂 /
+# trust-gate / studio provider）一律不在本豁免表，必须带 session token。
+_PUBLIC_WRITE_ALLOW: frozenset = frozenset({
+    # /api/claim 审计结论（C2 保留公开）：
+    # 当前实现（blueprints/quota.py）仅在微信登录后返回 Agnes 免费模型
+    # provider 公开元数据（base_url/model 列表），不写凭证、不改本地配置、
+    # 不调 vbit.top 发 token。登录链路无法先持有 dashboard session token。
+    # 风险可接受；后续若 claim 恢复「写本地 env / 发真实 token」再收紧。
+    "/api/claim",
+    "/api/wechat/qrurl",
+    "/api/wechat/poll",
+    # Agent 核心 / 外部系统调用（与 C2 前同风险边界）
+    "/api/chat/completions",
+    "/api/agent/run",
+    # GUI / state.db 会话持久化（前端 chat-storage 部分裸 fetch）
+    "/api/gui/messages",
+    "/api/gui/sessions",
+    "/api/sessions",
+    # P3-3 能力调度：invoke.js 明确「裸 fetch 不带 token 有意为之」
+    "/api/invoke",
+    # 模型切换广播 + SSE 控制（EventSource/裸 fetch 信道）
+    "/api/model-change",
+    "/api/stop-generation",
+    "/api/steer",
+    # 桌面本地创作工具（mfgcad / artifacts），与 chat 同信任边界
+    "/api/mfgcad",
+    "/api/v1/artifacts",
+    # ScholarForge 桌面研究模块：invokeTool.js 约定「无 auth 依赖」
+    "/api/tools/invoke",
+    "/api/scholar",
+})
+
+
+def _path_public_for_method(path: str, method: str) -> bool:
+    """C2：读仍按 public 白名单；写再看 write-allow。"""
+    is_public = path in _PUBLIC_API_PATHS or any(
+        path.startswith(p + "/") for p in _PUBLIC_API_PATHS
+    )
+    if method.upper() not in ("POST", "PUT", "PATCH", "DELETE"):
+        return is_public
+    write_ok = path in _PUBLIC_WRITE_ALLOW or any(
+        path.startswith(p + "/") for p in _PUBLIC_WRITE_ALLOW
+    )
+    # 写：仅 write-allow 放行；即使读路径 public，写也要 token
+    return write_ok
+
 
 def _has_valid_session_token(request: Request) -> bool:
     """True if the request carries a valid dashboard session token.
@@ -664,11 +712,14 @@ async def host_header_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """Require the session token on all /api/ routes except the public list."""
+    """Require the session token on all /api/ routes except public rules.
+
+    C2：写方法（POST/PUT/PATCH/DELETE）在 public 前缀上也默认要 token，
+    仅 _PUBLIC_WRITE_ALLOW 豁免（claim / 微信登录 / chat 等）。
+    """
     path = request.url.path
     if path.startswith("/api/"):
-        is_public = path in _PUBLIC_API_PATHS or any(path.startswith(p + "/") for p in _PUBLIC_API_PATHS)
-        if not is_public and not _has_valid_session_token(request):
+        if not _path_public_for_method(path, request.method) and not _has_valid_session_token(request):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Unauthorized"},

@@ -10,6 +10,7 @@
 // D 防御：若调用方未显式传 project_id，自动并入当前面板选中项目（currentProjectId），
 // 覆盖 SchemaForm 之外的调用路径（FlowGuide / Uploader 等），与后端「激活项目」兜底互补。
 import { useScholarStore } from '../stores/scholar'
+import { withSessionToken } from './env'
 
 function withProjectId(args) {
   const finalArgs = { ...(args || {}) }
@@ -30,7 +31,7 @@ export async function invokeTool(name, args) {
   const finalArgs = withProjectId(args)
   const resp = await fetch('/api/tools/invoke', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withSessionToken({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ name, args: finalArgs }),
   })
 

@@ -7,6 +7,7 @@
 // 走裸 fetch 与 invokeTool 同理——避开 services/api.js 在线模式 /v1 前缀。
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { withSessionToken } from '../utils/env'
 
 export const useScholarStore = defineStore('scholar', () => {
   const currentProjectId = ref(null)
@@ -81,7 +82,7 @@ export const useScholarStore = defineStore('scholar', () => {
   async function createProject({ title, paper_type, target_words }) {
     const resp = await fetch('/api/scholar/projects', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ title, paper_type, target_words }),
     })
     if (!resp.ok) {
@@ -98,7 +99,7 @@ export const useScholarStore = defineStore('scholar', () => {
   }
 
   async function removeProject(pid) {
-    const resp = await fetch(`/api/scholar/projects/${pid}`, { method: 'DELETE' })
+    const resp = await fetch(`/api/scholar/projects/${pid}`, { method: 'DELETE', headers: withSessionToken() })
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}))
       throw new Error(data.detail || `删除失败（HTTP ${resp.status}）`)
@@ -113,7 +114,7 @@ export const useScholarStore = defineStore('scholar', () => {
   async function updateProject(pid, patch) {
     const resp = await fetch(`/api/scholar/projects/${pid}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(patch),
     })
     if (!resp.ok) {
@@ -134,7 +135,7 @@ export const useScholarStore = defineStore('scholar', () => {
     try {
       await fetch('/api/scholar/active-project', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withSessionToken({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ project_id: id }),
       })
     } catch (e) {

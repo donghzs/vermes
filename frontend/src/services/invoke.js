@@ -10,9 +10,13 @@
 // /api/chat/completions 同源）——裸 fetch 不带 session token 是有意为之，勿再加 auth 假设。
 export async function invokeCap(cap, payload = {}, sessionId = null) {
   const body = { cap, payload: payload || {}, session_id: sessionId }
+  const t = (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) || ''
   const resp = await fetch('/api/invoke', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(t ? { 'X-Vermes-Session-Token': t } : {}),
+    },
     body: JSON.stringify(body),
   })
 
