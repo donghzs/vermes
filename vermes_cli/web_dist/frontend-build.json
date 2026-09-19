@@ -1,7 +1,7 @@
 {
   "version": "2.5.0",
-  "gitHash": "1890ff7fe89d-dirty",
+  "gitHash": "3b17bcec3611",
   "gitBranch": "feat/2.5-c2-auth-writes",
-  "buildTime": "2026-09-19T11:25:54.764Z",
+  "buildTime": "2026-09-19T11:26:55.703Z",
   "nodeVersion": "v22.22.3"
 }
