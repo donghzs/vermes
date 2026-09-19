@@ -31,7 +31,10 @@ import sqlite3
 import time
 from pathlib import Path
 
-sys.path.insert(0, "/Users/dongzusheng/Projects/vermes-electron")
+# 仓库根（本文件 parents[2]）；禁止硬编码别的 worktree，否则多 worktree/CI 下模块串包
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import vermes_state
 import vermes_cli.blueprints.chat as chat_bp

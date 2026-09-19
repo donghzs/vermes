@@ -11,6 +11,7 @@ import difflib
 import json
 import logging
 import sqlite3
+import uuid
 
 logger = logging.getLogger(__name__)
 import os
@@ -4227,6 +4228,137 @@ def _extract_relay_targets(reply: str, profiles: list, self_id: str) -> list:
     return [t for t in targets if t != self_id]
 
 
+def _build_peer_prompt(
+    from_profile: dict,
+    to_profile: dict,
+    text: str,
+    room: dict,
+    all_profiles: list,
+    timeline: list,
+) -> str:
+    """⑦ peer 私聊发给 B 的完整上下文（兼容原群聊「接力」语义）。"""
+    room_title = (room or {}).get("title") or "未命名群"
+    from_name = _agent_display_name(from_profile)
+    to_name = _agent_display_name(to_profile)
+    # 复用群聊 roster 构造：B 仍看到「你是谁 / 群里有谁」，保证协作上下文完整
+    body = _build_room_prompt(
+        room, to_profile, all_profiles, timeline,
+        f"（peer 私聊）@{from_name} 在群聊中点名了你，请私聊接力处理。\n其发言/诉求如下：\n\n{text}",
+    )
+    header = (
+        f"[hermes peer · {room_title}]\n"
+        f"这是一段 bot 间点对点私聊（A2A peer）：@{from_name} → @{to_name}。\n"
+        f"结果会摘要回群，请直接给出可执行回复。\n"
+    )
+    return header + "\n" + body
+
+
+def _make_room_agent_chat_runner(norm, profiles_lookup: dict):
+    """⑦ peer 执行面：复用群聊 acp/cli/native 三通路，不广播房间 delta。"""
+    async def _runner(profile: dict, prompt: str) -> str:
+        pid = (profile or {}).get("id")
+        transport = (profile or {}).get("transport")
+        if transport == "acp":
+            return await asyncio.to_thread(_acp_agent_chat_sync, profile, prompt)
+        if transport == "cli":
+            return await asyncio.to_thread(_cli_agent_chat_sync, profile, prompt)
+        session_key = f"{_session_key_for_room(norm, pid)}:peer" if pid else f"room:peer:{uuid.uuid4().hex[:8]}"
+        agent = await _bot_build_agent(session_key, profile)
+        if agent is None:
+            raise RuntimeError("agent unavailable")
+        return await asyncio.to_thread(agent.chat, prompt, None)
+
+    return _runner
+
+
+async def bot_room_peer_dm(request: Request, room_id: str):
+    """POST /api/bot/rooms/{room_id}/peer  ⑦ hermes peer 显式入口。
+
+    body: {"from": "agent_id", "to": "agent_id", "text": "私聊内容"}
+    群聊中 A @B 的 orchestrator 路径也走同一 peer_exchange 协议。
+    """
+    if not _bot_mode_enabled():
+        raise HTTPException(status_code=403, detail={"ok": False, "error": "bot mode disabled"})
+    room_id = (room_id or "").strip()
+    if not room_id:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "room_id required"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from_id = (body.get("from") or body.get("from_id") or "").strip()
+    to_id = (body.get("to") or body.get("to_id") or "").strip()
+    text = (body.get("text") or body.get("message") or "").strip()
+    if not from_id or not to_id or not text:
+        raise HTTPException(status_code=400, detail={"ok": False, "error": "from/to/text required"})
+    if from_id == to_id:
+        return {"ok": False, "error": "peer_dm rejected: self-target"}
+
+    try:
+        from agent.a2a.peer import peer_exchange
+        db = _bot_room_db()
+        try:
+            room = db.get_bot_room(room_id) or {}
+            from_profile = db.get_agent_profile(from_id)
+            to_profile = db.get_agent_profile(to_id)
+            if not from_profile or not to_profile:
+                return {"ok": False, "error": "agent profile not found"}
+            members = db.list_bot_room_members(room_id)
+            member_ids = {m["ref_id"] for m in members if m.get("member_type") == "agent"}
+            # 允许显式 peer 不严格要求双方在群（跨群联邦），但若在群名单中则校验
+            if member_ids and (from_id not in member_ids or to_id not in member_ids):
+                pass  # ⑦ 联邦 peer：联系人池即可私聊，不限同群
+            profiles = [p for p in (db.get_agent_profile(m["ref_id"]) for m in members
+                                     if m.get("member_type") == "agent") if p]
+            if from_profile not in profiles:
+                profiles = profiles + [from_profile]
+            if to_profile not in profiles:
+                profiles = profiles + [to_profile]
+            norm = RoomIdNormalizer.normalize("desktop", room_id)
+            runner = _make_room_agent_chat_runner(norm, {p.get("id"): p for p in profiles})
+
+            def _p2p_prompt(fp, tp, t, rid):
+                return _build_peer_prompt(fp, tp, t, room, profiles, db.get_bot_room_timeline(room_id))
+
+            pr = await peer_exchange(
+                from_profile, to_profile, text,
+                room_id=room_id,
+                chat_runner=runner,
+                peer_prompt_builder=_p2p_prompt,
+            )
+            out = pr.to_dict()
+            if pr.ok:
+                line = (
+                    f"[私聊 @{_agent_display_name(from_profile)} ↔ @{_agent_display_name(to_profile)}]"
+                    f"（hermes peer / A2A）\n{pr.result}"
+                )
+                db.append_bot_room_message(
+                    room_id, "system", None, line,
+                    turn_session_id=_session_key_for_room(norm, to_id),
+                )
+                db.append_bot_room_message(
+                    room_id, "agent", to_id, pr.result,
+                    turn_session_id=_session_key_for_room(norm, to_id),
+                )
+                await _bot_broadcast_room_update(
+                    room_id, "room_message",
+                    message={"author_type": "system", "author_ref": None, "content": line},
+                )
+                await _bot_broadcast_room_update(
+                    room_id, "room_message",
+                    message={"author_type": "agent", "author_ref": to_id, "content": pr.result},
+                )
+                out["timeline"] = db.get_bot_room_timeline(room_id)
+            return out
+        finally:
+            db.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        _log.exception("[PeerDM] failed")
+        return {"ok": False, "error": str(e)}
+
+
 async def bot_org_templates_get(request: Request):
     """GET /api/bot/org/templates — 组织模板（岗位骨架，⑭）。
 
@@ -5153,7 +5285,7 @@ async def bot_room_message_send(request: Request, room_id: str):
                         room_id, "room_message",
                         message={"author_type": "agent", "author_ref": agent_id, "content": reply},
                     )
-                    # ④ 接力：解析回复中的 @mention（排除自指）
+                    # @ 接力目标由外层 orchestrator 决策：⑦ peer 私聊优先
                     if round_no < MAX_COLLAB_ROUNDS:
                         new_targets = _extract_relay_targets(reply, profiles, agent_id)
                         return reply, new_targets
@@ -5168,12 +5300,54 @@ async def bot_room_message_send(request: Request, room_id: str):
                 reply, new_targets = await _run_one(agent_id, prompt_text, round_no)
                 relay_round = max(relay_round, round_no)
                 if reply and new_targets:
-                    # 接力：新指令 = 「上一位 @ 了你，请接力」+ 其回复全文（含点名原因）
-                    for nt in new_targets:
-                        if nt not in spoke:
-                            # 指明谁在 @ 你，避免被接力者不知道为何被点名
+                    # ⑦ hermes peer：A @B → A2A 点对点私聊，结果回群；失败回退公开接力
+                    from agent.a2a.peer import peer_exchange
+                    from_profile = db.get_agent_profile(agent_id) or {}
+                    peer_runner = _make_room_agent_chat_runner(norm, {p.get("id"): p for p in profiles})
+
+                    def _p2p_prompt(fp, tp, t, rid, _room=room, _profs=profiles, _rid=room_id, _db=db):
+                        return _build_peer_prompt(
+                            fp, tp, t, _room, _profs, _db.get_bot_room_timeline(_rid),
+                        )
+
+                    for nt in list(new_targets):
+                        if nt in spoke:
+                            continue
+                        to_profile = db.get_agent_profile(nt) or {}
+                        if not to_profile:
+                            continue
+                        try:
+                            pr = await peer_exchange(
+                                from_profile, to_profile, reply,
+                                room_id=room_id,
+                                chat_runner=peer_runner,
+                                peer_prompt_builder=_p2p_prompt,
+                            )
+                        except Exception as pe:
+                            _log.warning("[PeerDM] exchange failed %s→%s: %s", agent_id, nt, pe)
+                            pr = None
+                        if pr is not None and pr.ok:
+                            spoke.add(nt)
+                            peer_line = (
+                                f"[私聊 @{_agent_display_name(from_profile)} ↔ "
+                                f"@{_agent_display_name(to_profile)}]（hermes peer / A2A）"
+                            )
+                            db.append_bot_room_message(room_id, "system", None, peer_line,
+                                                       turn_session_id=_session_key_for_room(norm, agent_id))
+                            db.append_bot_room_message(room_id, "agent", nt, pr.result,
+                                                       turn_session_id=_session_key_for_room(norm, nt))
+                            await _bot_broadcast_room_update(
+                                room_id, "room_message",
+                                message={"author_type": "system", "author_ref": None, "content": peer_line},
+                            )
+                            await _bot_broadcast_room_update(
+                                room_id, "room_message",
+                                message={"author_type": "agent", "author_ref": nt, "content": pr.result},
+                            )
+                        elif nt not in spoke:
+                            # peer 失败 → 公开接力兜底（保留既有协作链语义）
                             relay_prompt = (
-                                f"（接力）@{_agent_display_name(db.get_agent_profile(agent_id) or {})} "
+                                f"（接力）@{_agent_display_name(from_profile)} "
                                 f"在回复中点名了你，请接力处理相关部分。其回复如下：\n\n{reply}"
                             )
                             queue.append((nt, relay_prompt, round_no + 1))
@@ -7100,6 +7274,12 @@ def register_to(app):
             bot_room_message_send,
             methods=["POST"],
             name="bot_room_message_send",
+        )
+        app.add_api_route(
+            "/api/bot/rooms/{room_id}/peer",
+            bot_room_peer_dm,
+            methods=["POST"],
+            name="bot_room_peer_dm",
         )
         app.add_api_route(
             "/api/bot/rooms/{room_id}/timeline",
