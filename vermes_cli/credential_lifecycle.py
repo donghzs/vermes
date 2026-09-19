@@ -218,6 +218,13 @@ def is_trust_gate_strict() -> bool:
 
 
 def set_trust_gate_strict(enabled: bool) -> None:
+    """Settings 开关 → TrustGate 模式 + dispatch 执行闸门（B6）。
+
+    - gate_mode=strict：exec/network 默认分级升为 ASK_USER（B2）
+    - dispatch_gate_mode=fail_closed：非 ALLOW 决策真正阻断执行
+      （否则 ASK_USER 只记日志仍放行 = 严格模式空转）
+    - 关闭时两者一并回到 default / fail_open（零回归基线）
+    """
     try:
         from vermes_cli.adapters.trust_gate import (
             GATE_MODE_DEFAULT,
@@ -226,7 +233,12 @@ def set_trust_gate_strict(enabled: bool) -> None:
         )
         set_gate_mode(GATE_MODE_STRICT if enabled else GATE_MODE_DEFAULT)
     except Exception:
-        # trust_gate 不可用时保持 fail-open（模式切换失败不抛到 UI）
+        pass
+    try:
+        from tools.registry import registry
+        registry.set_dispatch_gate_mode("fail_closed" if enabled else "fail_open")
+    except Exception:
+        # registry 不可用时不阻断 Settings 写入
         pass
 
 

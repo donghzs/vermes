@@ -2543,7 +2543,7 @@ async function toggleChannel(platformKey) {
             <div>
               <div class="text-sm text-gray-800 dark:text-gray-200">TrustGate 严格模式</div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                工具声明层门禁（PermissionSpec + deny-unless-declared）。开启后，已声明的中高危操作更可能被拒；未声明工具仍可能 fail-open 放行。写回类工具另有独立核验信号，以状态灯/核验标签为准。
+                工具声明层门禁。开启后：① exec/network 类工具升为「需确认」；② 执行侧 fail-closed，非 ALLOW 决策会阻断。关闭则回到默认观测模式（273 工具零回归）。写回类工具另有独立核验信号。
               </div>
             </div>
             <button @click="toggleTrustGate" class="relative inline-flex h-5 w-9 items-center rounded-full transition" :class="trustGateStrict ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'">
