@@ -266,8 +266,12 @@ _channel_sync_state: Dict[str, Any] = {
 }
 
 
+# C1：SSE 订阅队列（与 WS 并联 fan-out；EventSource 无 header → 端点 public）
+_sse_channel_subscribers: set = set()
+
+
 async def _channel_sync_broadcast(payload: Dict[str, Any]) -> None:
-    """向所有已连接的桌面 WS 客户端广播；断开的自动剔除。"""
+    """向所有已连接的桌面客户端广播（WS + SSE）；坏连接自动剔除。"""
     dead = set()
     for ws in list(_active_chat_ws):
         try:
@@ -275,6 +279,19 @@ async def _channel_sync_broadcast(payload: Dict[str, Any]) -> None:
         except Exception:
             dead.add(ws)
     _active_chat_ws.difference_update(dead)
+    # C1：SSE fan-out（有界队列，满则丢弃旧事件避免无限增长）
+    if _sse_channel_subscribers:
+        for q in list(_sse_channel_subscribers):
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                try:
+                    q.get_nowait()
+                    q.put_nowait(payload)
+                except Exception:
+                    pass
+            except Exception:
+                _sse_channel_subscribers.discard(q)
 
 
 async def _channel_sync_tick() -> None:
@@ -509,6 +526,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/trending/tencent",
     # Brick 事件流（SSE，EventSource 无法带 header，须 public）
     "/api/bricks/events",
+    # C1 channel_push：桌面/群聊实时同步 SSE（与 /api/ws/chat 同信道广播）
+    "/api/channels/events",
 })
 
 
@@ -1820,6 +1839,42 @@ async def events_ws(ws: WebSocket) -> None:
 
                 if not subs:
                     _event_channels.pop(channel, None)
+
+
+# C1：channel_push SSE — EventSource 订阅房间/渠道实时事件（WS 兜底/替代）
+@app.get("/api/channels/events")
+async def channels_events(request: Request):
+    """SSE：channel_update / room_update 推送（与 /api/ws/chat 同 payload）。
+
+    Desktop WS 不可用时前端用 EventSource 兜底；有界队列 + 心跳防半开连接堆积。
+    """
+    from fastapi.responses import StreamingResponse
+
+    async def _gen():
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
+        _sse_channel_subscribers.add(q)
+        try:
+            yield "event: open\ndata: {\"ok\":true}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    payload = await asyncio.wait_for(q.get(), timeout=20.0)
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        finally:
+            _sse_channel_subscribers.discard(q)
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.websocket("/api/ws/chat")

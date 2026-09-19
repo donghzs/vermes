@@ -1,7 +1,7 @@
 {
   "version": "2.5.0",
-  "gitHash": "95ae85d343dc",
-  "gitBranch": "main",
-  "buildTime": "2026-09-19T10:09:54.232Z",
+  "gitHash": "a5d265d8cfab-dirty",
+  "gitBranch": "feat/2.5-c1-channel-push",
+  "buildTime": "2026-09-19T10:55:37.553Z",
   "nodeVersion": "v22.22.3"
 }

@@ -69,6 +69,7 @@ export const useBotRoomStore = defineStore('botRoom', {
     async loadRooms() {
       this.loadingRooms = true
       this.error = ''
+      this.ensureRoomRealtime()
       try {
         const r = await api.listBotRooms()
         if (r && r.ok) { this.rooms = r.rooms || []; this.botModeDisabled = false }
@@ -158,6 +159,23 @@ export const useBotRoomStore = defineStore('botRoom', {
         this.loadingTimeline = false
       }
     },
+    /** C1：SSE 实时订阅（WS 断开时兜底；幂等） */
+    ensureRoomRealtime() {
+      if (this._sse || typeof EventSource === 'undefined') return
+      try {
+        const es = new EventSource('/api/channels/events')
+        this._sse = es
+        es.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg && msg.type === 'room_update') {
+              window.dispatchEvent(new CustomEvent('vermes:room_update', { detail: msg }))
+            }
+          } catch (_) {}
+        }
+        es.onerror = () => { /* EventSource 自带重连 */ }
+      } catch (_) { /* 非浏览器 */ }
+    },
     async sendMessage(text) {
       if (this.botModeDisabled) return
       if (!this.currentRoomId || !text || !text.trim()) return
@@ -171,10 +189,16 @@ export const useBotRoomStore = defineStore('botRoom', {
       }
     },
     // WS room_update 回调（由 chat.js initChannelSync 经 CustomEvent 转发）
+    // C1：另有 SSE /api/channels/events 兜底（ensureRoomRealtime）
     async onRoomUpdate(msg) {
       if (!msg || msg.type !== 'room_update') return
       const topicRoom = (msg.topic || '').replace(/^room:/, '')
       if (msg.event === 'room_created') {
+        await this.loadRooms()
+        return
+      }
+      if (msg.event === 'room_updated') {
+        // 公告/任务/标题变更：重拉列表（房间少，简单正确）
         await this.loadRooms()
         return
       }
