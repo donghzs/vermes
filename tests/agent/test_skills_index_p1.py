@@ -61,18 +61,18 @@ class TestResolveCompactGate(unittest.TestCase):
     def test_default_missing_config_is_off(self):
         from agent.prompt_builder import resolve_compact_skill_categories
         self._write_config(None)
-        self.assertIsNone(resolve_compact_skill_categories(self.code_dir))
+        self.assertIsNone(resolve_compact_skill_categories(self.code_dir, platform="cli"))
 
     def test_off_never_demotes(self):
         from agent.prompt_builder import resolve_compact_skill_categories
         self._write_config("off")
-        self.assertIsNone(resolve_compact_skill_categories(self.code_dir))
+        self.assertIsNone(resolve_compact_skill_categories(self.code_dir, platform="cli"))
 
     def test_auto_only_in_coding_dir(self):
         from agent.prompt_builder import resolve_compact_skill_categories
         self._write_config("auto")
-        self.assertIsNone(resolve_compact_skill_categories(self.plain_dir))
-        cats = resolve_compact_skill_categories(self.code_dir)
+        self.assertIsNone(resolve_compact_skill_categories(self.plain_dir, platform="cli"))
+        cats = resolve_compact_skill_categories(self.code_dir, platform="cli")
         self.assertIsNotNone(cats)
         self.assertIn("creative", cats)
         self.assertIn("daily", cats)  # 本地补充
@@ -81,7 +81,7 @@ class TestResolveCompactGate(unittest.TestCase):
     def test_unknown_mode_fails_safe_off(self):
         from agent.prompt_builder import resolve_compact_skill_categories
         self._write_config("maybe")
-        self.assertIsNone(resolve_compact_skill_categories(self.code_dir))
+        self.assertIsNone(resolve_compact_skill_categories(self.code_dir, platform="cli"))
 
 
 class TestSkillsIndexRender(unittest.TestCase):

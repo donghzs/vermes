@@ -40,8 +40,8 @@ class TestP3DenyList(unittest.TestCase):
         real = cfg_mod.load_config
         try:
             cfg_mod.load_config = lambda *a, **k: {"agent": {"compact_skill_categories": "auto"}}
-            self.assertIsNotNone(resolve_compact_skill_categories(code))
-            self.assertIsNone(resolve_compact_skill_categories(plain))
+            self.assertIsNotNone(resolve_compact_skill_categories(code, platform="cli"))
+            self.assertIsNone(resolve_compact_skill_categories(plain, platform="cli"))
         finally:
             cfg_mod.load_config = real
 
@@ -109,11 +109,11 @@ class TestM7ConfigRoundtrip(unittest.TestCase):
 
         code = Path(tempfile.mkdtemp(prefix="m7-code-"))
         (code / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
-        self.assertIsNone(resolve_compact_skill_categories(code))
+        self.assertIsNone(resolve_compact_skill_categories(code, platform="cli"))
         asyncio.new_event_loop().run_until_complete(
             cfg_bp.patch_config({"agent": {"compact_skill_categories": "auto"}})
         )
-        cats = resolve_compact_skill_categories(code)
+        cats = resolve_compact_skill_categories(code, platform="cli")
         self.assertIsNotNone(cats)
         self.assertIn("agnes-video-t2v", cats)
         self.assertIn("metaphysics", cats)

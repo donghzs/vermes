@@ -338,7 +338,10 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             available_tools=agent.valid_tool_names,
             available_toolsets=avail_toolsets,
             # P1：config agent.compact_skill_categories=off|auto；auto 仅在代码目录降级
-            compact_categories=_r.resolve_compact_skill_categories(),
+            # A′：传 agent.platform，让 messaging/群聊渠道硬门在 resolve 内短路（永不降级）
+            compact_categories=_r.resolve_compact_skill_categories(
+                platform=getattr(agent, "platform", None),
+            ),
         )
     else:
         skills_prompt = ""

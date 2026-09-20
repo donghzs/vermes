@@ -1116,6 +1116,14 @@ _PROJECT_MARKERS = (
     "AGENTS.md", "CLAUDE.md", ".cursorrules",
 )
 
+# A′ 渠道硬门：只有这些交互式/程序化入口允许 auto 降级（白名单制，默认拒绝）。
+# 对齐上游 coding_context.INTERACTIVE_CODING_PLATFORMS 的思路（只认交互式平台，
+# messaging 故意排除），并扩展 Vermes 的 web/desktop/api 入口。
+# messaging/群聊渠道（telegram/feishu/qqbot/discord/slack/...）永不在此列 → 永不降级。
+_INTERACTIVE_CODING_PLATFORMS = frozenset({
+    "cli", "web", "desktop", "tui", "acp", "local", "api", "api_server",
+})
+
 _HIDDEN_NOTE = (
     "\n(Categories marked [names only] are outside the current coding "
     "context, so their descriptions are omitted — the skills work "
@@ -1139,11 +1147,16 @@ def is_coding_dir(cwd: "str | os.PathLike | None" = None) -> bool:
 
 def resolve_compact_skill_categories(
     cwd: "str | os.PathLike | None" = None,
+    platform: "str | None" = None,
 ) -> "frozenset[str] | None":
-    """P1 门控：config ``agent.compact_skill_categories`` ∈ {off, auto}。
+    """P1 门控 + A′ 渠道硬门：config ``agent.compact_skill_categories`` ∈ {off, auto}。
 
     * ``off`` / 缺省 / 无法解析 → ``None``（**不降级**，安全默认）
-    * ``auto`` → 仅当 ``is_coding_dir(cwd)`` 为真时返回 deny-list，否则 None
+    * ``auto`` → 仅当 **平台是交互式编码平台**（非 messaging/群聊）**且**
+      ``is_coding_dir(cwd)`` 为真时返回 deny-list，否则 None
+    * A′ 渠道硬门：messaging/IM 渠道（telegram/feishu/qqbot/discord/slack/…）以及
+      未知/空 platform 一律**永不降级**——防止 gateway 单进程 cwd 为仓库根时，
+      把群聊/IM 会话整锅误判成「代码目录」触发 names-only。
     """
     try:
         from vermes_cli.config import load_config
@@ -1153,6 +1166,9 @@ def resolve_compact_skill_categories(
     except Exception:
         return None
     if mode in ("auto", "on", "true", "1", "yes"):
+        # 渠道硬门：白名单制，默认拒绝——非交互式平台（messaging/未知/空）不降级。
+        if (platform or "").strip().lower() not in _INTERACTIVE_CODING_PLATFORMS:
+            return None
         return frozenset(_NON_CODING_SKILL_CATEGORIES) if is_coding_dir(cwd) else None
     # off / 未知值：fail-safe 不降级
     return None
