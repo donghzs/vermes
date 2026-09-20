@@ -1,0 +1,911 @@
+{
+  "skills_dir": "/Users/dongzusheng/.vermes/skills",
+  "env_platform_hint": "",
+  "deny_list": [
+    "apple",
+    "communication",
+    "content-marketing",
+    "cooking",
+    "creative",
+    "daily",
+    "email",
+    "finance",
+    "gaming",
+    "gifs",
+    "health",
+    "media",
+    "music",
+    "note-taking",
+    "openclaw-imports",
+    "productivity",
+    "shopping",
+    "smart-home",
+    "social-media",
+    "travel",
+    "yuanbao"
+  ],
+  "current_config_auto_enabled_in_coding_dir": false,
+  "gate_simulation": {
+    "auto_in_coding_dir": true,
+    "auto_in_plain_dir": false,
+    "auto_coding_deny_size": 21,
+    "off_in_coding_dir": null,
+    "unknown_value_failsafe_off": null
+  },
+  "env_platform": {
+    "label": "current_env_platform",
+    "full_prompt_bytes": 28138,
+    "demoted_prompt_bytes": 22958,
+    "prompt_savings_bytes": 5180,
+    "prompt_savings_pct": 18.41,
+    "index_bytes_full": 26453,
+    "index_bytes_demoted": 21110,
+    "index_savings_bytes": 5343,
+    "index_savings_pct": 20.2,
+    "skill_lines_full": 228,
+    "skill_lines_demoted": 164,
+    "names_only_categories": [
+      "apple",
+      "content-marketing",
+      "creative",
+      "daily",
+      "email",
+      "gaming",
+      "media",
+      "note-taking",
+      "openclaw-imports",
+      "productivity",
+      "smart-home",
+      "social-media",
+      "travel",
+      "yuanbao"
+    ],
+    "names_only_category_count": 14,
+    "demoted_categories_desc_bytes_in_full": 4212,
+    "categories_full": 73,
+    "index_category_detail": {
+      "software-development": {
+        "skill_count": 49,
+        "desc_bytes": 3689,
+        "names_only": false
+      },
+      "creative": {
+        "skill_count": 26,
+        "desc_bytes": 1628,
+        "names_only": false
+      },
+      "devops": {
+        "skill_count": 20,
+        "desc_bytes": 1520,
+        "names_only": false
+      },
+      "autonomous-ai-agents": {
+        "skill_count": 14,
+        "desc_bytes": 878,
+        "names_only": false
+      },
+      "research": {
+        "skill_count": 10,
+        "desc_bytes": 710,
+        "names_only": false
+      },
+      "daily": {
+        "skill_count": 4,
+        "desc_bytes": 550,
+        "names_only": false
+      },
+      "productivity": {
+        "skill_count": 9,
+        "desc_bytes": 513,
+        "names_only": false
+      },
+      "github": {
+        "skill_count": 7,
+        "desc_bytes": 388,
+        "names_only": false
+      },
+      "apple": {
+        "skill_count": 6,
+        "desc_bytes": 338,
+        "names_only": false
+      },
+      "vermes": {
+        "skill_count": 3,
+        "desc_bytes": 336,
+        "names_only": false
+      },
+      "media": {
+        "skill_count": 5,
+        "desc_bytes": 266,
+        "names_only": false
+      },
+      "software-engineering": {
+        "skill_count": 4,
+        "desc_bytes": 242,
+        "names_only": false
+      },
+      "social-media": {
+        "skill_count": 3,
+        "desc_bytes": 192,
+        "names_only": false
+      },
+      "mlops/inference": {
+        "skill_count": 3,
+        "desc_bytes": 169,
+        "names_only": false
+      },
+      "hardware": {
+        "skill_count": 1,
+        "desc_bytes": 168,
+        "names_only": false
+      },
+      "travel": {
+        "skill_count": 1,
+        "desc_bytes": 162,
+        "names_only": false
+      },
+      "audit-verification-workflow": {
+        "skill_count": 1,
+        "desc_bytes": 158,
+        "names_only": false
+      },
+      "docx-thesis-modification": {
+        "skill_count": 1,
+        "desc_bytes": 152,
+        "names_only": false
+      },
+      "external-api-testing": {
+        "skill_count": 1,
+        "desc_bytes": 152,
+        "names_only": false
+      },
+      "multi-search-engine": {
+        "skill_count": 1,
+        "desc_bytes": 152,
+        "names_only": false
+      },
+      "ppt": {
+        "skill_count": 1,
+        "desc_bytes": 148,
+        "names_only": false
+      },
+      "imap-smtp-email": {
+        "skill_count": 1,
+        "desc_bytes": 144,
+        "names_only": false
+      },
+      "email-skill": {
+        "skill_count": 1,
+        "desc_bytes": 142,
+        "names_only": false
+      },
+      "metaphysics": {
+        "skill_count": 1,
+        "desc_bytes": 140,
+        "names_only": false
+      },
+      "agnes-multi-modal-integration": {
+        "skill_count": 1,
+        "desc_bytes": 136,
+        "names_only": false
+      },
+      "agnes-video-keyframes": {
+        "skill_count": 1,
+        "desc_bytes": 134,
+        "names_only": false
+      },
+      "agnes-video-multi-img": {
+        "skill_count": 1,
+        "desc_bytes": 134,
+        "names_only": false
+      },
+      "agnes-shot-generator": {
+        "skill_count": 1,
+        "desc_bytes": 126,
+        "names_only": false
+      },
+      "content-marketing": {
+        "skill_count": 2,
+        "desc_bytes": 122,
+        "names_only": false
+      },
+      "local-mlx": {
+        "skill_count": 2,
+        "desc_bytes": 120,
+        "names_only": false
+      },
+      "openclaw-imports": {
+        "skill_count": 2,
+        "desc_bytes": 120,
+        "names_only": false
+      },
+      "agnes-video-i2v": {
+        "skill_count": 1,
+        "desc_bytes": 118,
+        "names_only": false
+      },
+      "agnes-video-t2v": {
+        "skill_count": 1,
+        "desc_bytes": 118,
+        "names_only": false
+      },
+      "mlops/models": {
+        "skill_count": 2,
+        "desc_bytes": 118,
+        "names_only": false
+      },
+      "office-collaboration": {
+        "skill_count": 1,
+        "desc_bytes": 114,
+        "names_only": false
+      },
+      "ch9329-hid-control": {
+        "skill_count": 1,
+        "desc_bytes": 112,
+        "names_only": false
+      },
+      "mlops/evaluation": {
+        "skill_count": 2,
+        "desc_bytes": 112,
+        "names_only": false
+      },
+      "web": {
+        "skill_count": 1,
+        "desc_bytes": 110,
+        "names_only": false
+      },
+      "agent-studio-template-engine": {
+        "skill_count": 1,
+        "desc_bytes": 102,
+        "names_only": false
+      },
+      "gaming": {
+        "skill_count": 2,
+        "desc_bytes": 100,
+        "names_only": false
+      },
+      "persona-switch": {
+        "skill_count": 1,
+        "desc_bytes": 98,
+        "names_only": false
+      },
+      "wechat-official-account": {
+        "skill_count": 1,
+        "desc_bytes": 95,
+        "names_only": false
+      },
+      "eco-decision-framework": {
+        "skill_count": 1,
+        "desc_bytes": 64,
+        "names_only": false
+      },
+      "computer-use": {
+        "skill_count": 1,
+        "desc_bytes": 62,
+        "names_only": false
+      },
+      "git-clean-recovery-from-bad-merge": {
+        "skill_count": 1,
+        "desc_bytes": 62,
+        "names_only": false
+      },
+      "security": {
+        "skill_count": 1,
+        "desc_bytes": 62,
+        "names_only": false
+      },
+      "1password": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "cloud-upload-backup": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "delegate-task": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "docx": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "healthcheck": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "memory-benchmark": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "mlops": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "model-usage": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "pdf": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "reportlab-chinese-pdf": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "scholarforge-citation-audit": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "session-logs": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "skill-creator": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "skillhub-discovery": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "taskflow": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "vermes-desktop-plugins": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "weather": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "xlsx": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "yuanbao": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "note-taking": {
+        "skill_count": 1,
+        "desc_bytes": 59,
+        "names_only": false
+      },
+      "mlops/research": {
+        "skill_count": 1,
+        "desc_bytes": 58,
+        "names_only": false
+      },
+      "smart-home": {
+        "skill_count": 1,
+        "desc_bytes": 58,
+        "names_only": false
+      },
+      "dogfood": {
+        "skill_count": 1,
+        "desc_bytes": 57,
+        "names_only": false
+      },
+      "mcp": {
+        "skill_count": 1,
+        "desc_bytes": 57,
+        "names_only": false
+      },
+      "red-teaming": {
+        "skill_count": 1,
+        "desc_bytes": 52,
+        "names_only": false
+      },
+      "data-science": {
+        "skill_count": 1,
+        "desc_bytes": 51,
+        "names_only": false
+      },
+      "email": {
+        "skill_count": 1,
+        "desc_bytes": 44,
+        "names_only": false
+      }
+    }
+  },
+  "macos_platform": {
+    "label": "platform=macos",
+    "full_prompt_bytes": 28138,
+    "demoted_prompt_bytes": 22958,
+    "prompt_savings_bytes": 5180,
+    "prompt_savings_pct": 18.41,
+    "index_bytes_full": 26453,
+    "index_bytes_demoted": 21110,
+    "index_savings_bytes": 5343,
+    "index_savings_pct": 20.2,
+    "skill_lines_full": 228,
+    "skill_lines_demoted": 164,
+    "names_only_categories": [
+      "apple",
+      "content-marketing",
+      "creative",
+      "daily",
+      "email",
+      "gaming",
+      "media",
+      "note-taking",
+      "openclaw-imports",
+      "productivity",
+      "smart-home",
+      "social-media",
+      "travel",
+      "yuanbao"
+    ],
+    "names_only_category_count": 14,
+    "demoted_categories_desc_bytes_in_full": 4212,
+    "categories_full": 73,
+    "index_category_detail": {
+      "software-development": {
+        "skill_count": 49,
+        "desc_bytes": 3689,
+        "names_only": false
+      },
+      "creative": {
+        "skill_count": 26,
+        "desc_bytes": 1628,
+        "names_only": false
+      },
+      "devops": {
+        "skill_count": 20,
+        "desc_bytes": 1520,
+        "names_only": false
+      },
+      "autonomous-ai-agents": {
+        "skill_count": 14,
+        "desc_bytes": 878,
+        "names_only": false
+      },
+      "research": {
+        "skill_count": 10,
+        "desc_bytes": 710,
+        "names_only": false
+      },
+      "daily": {
+        "skill_count": 4,
+        "desc_bytes": 550,
+        "names_only": false
+      },
+      "productivity": {
+        "skill_count": 9,
+        "desc_bytes": 513,
+        "names_only": false
+      },
+      "github": {
+        "skill_count": 7,
+        "desc_bytes": 388,
+        "names_only": false
+      },
+      "apple": {
+        "skill_count": 6,
+        "desc_bytes": 338,
+        "names_only": false
+      },
+      "vermes": {
+        "skill_count": 3,
+        "desc_bytes": 336,
+        "names_only": false
+      },
+      "media": {
+        "skill_count": 5,
+        "desc_bytes": 266,
+        "names_only": false
+      },
+      "software-engineering": {
+        "skill_count": 4,
+        "desc_bytes": 242,
+        "names_only": false
+      },
+      "social-media": {
+        "skill_count": 3,
+        "desc_bytes": 192,
+        "names_only": false
+      },
+      "mlops/inference": {
+        "skill_count": 3,
+        "desc_bytes": 169,
+        "names_only": false
+      },
+      "hardware": {
+        "skill_count": 1,
+        "desc_bytes": 168,
+        "names_only": false
+      },
+      "travel": {
+        "skill_count": 1,
+        "desc_bytes": 162,
+        "names_only": false
+      },
+      "audit-verification-workflow": {
+        "skill_count": 1,
+        "desc_bytes": 158,
+        "names_only": false
+      },
+      "docx-thesis-modification": {
+        "skill_count": 1,
+        "desc_bytes": 152,
+        "names_only": false
+      },
+      "external-api-testing": {
+        "skill_count": 1,
+        "desc_bytes": 152,
+        "names_only": false
+      },
+      "multi-search-engine": {
+        "skill_count": 1,
+        "desc_bytes": 152,
+        "names_only": false
+      },
+      "ppt": {
+        "skill_count": 1,
+        "desc_bytes": 148,
+        "names_only": false
+      },
+      "imap-smtp-email": {
+        "skill_count": 1,
+        "desc_bytes": 144,
+        "names_only": false
+      },
+      "email-skill": {
+        "skill_count": 1,
+        "desc_bytes": 142,
+        "names_only": false
+      },
+      "metaphysics": {
+        "skill_count": 1,
+        "desc_bytes": 140,
+        "names_only": false
+      },
+      "agnes-multi-modal-integration": {
+        "skill_count": 1,
+        "desc_bytes": 136,
+        "names_only": false
+      },
+      "agnes-video-keyframes": {
+        "skill_count": 1,
+        "desc_bytes": 134,
+        "names_only": false
+      },
+      "agnes-video-multi-img": {
+        "skill_count": 1,
+        "desc_bytes": 134,
+        "names_only": false
+      },
+      "agnes-shot-generator": {
+        "skill_count": 1,
+        "desc_bytes": 126,
+        "names_only": false
+      },
+      "content-marketing": {
+        "skill_count": 2,
+        "desc_bytes": 122,
+        "names_only": false
+      },
+      "local-mlx": {
+        "skill_count": 2,
+        "desc_bytes": 120,
+        "names_only": false
+      },
+      "openclaw-imports": {
+        "skill_count": 2,
+        "desc_bytes": 120,
+        "names_only": false
+      },
+      "agnes-video-i2v": {
+        "skill_count": 1,
+        "desc_bytes": 118,
+        "names_only": false
+      },
+      "agnes-video-t2v": {
+        "skill_count": 1,
+        "desc_bytes": 118,
+        "names_only": false
+      },
+      "mlops/models": {
+        "skill_count": 2,
+        "desc_bytes": 118,
+        "names_only": false
+      },
+      "office-collaboration": {
+        "skill_count": 1,
+        "desc_bytes": 114,
+        "names_only": false
+      },
+      "ch9329-hid-control": {
+        "skill_count": 1,
+        "desc_bytes": 112,
+        "names_only": false
+      },
+      "mlops/evaluation": {
+        "skill_count": 2,
+        "desc_bytes": 112,
+        "names_only": false
+      },
+      "web": {
+        "skill_count": 1,
+        "desc_bytes": 110,
+        "names_only": false
+      },
+      "agent-studio-template-engine": {
+        "skill_count": 1,
+        "desc_bytes": 102,
+        "names_only": false
+      },
+      "gaming": {
+        "skill_count": 2,
+        "desc_bytes": 100,
+        "names_only": false
+      },
+      "persona-switch": {
+        "skill_count": 1,
+        "desc_bytes": 98,
+        "names_only": false
+      },
+      "wechat-official-account": {
+        "skill_count": 1,
+        "desc_bytes": 95,
+        "names_only": false
+      },
+      "eco-decision-framework": {
+        "skill_count": 1,
+        "desc_bytes": 64,
+        "names_only": false
+      },
+      "computer-use": {
+        "skill_count": 1,
+        "desc_bytes": 62,
+        "names_only": false
+      },
+      "git-clean-recovery-from-bad-merge": {
+        "skill_count": 1,
+        "desc_bytes": 62,
+        "names_only": false
+      },
+      "security": {
+        "skill_count": 1,
+        "desc_bytes": 62,
+        "names_only": false
+      },
+      "1password": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "cloud-upload-backup": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "delegate-task": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "docx": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "healthcheck": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "memory-benchmark": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "mlops": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "model-usage": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "pdf": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "reportlab-chinese-pdf": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "scholarforge-citation-audit": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "session-logs": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "skill-creator": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "skillhub-discovery": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "taskflow": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "vermes-desktop-plugins": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "weather": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "xlsx": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "yuanbao": {
+        "skill_count": 1,
+        "desc_bytes": 60,
+        "names_only": false
+      },
+      "note-taking": {
+        "skill_count": 1,
+        "desc_bytes": 59,
+        "names_only": false
+      },
+      "mlops/research": {
+        "skill_count": 1,
+        "desc_bytes": 58,
+        "names_only": false
+      },
+      "smart-home": {
+        "skill_count": 1,
+        "desc_bytes": 58,
+        "names_only": false
+      },
+      "dogfood": {
+        "skill_count": 1,
+        "desc_bytes": 57,
+        "names_only": false
+      },
+      "mcp": {
+        "skill_count": 1,
+        "desc_bytes": 57,
+        "names_only": false
+      },
+      "red-teaming": {
+        "skill_count": 1,
+        "desc_bytes": 52,
+        "names_only": false
+      },
+      "data-science": {
+        "skill_count": 1,
+        "desc_bytes": 51,
+        "names_only": false
+      },
+      "email": {
+        "skill_count": 1,
+        "desc_bytes": 44,
+        "names_only": false
+      }
+    }
+  },
+  "fs_skill_files_by_parent": {
+    "software-development": 49,
+    "creative": 26,
+    "devops": 20,
+    ".archive": 14,
+    "autonomous-ai-agents": 14,
+    "research": 11,
+    "productivity": 10,
+    "mlops": 9,
+    "github": 7,
+    "apple": 6,
+    "media": 5,
+    "daily": 4,
+    "software-engineering": 4,
+    "social-media": 3,
+    "vermes": 3,
+    "gaming": 2,
+    "openclaw-imports": 2,
+    "content-marketing": 2,
+    "local-mlx": 2,
+    "metaphysics": 1,
+    "model-usage": 1,
+    "memory-benchmark": 1,
+    "hardware": 1,
+    "wechat-official-account": 1,
+    "agnes-shot-generator": 1,
+    "imap-smtp-email": 1,
+    "session-logs": 1,
+    "yuanbao": 1,
+    "data-science": 1,
+    "security": 1,
+    "agnes-video-keyframes": 1,
+    "web": 1,
+    "agent-studio-template-engine": 1,
+    "healthcheck": 1,
+    "eco-decision-framework": 1,
+    "delegate-task": 1,
+    "vermes-desktop-plugins": 1,
+    "xlsx": 1,
+    "pdf": 1,
+    "agnes-multi-modal-integration": 1,
+    "docx-thesis-modification": 1,
+    "persona-switch": 1,
+    "mcp": 1,
+    "ch9329-hid-control": 1,
+    "agnes-video-i2v": 1,
+    "multi-search-engine": 1,
+    "agnes-video-t2v": 1,
+    "agnes-video-multi-img": 1,
+    "scholarforge-citation-audit": 1,
+    "skill-creator": 1,
+    "note-taking": 1,
+    "red-teaming": 1,
+    "office-collaboration": 1,
+    "reportlab-chinese-pdf": 1,
+    "weather": 1,
+    "ppt": 1,
+    "paper-writing-frameworks": 1,
+    "external-api-testing": 1,
+    "skillhub-discovery": 1,
+    "computer-use": 1,
+    "taskflow": 1,
+    "git-clean-recovery-from-bad-merge": 1,
+    "travel": 1,
+    "audit-verification-workflow": 1,
+    "docx": 1,
+    "email": 1,
+    "cloud-upload-backup": 1,
+    "smart-home": 1,
+    "dogfood": 1,
+    "1password": 1,
+    "email-skill": 1
+  },
+  "recommendation_inputs": {
+    "primary_savings_pct": 18.41,
+    "primary_savings_bytes": 5180,
+    "note": "以 platform=macos 为桌面主场景口径；env 空 platform 可能过滤 platforms 标签技能"
+  }
+}
