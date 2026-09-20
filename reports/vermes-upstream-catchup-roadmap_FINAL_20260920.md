@@ -158,7 +158,7 @@ bridge 覆盖了 feishu/qqbot/wecom/weixin，所以「只有 telegram」不成�
 | A1 | home channel 提示判定改走 `get_home_channel()` | `gateway/message_handler_mixin.py:2087-2106` | 0.25d | feishu/qqbot 仅写 config.yaml 时不误报 |
 | A2 | cron 投递加 config 回落（env → legacy env → config） | `cron/scheduler.py:372-382` | 0.25d | 仅 config.yaml 设 home 时 cron 真投递到飞书 |
 | A3 | 提示去重写进 `~/.vermes/gateway_state.json`（已有 `platforms` 键），不再拿 `not history` 当节流 | gateway 提示层 | 0.5d | 同一平台只提示一次 |
-| A4 | 分歧度量脚本 `scripts/diverge_metrics.py` | `scripts/` + `reports/` | 0.5d | 产出第一份基线（同源 Jaccard / 工具 schema token / 静默失败提交数） |
+| A4 | 分歧度量脚本 `scripts/diverge_metrics.py` | `scripts/` + `reports/` | ~~0.5d~~ → **0.25d**（**已有实现**：`~/.hermes/skills/hermes-vermes-architecture/scripts/diverge_metrics.py`，2026-09-20 实测发现，只需搬入仓库并适配路径） | 产出第一份基线（同源 Jaccard / 工具 schema token / 静默失败提交数） |
 | A5 | 重写 `UPSTREAM_SYNC.md`（修 remote 指向 + 版本基线 + 改可执行清单） | 仓库根 | 0.5d | 文档内的 upstream URL、版本号与实测一致 |
 | A6 | CI 补 3 条 lane：`js-tests` / `tests-os`(mac+linux) / `install-e2e`(mac) | `.github/workflows/` | 1d | lane 在 PR 上真实生效 |
 | **A7** | **GUI 设置入口 + 首条 DM 自动设定**（新增项，见下） | `frontend/src/components/Settings.vue` + `vermes_cli/gateway_channels.py` | 1~1.5d | 前端能设能改；首条 DM 自动设定后带取消入口的回执 |
@@ -316,7 +316,7 @@ A1/A2 修掉的是「**设了能被认**」，但没解决「**用户根本没�
 |---|---|---|---|
 | E4 | §0.3 | `/sethome` **双写**建议（env 保留运维覆盖语义 + `config.yaml` 作结构化真源），待拍板 | 不双写则「改完即时生效」与「重启后仍生效」永远缺一条，A2 的语义分支悬空 |
 | E5 | §5 #1、#2 | 上游检出就在本机 `~/.hermes/hermes-agent`（HEAD `5a0c2fb89e`、总提交 37,857）；浏览器数已核实 → 两项收口 | 省掉一次大仓 fetch，把「待复核」变成可决策项 |
-| E6 | §4 验收（新增陷阱） | **提示文本不进 `logs/gateway.log`**（只走 `_deliver_platform_notice → adapter.send`），拿日志验收 A1 会永远显示「通过」；**必须用平台侧历史计数**（如 `scripts/feishu_chat_timeline.py`） | 不写这条，A1 实质不可验收 |
+| E6 | §4 验收（新增陷阱） | **提示文本不进 `logs/gateway.log`**（只走 `_deliver_platform_notice → adapter.send`），拿日志验收 A1 会永远显示「通过」；**必须用平台侧历史计数** —— 脚本**已存在**：`~/.hermes/skills/hermes-vermes-architecture/scripts/feishu_chat_timeline.py`（2026-09-20 实测确认，可直接使用） | 不写这条，A1 实质不可验收（拿 gateway.log 验收会永远显示「通过」） |
 | E7 | §2 P0-A 的 A3 落点 | `gateway/status.py:542 write_runtime_status` 是**读-改-写**（`read → setdefault("platforms") → 更新已知键`）→ 塞标记**不会被冲掉**，但该文件是运行时健康诊断文件，UX 状态混入会污染 doctor/诊断语义 → 建议独立 `notices` 域或单独文件 | A3 按原落点能跑通，但会让诊断文件语义变浑 |
 | **E8** | §2 P0-A 新增 **A7**、§2 新增「防复发机制（三层）」 | 第二轮通读方案 A 全文（178 行，非仅其摘要）后补入两项本版遗漏：①**GUI 设置入口 + 首条 DM 自动设定**；②**防复发三层**（规则 / 测试 / 度量）。方案 A 的 §4 移植矩阵、§7 验收、§8 前三个 PR 本版已覆盖，无遗漏 | 实测 `grep -rn "home_channel\|homeChannel\|默认通知" frontend/src` **零命中**、`vermes_cli/gateway_channels.py` 存在（33,217 字节）→ 傻瓜式用户无设置入口属实。**A1/A2 只修「设了能被认」，不修「没地方设」**；不做 A7 则本轮收益只对命令行用户生效 |
 | **E9** | 落盘口径澄清（**归因已订正**） | 「找不到本文件（FINAL_20260920）」的说法 → **实测存在**：`reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md`，与方案 A 自身文件（15,252 字节 / 178 行）**并列同一目录** | ①**归因订正（2026-09-20 08:10）**：该「找不到」反馈**并非本会话方案 A 的判断** —— 方案 A 本会话是用绝对路径 read 打开并逐行引用过本文档（§0.1、§1.2 修正 1–4），还写入了 E1–E7。该反馈应来自**另一个 Hermes 会话（飞书侧）或转述**，本条不再挂在方案 A 名下。②本机 `~/projects` 是 `~/Projects` 的软链（`pwd -P` 验证同一物理目录）。③保留的教训：**否定性结论不得建立在 `find ~` 这类易超时/截断的搜索上**（本会话已多次遇 137 截断） |
