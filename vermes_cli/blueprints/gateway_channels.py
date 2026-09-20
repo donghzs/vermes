@@ -45,7 +45,7 @@ def _get_vermes_home() -> Path:
 
 
 def _load_config_yaml() -> dict:
-    """Load config.yaml as a dict."""
+    """Load config.yaml as a plain dict（只读展示用）。"""
     import yaml
     cfg_path = _get_vermes_home() / "config.yaml"
     if not cfg_path.exists():
@@ -58,13 +58,35 @@ def _load_config_yaml() -> dict:
         return {}
 
 
-def _save_config_yaml(data: dict) -> None:
-    """Save dict to config.yaml."""
-    import yaml
-    cfg_path = _get_vermes_home() / "config.yaml"
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(cfg_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+def _load_config_rt():
+    """Load config.yaml as CommentedMap（写路径专用，保注释）。"""
+    from utils import load_roundtrip_yaml
+    return load_roundtrip_yaml(_get_vermes_home() / "config.yaml")
+
+
+def _save_config_yaml(data) -> None:
+    """原子写回 config.yaml（ruamel round-trip）。
+
+    M5：凭据保存 / 清除 / 开关 与 home-channel 同源——禁止
+    ``yaml.dump`` 全量重写（会抹掉用户注释）。调用方应使用
+    ``_load_config_rt()`` 得到 CommentedMap 后再 mutate。
+    """
+    from utils import atomic_roundtrip_yaml_dump
+    atomic_roundtrip_yaml_dump(_get_vermes_home() / "config.yaml", data)
+
+
+def _ensure_platform_map(config_data, platform_key: str):
+    """在 CommentedMap config 上确保 platforms[key] 存在，返回 plat entry。"""
+    from ruamel.yaml.comments import CommentedMap
+    platforms = config_data.get("platforms")
+    if not isinstance(platforms, CommentedMap):
+        platforms = CommentedMap(platforms or {})
+        config_data["platforms"] = platforms
+    entry = platforms.get(platform_key)
+    if not isinstance(entry, CommentedMap):
+        entry = CommentedMap(entry or {})
+        platforms[platform_key] = entry
+    return entry
 
 
 def _load_env() -> dict:
@@ -293,23 +315,24 @@ async def save_channel(platform_key: str, req: SaveChannelRequest) -> dict:
     if not schema:
         raise HTTPException(status_code=404, detail=f"Unknown platform: {platform_key}")
 
-    config_data = _load_config_yaml()
+    # M5：写路径用 round-trip 读，mutate 后原子写回，保住用户注释
+    config_data = _load_config_rt()
     platforms = config_data.setdefault("platforms", {})
 
     # ── 新设置覆盖旧设置：清除顶层旧段（如旧版 feishu:） ──
-    # 旧版配置写在顶层（feishu:），新版写在 platforms.feishu:。
-    # 保存时强制清除顶层旧段，确保只有一个位置存配置。
     if platform_key in config_data and not isinstance(config_data[platform_key], dict):
-        # 非字典，直接删
         config_data.pop(platform_key, None)
     elif platform_key in config_data:
         old_data = config_data[platform_key]
         if isinstance(old_data, dict) and "platforms" not in old_data:
-            # 看起来是旧版顶层段，清除它
             config_data.pop(platform_key, None)
 
-    plat_data = platforms.setdefault(platform_key, {})
+    plat_data = _ensure_platform_map(config_data, platform_key)
     extra = plat_data.setdefault("extra", {})
+    if not hasattr(extra, "clear"):
+        from ruamel.yaml.comments import CommentedMap
+        extra = CommentedMap(extra or {})
+        plat_data["extra"] = extra
 
     # 覆盖写入：先清空旧字段，再写入新值（确保不残留旧数据）
     plat_data.pop("token", None)
@@ -361,16 +384,17 @@ async def clear_channel(platform_key: str) -> dict:
     if not schema:
         raise HTTPException(status_code=404, detail=f"Unknown platform: {platform_key}")
 
-    config_data = _load_config_yaml()
+    config_data = _load_config_rt()
     platforms = config_data.get("platforms", {})
 
     if platform_key in platforms:
         plat_data = platforms[platform_key]
-        # 清除凭据但保留平台条目
-        plat_data.pop("token", None)
-        plat_data.pop("api_key", None)
-        plat_data.pop("extra", None)
-        plat_data["enabled"] = False
+        # 清除凭据但保留平台条目（CommentedMap.pop 保兄弟键注释）
+        if hasattr(plat_data, "pop"):
+            plat_data.pop("token", None)
+            plat_data.pop("api_key", None)
+            plat_data.pop("extra", None)
+            plat_data["enabled"] = False
         _save_config_yaml(config_data)
 
     # 强制同步 .env（config.yaml 中已清除，.env 也清除）
@@ -390,9 +414,8 @@ async def toggle_channel(platform_key: str) -> dict:
     if not schema:
         raise HTTPException(status_code=404, detail=f"Unknown platform: {platform_key}")
 
-    config_data = _load_config_yaml()
-    platforms = config_data.setdefault("platforms", {})
-    plat_data = platforms.setdefault(platform_key, {})
+    config_data = _load_config_rt()
+    plat_data = _ensure_platform_map(config_data, platform_key)
     current = plat_data.get("enabled", False)
     plat_data["enabled"] = not current
 

@@ -212,37 +212,52 @@ def atomic_roundtrip_yaml_update(
     should survive a single setting mutation.  Writes still use the same temp
     file + fsync + atomic replace pattern.
     """
+    def _mutate(config):
+        from ruamel.yaml.comments import CommentedMap
+        current = config
+        keys = key_path.split(".")
+        for key in keys[:-1]:
+            next_value = current.get(key)
+            if not isinstance(next_value, CommentedMap):
+                next_value = CommentedMap()
+                current[key] = next_value
+            current = next_value
+        current[keys[-1]] = value
+
+    atomic_roundtrip_yaml_mutate(path, _mutate)
+
+
+def _roundtrip_yaml():
     from ruamel.yaml import YAML
-    from ruamel.yaml.comments import CommentedMap
-
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
     yaml_rt = YAML(typ="rt")
     yaml_rt.preserve_quotes = True
     yaml_rt.allow_unicode = True
     yaml_rt.default_flow_style = False
     yaml_rt.indent(mapping=2, sequence=4, offset=2)
+    return yaml_rt
 
-    if path.exists():
-        with path.open("r", encoding="utf-8") as f:
-            config = yaml_rt.load(f) or CommentedMap()
-    else:
-        config = CommentedMap()
 
-    if not isinstance(config, CommentedMap):
-        config = CommentedMap(config)
+def load_roundtrip_yaml(path: Union[str, Path]):
+    """Load YAML as CommentedMap（保注释/顺序/引号）；文件不存在返回空 map。"""
+    from ruamel.yaml.comments import CommentedMap
+    path = Path(path)
+    yaml_rt = _roundtrip_yaml()
+    if not path.exists():
+        return CommentedMap()
+    with path.open("r", encoding="utf-8") as f:
+        data = yaml_rt.load(f)
+    if data is None:
+        return CommentedMap()
+    if not isinstance(data, CommentedMap):
+        return CommentedMap(data)
+    return data
 
-    current = config
-    keys = key_path.split(".")
-    for key in keys[:-1]:
-        next_value = current.get(key)
-        if not isinstance(next_value, CommentedMap):
-            next_value = CommentedMap()
-            current[key] = next_value
-        current = next_value
-    current[keys[-1]] = value
 
+def atomic_roundtrip_yaml_dump(path: Union[str, Path], data: Any) -> None:
+    """原子写入 ruamel round-trip 文档（保注释）。禁止裸 write_text / yaml.dump 全量重写用户配置。"""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    yaml_rt = _roundtrip_yaml()
     original_mode = _preserve_file_mode(path)
     fd, tmp_path = tempfile.mkstemp(
         dir=str(path.parent),
@@ -251,7 +266,7 @@ def atomic_roundtrip_yaml_update(
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            yaml_rt.dump(config, f)
+            yaml_rt.dump(data, f)
             f.flush()
             os.fsync(f.fileno())
         real_path = atomic_replace(tmp_path, path)
@@ -262,6 +277,17 @@ def atomic_roundtrip_yaml_update(
         except OSError:
             pass
         raise
+
+
+def atomic_roundtrip_yaml_mutate(path: Union[str, Path], mutate) -> None:
+    """加载（保注释）→ 就地 mutate(CommentedMap) → 原子写回。
+
+    ``mutate`` 直接改传入的 map（setdefault/pop/clear/赋值均可），
+    兄弟键上的注释会保留。用于 config.yaml 等用户可编辑文件。
+    """
+    config = load_roundtrip_yaml(path)
+    mutate(config)
+    atomic_roundtrip_yaml_dump(path, config)
 
 
 # ─── JSON Helpers ─────────────────────────────────────────────────────────────

@@ -66,7 +66,7 @@
 
 | ID | 工单 | 落点 | 为什么现在要做 | 状态 |
 |---|---|---|---|---|
-| **M5** | `_save_config_yaml` 也换 ruamel round-trip | `vermes_cli/blueprints/gateway_channels.py:61-67`（调用点 `:337` 保存凭据 / `:374` 清除 / `:399` 开关） | **M4 只关掉了 P1 的一半**：这三个端点仍 `safe_load → yaml.dump` 全量重写，改任一平台凭据或开关照样抹掉 config.yaml 的 21 行注释。该函数引入于 `9304923c5c`（品牌 fork），早于 M4，属既有代码、非本次回归。难点：这三处改的是**任意嵌套键**而非单一 dotted key，`atomic_roundtrip_yaml_update` 签名不够，需加 `CommentedMap` 级 helper（`pop`/`clear` 在 CommentedMap 上仍保注释，改造可行） | ⏳ 待领（**归 mimo**，文件在其足迹内；WorkBuddy 不越界改） |
+| **M5** | `_save_config_yaml` 也换 ruamel round-trip | `utils.py` + `vermes_cli/blueprints/gateway_channels.py`（PUT `:337` / DELETE `:374` / toggle `:399`） | **已完成（mimo）**：新增 `load_roundtrip_yaml` / `atomic_roundtrip_yaml_dump` / `atomic_roundtrip_yaml_mutate`；写路径改 `_load_config_rt` + 原子 dump。三条端点写后注释仍在；`yaml.dump(data, f` 残留 grep 为零。真行为测试 `test_m5_config_yaml_roundtrip.py` | ✅ mimo |
 
 ---
 
