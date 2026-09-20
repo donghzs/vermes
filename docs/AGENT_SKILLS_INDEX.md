@@ -10,15 +10,31 @@
 
 ---
 
-## 一、Skill Root 一览（实证于 2026-09-20）
+## 一、Skill Root 一览（实证于 2026-09-20；MiMo 于同日补登）
 
 | Agent | Root | 项数 | 谁能加载 |
 |---|---|---|---|
 | WorkBuddy | `~/.workbuddy/skills/` | 12 | WorkBuddy |
-| Hermes | `~/.hermes/skills/` | 33 | Hermes |
+| Hermes | `~/.hermes/skills/` | 33（顶层技能目录口径） | Hermes |
 | Vermes 引擎 | `~/.vermes/skills/` | 76 | Vermes 运行时 |
+| **MiMo Desktop** | 见下方「MiMo 多 root」 | 见下方 | MiMoCode / MiMo Desktop |
 
-> 搜「某个 skill 是否存在」时，**三个 root 都要列**（`ls -1`，不要用 `ls | grep`，本会话有假阴性实证）。
+### MiMo Desktop 多 root（2026-09-20 实测，`find <root> -name SKILL.md`）
+
+| Root | 用途 | SKILL.md 实测 | 备注 |
+|---|---|---|---|
+| `~/.config/mimocode/skills/` | 全局自装技能（MiMoCode 扫描） | 1 | 当前仅 `mimo-browser-use` + 指针 skill |
+| `<project>/.mimocode/skills/` | 项目技能 | 0（本仓） | 建议 Vermes 专属工作流 skill 放这里 |
+| `~/.local/share/mimocode/builtin_skills/<hash>/skills/` | 引擎内置（docx/xlsx/research 等） | 数十（含 workflows 子级） | 与 Vermes 开发弱相关 |
+| `…/Xiaomi MiMo/engine-config/skills/` | 桌面引擎配置技能 | 8 | `mimo-skill-authoring` / `mimo-browser-use` 等 |
+
+> MiMo 写路径约定（与 Hermes/WorkBuddy root 不同）：
+> - 全局：`~/.config/mimocode/skills/<skill-id>/SKILL.md`
+> - 项目：`/Users/dongzusheng/Projects/vermes-electron/.mimocode/skills/<skill-id>/SKILL.md`
+> - **不要**写到 `~/.claude/skills` / `~/.opencode` / `~/.agents` / `~/.codex`（MiMo Desktop 不扫描）。
+> - 搜 skill 时除上表外，勿漏 `~/.hermes/skills/` 与 `~/.workbuddy/skills/`。
+
+> 搜「某个 skill 是否存在」时，**所有 root 都要列**（`ls -1` / `find … -name SKILL.md`，不要用 `ls | grep`，本会话有假阴性实证）。
 
 ---
 
@@ -59,12 +75,32 @@
 
 ---
 
+## 四-bis、MiMo Desktop Root
+
+### 全局 `~/.config/mimocode/skills/`
+
+| Skill | 一句话 | 什么时候该先读它 |
+|---|---|---|
+| `vermes-dev-index` | **指针 skill**：登记本仓路线图 / 已知失败清单 / 跨 agent 技能索引的绝对路径 | 任何 MiMo 会话接手 Vermes 开发前 |
+
+> MiMo 目前**没有**独立的 Vermes 架构/审计 skill（与 WorkBuddy/Hermes 互补关系：
+> 工作流纪律读 WorkBuddy `vermes-upstream-catchup`；架构对比读 Hermes `hermes-vermes-architecture`）。
+> 若 MiMo 后续沉淀 Vermes 专项 skill，**建在上表 root，并在本文件追加一行**。
+
+### 引擎内置 / 桌面配置（与 Vermes 源码弱相关，仅列防盲区）
+
+`engine-config/skills/`：`mimo-skill-authoring`、`mimo-browser-use`、`mimo-desktop-guide`、
+`session-chat`、`visualizer`、`imagegen`、`figma`、`3d-creation`、`threejs-game-skills`。
+
+---
+
 ## 五、登记规则（新增 skill 时请遵守）
 
 1. 新 skill 建在**自己的 root**，正文不复制进仓库。
 2. 在本文件加一行：路径 + 一句话摘要 + 适用场景。
 3. 跨 agent 需要对方 skill 的内容 → **请对方代读并给摘要**，不要自己复制。
 4. 本文件由各 agent 自行追加自己的行；**谁的 skill 谁维护自己的行**。
+5. 跨引擎文档（路线图 / 失败清单）**唯一真源在本仓 `reports/`**；各 skill root 只放指针，不复制正文（E10）。
 
 ---
 
@@ -72,3 +108,4 @@
 
 - 上游对齐路线图：`reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md`
 - gateway 已知失败清单：`reports/known-failures-gateway-20260920.md`
+- 本索引：`docs/AGENT_SKILLS_INDEX.md`
