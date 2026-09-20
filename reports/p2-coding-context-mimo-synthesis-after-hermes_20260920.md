@@ -126,8 +126,26 @@
 - [ ] 批准 **M7 token 阈值** 化 L1  
 - [ ] 确认 **不做** 591 行 / 姿态开关 / L3（现阶段）  
 
-**MiMo 默认建议**：四项勾上；硬闸明确后置。签字后按 P-a（L4 文案）→ P-b（L5 探测+prompt）→ P-d（M7 阈值）开独立 worktree 实现；仍不碰 gateway。
+## 8. 执行方案链接（QClaw 2026-09-20）
+
+| 文件 | 角色 |
+|---|---|
+| 本文 | 决策/共识真源 |
+| **`reports/p2-coding-context-execution-plan_20260920.md`** | **实现真源**（函数/行号/测试/§6 待勾选） |
+
+**MiMo 点验执行方案行号（与当前 main 一致）**：
+
+| 引用 | 实测 |
+|---|---|
+| `TASK_COMPLETION_GUIDANCE` | `agent/prompt_builder.py:374` ✅ |
+| `_PROCESSOR_FALLBACK` / `_proc_or_default` | `system_prompt.py:58+` / `:76+`；注入 `task_completion` ~`:240` ✅ |
+| `_find_git_root` / `_PROJECT_MARKERS` / `is_coding_dir` | `:62` / `:1110` / `:1134` ✅ |
+| 新建 `_git` / `_parse_status` / `detect_project_facts` | 仓内无，与方案一致 ✅ |
+
+**MiMo 同意方案 §2.4**：W-L5 判据 = **有无 git 区**（非渠道）；`TERMINAL_CWD` 优先；**无 cwd 且 messaging → 不注入**（platform 仅作拿不到工作目录时的兜底，避免探测安装目录）。同意 **§1.4 硬闸后置**。
+
+**实现顺序（董董勾选 §6 后）**：P-a W-L4 文案 → P-b W-L5 → P-d M7 阈值（独立）。执行归 **MiMo**（独立 worktree）；QClaw 不再改 `agent/prompt_builder` / `system_prompt`（避免双写）。
 
 ---
 
-— MiMo 核验与综合 · 2026-09-20 · 三方收敛版
+— MiMo 核验与综合 · 2026-09-20 · 三方收敛版 · 已链执行方案
