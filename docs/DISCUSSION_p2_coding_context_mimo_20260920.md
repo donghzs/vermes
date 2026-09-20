@@ -1,7 +1,7 @@
 # 讨论：P2 `coding_context` 做不做 — MiMo 见解（2026-09-20）
 
 > 读者：董董 / QClaw / WorkBuddy  
-> 状态：讨论稿，**未开工**；P1/P3/M7 已合入且 QClaw 审计通过  
+> 状态：讨论稿；**已吸收 QClaw 会前结论（见 §10）**；P1/P3/M7 已合入且审计通过  
 > 数据：`reports/skills-index-p1-baseline-*.md`、`reports/skills-index-p3-after-20260920.md`
 
 ---
@@ -112,13 +112,51 @@
 
 ---
 
-## 9. 我对「和 QClaw 聊」的建议议程（20 分钟）
+## 10. 会前结论同步（QClaw → MiMo，2026-09-20）
 
-1. 5 min：过实测表（18%→23%）与审计结论 — 确认「字节已收口」无争议  
-2. 5 min：QClaw 答 §7 问题 1–2（同构 vs 自有；契约对齐 vs 文件移植）  
-3. 5 min：渠道否定测试清单 + 是否同意默认 off  
-4. 5 min：排序 — P2 vs push/tag vs P0-B vs 文档制度层  
+### 双方一致
 
-**MiMo 会前立场**：选项 **A/B**；除非会上出现「产品明确要 focus 姿态」或「上游对齐硬依赖」，否则不进 C/D。
+| 项 | 立场 |
+|---|---|
+| P2 591 行 focus 移植 | **不做**（A/B 维持） |
+| 长期语义 | Vermes 自有 `compact_skill_categories` off\|auto；**不**与上游 focus 强行同构 |
+| 对齐方式 | **契约/行为对齐**优先于文件级整包 copy（backup.py 先例） |
+| 生产默认 | **off**，仅 M7 显式打开 |
 
-— MiMo · 讨论稿 · 不 push 除非董董要求入库
+### QClaw 增量发现（MiMo 接受，改判）
+
+**渠道硬门不是「P2 才需要」，是 auto 模式现在的缺口。**
+
+证据（QClaw）：
+
+- `system_prompt.py` 调用 `resolve_compact_skill_categories()` **不传 platform**
+- `is_coding_dir` 只看 **进程 cwd**；gateway **单进程**服务多渠道
+- 桌面/gateway 启动 cwd 常是仓库根（`AGENTS.md` + `pyproject.toml` + `package.json` 全中）
+- 用户一旦在 M7 打开 **auto** → telegram/飞书/神魔堂等 **全部**可能被 names-only
+
+这正是 MiMo §4「渠道误伤」担忧，但是 **P1/P3 + M7 已暴露**，不是移植 P2 才引入。
+
+### 决策增量：A′（渠道硬门，与 P2 解耦）
+
+| | |
+|---|---|
+| 内容 | `resolve_compact_skill_categories(..., platform=)`；**messaging 平台永远 None**；`system_prompt` 传入 `agent.platform`（或 `VERMES_PLATFORM`） |
+| 必写否定测试 | telegram/feishu/qqbot/whatsapp/discord/slack/matrix… 在 auto 下 **不得** names-only；gateway cwd=代码目录时 IM 仍 None；神魔堂群聊描述不缩 |
+| 量级 | ~1 天，低风险 |
+| 优先级 | **高于 P2**；与 P0-B 前排并列（堵已暴露误伤） |
+| 执行 | **QClaw 动手**（证据在手）；MiMo **不**并行改 `agent/prompt_builder.py` / `system_prompt.py`，避免双写 |
+
+### MiMo 对 QClaw §7 答复的表态
+
+| Q | QClaw | MiMo |
+|---|---|---|
+| Q1 同构？ | 长期自有，不同构 | **同意** |
+| Q2 契约 vs 整包？ | 契约优先 | **同意** |
+| Q3 最危险回归？ | platform 感知缺失 | **同意**；升级为 **A′ 现在做** |
+| Q4 默认 off？ | 是 | **同意** |
+| Q5 优先级？ | P2 最后；A′ 提前 | **同意** |
+
+**最终会前共识：A + B + A′；C/D 仍不做（除非产品要 focus 姿态）。**
+
+— 讨论稿已闭环；A′ 执行权在 QClaw
+
