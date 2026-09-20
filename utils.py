@@ -279,6 +279,36 @@ def atomic_roundtrip_yaml_dump(path: Union[str, Path], data: Any) -> None:
         raise
 
 
+def roundtrip_yaml_dumps(data: Any) -> str:
+    """Serialize a YAML document (CommentedMap etc.) to a string, preserving comments.
+
+    Counterpart to :func:`atomic_roundtrip_yaml_dump` for callers that need the
+    serialized text rather than a direct file write (e.g. EmergentChangePipeline,
+    which stages content and copies it to the target itself).
+    """
+    from io import StringIO
+    yaml_rt = _roundtrip_yaml()
+    buf = StringIO()
+    yaml_rt.dump(data, buf)
+    return buf.getvalue()
+
+
+def apply_patch_in_place(target: Any, patch: dict) -> Any:
+    """Recursively merge `patch` into `target` in place, preserving comments.
+
+    Unlike a naive ``{**base, **patch}`` or ``_deep_merge`` that rebuilds plain
+    dicts (and drops ruamel comment nodes), this descends into existing nested
+    maps so sibling keys and their comments survive. Used by evolution config
+    apply paths that must not expand defaults or strip user notes.
+    """
+    for k, v in (patch or {}).items():
+        if isinstance(v, dict) and isinstance(target.get(k), dict):
+            apply_patch_in_place(target[k], v)
+        else:
+            target[k] = v
+    return target
+
+
 def atomic_roundtrip_yaml_mutate(path: Union[str, Path], mutate) -> None:
     """加载（保注释）→ 就地 mutate(CommentedMap) → 原子写回。
 

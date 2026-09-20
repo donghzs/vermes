@@ -1182,17 +1182,21 @@ class TelegramAdapter(BasePlatformAdapter):
         )
 
     def _persist_dm_topic_thread_id(self, chat_id: int, topic_name: str, thread_id: int) -> None:
-        """Save a newly created thread_id back into config.yaml so it persists across restarts."""
+        """Save a newly created thread_id back into config.yaml so it persists across restarts.
+
+        Uses ruamel round-trip so user comments/ordering in config.yaml are preserved
+        (same discipline as M5). Only the targeted topic's thread_id is mutated;
+        everything else is left byte-identical.
+        """
         try:
             from vermes_constants import get_vermes_home
+            from utils import load_roundtrip_yaml, atomic_roundtrip_yaml_dump
             config_path = get_vermes_home() / "config.yaml"
             if not config_path.exists():
                 logger.warning("[%s] Config file not found at %s, cannot persist thread_id", self.name, config_path)
                 return
 
-            import yaml as _yaml
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = _yaml.safe_load(f) or {}
+            config = load_roundtrip_yaml(config_path)
 
             # Navigate to platforms.telegram.extra.dm_topics
             dm_topics = (
@@ -1215,23 +1219,7 @@ class TelegramAdapter(BasePlatformAdapter):
                         break
 
             if changed:
-                fd, tmp_path = tempfile.mkstemp(
-                    dir=str(config_path.parent),
-                    suffix=".tmp",
-                    prefix=".config_",
-                )
-                try:
-                    with os.fdopen(fd, "w", encoding="utf-8") as f:
-                        _yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-                        f.flush()
-                        os.fsync(f.fileno())
-                    atomic_replace(tmp_path, config_path)
-                except BaseException:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-                    raise
+                atomic_roundtrip_yaml_dump(config_path, config)
                 logger.info(
                     "[%s] Persisted thread_id=%s for topic '%s' in config.yaml",
                     self.name, thread_id, topic_name,

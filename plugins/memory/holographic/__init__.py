@@ -131,17 +131,13 @@ class HolographicMemoryProvider(MemoryProvider):
     def save_config(self, values, VERMES_home):
         """Write config to config.yaml under plugins.Vermes-memory-store."""
         from pathlib import Path
+        from utils import load_roundtrip_yaml, atomic_roundtrip_yaml_dump
         config_path = Path(VERMES_home) / "config.yaml"
         try:
-            import yaml
-            existing = {}
-            if config_path.exists():
-                with open(config_path, encoding="utf-8-sig") as f:
-                    existing = yaml.safe_load(f) or {}
+            existing = load_roundtrip_yaml(config_path)
             existing.setdefault("plugins", {})
             existing["plugins"]["Vermes-memory-store"] = values
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.dump(existing, f, default_flow_style=False)
+            atomic_roundtrip_yaml_dump(config_path, existing)
         except Exception:
             pass
 

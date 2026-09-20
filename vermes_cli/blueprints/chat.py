@@ -3303,8 +3303,8 @@ async def evolution_proposal_apply(request: Request, proposal_id: int):
     """
     try:
         from agent.evolution_manager import get_proposal, update_proposal_status
-        from vermes_cli.config import load_config, get_config_path, save_config
-        import yaml
+        from vermes_cli.config import get_config_path
+        from utils import load_roundtrip_yaml, roundtrip_yaml_dumps, apply_patch_in_place
         from agent.emergent_change import get_pipeline, ChangeProposal
         from tools.approval import get_current_session_key, approve_privileged_action
 
@@ -3320,10 +3320,12 @@ async def evolution_proposal_apply(request: Request, proposal_id: int):
         if not isinstance(config_patch, dict):
             return {"ok": False, "error": "invalid config_patch"}
 
-        # 合并成全量 config 内容
-        merged = _deep_merge(load_config(), config_patch)
+        # 合并成全量 config 内容 —— 就地 patch raw config.yaml（保注释），
+        # 而非 safe_dump 全量展开 load_config() 结果（会膨胀默认值 + 丢注释）
+        raw = load_roundtrip_yaml(get_config_path())
         try:
-            new_content = yaml.safe_dump(merged, allow_unicode=True, sort_keys=False)
+            apply_patch_in_place(raw, config_patch)
+            new_content = roundtrip_yaml_dumps(raw)
         except Exception as e:
             return {"ok": False, "error": f"config merge failed: {e}"}
 

@@ -550,23 +550,14 @@ def write_profile_meta(
     """
     if not profile_dir.is_dir():
         raise FileNotFoundError(f"profile directory does not exist: {profile_dir}")
-    import yaml
+    from utils import load_roundtrip_yaml, atomic_roundtrip_yaml_dump
     path = _profile_yaml_path(profile_dir)
-    existing: dict = {}
-    if path.is_file():
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                loaded = yaml.safe_load(f) or {}
-            if isinstance(loaded, dict):
-                existing = loaded
-        except Exception:
-            existing = {}
+    existing = load_roundtrip_yaml(path)
     if description is not None:
         existing["description"] = description.strip()
     if description_auto is not None:
         existing["description_auto"] = bool(description_auto)
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(existing, f, sort_keys=False, default_flow_style=False)
+    atomic_roundtrip_yaml_dump(path, existing)
 
 
 # ---------------------------------------------------------------------------

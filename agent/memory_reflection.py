@@ -601,14 +601,15 @@ def _auto_apply_proposal(cand: dict, critic_verdict: dict,
     Returns True on success.
     """
     try:
-        from vermes_cli.config import load_config
         from agent.emergent_change import get_pipeline, ChangeProposal
         from agent.evolution_manager import record_proposal
-        import yaml
+        from utils import load_roundtrip_yaml, roundtrip_yaml_dumps, apply_patch_in_place
 
         config_patch = cand.get("config_patch", {})
-        merged = _deep_merge_config(load_config(), config_patch)
-        new_content = yaml.safe_dump(merged, allow_unicode=True, sort_keys=False)
+        # 就地 patch raw config.yaml（保注释），而非 safe_dump 全量展开 load_config() 结果
+        raw = load_roundtrip_yaml(config_path)
+        apply_patch_in_place(raw, config_patch)
+        new_content = roundtrip_yaml_dumps(raw)
 
         proposal_obj = ChangeProposal(
             source="aegis-auto",
