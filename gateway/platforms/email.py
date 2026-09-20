@@ -433,8 +433,15 @@ class EmailAdapter(BasePlatformAdapter):
         """Convert a fetched email into a MessageEvent and dispatch it."""
         sender_addr = msg_data["sender_addr"]
 
-        # Skip self-messages
-        if sender_addr == self._address.lower():
+        # Skip self-messages.
+        # Compare case-insensitively on BOTH sides: the IMAP fetch path already
+        # lowercases via _extract_email_address(), so this is a no-op there, but
+        # any caller that hands _dispatch_message a raw (mixed-case) address
+        # otherwise slips past the filter and the agent replies to itself.
+        # (Sibling checks in this method — _is_automated_sender:94 and the
+        # EMAIL_ALLOWED_USERS check at :453 — normalize internally; this one did
+        # not, which is why it was the only asymmetric comparison here.)
+        if sender_addr.strip().lower() == self._address.strip().lower():
             return
 
         # Never reply to automated senders

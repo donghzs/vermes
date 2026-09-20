@@ -9,6 +9,25 @@
 
 ---
 
+## 修复进度（2026-09-20 09:25，WorkBuddy W1–W4 收尾）
+
+**13 条 → 剩 6 条**，其中 7 条是**真修**（不是隔离、不是改测试期望蒙混）：
+
+| 类别 | 原条数 | 处置 | commit / 落点 |
+|---|---|---|---|
+| B 品牌大小写（irc） | 2 | ✅ 真修：测试期望 `VERMES_`→`Vermes_`（5 处）+ 源码注释 `:414` 订正 | `f89435a43c` |
+| E reconnect | 4 | ✅ 真修：**两个真 bug**（孤儿 dict 致 circuit breaker 永不触发 + 不可重试平台死分支无限重试） | `f89435a43c` |
+| G email self-message | 1 | ✅ 真修：`gateway/platforms/email.py:437` 两侧归一化后比较 | 本轮（W3） |
+| A 环境缺依赖（voice） | 2 | ⏸ 未动（噪声，需补装 `davey`/`discord` 或声明可选 skip） | — |
+| C 中文化遗留 | 1 | ⏸ 未动（`test_resume_command.py:88` 期望英文） | — |
+| D 工具集期望漂移 | 1 | ⏸ 未动（`test_api_server_toolset.py:129`） | — |
+| F runner 启动降级 | 2 | ⏸ 未动（噪声，无 adapter 可加载） | — |
+
+> 注：A/F 共 4 条为环境噪声，C/D 为测试期望过时——均需单独决策，**不在本轮 W1–W4 范围**。
+> 本轮同时新增 A3 提示去重（`gateway/notices.py`），与失败清单无关。
+
+---
+
 ## 分类总表
 
 | 类别 | 条数 | 性质 | 处置建议 |

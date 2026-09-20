@@ -31,6 +31,7 @@ from agent.i18n import t
 from gateway._run_attr import _get_run_attr
 from gateway.config import Platform, GatewayConfig, PlatformConfig
 from gateway.gateway_utils import _platform_config_key, resolve_home_channel_chat_id
+from gateway.notices import HOME_CHANNEL_MISSING, has_noticed, mark_noticed
 from gateway.platforms.base import (
     EphemeralReply,
     MessageEvent,
@@ -90,6 +91,61 @@ class MessageHandlerMixin:
                 )
 
         await adapter.send(source.chat_id, content, metadata=metadata)
+
+    async def _maybe_prompt_missing_home_channel(self, source) -> bool:
+        """Nag once per platform that no home channel is set. Returns delivered.
+
+        Throttle is A3's **persistent per-(platform, key) dedupe**
+        (``gateway/notices.py``), *not* the old ``not history`` guard: that one
+        was session-scoped, so the notice re-fired on the first message of
+        every new session. Dedupe survives gateway restarts.
+
+        Single source of truth for "is a home channel set": env -> legacy env
+        -> config. An env-only check misses two real cases:
+          1) config-only setups — home channel written to config.yaml
+             (GUI / hand-edited YAML) is invisible to os.getenv;
+          2) .env edited from outside the process — the gateway loads .env
+             once at startup (gateway/run.py load_vermes_dotenv).
+        `/sethome` itself is NOT affected: save_env_value() also updates
+        os.environ in-process (vermes_cli/config.py:5144).
+        See reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md E1.
+        """
+        # Webhooks deliver directly to configured targets (github_comment, …);
+        # LOCAL has no chat to nag in.
+        if not source or not getattr(source, "platform", None):
+            return False
+        if source.platform == Platform.LOCAL or source.platform == Platform.WEBHOOK:
+            return False
+
+        platform_name = source.platform.value
+        if resolve_home_channel_chat_id(platform_name, config=self.config):
+            return False
+        if has_noticed(platform_name, HOME_CHANNEL_MISSING):
+            return False
+
+        # Slack dispatches all Vermes commands through a single parent slash
+        # command `/Vermes`; bare `/sethome` is not registered and would fail
+        # with "app did not respond".
+        sethome_cmd = (
+            "/Vermes sethome" if source.platform == Platform.SLACK else "/sethome"
+        )
+        notice = (
+            f"📬 No home channel is set for {platform_name.title()}. "
+            f"A home channel is where Vermes delivers cron job results "
+            f"and cross-platform messages.\n\n"
+            f"Type {sethome_cmd} to make this chat your home channel, "
+            f"or ignore to skip."
+        )
+        try:
+            await self._deliver_platform_notice(source, notice)
+        except Exception as e:
+            # Never let a notice break message handling — and do NOT mark it
+            # as delivered, so the user still gets it next turn.
+            logger.warning("[%s] home-channel notice failed: %s", platform_name, e)
+            return False
+
+        mark_noticed(platform_name, HOME_CHANNEL_MISSING)
+        return True
 
     def _find_source_by_session_id(self, session_id: str):
         """按 session_id 还原原渠道 SessionSource（desktop relay 用）。
@@ -2082,36 +2138,7 @@ class MessageHandlerMixin:
                 "Keep the introduction concise -- one or two sentences max.]"
             )
         
-        # One-time prompt if no home channel is set for this platform
-        # Skip for webhooks - they deliver directly to configured targets (github_comment, etc.)
-        if not history and source.platform and source.platform != Platform.LOCAL and source.platform != Platform.WEBHOOK:
-            platform_name = source.platform.value
-            # Single source of truth: env -> legacy env -> config.
-            # An env-only check misses two real cases:
-            #   1) config-only setups — home channel written to config.yaml
-            #      (GUI / hand-edited YAML) is invisible to os.getenv;
-            #   2) .env edited from outside the process — the gateway loads
-            #      .env once at startup (gateway/run.py load_vermes_dotenv).
-            # `/sethome` itself is NOT affected: save_env_value() also updates
-            # os.environ in-process (vermes_cli/config.py:5144).
-            # See reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md E1.
-            if not resolve_home_channel_chat_id(platform_name, config=self.config):
-                # Slack dispatches all Vermes commands through a single
-                # parent slash command `/Vermes`; bare `/sethome` is not
-                # registered and would fail with "app did not respond".
-                sethome_cmd = (
-                    "/Vermes sethome"
-                    if source.platform == Platform.SLACK
-                    else "/sethome"
-                )
-                notice = (
-                    f"📬 No home channel is set for {platform_name.title()}. "
-                    f"A home channel is where Vermes delivers cron job results "
-                    f"and cross-platform messages.\n\n"
-                    f"Type {sethome_cmd} to make this chat your home channel, "
-                    f"or ignore to skip."
-                )
-                await self._deliver_platform_notice(source, notice)
+        await self._maybe_prompt_missing_home_channel(source)
         
         # -----------------------------------------------------------------
         # Voice channel awareness — inject current voice channel state

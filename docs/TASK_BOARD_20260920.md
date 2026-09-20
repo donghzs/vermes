@@ -35,8 +35,13 @@
 |---|---|---|---|---|
 | **W1** | 品牌大小写不一致**定点**判定（irc） | `tests/gateway/test_irc_adapter.py:223/379`、源码 `plugins/platforms/irc/adapter.py:409-424` | **已定性（2026-09-20 08:30）：测试期望过时，源码正确**。实测 `AssertionError: assert 'Vermes_' == 'VERMES_'`；源码 `:112` 默认 `nickname="Vermes-bot"`（新品牌），`:414` 注释仍是旧的 `VERMES_` 但代码品牌自适应（`self.nickname + "_"`）。**修法：改测试期望 `VERMES_`→`Vermes_`（约 5 处），注释 `:414` 顺手订正。禁止全仓 sweep** | 🔨 定性完成，待修 |
 | **W2** | E 类 4 条 reconnect 失败根因判定 | `gateway/lifecycle_mixin.py`、`gateway/watcher_mixin.py` | ✅ **已修（2026-09-20 08:45）：判定为「真 bug」×2，非噪声**。①**主因**：`_connect_one` 失败时**整体替换** `_failed_platforms[platform]` entry，而 watcher 在 `watcher_mixin.py:235` 已持有旧引用 → 递增写进孤儿 dict → attempts 永不累积（circuit breaker `_PAUSE_AFTER_FAILURES=10` 永远不触发）+ 指数退避被重置为恒定 30s。②**死分支**：watcher 的 non-retryable 移除分支探测 `self.adapters.get(platform)`，但失败 adapter 只在**成功**连接时才注册 → 恒为 None → 不可重试的平台被**无限重试**。③`_create_adapter` 返回 None（插件缺失）同样无限重试。**修法**：entry 原地更新 + result 携带 `retryable` 标记 + no-adapter 时出队。验收：4 条全绿（29 passed），回归 139 passed / 2 failed（均为 pre-existing 环境缺依赖）。**变异测试**：改回整体替换 → #2#3 立刻红（非侥幸） | ✅ 完成 |
-| **W3** | G 类 email self-message 过滤（**疑真 bug**） | `gateway/` email 适配侧 | 判定是否真 bug；**若是，不得隔离，须修** | ⏳ 未领 |
-| **W4** | A3 提示去重（独立 `notices` 域） | 新增独立域/文件（**不塞 `gateway/status.py`**，那是运行时健康诊断文件） | 同一会话只提示一次；重启后仍生效 | ⏳ 未领 |
+| **W3** | G 类 email self-message 过滤（**疑真 bug**） | `gateway/platforms/email.py:437` | ✅ **已判定 + 已修（2026-09-20 09:10）：真缺陷，但不是活跃生产 bug**。根因：`if sender_addr == self._address.lower()` —— **左侧未归一化、右侧归一化**的不对称比较（同方法内 `_is_automated_sender:94`、allowlist `:453` 都做了 `.lower()`，只有 437 漏了）。真实链路唯一调用方 `_check_inbox:363 → _fetch_new_messages:414 → _extract_email_address:182/183`（已 lower），所以**生产上不会漏过滤**；测试绕过归一化层直接喂混合大小写地址，正好暴露该脆弱点。**修法**：两侧都 `.strip().lower()` 后比较（真实链路是 no-op）。验收：`tests/gateway/test_email.py` **60 passed**（修复前该用例 1 failed）。**未隔离、未改测试** | ✅ 完成 |
+| **W4** | A3 提示去重（独立 `notices` 域） | **新增** `gateway/notices.py`（落点 `~/.vermes/notices.json`）+ `gateway/message_handler_mixin.py` 抽出 `_maybe_prompt_missing_home_channel()` | ✅ **已完成（2026-09-20 09:25）**。落点订正：`~/.vermes/gateway_state.json` **就是** `gateway/status.py` 写的 pid/健康文件（实读含 `pid/kind/gateway_state/platforms`）→ 路线图 A3 原落点正是 E7 警告的污染点，故按 W4 走**独立文件**。语义：**按 (platform, key) 持久化去重**，取代 `not history`（会话级节流，每次新会话都重弹）；跨重启仍生效。实现要点：mtime 感知的内存缓存（避免每轮消息读一次盘）、`os.replace` 原子写、**投递失败不标记**（下次仍提示）、文件损坏视为未提示且不抛。验收：`tests/gateway/test_notices_dedup.py` **15 passed**，含**真子进程**跨重启用例。**变异测试 ×2**：①只写内存不落盘 → 3 红（含跨重启用例）；②去掉去重判定 → `test_prompts_once_and_only_once` 红 | ✅ 完成 |
+
+> **跑测试的环境坑（双方共用，2026-09-20 实测）**：WorkBuddy/沙箱环境下 pytest 默认 tmpdir（`/private/var/...`）与 `/tmp`（→`/private/tmp`）会被 shim 拦 mkdir，报 `PermissionError: EEXIST`。
+> 且 `--basetemp` 目录**已存在时同样报错**，必须每次给新鲜路径。可用配方：
+> `BT=~/wb-tmp/bt-$RANDOM; TMPDIR=~/wb-tmp .venv/bin/python -m pytest <paths> -q -p no:xdist -o addopts="" --basetemp=$BT`
+> （若你在非沙箱终端跑，`TMPDIR` 这段可省略；`-p no:xdist -o addopts=""` 仍建议保留，xdist scheduler 在本仓会崩。）
 
 > **W1 口径澄清（重要）**：全仓 `VERMES_` 大写残留 **768 行**，但绝大多数是**环境变量前缀**（本该大写，如 `VERMES_HOME`），
 > **不是 bug**。本工单只处理 irc 那两处真实不一致，**禁止全仓 sweep**（会制造 768 行无意义 diff）。
