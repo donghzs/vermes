@@ -71,6 +71,20 @@ def _ensure_telegram_mock() -> None:
     mod.constants.ChatType.SUPERGROUP = "supergroup"
     mod.constants.ChatType.CHANNEL = "channel"
 
+    # ``from telegram.constants import ChatType`` resolves to ``mod.ChatType``
+    # (the top-level attribute), NOT ``mod.constants.ChatType`` — MagicMock
+    # auto-creates a distinct child per attribute path.  Alias them so both
+    # import paths see the same string-valued constants, otherwise
+    # ``str(ChatType.SUPERGROUP)`` yields the MagicMock repr and production
+    # chat-type detection misclassifies groups as DMs.
+    #
+    # NOTE: deliberately do NOT alias ``mod.ParseMode`` the same way.  Several
+    # telegram tests assert ``"MARKDOWN_V2" in repr(parse_mode)``, which relies
+    # on the MagicMock attribute *name* (``mock.ParseMode.MARKDOWN_V2``), not a
+    # plain string value.  Aliasing ParseMode to ``"MarkdownV2"`` would strip
+    # that name and break those assertions.
+    mod.ChatType = mod.constants.ChatType
+
     # Real exception classes so ``except (NetworkError, ...)`` clauses
     # in production code don't blow up with TypeError.
     mod.error.NetworkError = type("NetworkError", (OSError,), {})

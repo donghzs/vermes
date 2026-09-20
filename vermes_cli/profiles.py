@@ -93,7 +93,7 @@ _CLONE_ALL_STRIP: list[str] = [
 # archive is a portable snapshot; clone-all keeps those because the cloned
 # profile is meant to keep working immediately).
 _CLONE_ALL_DEFAULT_EXCLUDE_ROOT: frozenset[str] = frozenset({
-    "Vermes-agent",
+    "vermes-agent",
     ".worktrees",
     "profiles",
     "bin",
@@ -170,7 +170,7 @@ def _clone_all_copytree_ignore(source_dir: Path):
 # export is a portable, reasonable-size archive of actual profile data.
 _DEFAULT_EXPORT_EXCLUDE_ROOT = frozenset({
     # Infrastructure
-    "Vermes-agent",         # repo checkout (multi-GB)
+    "vermes-agent",         # repo checkout (multi-GB)
     ".worktrees",           # git worktrees
     "profiles",             # other profiles — never recursive-export
     "bin",                  # installed binaries (tirith, etc.)
@@ -194,7 +194,7 @@ _DEFAULT_EXPORT_EXCLUDE_ROOT = frozenset({
 
 # Names that cannot be used as profile aliases
 _RESERVED_NAMES = frozenset({
-    "Vermes", "default", "test", "tmp", "root", "sudo",
+    "vermes", "default", "test", "tmp", "root", "sudo",
 })
 
 # Vermes subcommands that cannot be used as profile names/aliases
@@ -282,18 +282,18 @@ def validate_profile_name(name: str) -> None:
     at alias-creation time anyway. ``default`` is a special pass-through —
     it's a valid alias for the built-in root profile.
     """
-    if name == "default":
-        return  # special alias for ~/.vermes
-    if not _PROFILE_ID_RE.match(name):
-        raise ValueError(
-            f"Invalid profile name {name!r}. Must match "
-            f"[a-z0-9][a-z0-9_-]{{0,63}}"
-        )
-    if name in _RESERVED_NAMES:
+    if name.casefold() == "default":
+        return  # special alias for ~/.vermes (case-insensitive)
+    if name.casefold() in _RESERVED_NAMES:
         raise ValueError(
             f"Profile name {name!r} is reserved — it collides with either "
             f"the Vermes installation itself or a common system binary.  "
             f"Pick a different name."
+        )
+    if not _PROFILE_ID_RE.match(name):
+        raise ValueError(
+            f"Invalid profile name {name!r}. Must match "
+            f"[a-z0-9][a-z0-9_-]{{0,63}}"
         )
 
 
