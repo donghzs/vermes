@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 def _stamp_preset(
     resolved: Dict[str, Any],
-    preset_spec: Optional[Dict[str, Any]],
-    preset_name: Optional[str],
+    preset_spec: Optional[Dict[str, Any]] = None,
+    preset_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """A3: attach preset hints to a resolved runtime dict (fail-open).
 

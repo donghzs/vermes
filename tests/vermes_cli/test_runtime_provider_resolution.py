@@ -152,6 +152,9 @@ def test_resolve_runtime_provider_codex(monkeypatch):
 
 def test_resolve_runtime_provider_qwen_oauth(monkeypatch):
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "qwen-oauth")
+    # No credential pool on this path — isolate from the on-disk auth.json
+    # pool so a real qwen-oauth entry doesn't shadow the credential branch.
+    monkeypatch.setattr(rp, "load_pool", lambda provider: None)
     monkeypatch.setattr(
         rp,
         "resolve_qwen_runtime_credentials",
@@ -212,6 +215,9 @@ def test_qwen_oauth_auto_fallthrough_on_auth_failure(monkeypatch):
     from vermes_cli.auth import AuthError
 
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "qwen-oauth")
+    # Isolate from the on-disk pool — otherwise a real qwen-oauth entry in
+    # ~/.vermes/auth.json shadows the credential-failure fallthrough path.
+    monkeypatch.setattr(rp, "load_pool", lambda provider: None)
     monkeypatch.setattr(
         rp,
         "resolve_qwen_runtime_credentials",
