@@ -1,0 +1,35 @@
+name: tests-os
+
+# M3 / A6：多 OS 测试矩阵（mac + linux）。
+# ⚠️ 首版 if: false 占位 —— 上游 tests-os 触发面大，未完成 runner 配额/依赖
+#    探测前**不开跑**，避免误伤现有 14 条流水线。评估通过后删掉 if: false。
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pytest-matrix:
+    if: false  # 占位：待评估 macOS runner 依赖与耗时后再启用
+    name: pytest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pytest-timeout
+      - name: Pytest targeted
+        run: |
+          python -m pytest tests/vermes_cli -p no:xdist -o addopts="" -q

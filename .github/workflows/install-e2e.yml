@@ -1,0 +1,30 @@
+name: install-e2e
+
+# M3 / A6：安装/打包冒烟（mac）。
+# ⚠️ 首版 if: false 占位 —— DMG/PyInstaller 依赖重、耗时长，未完成 runner
+#    探测前不开跑。参照上游 install-e2e-macos-run.yml 结构，启用前需本地
+#    scripts/build-macos.sh 可在 CI 复现。
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  macos-install-smoke:
+    if: false  # 占位：待 CI 复现 build-macos.sh 后再启用
+    name: macOS install smoke
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Placeholder install check
+        run: |
+          python -m pip install -e .
+          python -c "import vermes_cli; print('import-ok')"
+          # 完整 DMG 冒烟：待 build-macos.sh CI 化后替换

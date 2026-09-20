@@ -1718,9 +1718,34 @@ const channelsData = ref(null)       // { channels, grouped, total, configured_c
 const channelsLoading = ref(false)
 const channelExpanded = reactive({})  // { platform_key: true/false }
 const channelForms = reactive({})     // { platform_key: { field_key: value } }
+const channelHomeForms = reactive({}) // { platform_key: chat_id }
 const channelSaving = ref(false)
+const channelHomeSaving = ref(false)
 const gatewayRunning = ref(false)
 const gatewayStarting = ref(false)
+
+async function saveChannelHome(platformKey) {
+  const chatId = (channelHomeForms[platformKey] || '').trim()
+  channelHomeSaving.value = true
+  try {
+    // A7/M4：后端双写 config.yaml + .env + 进程 environ，读侧统一 resolve_home_channel_chat_id
+    const res = await api.putGatewayChannelHome(platformKey, chatId)
+    const hc = res?.home_channel || {}
+    if (channelsData.value?.channels) {
+      const idx = channelsData.value.channels.findIndex(c => c.key === platformKey)
+      if (idx >= 0) channelsData.value.channels[idx].home_channel = hc
+      for (const [, items] of Object.entries(channelsData.value.grouped || {})) {
+        const hit = items.find(c => c.key === platformKey)
+        if (hit) hit.home_channel = hc
+      }
+    }
+    channelHomeForms[platformKey] = hc.chat_id || ''
+  } catch (e) {
+    console.error('saveChannelHome:', e)
+  } finally {
+    channelHomeSaving.value = false
+  }
+}
 
 async function checkGatewayStatus() {
   try {
@@ -1784,6 +1809,7 @@ async function loadChannels() {
       for (const f of ch.fields) {
         channelForms[ch.key][f.key] = f.has_value ? '' : ''  // 不回显密钥，用户重新输入
       }
+      channelHomeForms[ch.key] = ch.home_channel?.chat_id || ''
     }
   } catch (e) {
     console.error('loadChannels:', e)
@@ -2469,6 +2495,29 @@ async function toggleChannel(platformKey) {
                         />
                         <span v-if="f.has_value" class="text-green-500 text-xs whitespace-nowrap">●●●●</span>
                       </div>
+                    </div>
+                    <!-- A7/M4：默认通知频道（home channel）— 判定口径与后端共享解析器一致 -->
+                    <div class="pt-2 border-t border-gray-100 dark:border-gray-600/50 space-y-1.5">
+                      <div class="flex gap-2 items-center">
+                        <label class="w-36 shrink-0 text-xs text-gray-500 dark:text-gray-400">默认通知频道</label>
+                        <input
+                          v-model="channelHomeForms[ch.key]"
+                          type="text"
+                          :placeholder="ch.home_channel?.chat_id || 'chat_id（群/会话 ID，可留空清除）'"
+                          class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono"
+                        />
+                        <button
+                          @click="saveChannelHome(ch.key)"
+                          :disabled="channelHomeSaving"
+                          class="px-2.5 py-1.5 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 whitespace-nowrap"
+                        >保存通知频道</button>
+                      </div>
+                      <p class="text-[10px] text-gray-400 pl-36">
+                        系统通知/cron 投递发到该频道。当前：
+                        <b>{{ ch.home_channel?.chat_id || '未设置' }}</b>
+                        <span v-if="ch.home_channel?.source_hint" class="ml-1">（来源 {{ ch.home_channel.source_hint }}）</span>
+                        · 保存后当次生效，无需重启
+                      </p>
                     </div>
                     <!-- 操作按钮 -->
                     <div class="flex gap-2 justify-end pt-1">

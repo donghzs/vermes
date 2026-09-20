@@ -623,6 +623,16 @@ const api = {
   getGatewayChannel(key) {
     return this.get(`/gateway/channels/${encodeURIComponent(key)}`)
   },
+  getGatewayChannelHome(key) {
+    return this.get(`/gateway/channels/${encodeURIComponent(key)}/home-channel`)
+  },
+  putGatewayChannelHome(key, chatId, name = '') {
+    return request(`/gateway/channels/${encodeURIComponent(key)}/home-channel`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId || '', name: name || '' }),
+    }).then(r => r.json())
+  },
   saveGatewayChannel(key, fields, enabled = true) {
     return request(`/gateway/channels/${encodeURIComponent(key)}`, {
       method: 'PUT',

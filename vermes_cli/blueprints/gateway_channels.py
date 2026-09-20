@@ -16,7 +16,13 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from vermes_cli.gateway_channels import get_all_channel_schemas, get_channel_schema, ChannelSchema
+from vermes_cli.gateway_channels import (
+    get_all_channel_schemas,
+    get_channel_schema,
+    ChannelSchema,
+    read_home_channel,
+    write_home_channel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +240,8 @@ def _schema_to_dict(schema: ChannelSchema, config_data: dict, env_data: dict) ->
         "note": schema.note,
         "configured": configured,
         "enabled": enabled,
+        # A7/M4：默认通知频道（读侧走共享解析器，单一口径）
+        "home_channel": read_home_channel(schema.key),
     }
 
 
@@ -403,6 +411,28 @@ async def toggle_channel(platform_key: str) -> dict:
         gw_result = await _gw_disconnect(platform_key)
 
     return {"ok": True, "enabled": not current, "gateway": gw_result}
+
+
+class HomeChannelRequest(BaseModel):
+    chat_id: str = ""
+    name: str = ""
+
+
+@router.get("/{platform_key}/home-channel")
+async def get_home_channel(platform_key: str) -> dict:
+    """读取默认通知频道（resolve_home_channel_chat_id 单一口径）。"""
+    if not get_channel_schema(platform_key):
+        raise HTTPException(status_code=404, detail=f"Unknown platform: {platform_key}")
+    return {"ok": True, "home_channel": read_home_channel(platform_key)}
+
+
+@router.put("/{platform_key}/home-channel")
+async def put_home_channel(platform_key: str, req: HomeChannelRequest) -> dict:
+    """设置/清除默认通知频道。双写 config.yaml + .env + 进程 environ（当次生效）。"""
+    if not get_channel_schema(platform_key):
+        raise HTTPException(status_code=404, detail=f"Unknown platform: {platform_key}")
+    data = write_home_channel(platform_key, req.chat_id, req.name)
+    return {"ok": True, "home_channel": data}
 
 
 def register_to(app):

@@ -1,0 +1,33 @@
+name: js-tests
+
+# M3 / A6：前端单测 lane（vitest）。
+# 与本地 uv-lockfile-check.yml 不重复；只跑 frontend/。
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  frontend-vitest:
+    name: Frontend Vitest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Vitest
+        run: npm test

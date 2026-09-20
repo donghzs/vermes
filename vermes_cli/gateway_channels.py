@@ -14,6 +14,8 @@ Each entry describes:
 
 from dataclasses import dataclass, field
 from typing import List, Optional
+import os
+from pathlib import Path
 
 
 @dataclass
@@ -601,3 +603,95 @@ def get_channel_schema(platform_key: str) -> Optional[ChannelSchema]:
 
 def get_all_channel_schemas() -> List[ChannelSchema]:
     return _all_schemas()
+
+
+# ── Home channel（A7/M4）────────────────────────────────────────────
+# 判定/读取**只走** gateway.gateway_utils.resolve_home_channel_chat_id
+# （env → legacy env → config），禁止在前端或本模块另起第二套口径。
+
+def home_env_var_name(platform_key: str) -> str:
+    """平台 home channel 环境变量名（与 gateway 解析器同一 helper）。"""
+    try:
+        from gateway.gateway_utils import _home_target_env_var
+        return _home_target_env_var((platform_key or "").lower())
+    except Exception:
+        return f"{(platform_key or '').upper()}_HOME_CHANNEL"
+
+
+def read_home_channel(platform_key: str) -> dict:
+    """读取平台默认通知频道（共享解析器，单一口径）。"""
+    key = (platform_key or "").lower()
+    try:
+        from gateway.gateway_utils import resolve_home_channel_chat_id
+        chat_id = resolve_home_channel_chat_id(key) or ""
+    except Exception:
+        chat_id = ""
+    env_key = home_env_var_name(key)
+    cfg_only = ""
+    try:
+        from gateway.gateway_utils import config_home_channel_chat_id
+        cfg_only = config_home_channel_chat_id(key) or ""
+    except Exception:
+        cfg_only = ""
+    return {
+        "platform": key,
+        "chat_id": chat_id,
+        "env_key": env_key,
+        "config_chat_id": cfg_only,
+        "source_hint": (
+            "env" if os.getenv(env_key) else ("config" if cfg_only else "unset")
+        ),
+    }
+
+
+def write_home_channel(platform_key: str, chat_id: str, name: str = "") -> dict:
+    """双写 home channel：config.yaml 结构化真源 + .env + 进程内 environ。
+
+    - config.yaml `platforms.<key>.home_channel`：GUI/手写/共享解析器都能读到
+    - env（`save_env_value`）：运维覆盖语义 + 网关启动时 dotenv
+    - `os.environ[key]=value`：本进程 `resolve_home_channel_chat_id` **当次生效**
+    """
+    key = (platform_key or "").lower()
+    chat_id = (chat_id or "").strip()
+    env_key = home_env_var_name(key)
+
+    import yaml  # local import
+    from vermes_cli.config import save_env_value
+
+    # 1) config.yaml
+    cfg_path = Path(os.environ.get("VERMES_HOME") or os.path.expanduser("~/.vermes")) / "config.yaml"
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    data: dict = {}
+    if cfg_path.exists():
+        try:
+            data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            data = {}
+    if not isinstance(data, dict):
+        data = {}
+    platforms = data.setdefault("platforms", {})
+    if not isinstance(platforms, dict):
+        platforms = {}
+        data["platforms"] = platforms
+    entry = platforms.setdefault(key, {})
+    if not isinstance(entry, dict):
+        entry = {}
+        platforms[key] = entry
+    if chat_id:
+        entry["home_channel"] = {"chat_id": chat_id, **({"name": name} if name else {})}
+    else:
+        entry.pop("home_channel", None)
+    cfg_path.write_text(yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    # 2) .env + 3) 进程内 environ（当次生效）
+    try:
+        save_env_value(env_key, chat_id)
+    except Exception:
+        pass
+    if chat_id:
+        os.environ[env_key] = chat_id
+    else:
+        os.environ.pop(env_key, None)
+
+    return read_home_channel(key)
+

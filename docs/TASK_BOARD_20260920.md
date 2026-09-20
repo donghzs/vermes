@@ -47,15 +47,14 @@
 
 | ID | 工单 | 落点 | 验收 | 状态 |
 |---|---|---|---|---|
-| **M1** | A4 分歧度量脚本落地 | 新增 `scripts/diverge_metrics.py`（**从 `~/.hermes/skills/hermes-vermes-architecture/scripts/diverge_metrics.py` 搬入，适配路径**） | 跑出**第一份基线**：同源 Jaccard / 工具 schema token / 静默失败提交数 | ⏳ 未领 |
-| **M2** | A5 重写 `UPSTREAM_SYNC.md` | 仓库根 `UPSTREAM_SYNC.md` | 版本基线 **0.18.2 / v2.3.1 → 实测值 v0.21.3 / v2.4.9**；remote 描述与 `git remote -v` 一致；**所有数字必须实测，禁止沿用旧数字** | ⏳ 未领 |
-| **M3** | A6 补 3 条 CI lane | `.github/workflows/` | `js-tests` / `tests-os`(mac+linux) / `install-e2e`(mac)；参照上游同名 lane；本地已有 14 条 | ⏳ 未领 |
-| **M4** | A7 GUI 设置入口 + 首条 DM 自动设定 | `frontend/src` + `vermes_cli/gateway_channels.py`（33KB，后端落点已备） | 傻瓜式用户有地方设 home channel | ⏳ 未领 |
+| **M1** | A4 分歧度量脚本落地 | `scripts/diverge_metrics.py`（自 Hermes skill 搬入并适配） | 基线已出：上游核心工具 60 / Vermes 49；Jaccard 0.09–0.15；静默失败 runtime≈935 vs 243、近 90 天新增 3 行/3 提交 → `reports/diverge-baseline-20260920.md` | ✅ |
+| **M2** | A5 重写 `UPSTREAM_SYNC.md` | 仓库根 `UPSTREAM_SYNC.md` | 实测：Vermes **2.5.0**（version.txt+三 package.json）、上游 **v0.21.3**（tag `v2026.9.14`）、remote `upstream/upstream2`→`NousResearch/hermes-agent`；**未改 remote**；旧 0.18/v2.3 数字已废弃 | ✅ |
+| **M3** | A6 补 3 条 CI lane | `.github/workflows/js-tests.yml`（真跑 vitest）`tests-os.yml` / `install-e2e.yml`（**`if: false` 占位**，防误伤） | 三文件在盘；不重复 `uv-lockfile-check.yml`；占位 lane 不会在 PR 上自动开跑 | ✅（占位待评估后启用） |
+| **M4** | A7 GUI 设置入口 + home channel | `frontend/src` Settings 移动接入 + `vermes_cli/gateway_channels.py` + `vermes_cli/blueprints/gateway_channels.py`（HTTP 面） | GUI 可设「默认通知频道」；`write_home_channel` 双写 config.yaml + .env + 进程 environ；**读侧只走** `resolve_home_channel_chat_id`（不另起口径）；测试 20 passed | ✅（首条 DM 自动设定：后端双写已备，gateway 侧 auto-set 属 WorkBuddy W 域，见 §4） |
 
 > **M1 提示**：脚本已存在于 Hermes skill root，**先读再搬，别从零写**（0.5d → 0.25d）。
 > **M2 提示**：`git remote -v` 实测 `upstream` / `upstream2` → `NousResearch/hermes-agent`，**管道没坏，烂的是文档**。
-> **M3 提示**：上游 35 条，本地 14 条；上游独有的关键四类 =
-> `install-e2e*.yml`、`tests-os.yml`、`js-tests.yml`、`lockfile-diff.yml`（`uv-lockfile-check.yml` 本地已有）。
+> **M3 提示**：上游 35 条，本地原有 14 条；本切片 +3 文件（其中 2 条占位）。
 
 ---
 
@@ -63,7 +62,8 @@
 
 | 时间 | 提出方 | 内容 | 处置 |
 |---|---|---|---|
-| — | — | — | — |
+| 2026-09-20 | mimo | M4 需要 HTTP 面：触碰 `vermes_cli/blueprints/gateway_channels.py`（schema 模块 `gateway_channels.py` 本身在足迹内，blueprint 是其路由壳）。**未改** `gateway/`、`cron/`、`vermes_state.py` | 已落地 home-channel GET/PUT；请 WorkBuddy 交叉审计时知悉 |
+| 2026-09-20 | mimo | A7「首条 DM 自动设定」需在 gateway 消息链路写 config——落在 WorkBuddy 独占 `gateway/` | **未做**；请 W 侧在 W4/提示层一并评估 auto-set（用 `write_home_channel` 或共享解析器同口径） |
 
 ---
 
@@ -92,4 +92,4 @@
 
 - 路线图正文（唯一真源）：`reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md`
 - 已知失败清单：`reports/known-failures-gateway-20260920.md`
-- 跨 agent 技能索引：`docs/AGENT_SKILLS_INDEX.md`（**三个 root：workbuddy 12 / hermes 33 / vermes-engine 76；mimo 尚无 skill root，可自建后登记**）
+- 跨 agent 技能索引：`docs/AGENT_SKILLS_INDEX.md`（**已登记 MiMo 多 root**：`~/.config/mimocode/skills/` 等；workbuddy 12 / hermes 33 / vermes-engine 76）
