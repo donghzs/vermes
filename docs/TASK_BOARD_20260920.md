@@ -24,8 +24,10 @@
 |---|---|---|
 | **WorkBuddy** | `gateway/`、`cron/`、`tests/gateway/` | `frontend/`、`scripts/`、`.github/`、`UPSTREAM_SYNC.md` |
 | **mimo** | `scripts/`、`UPSTREAM_SYNC.md`、`.github/workflows/`、`frontend/src`、`vermes_cli/gateway_channels.py` | `gateway/`、`cron/`、`vermes_state.py` |
+| **QClaw** | ⏳ **待 QClaw 自行声明**（已实测其在仓内活动：`/Applications/QClaw.app` 的 node 进程在跑本仓 frontend vite；持有 `vermes-build` 技能） | 未声明前：**不要与 QClaw 同时改同一文件** |
 
-> 两侧**零交集**。若某工单需要跨界，先在 §4 记一笔，不要直接动。
+> 两侧**零交集**；QClaw 的足迹尚未声明 → 动手前先 `git status --short` 看在途改动是谁的，
+> 若与 QClaw 撞同一文件，先在 §4 记一笔再动。
 
 ---
 
@@ -70,6 +72,7 @@
 | **M6** | 技能索引 P1 names-only 降级（规格书） | `agent/prompt_builder.py` + `agent/system_prompt.py` + `tests/agent/test_skills_index_p1.py` | ✅ **已完成（mimo `3f2144592b`）**：deny-list+本地补充；`is_coding_dir`；config `agent.compact_skill_categories` 默认 **off**，`auto` 仅代码目录降级；条目名永不删除；compact 进 cache_key + 变化时 clear LRU；None 基线输出不变。**11 passed**。与 W 侧文件零交集 | ✅ mimo |
 | **M6b** | P1 auto 字节实测 + P2 建议 | `scripts/measure_skills_index_p1.py` + `reports/skills-index-p1-baseline-*` | ✅ **`195588fb2a`**：真实库 245 技，P1 auto **18.41% / 5180B**；门控 off/auto 实测通过；**建议暂缓 P2** | ✅ mimo |
 | **M7** | P3 deny-list 细校 + GUI 开关 | `agent/prompt_builder.py` + `Settings.vue` 安全页 + `vermes_cli/config.py` + tests | ✅ **`25cfdfde84`**：deny 21→33（保守）；auto 收益 **23.21% / 6531B**；GUI 设置→安全→「编码场景技能索引」off/auto；`DEFAULT_CONFIG` 默认 off；PATCH 真行为测试 + P1 回归 **19 passed** | ✅ mimo |
+| **A′** | 渠道硬门（QClaw 实现 / MiMo 点验） | `agent/prompt_builder.py` + `agent/system_prompt.py` + `tests/agent/test_a1_channel_gate.py` | ✅ **`034d41bb69`** QClaw 交付；**MiMo 点验通过**（`docs/POINT_CHECK_A1_CHANNEL_GATE_BY_MIMO_20260920.md`）：白名单默认拒绝；messaging/未知/空 platform 永不降级；25 passed。观察：desktop 需保证 `agent.platform` 非空，否则 auto 形同 off | ✅ QClaw + mimo 点验 |
 
 > **与 W 并行说明**：P1 只动 `agent/prompt_builder.py` / `system_prompt.py`；未碰 `gateway/`、`cron/`、`tests/gateway/`。
 
@@ -156,4 +159,8 @@
 
 - 路线图正文（唯一真源）：`reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md`
 - 已知失败清单：`reports/known-failures-gateway-20260920.md`
-- 跨 agent 技能索引：`docs/AGENT_SKILLS_INDEX.md`（**已登记 MiMo 多 root**：`~/.config/mimocode/skills/` 等；workbuddy 12 / hermes 33 / vermes-engine 76）
+- 跨 agent 技能索引：`docs/AGENT_SKILLS_INDEX.md`（**已登记 MiMo 多 root** + **QClaw root（2026-09-20 补登）**）
+- **发行版化评估工单（已移交外部搭子 / 百度，有免费额度）**：`reports/vermes-ecosystem-assessment-TASK_20260920.md`
+  - 内容：判定「记忆织物 / 工作流 / 自进化」能否落到上游插件层（可插件化 / 需上游开口 / 只能 core patch）+ 改造量估算
+  - **出题方登记**：任务已外发，**workbuddy / mimo / QClaw 不要重复做同一评估**；若要做，只做「本机取证补充」（工单 §6 明确网页 Agent 只能初筛）
+  - 结论回收路径：摘要追加进路线图 errata（E12+），不要另起方案
