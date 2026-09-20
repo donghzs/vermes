@@ -68,6 +68,8 @@
 |---|---|---|---|---|
 | **M5** | `_save_config_yaml` 也换 ruamel round-trip | `utils.py` + `vermes_cli/blueprints/gateway_channels.py` | ✅ **已完成（mimo `7458fd023d`）**：`load_roundtrip_yaml` / `atomic_roundtrip_yaml_dump` / `atomic_roundtrip_yaml_mutate`；PUT/DELETE/toggle 写路径 `_load_config_rt`；注释保留测试通过 | ✅ mimo |
 | **M6** | 技能索引 P1 names-only 降级（规格书） | `agent/prompt_builder.py` + `agent/system_prompt.py` + `tests/agent/test_skills_index_p1.py` | ✅ **已完成（mimo `3f2144592b`）**：deny-list+本地补充；`is_coding_dir`；config `agent.compact_skill_categories` 默认 **off**，`auto` 仅代码目录降级；条目名永不删除；compact 进 cache_key + 变化时 clear LRU；None 基线输出不变。**11 passed**。与 W 侧文件零交集 | ✅ mimo |
+| **M6b** | P1 auto 字节实测 + P2 建议 | `scripts/measure_skills_index_p1.py` + `reports/skills-index-p1-baseline-*` | ✅ **`195588fb2a`**：真实库 245 技，P1 auto **18.41% / 5180B**；门控 off/auto 实测通过；**建议暂缓 P2** | ✅ mimo |
+| **M7** | P3 deny-list 细校 + GUI 开关 | `agent/prompt_builder.py` + `Settings.vue` 安全页 + `vermes_cli/config.py` + tests | ✅ **`25cfdfde84`**：deny 21→33（保守）；auto 收益 **23.21% / 6531B**；GUI 设置→安全→「编码场景技能索引」off/auto；`DEFAULT_CONFIG` 默认 off；PATCH 真行为测试 + P1 回归 **19 passed** | ✅ mimo |
 
 > **与 W 并行说明**：P1 只动 `agent/prompt_builder.py` / `system_prompt.py`；未碰 `gateway/`、`cron/`、`tests/gateway/`。
 
