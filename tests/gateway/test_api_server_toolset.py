@@ -126,4 +126,13 @@ class TestApiServerAdapterToolset:
             mock_agent_cls.assert_called_once()
             call_kwargs = mock_agent_cls.call_args
             toolsets = call_kwargs.kwargs.get("enabled_toolsets")
-            assert sorted(toolsets) == ["terminal", "web"]
+            # Explicit ``[web, terminal]`` override is honored for configurable
+            # toolsets — e.g. ``memory`` (in the api-server default composite)
+            # must be overridden away.  ``google_meet`` is a bundled standalone
+            # plugin that ships factory-enabled on every platform
+            # (commit 50d2bb4849) and is intentionally present even under an
+            # explicit toolset list, so assert membership rather than exact
+            # equality.
+            assert "web" in toolsets
+            assert "terminal" in toolsets
+            assert "memory" not in toolsets

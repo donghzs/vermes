@@ -340,7 +340,7 @@ class SessionCommandsMixin:
             try:
                 user_source = source.platform.value if source.platform else None
                 sessions = self._session_db.list_sessions_rich(
-                    source=user_source, limit=10
+                    source=user_source, limit=10, include_empty=True
                 )
                 titled = [s for s in sessions if s.get("title")]
                 if not titled:

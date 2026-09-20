@@ -276,24 +276,24 @@ def validate_profile_name(name: str) -> None:
     honest about what the on-disk directory name must look like, while
     ingress-point normalization handles UX flexibility (see #18498).
 
-    Also rejects names in :data:`_RESERVED_NAMES` (``Vermes``, ``test``,
+    Also rejects names in :data:`_RESERVED_NAMES` (``vermes``, ``test``,
     ``tmp``, ``root``, ``sudo``) that would create confusing on-disk
-    collisions (a ``Vermes`` profile inside ``~/.vermes/``) or get refused
+    collisions (a ``vermes`` profile inside ``~/.vermes/``) or get refused
     at alias-creation time anyway. ``default`` is a special pass-through —
     it's a valid alias for the built-in root profile.
     """
-    if name.casefold() == "default":
-        return  # special alias for ~/.vermes (case-insensitive)
-    if name.casefold() in _RESERVED_NAMES:
-        raise ValueError(
-            f"Profile name {name!r} is reserved — it collides with either "
-            f"the Vermes installation itself or a common system binary.  "
-            f"Pick a different name."
-        )
+    if name == "default":
+        return  # special alias for ~/.vermes
     if not _PROFILE_ID_RE.match(name):
         raise ValueError(
             f"Invalid profile name {name!r}. Must match "
             f"[a-z0-9][a-z0-9_-]{{0,63}}"
+        )
+    if name in _RESERVED_NAMES:
+        raise ValueError(
+            f"Profile name {name!r} is reserved — it collides with either "
+            f"the Vermes installation itself or a common system binary.  "
+            f"Pick a different name."
         )
 
 

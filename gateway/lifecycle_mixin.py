@@ -325,9 +325,14 @@ class LifecycleMixin:
                 connected_count += 1
             else:
                 err_msg = result.get("error", "unknown")
-                # Classify the error for startup decision logic
-                if "no adapter available" in err_msg:
-                    # Missing deps/plugin — not retryable
+                # _connect_one already classified retryability: an explicit
+                # ``retryable=False`` is a non-retryable fatal (e.g. another
+                # gateway already holding the bot token) → clean exit.  The
+                # "no adapter available" path (missing library / credentials)
+                # omits the flag entirely and must degrade gracefully, not
+                # exit — in fleet deployments the shared config.yaml may list
+                # platforms a given node simply doesn't have creds for.
+                if result.get("retryable") is False:
                     startup_nonretryable_errors.append(
                         f"{platform.value}: {err_msg}"
                     )

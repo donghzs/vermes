@@ -368,7 +368,13 @@ async def test_first_run_non_slack_home_channel_onboarding_keeps_direct_command(
     assert result == "ok"
     runner.adapters[Platform.TELEGRAM].send.assert_awaited_once()
     onboarding = runner.adapters[Platform.TELEGRAM].send.await_args.args[1]
-    assert "Type /sethome" in onboarding
+    # A7 auto-set now adopts the first authorized DM as home channel, so the
+    # first-run notice is a receipt ("Run /sethome ... to move it") rather than
+    # the old opt-in prompt ("Type /sethome to make this chat your home
+    # channel").  Non-Slack platforms keep the direct ``/sethome`` command
+    # (Slack routes through its single parent ``/Vermes sethome``).
+    assert "Run /sethome" in onboarding
+    assert "/Vermes sethome" not in onboarding
 
 
 @pytest.mark.asyncio
