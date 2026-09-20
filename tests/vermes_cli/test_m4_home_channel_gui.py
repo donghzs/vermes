@@ -26,6 +26,7 @@ class TestHomeChannelWriteRead(unittest.TestCase):
         from vermes_cli.gateway_channels import write_home_channel, read_home_channel, home_env_var_name
 
         out = write_home_channel("feishu", "oc_home_123", name="默认群")
+        self.assertTrue(out.get("ok"), out)
         self.assertEqual(out["chat_id"], "oc_home_123")
         self.assertEqual(out["env_key"], home_env_var_name("feishu"))
 
@@ -43,12 +44,51 @@ class TestHomeChannelWriteRead(unittest.TestCase):
         self.assertEqual(resolve_home_channel_chat_id("feishu"), "oc_home_123")
         self.assertEqual(read_home_channel("feishu")["chat_id"], "oc_home_123")
 
+    def test_config_yaml_preserves_comments(self):
+        """P1：GUI 保存不得抹掉 config.yaml 用户注释（ruamel round-trip）。"""
+        from vermes_cli.gateway_channels import write_home_channel
+        cfg = self.home / "config.yaml"
+        cfg.write_text(
+            "# user comment keep me\n"
+            "platforms:\n"
+            "  feishu:\n"
+            "    enabled: false\n"
+            "    # inner note\n",
+            encoding="utf-8",
+        )
+        out = write_home_channel("feishu", "oc_keep_comments")
+        self.assertTrue(out.get("ok"), out)
+        text = cfg.read_text(encoding="utf-8")
+        self.assertIn("# user comment keep me", text)
+        self.assertIn("# inner note", text)
+        self.assertIn("oc_keep_comments", text)
+
+    def test_env_write_failure_is_not_silent_ok(self):
+        """P2：save_env_value 失败不得 except:pass 后仍 ok=True。"""
+        import vermes_cli.config as config_mod
+        from vermes_cli import gateway_channels as gc
+
+        orig = config_mod.save_env_value
+        def _boom(*a, **k):
+            raise OSError("disk full")
+        config_mod.save_env_value = _boom
+        try:
+            out = gc.write_home_channel("telegram", "99")
+        finally:
+            config_mod.save_env_value = orig
+        self.assertFalse(out.get("ok"))
+        self.assertTrue(out.get("env_error"))
+        # 失败时不同步 environ（禁止假装已生效）
+        env_key = gc.home_env_var_name("telegram")
+        self.assertNotEqual(os.environ.get(env_key), "99")
+
     def test_clear_home_channel(self):
         from vermes_cli.gateway_channels import write_home_channel, read_home_channel
         from gateway.gateway_utils import resolve_home_channel_chat_id
         write_home_channel("telegram", "42")
         self.assertEqual(resolve_home_channel_chat_id("telegram"), "42")
         out = write_home_channel("telegram", "")
+        self.assertTrue(out.get("ok"), out)
         self.assertEqual(out["chat_id"], "")
         self.assertEqual(resolve_home_channel_chat_id("telegram"), "")
 

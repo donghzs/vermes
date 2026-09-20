@@ -55,7 +55,7 @@
 | **M1** | A4 分歧度量脚本落地 | `scripts/diverge_metrics.py`（自 Hermes skill 搬入并适配） | 基线已出：上游核心工具 60 / Vermes 49；Jaccard 0.09–0.15；静默失败 runtime≈935 vs 243、近 90 天新增 3 行/3 提交 → `reports/diverge-baseline-20260920.md` | ✅ |
 | **M2** | A5 重写 `UPSTREAM_SYNC.md` | 仓库根 `UPSTREAM_SYNC.md` | 实测：Vermes **2.5.0**（version.txt+三 package.json）、上游 **v0.21.3**（tag `v2026.9.14`）、remote `upstream/upstream2`→`NousResearch/hermes-agent`；**未改 remote**；旧 0.18/v2.3 数字已废弃 | ✅（WorkBuddy 交叉审计已复核四处版本号；**工单板原文写的 2.4.9 才是错的，已订正**） |
 | **M3** | A6 补 3 条 CI lane | `.github/workflows/js-tests.yml`（真跑 vitest）`tests-os.yml` / `install-e2e.yml`（**`if: false` 占位**，防误伤） | 三文件在盘；不重复 `uv-lockfile-check.yml`；占位 lane 不会在 PR 上自动开跑 | ✅（占位待评估后启用） |
-| **M4** | A7 GUI 设置入口 + home channel | `frontend/src` Settings 移动接入 + `vermes_cli/gateway_channels.py` + `vermes_cli/blueprints/gateway_channels.py`（HTTP 面） | GUI 可设「默认通知频道」；`write_home_channel` 双写 config.yaml + .env + 进程 environ；**读侧只走** `resolve_home_channel_chat_id`（不另起口径）；测试 20 passed | ✅（首条 DM 自动设定：后端双写已备，gateway 侧 auto-set 属 WorkBuddy W 域，见 §4） |
+| **M4** | A7 GUI 设置入口 + home channel | `frontend/src` Settings 移动接入 + `vermes_cli/gateway_channels.py` + `vermes_cli/blueprints/gateway_channels.py`（HTTP 面） | GUI 可设「默认通知频道」；读侧只走 `resolve_home_channel_chat_id`。**交叉审计返工已合入**：① config.yaml 改 `utils.atomic_roundtrip_yaml_update`（ruamel 保注释 + 原子写）② `save_env_value` 失败显式 `ok=false`/`env_error`，且不写 environ ③ 列表接口复用已加载 config（P3）。注释保留 / 吞错 / 双写均有真行为测试 | ✅ 返工完成 |
 
 > **M1 提示**：脚本已存在于 Hermes skill root，**先读再搬，别从零写**（0.5d → 0.25d）。
 > **M2 提示**：`git remote -v` 实测 `upstream` / `upstream2` → `NousResearch/hermes-agent`，**管道没坏，烂的是文档**。

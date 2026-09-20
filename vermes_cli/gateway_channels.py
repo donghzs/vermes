@@ -618,19 +618,23 @@ def home_env_var_name(platform_key: str) -> str:
         return f"{(platform_key or '').upper()}_HOME_CHANNEL"
 
 
-def read_home_channel(platform_key: str) -> dict:
-    """读取平台默认通知频道（共享解析器，单一口径）。"""
+def read_home_channel(platform_key: str, config: dict | None = None) -> dict:
+    """读取平台默认通知频道（共享解析器，单一口径）。
+
+    ``config`` 可选：列表接口可传入已加载的 config.yaml dict，避免每个
+    schema 再读一次盘（P3）。
+    """
     key = (platform_key or "").lower()
     try:
         from gateway.gateway_utils import resolve_home_channel_chat_id
-        chat_id = resolve_home_channel_chat_id(key) or ""
+        chat_id = resolve_home_channel_chat_id(key, config) or ""
     except Exception:
         chat_id = ""
     env_key = home_env_var_name(key)
     cfg_only = ""
     try:
         from gateway.gateway_utils import config_home_channel_chat_id
-        cfg_only = config_home_channel_chat_id(key) or ""
+        cfg_only = config_home_channel_chat_id(key, config) or ""
     except Exception:
         cfg_only = ""
     return {
@@ -647,51 +651,48 @@ def read_home_channel(platform_key: str) -> dict:
 def write_home_channel(platform_key: str, chat_id: str, name: str = "") -> dict:
     """双写 home channel：config.yaml 结构化真源 + .env + 进程内 environ。
 
-    - config.yaml `platforms.<key>.home_channel`：GUI/手写/共享解析器都能读到
-    - env（`save_env_value`）：运维覆盖语义 + 网关启动时 dotenv
-    - `os.environ[key]=value`：本进程 `resolve_home_channel_chat_id` **当次生效**
+    - config.yaml：``utils.atomic_roundtrip_yaml_update``（ruamel 保注释 + 原子写）
+    - env（``save_env_value``）：运维覆盖语义 + 网关启动时 dotenv
+    - ``os.environ``：本进程 ``resolve_home_channel_chat_id`` **当次生效**
+
+    纪律（M4 交叉审计 P1/P2）：
+      * 禁止 ``yaml.dump`` 全量重写 config.yaml（会抹掉用户注释）
+      * 禁止裸 ``write_text``（半途被杀会截断）
+      * ``save_env_value`` 失败**不得**吞掉后仍返回 ok=True
     """
     key = (platform_key or "").lower()
     chat_id = (chat_id or "").strip()
     env_key = home_env_var_name(key)
 
-    import yaml  # local import
+    from utils import atomic_roundtrip_yaml_update
     from vermes_cli.config import save_env_value
 
-    # 1) config.yaml
     cfg_path = Path(os.environ.get("VERMES_HOME") or os.path.expanduser("~/.vermes")) / "config.yaml"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict = {}
-    if cfg_path.exists():
-        try:
-            data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-        except Exception:
-            data = {}
-    if not isinstance(data, dict):
-        data = {}
-    platforms = data.setdefault("platforms", {})
-    if not isinstance(platforms, dict):
-        platforms = {}
-        data["platforms"] = platforms
-    entry = platforms.setdefault(key, {})
-    if not isinstance(entry, dict):
-        entry = {}
-        platforms[key] = entry
-    if chat_id:
-        entry["home_channel"] = {"chat_id": chat_id, **({"name": name} if name else {})}
-    else:
-        entry.pop("home_channel", None)
-    cfg_path.write_text(yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
-    # 2) .env + 3) 进程内 environ（当次生效）
+    config_error = ""
+    try:
+        value = {"chat_id": chat_id, **({"name": name} if name else {})} if chat_id else None
+        atomic_roundtrip_yaml_update(cfg_path, f"platforms.{key}.home_channel", value)
+    except Exception as exc:
+        config_error = str(exc)
+
+    env_error = ""
     try:
         save_env_value(env_key, chat_id)
-    except Exception:
-        pass
-    if chat_id:
-        os.environ[env_key] = chat_id
-    else:
-        os.environ.pop(env_key, None)
+    except Exception as exc:
+        env_error = str(exc)
 
-    return read_home_channel(key)
+    # 进程内生效：仅在 .env 写入成功时同步 environ，避免「盘上没写成却假装已生效」
+    if not env_error:
+        if chat_id:
+            os.environ[env_key] = chat_id
+        else:
+            os.environ.pop(env_key, None)
+
+    result = read_home_channel(key)
+    result["ok"] = not (config_error or env_error)
+    result["config_error"] = config_error
+    result["env_error"] = env_error
+    return result
 

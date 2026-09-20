@@ -240,8 +240,8 @@ def _schema_to_dict(schema: ChannelSchema, config_data: dict, env_data: dict) ->
         "note": schema.note,
         "configured": configured,
         "enabled": enabled,
-        # A7/M4：默认通知频道（读侧走共享解析器，单一口径）
-        "home_channel": read_home_channel(schema.key),
+        # A7/M4：默认通知频道（读侧走共享解析器；复用已加载 config，避免 N 次读盘）
+        "home_channel": read_home_channel(schema.key, config_data),
     }
 
 
@@ -428,11 +428,13 @@ async def get_home_channel(platform_key: str) -> dict:
 
 @router.put("/{platform_key}/home-channel")
 async def put_home_channel(platform_key: str, req: HomeChannelRequest) -> dict:
-    """设置/清除默认通知频道。双写 config.yaml + .env + 进程 environ（当次生效）。"""
+    """设置/清除默认通知频道。config.yaml 保注释原子写 + .env；失败显式返回。"""
     if not get_channel_schema(platform_key):
         raise HTTPException(status_code=404, detail=f"Unknown platform: {platform_key}")
     data = write_home_channel(platform_key, req.chat_id, req.name)
-    return {"ok": True, "home_channel": data}
+    return {"ok": data.get("ok", False), "home_channel": data,
+            "config_error": data.get("config_error", ""),
+            "env_error": data.get("env_error", "")}
 
 
 def register_to(app):
