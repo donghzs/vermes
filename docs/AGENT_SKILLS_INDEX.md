@@ -10,14 +10,18 @@
 
 ---
 
-## 一、Skill Root 一览（实证于 2026-09-20；MiMo 于同日补登）
+## 一、Skill Root 一览（实证于 2026-09-20；MiMo 同日补登；**QClaw 同日由 Hermes 代登**）
 
 | Agent | Root | 项数 | 谁能加载 |
 |---|---|---|---|
 | WorkBuddy | `~/.workbuddy/skills/` | 12 | WorkBuddy |
-| Hermes | `~/.hermes/skills/` | 33（顶层技能目录口径） | Hermes |
-| Vermes 引擎 | `~/.vermes/skills/` | 76 | Vermes 运行时 |
+| Hermes | `~/.hermes/skills/` | 33（顶层技能目录口径）／`find -maxdepth 4 -name SKILL.md` 实测 167 | Hermes |
+| Vermes 引擎 | `~/.vermes/skills/` | 76（顶层口径）／`find` 实测 237 | Vermes 运行时 |
+| **QClaw** | `~/.qclaw/skills/` + 见下方「QClaw root」 | 59 顶层项／`find -maxdepth 4` 实测 **70** | QClaw / OpenClaw |
 | **MiMo Desktop** | 见下方「MiMo 多 root」 | 见下方 | MiMoCode / MiMo Desktop |
+
+> 口径提醒：本表「项数」混用两种口径（顶层目录数 vs `find` 计数），读之前先看列里的限定语；
+> 要精确数字一律用 `find <root> -maxdepth 4 -name SKILL.md | wc -l` 自己数，不要跨 agent 比大小。
 
 ### MiMo Desktop 多 root（2026-09-20 实测，`find <root> -name SKILL.md`）
 
@@ -94,6 +98,24 @@
 
 ---
 
+## 四-ter、QClaw Root（`~/.qclaw/`，2026-09-20 由 Hermes 代登，**请 QClaw 自行更正/补全本段**）
+
+| Root | 说明 | SKILL.md 实测 |
+|---|---|---|
+| `~/.qclaw/skills/` | 主 root（59 个顶层项） | — |
+| `~/.qclaw/workspace/skills/` | 工作区 root | — |
+| `~/.qclaw/workspace-<id>/skills/` | 会话/项目工作区 root（实测到 `workspace-rpqpolb2p4jtebn1`） | — |
+| 合计 | `find ~/.qclaw -maxdepth 4 -name SKILL.md` | **70** |
+
+已实测存在的条目（仅列路径，不下能力判断）：`vermes-build`（Vermes 构建相关）、`lark-setup`、
+`baidu-ai-map`、`tencentmap-webservice-skill`、`weiyun`、`bdpan-storage`、`kdocs`、`another_them`、
+`maomao-weather`、`competitorsmart`。**其余未枚举** —— 需要时 `ls -1 ~/.qclaw/skills/` 自取。
+
+> 登记缘由：QClaw 是本仓早期建造者、且持有 `vermes-build` 构建能力（Windows 打包链相关），
+> 但在本轮多 agent 协作面（本索引 + `TASK_BOARD_20260920.md`）里**此前零留痕** —— 属盲区，故补登。
+
+---
+
 ## 五、登记规则（新增 skill 时请遵守）
 
 1. 新 skill 建在**自己的 root**，正文不复制进仓库。
@@ -108,4 +130,6 @@
 
 - 上游对齐路线图：`reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md`
 - gateway 已知失败清单：`reports/known-failures-gateway-20260920.md`
+- **Vermes 发行版化评估工单（已移交外部搭子，勿重复做）**：`reports/vermes-ecosystem-assessment-TASK_20260920.md`
+- 并行工单板：`docs/TASK_BOARD_20260920.md`
 - 本索引：`docs/AGENT_SKILLS_INDEX.md`

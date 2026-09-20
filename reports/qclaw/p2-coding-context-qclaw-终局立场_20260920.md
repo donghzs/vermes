@@ -44,16 +44,31 @@ QClaw 前两轮回帖（`p2-coding-context-qclaw核实意见` / `立场与渠道
 
 ## 3. 终局结论（三条）
 
-### 3.1 P2 大移植（591 行）**彻底不做** —— 不是「暂缓」，是「本来就不该做」
+### 3.1 P2 大移植（591 行）**彻底不做** —— 理由从「已覆盖」修正为「形态不匹配」
 
-Hermes `coding_context.py` 回答的不是「能不能写代码」（能力），而是「写代码时要不要把 98KB 技能索引里 ~20KB 非编码描述塞进 prompt」（**成本优化**）。而它最值钱的两块，Vermes 已用**更符合「全世界皆 code」**的方式覆盖：
+> ⚠️ 2026-09-20 修订：上轮「L5 已被记忆底座覆盖（更强）」论断**错误**，经 Hermes 指正 + 源码核实修正。
 
-| Hermes coding_context 要解决的 | Vermes 已有等价物 | 谁更强 |
-|---|---|---|
-| L5 现场感知（会话内 git 快照） | 记忆底座 + 跨会话接续 | Vermes（跨渠道、跨会话，覆盖面广） |
-| L4 行为纪律（编码简报） | 散落在 OPENAI/GOOGLE 模型家族 guidance + 记忆/偏好 | 正交，可叠加 |
-| L1 技能索引降级（token 经济） | 已做 P1/P3 | 已覆盖 |
-| L3 focus 收工具集 | **唯一缺口**，但工具集规模未到需收窄程度 | 不急 |
+**核实更正**（源码级）：
+- L5 git 现场快照：Vermes **确实没有**。`system_prompt.py` 只注入 `build_context_files_prompt`（读 AGENTS.md/CLAUDE.md 静态规则），无 git branch/status、无 verify 命令推断、无 ProjectFacts。`_find_git_root` 只用于「停止向上找 context 文件」，不产出快照。
+- 跨会话接续的真实载体是 `project_handoff.py`（第 7 源）+ `session_handoff.py`（第 1 源），**不是** `cross_session_continuity.py`（那是集群演进简报）。
+
+**但结论不变，理由修正**：「Vermes 没有 git 现场快照」≠「Vermes 需要 git 现场快照」。
+
+| Hermes 的 L5 | Vermes 的「现场」 |
+|---|---|
+| git branch / status / verify（**git 仓库现场**） | 异构任务现场：`project_handoff` 的 `domain ∈ paper/screenplay/novel/shortdrama/custom/generic`（progress/last_section/status） |
+| 假设现场 = 代码仓库 | 事实现场 = 任意长程任务 |
+
+Hermes 是 CLI 编码 agent，cwd=git 仓库，故快照=git；Vermes「全世界皆 code」的现场是**异构的**，`project_handoff` 的 domain 状态才是它的现场快照，比 git 快照更贴产品定位。
+
+| Hermes coding_context 要解决的 | 判定 |
+|---|---|
+| L5 现场感知（git 快照） | **不搬 coding_context 整包**；但「工作区事实块」该做（W-L5，见 MiMo 综合稿）——不是 git 现场，是异构任务现场 + 工作区事实 |
+| L4 行为纪律（编码简报） | **不搬整包**；但缺 3 条正确性/安全纪律（path:line / 不顺手重构 / 默认不 commit·push），该并入通用层（W-L4）——注：上轮「已散落在模型族 guidance」判断经 MiMo 逐条 diff 已证伪 |
+| L1 技能索引降级（token 经济） | 已做 P1/P3，触发条件待改（§3.3） |
+| L3 focus 收工具集 | 唯一缺口，但工具集规模未到需收窄程度，不急 |
+
+> 详见 MiMo 综合稿 `reports/p2-coding-context-mimo-synthesis-after-hermes_20260920.md`（L4 逐条 diff 表 + W-L4/W-L5 排期），以该稿为仓库真源。
 
 ### 3.2 A′（渠道硬门，commit 034d41bb69）**保留，降格为安全补丁**
 
@@ -70,21 +85,32 @@ A′ 堵的事故是真的：`resolve_compact_skill_categories` 只看 cwd 不�
 
 这是一个小改动，但方向性重要：它把「技能索引降级」从「coding 姿态」里彻底剥离出来，回归它本来的定位——**token 经济**，而非能力分层。
 
+### 3.4 唯一可落地项：把「通用纪律」补进通用层（非 coding 专属层）——已由 MiMo 实测确认
+
+MiMo 已逐条 diff 源码，确认缺 3 条（见综合稿）：
+1. `path:line` 精确引用（非贴整屏）
+2. 只改任务相关、不顺手重构
+3. 默认不 commit/push（除非用户明确要求）——`tools/approval.py` 仅拦 `git reset --hard`/`--force`，不拦普通 commit/push
+
+这三条是**正确性/安全向**，不是「省 token」。补法 = 并入现有通用/模型族 guidance，或独立小段，**不按 cwd/platform 分支**。
+
 ---
 
 ## 4. 教训（归档给后续讨论）
 
 - **「coding 是不是一种姿态」是伪命题**。用渠道 / 目录 / cwd 去套 agent，是人类的分类惯性。
-- **正确载体是记忆底座 + 跨会话接续**，不是进程 cwd / git 根 / 渠道白名单。
-- **Hermes 的「加法/减法」框架**（auto=加法、focus=减法）在 Hermes 的 CLI 单表面前提下是对的；但搬到 Vermes 的多表面 + 记忆底座架构下，**整个框架都该被"能力统一、无需姿态开关"替代**，而不是在它内部调整加减法分配。
+- **正确载体不是「git 现场快照」，是「domain 现场」**（project_handoff）+ 记忆底座。
+- **Hermes 的「加法/减法」框架**在 Hermes 的 CLI 单表面前提下是对的；但搬到 Vermes 的多表面 + 记忆底座架构下，**整个框架都该被「能力统一、无需姿态开关」替代**，而不是在它内部调整加减法分配。
+- **教训（QClaw 自省）**：两轮「Vermes 已有更强等价物」式归因均不严谨——② 把 cross_session_continuity 当任务接续（实为集群简报）、③ 把 context_files_prompt 当现场快照（实为静态规则）。跨层能力比对必须落到具体函数，不能凭模块名臆断。
 
 ---
 
 ## 5. 待办（不阻塞，等董董）
 
-1. M7 降级触发从「coding」改「token 长度」——**待拍板**，一个判断改动
-2. `docs/SPEC_coding_mode_vermes_20260920.md` 与 `reports/p2-coding-context-decision_20260920.md` 目前仍停在「加法/减法」框架，**建议按本终局立场重写或标注 superseded**
-3. §12 冻结：所有 commit 未 push（main ahead origin 51+）
+1. **唯一可落地项**：diff Vermes 通用 guidance vs Hermes 编码简报，确认「通用纪律」缺口（验证后再宣称完成 / 精确引用 / 不扩大范围 / 连败换策略等），缺失则补进通用层。**不臆测，先 diff**。
+2. M7 降级触发从「coding」改「token 长度」——待拍板，一个判断改动
+3. `docs/SPEC_coding_mode_vermes_20260920.md` 与 `reports/p2-coding-context-decision_20260920.md` 目前仍停在「加法/减法」框架，建议按本终局立场重写或标注 superseded
+4. §12 冻结：所有 commit 未 push（main ahead origin 51+）
 
 ---
 
