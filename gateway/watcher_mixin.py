@@ -252,9 +252,14 @@ class WatcherMixin:
                     logger.info("✓ %s reconnected successfully", platform.value)
                 else:
                     err_msg = result.get("error", "unknown")
-                    # Check if non-retryable
-                    adapter = self.adapters.get(platform)
-                    if adapter and adapter.has_fatal_error and not adapter.fatal_error_retryable:
+                    # Check if non-retryable.
+                    # NOTE: probing self.adapters here never worked — a failed
+                    # adapter is only registered into self.adapters on a
+                    # SUCCESSFUL connect, so self.adapters.get(platform) is
+                    # always None here and this branch silently never fired
+                    # (non-retryable platforms stayed queued forever). Use the
+                    # flag returned by _connect_one instead.
+                    if not result.get("retryable", True):
                         logger.warning(
                             "Reconnect %s: non-retryable error (%s), removing from retry queue",
                             platform.value, err_msg,

@@ -1107,6 +1107,10 @@ class LifecycleMixin:
                 error_code=None,
                 error_message="no adapter available",
             )
+            # Not recoverable by retrying (missing plugin / unsupported
+            # platform) — drop it from the reconnect queue instead of
+            # hammering a platform that can never come back.
+            self._failed_platforms.pop(platform, None)
             return {"ok": False, "error": f"no adapter available for {platform.value}"}
 
         # ── Install handlers ──
@@ -1157,12 +1161,23 @@ class LifecycleMixin:
                         error_message=adapter.fatal_error_message,
                     )
                     if adapter.fatal_error_retryable:
-                        self._failed_platforms[platform] = {
-                            "config": platform_config,
-                            "attempts": 1,
-                            "next_retry": time.monotonic() + 30,
-                        }
+                        # Queue for retry. IMPORTANT: update the existing entry
+                        # IN PLACE instead of assigning a fresh dict. The
+                        # reconnect watcher holds a reference to this dict
+                        # across the connect call (watcher_mixin.py:235) and
+                        # writes the incremented attempt counter + backoff back
+                        # into it. Replacing the dict orphans that reference,
+                        # which silently (a) stops attempts from accumulating —
+                        # so the _PAUSE_AFTER_FAILURES circuit breaker never
+                        # trips — and (b) resets exponential backoff to a flat
+                        # 30s. Kept inline (not a helper) so the mutation of
+                        # _failed_platforms stays visible at the call site.
+                        _entry = self._failed_platforms.setdefault(platform, {})
+                        _entry.setdefault("attempts", 1)
+                        _entry.setdefault("next_retry", time.monotonic() + 30)
+                        _entry["config"] = platform_config
                     err_msg = adapter.fatal_error_message or "failed to connect"
+                    _retryable = adapter.fatal_error_retryable
                 else:
                     self._update_platform_runtime_status(
                         platform.value,
@@ -1170,13 +1185,17 @@ class LifecycleMixin:
                         error_code=None,
                         error_message="failed to connect",
                     )
-                    self._failed_platforms[platform] = {
-                        "config": platform_config,
-                        "attempts": 1,
-                        "next_retry": time.monotonic() + 30,
-                    }
+                    _entry = self._failed_platforms.setdefault(platform, {})
+                    _entry.setdefault("attempts", 1)
+                    _entry.setdefault("next_retry", time.monotonic() + 30)
+                    _entry["config"] = platform_config
                     err_msg = "failed to connect"
-                return {"ok": False, "error": err_msg}
+                    _retryable = True
+                # "retryable" is consumed by the reconnect watcher to decide
+                # whether to keep or drop the queued platform. A failed
+                # adapter is never registered in self.adapters (only successful
+                # connects are), so the watcher cannot probe it there.
+                return {"ok": False, "error": err_msg, "retryable": _retryable}
         except Exception as e:
             logger.error("✗ %s error: %s", platform.value, e)
             await self._safe_adapter_disconnect(adapter, platform)
@@ -1186,11 +1205,10 @@ class LifecycleMixin:
                 error_code=None,
                 error_message=str(e),
             )
-            self._failed_platforms[platform] = {
-                "config": platform_config,
-                "attempts": 1,
-                "next_retry": time.monotonic() + 30,
-            }
+            _entry = self._failed_platforms.setdefault(platform, {})
+            _entry.setdefault("attempts", 1)
+            _entry.setdefault("next_retry", time.monotonic() + 30)
+            _entry["config"] = platform_config
             return {"ok": False, "error": str(e)}
 
     async def _disconnect_one(self, platform: Platform) -> dict:
