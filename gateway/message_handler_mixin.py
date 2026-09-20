@@ -30,8 +30,19 @@ from typing import Optional, Any, List, Dict
 from agent.i18n import t
 from gateway._run_attr import _get_run_attr
 from gateway.config import Platform, GatewayConfig, PlatformConfig
-from gateway.gateway_utils import _platform_config_key, resolve_home_channel_chat_id
-from gateway.notices import HOME_CHANNEL_MISSING, has_noticed, mark_noticed
+from gateway.gateway_utils import (
+    _home_thread_env_var,
+    _platform_config_key,
+    auto_set_home_channel_enabled,
+    env_home_channel_chat_id,
+    resolve_home_channel_chat_id,
+)
+from gateway.notices import (
+    HOME_CHANNEL_AUTOSET,
+    HOME_CHANNEL_MISSING,
+    has_noticed,
+    mark_noticed,
+)
 from gateway.platforms.base import (
     EphemeralReply,
     MessageEvent,
@@ -92,6 +103,175 @@ class MessageHandlerMixin:
 
         await adapter.send(source.chat_id, content, metadata=metadata)
 
+    async def _maybe_auto_set_home_channel(self, source) -> bool:
+        """A7 — adopt this platform's **first authorized DM** as home channel.
+
+        Returns True when a home channel was adopted, meaning the caller should
+        skip the manual ``/sethome`` prompt.
+
+        Safe by construction: three gates, all evaluated *before* any write.
+
+        1. **Authorization already happened upstream.** The
+           ``_is_user_authorized`` gate at the top of ``_handle_message``
+           returns before reaching here, so whoever triggered this is an
+           explicitly allow-listed operator — not any stranger who can message
+           the bot.
+        2. **DM only.** A group / channel / thread is never auto-adopted. This
+           removes the obvious attack: invite the bot into a busy room and have
+           it silently start delivering that user's cron results there.
+        3. **Only when nothing is configured yet.** An existing home channel is
+           never overwritten; ``/sethome`` remains the only way to move one.
+        """
+        if not source or not getattr(source, "platform", None):
+            return False
+        if source.platform == Platform.LOCAL or source.platform == Platform.WEBHOOK:
+            return False
+
+        # Gate 2 — private conversation only. A missing/unknown chat_type is
+        # NOT treated as a DM: some adapters leave it unset on group traffic,
+        # and failing open here is exactly what gate 2 exists to prevent.
+        if (getattr(source, "chat_type", "") or "") != "dm":
+            return False
+        # Bot-authored traffic must never designate a delivery target.
+        if getattr(source, "is_bot", False):
+            return False
+
+        platform_name = source.platform.value
+
+        # Gate 3 — never overwrite an existing home channel.
+        # Cheap leg first: env is the top-priority leg of resolution, so a hit
+        # answers "already configured" without parsing config.yaml. Without
+        # this ordering, every inbound DM would trigger a full config read.
+        # Both legs come from the same resolver cron delivery uses, so "is one
+        # set" cannot disagree between them.
+        if env_home_channel_chat_id(platform_name):
+            return False
+        if resolve_home_channel_chat_id(platform_name, config=self.config):
+            return False
+
+        # One attempt per platform. Not marked on failure, so a transient
+        # write error still lets it succeed on a later message.
+        if has_noticed(platform_name, HOME_CHANNEL_AUTOSET):
+            return False
+        if not auto_set_home_channel_enabled(platform_name):
+            return False
+
+        chat_id = str(source.chat_id or "").strip()
+        if not chat_id:
+            return False
+
+        def _persist() -> dict:
+            from vermes_cli.gateway_channels import write_home_channel
+
+            return write_home_channel(
+                platform_name, chat_id, source.chat_name or ""
+            )
+
+        # write_home_channel does fsync-ing disk IO on config.yaml + .env;
+        # running it inline would block the event loop for every other platform.
+        try:
+            result = await asyncio.to_thread(_persist)
+        except Exception as e:
+            logger.warning(
+                "[%s] auto home-channel write raised: %s", platform_name, e
+            )
+            return False
+
+        result = result or {}
+        adopted = str(result.get("chat_id") or "").strip()
+        if not adopted:
+            logger.warning(
+                "[%s] auto home-channel did not stick (config_error=%r env_error=%r)",
+                platform_name,
+                result.get("config_error"),
+                result.get("env_error"),
+            )
+            return False
+        if not result.get("ok"):
+            # Partially applied — e.g. config.yaml written but save_env_value
+            # failed. The channel still resolves (that is why `adopted` is
+            # non-empty), so we do not pretend nothing happened; we surface it
+            # in the log and still confirm to the user, because silently doing
+            # nothing after writing their config would be worse.
+            logger.warning(
+                "[%s] auto home-channel partially applied (config_error=%r env_error=%r)",
+                platform_name,
+                result.get("config_error"),
+                result.get("env_error"),
+            )
+
+        self._mirror_home_channel_in_config(source, adopted)
+        self._reset_home_thread_env(platform_name)
+        mark_noticed(platform_name, HOME_CHANNEL_AUTOSET)
+
+        # Slack routes every Vermes command through the single parent slash
+        # command `/Vermes`; a bare `/sethome` would not be registered.
+        sethome_cmd = (
+            "/Vermes sethome" if source.platform == Platform.SLACK else "/sethome"
+        )
+        receipt = (
+            f"📬 This chat is now your {platform_name.title()} home channel.\n\n"
+            f"Cron job results and cross-platform messages will be delivered "
+            f"here. Run {sethome_cmd} in another chat to move it, or set "
+            f"VERMES_AUTO_SET_HOME_CHANNEL=false to disable this behaviour."
+        )
+        try:
+            await self._deliver_platform_notice(source, receipt)
+        except Exception as e:
+            # The channel IS set; only the confirmation failed. Still True —
+            # re-delivering it next turn would repeat stale information.
+            logger.warning(
+                "[%s] auto home-channel receipt failed: %s", platform_name, e
+            )
+        return True
+
+    def _mirror_home_channel_in_config(self, source, chat_id: str) -> None:
+        """Keep the running GatewayConfig in sync, exactly like ``/sethome``.
+
+        ``/sethome`` (``slash_handlers/config_handlers.py``) does this because
+        the pre-restart delivery path reads ``self.config`` rather than env.
+        Auto-set must do the same or the very first cron tick after this
+        message could still see "no home channel".
+        """
+        config = getattr(self, "config", None)
+        if config is None or not getattr(source, "platform", None):
+            return
+        try:
+            from gateway.config import HomeChannel
+
+            platform_config = config.platforms.setdefault(
+                source.platform, PlatformConfig(enabled=True)
+            )
+            platform_config.home_channel = HomeChannel(
+                platform=source.platform,
+                chat_id=str(chat_id),
+                name=source.chat_name or chat_id,
+                thread_id=None,
+            )
+        except Exception as e:
+            logger.debug(
+                "[%s] could not mirror home channel into config: %s",
+                getattr(source.platform, "value", "?"),
+                e,
+            )
+
+    def _reset_home_thread_env(self, platform_name: str) -> None:
+        """Clear a stale HOME_..._THREAD_ID so DM delivery is not redirected.
+
+        ``/sethome`` clears the thread var whenever it runs outside a thread
+        and explicitly documents why: a leftover topic ID would route the bare
+        platform target into a forum thread that may belong to another chat.
+        We adopted a DM, so no thread applies — same situation, same fix.
+        """
+        try:
+            from vermes_cli.config import save_env_value
+
+            save_env_value(_home_thread_env_var(platform_name), "")
+        except Exception as e:
+            logger.debug(
+                "[%s] could not reset home thread env: %s", platform_name, e
+            )
+
     async def _maybe_prompt_missing_home_channel(self, source) -> bool:
         """Nag once per platform that no home channel is set. Returns delivered.
 
@@ -118,9 +298,12 @@ class MessageHandlerMixin:
             return False
 
         platform_name = source.platform.value
-        if resolve_home_channel_chat_id(platform_name, config=self.config):
+        # Same cheap gate as A7: skip the config read when env already answers.
+        if env_home_channel_chat_id(platform_name):
             return False
         if has_noticed(platform_name, HOME_CHANNEL_MISSING):
+            return False
+        if resolve_home_channel_chat_id(platform_name, config=self.config):
             return False
 
         # Slack dispatches all Vermes commands through a single parent slash
@@ -2138,8 +2321,13 @@ class MessageHandlerMixin:
                 "Keep the introduction concise -- one or two sentences max.]"
             )
         
-        await self._maybe_prompt_missing_home_channel(source)
-        
+        # A7 first: adopt the first authorized DM as home channel. When it
+        # succeeds it already told the user, so the manual "/sethome" prompt
+        # below must not also fire. When it is disabled, refused, or fails,
+        # nothing was written and the prompt is still the right fall-back.
+        if not await self._maybe_auto_set_home_channel(source):
+            await self._maybe_prompt_missing_home_channel(source)
+
         # -----------------------------------------------------------------
         # Voice channel awareness — inject current voice channel state
         # into context so the agent knows who is in the channel and who

@@ -42,6 +42,13 @@ NOTICES_FILENAME = "notices.json"
 # Notice keys — add new ones here so callers cannot typo them.
 HOME_CHANNEL_MISSING = "home_channel_missing"
 
+# A7: we auto-adopted this platform's first DM as its home channel. Deliberately
+# a *separate* key from HOME_CHANNEL_MISSING — they are different user-facing
+# events with different text, and one succeeding is not the other being
+# delivered. Keeping them apart also means disabling auto-set later does not
+# retroactively suppress the manual prompt.
+HOME_CHANNEL_AUTOSET = "home_channel_autoset"
+
 
 def _default_notices_path() -> Path:
     """Return ``~/.vermes/notices.json`` (VERMES_HOME aware)."""

@@ -1587,17 +1587,22 @@ class AutoSetHomeMiddleware(InboundMiddleware):
             if _should_set:
                 try:
                     from vermes_constants import get_vermes_home
-                    from utils import atomic_yaml_write
-                    import yaml
 
-                    _home = get_vermes_home()
-                    config_path = _home / "config.yaml"
-                    user_config: dict = {}
-                    if config_path.exists():
-                        with open(config_path, encoding="utf-8") as f:
-                            user_config = yaml.safe_load(f) or {}
-                    user_config["YUANBAO_HOME_CHANNEL"] = ctx.chat_id
-                    atomic_yaml_write(config_path, user_config)
+                    # M5-a: this used `atomic_yaml_write`, which is atomic but
+                    # round-trips through yaml.safe_load + yaml.dump and so
+                    # drops every comment, quote style and ordering choice in
+                    # the user's config.yaml. The very first inbound
+                    # conversation is exactly when a hand-edited config is most
+                    # likely to still carry hand-written notes.
+                    # Eaten by the surrounding except: a failed write must stay
+                    # non-fatal, it just means no home channel got designated.
+                    from utils import atomic_roundtrip_yaml_update
+
+                    atomic_roundtrip_yaml_update(
+                        get_vermes_home() / "config.yaml",
+                        "YUANBAO_HOME_CHANNEL",
+                        str(ctx.chat_id),
+                    )
                     os.environ["YUANBAO_HOME_CHANNEL"] = str(ctx.chat_id)
                     logger.info(
                         "[%s] Auto-sethome: designated %s (%s) as Yuanbao home channel",

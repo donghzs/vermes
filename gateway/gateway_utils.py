@@ -101,6 +101,32 @@ def config_home_channel_chat_id(platform_name: str, config: Any = None) -> str:
     return ""
 
 
+def env_home_channel_chat_id(platform_name: str) -> str:
+    """The env (and legacy env) leg of home-channel resolution, nothing else.
+
+    Exists purely so hot paths can answer "already configured?" without
+    touching config.yaml. Calling ``resolve_home_channel_chat_id`` for every
+    inbound message would make A3's prompt / A7's auto-set parse the whole
+    config file once per message (``_load_gateway_config`` is disk IO). Env is
+    the highest-priority leg, so a non-empty result here is semantically
+    identical to a non-empty ``resolve_home_channel_chat_id`` — callers may
+    treat "env hit" as "fully resolved" and stop before any disk read.
+
+    Do not let this drift from the resolver below: it is literally the first
+    half of it, extracted.
+    """
+    name = (platform_name or "").lower()
+    env_var = _home_target_env_var(name)
+    if not env_var:
+        return ""
+    value = (os.getenv(env_var) or "").strip()
+    if not value:
+        legacy = _LEGACY_HOME_TARGET_ENV_VARS.get(env_var)
+        if legacy:
+            value = (os.getenv(legacy) or "").strip()
+    return value
+
+
 def resolve_home_channel_chat_id(platform_name: str, config: Any = None) -> str:
     """Single source of truth for "is a home channel configured for <platform>".
 
@@ -110,17 +136,55 @@ def resolve_home_channel_chat_id(platform_name: str, config: Any = None) -> str:
     the two call sites that historically read ``os.getenv`` only
     (the new-session notice prompt and cron delivery).
     """
-    name = (platform_name or "").lower()
-    env_var = _home_target_env_var(name)
-    if env_var:
-        value = (os.getenv(env_var) or "").strip()
-        if not value:
-            legacy = _LEGACY_HOME_TARGET_ENV_VARS.get(env_var)
-            if legacy:
-                value = (os.getenv(legacy) or "").strip()
-        if value:
-            return value
-    return config_home_channel_chat_id(name, config)
+    env_hit = env_home_channel_chat_id(platform_name)
+    if env_hit:
+        return env_hit
+    return config_home_channel_chat_id((platform_name or "").lower(), config)
+
+
+AUTO_SET_HOME_CHANNEL_ENV = "VERMES_AUTO_SET_HOME_CHANNEL"
+
+_TRUTHY = {"1", "true", "yes", "on"}
+_FALSY = {"0", "false", "no", "off"}
+
+
+def auto_set_home_channel_enabled(platform_name: str = "") -> bool:
+    """Kill switch for A7 (first-DM auto home channel). Default **on**.
+
+    Silent design decision — why this is env-only and does NOT read
+    ``config.yaml``:
+      * Nothing renders a ``gateway.auto_set_home_channel`` field today — not
+        the desktop GUI (its Settings panel only covers credentials and the
+        home-channel picker added in M4), and not any slash command. A config
+        leg would therefore be reachable only by hand-editing YAML, which is
+        the same audience as this env var.
+      * Defaulting to **on** is deliberate: by the time a message reaches the
+        A7 decision point it has already passed ``_is_user_authorized``
+        (``message_handler_mixin.py:257-302``), so the sender is an explicitly
+        allow-listed operator, and the caller further restricts itself to DMs.
+        The residual risk is bounded ("whichever authorized user DMs first
+        wins the cron delivery target") and reversible — ``/sethome`` in
+        another chat moves it. Being off by default would defeat A7 itself,
+        whose entire point is that GUI-only users never learn ``/sethome``.
+      * To add a config leg later: extend this function with
+        ``_load_gateway_config().get("gateway", {}).get("auto_set_home_channel")``
+        **after** the env check, and give it a GUI field in the same change.
+    """
+    raw = (os.getenv(AUTO_SET_HOME_CHANNEL_ENV) or "").strip().lower()
+    if not raw:
+        return True
+    if raw in _TRUTHY:
+        return True
+    if raw in _FALSY:
+        return False
+    # Unparseable value: fail **closed** rather than guessing — a mistyped
+    # "flase" should disable auto-writing the user's config, not enable it.
+    logger.warning(
+        "[home-channel] %s=%r unrecognized, treating as disabled",
+        AUTO_SET_HOME_CHANNEL_ENV,
+        raw,
+    )
+    return False
 
 
 def _platform_config_key(platform: "Platform") -> str:
