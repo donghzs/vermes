@@ -34,7 +34,7 @@
 | ID | 工单 | 落点 | 验收 | 状态 |
 |---|---|---|---|---|
 | **W1** | 品牌大小写不一致**定点**判定（irc） | `tests/gateway/test_irc_adapter.py:223/379`、源码 `plugins/platforms/irc/adapter.py:409-424` | **已定性（2026-09-20 08:30）：测试期望过时，源码正确**。实测 `AssertionError: assert 'Vermes_' == 'VERMES_'`；源码 `:112` 默认 `nickname="Vermes-bot"`（新品牌），`:414` 注释仍是旧的 `VERMES_` 但代码品牌自适应（`self.nickname + "_"`）。**修法：改测试期望 `VERMES_`→`Vermes_`（约 5 处），注释 `:414` 顺手订正。禁止全仓 sweep** | 🔨 定性完成，待修 |
-| **W2** | E 类 4 条 reconnect 失败根因判定 | `tests/gateway/test_platform_reconnect.py` | 逐条给出根因 + 分类（真 bug / 测试过时 / 环境） | ⏳ 未领 |
+| **W2** | E 类 4 条 reconnect 失败根因判定 | `gateway/lifecycle_mixin.py`、`gateway/watcher_mixin.py` | ✅ **已修（2026-09-20 08:45）：判定为「真 bug」×2，非噪声**。①**主因**：`_connect_one` 失败时**整体替换** `_failed_platforms[platform]` entry，而 watcher 在 `watcher_mixin.py:235` 已持有旧引用 → 递增写进孤儿 dict → attempts 永不累积（circuit breaker `_PAUSE_AFTER_FAILURES=10` 永远不触发）+ 指数退避被重置为恒定 30s。②**死分支**：watcher 的 non-retryable 移除分支探测 `self.adapters.get(platform)`，但失败 adapter 只在**成功**连接时才注册 → 恒为 None → 不可重试的平台被**无限重试**。③`_create_adapter` 返回 None（插件缺失）同样无限重试。**修法**：entry 原地更新 + result 携带 `retryable` 标记 + no-adapter 时出队。验收：4 条全绿（29 passed），回归 139 passed / 2 failed（均为 pre-existing 环境缺依赖）。**变异测试**：改回整体替换 → #2#3 立刻红（非侥幸） | ✅ 完成 |
 | **W3** | G 类 email self-message 过滤（**疑真 bug**） | `gateway/` email 适配侧 | 判定是否真 bug；**若是，不得隔离，须修** | ⏳ 未领 |
 | **W4** | A3 提示去重（独立 `notices` 域） | 新增独立域/文件（**不塞 `gateway/status.py`**，那是运行时健康诊断文件） | 同一会话只提示一次；重启后仍生效 | ⏳ 未领 |
 
