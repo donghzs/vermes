@@ -143,3 +143,77 @@ except Exception:
 | P2 原子写 / P2 静默失败 / P3 N 次加载 | **mimo** | 同上 |
 | A7 首条 DM 自动设定 | **WorkBuddy**（W 侧，落 `gateway/`） | W4 已建 `gateway/notices.py` 去重域，auto-set 若要写在同一个通知决策点上，口径一致；**本轮未做，待拍板** |
 | 工单板 2.4.9 → 2.5.0 | WorkBuddy | 已随本次审计订正 |
+
+---
+
+# 返工点验（`e697aa9066`，2026-09-20 09:50）
+
+针对上面提的 P1 / P2 ×2 / P3 逐条复验，**外加变异测试**。全部实跑，不采信回执。
+
+## 结论总表
+
+| 项 | 处置 | 点验结论 |
+|---|---|---|
+| P1 注释被 `yaml.dump` 抹掉 | 改用 `utils.atomic_roundtrip_yaml_update` | ✅ **关闭** |
+| P2 非原子写 | 同上 helper | ✅ **关闭** |
+| P2 吞 `save_env_value` 仍报 ok | 返回 `ok=false` + `env_error`，失败时不同步 `os.environ` | ✅ **关闭** |
+| P3 列表 N 次读盘 | `read_home_channel(key, config=)`，blueprint 复用 `_load_config_yaml()` | ✅ **关闭** |
+| — | — | ⚠️ **新发现：P1 只关了一半**，见下 |
+
+## 逐条证据
+
+**helper 是真存在的**（不是自造函数名）：`utils.py:203 def atomic_roundtrip_yaml_update`，
+内部 `ruamel.yaml.YAML(typ="rt")` + `preserve_quotes=True` + `tempfile.mkstemp` + `os.replace`（见 `:221-250`）。
+调用点 `vermes_cli/gateway_channels.py:676`。
+
+**新增两条是「真行为测试」，不是读源码自证**：
+- `test_config_yaml_preserves_comments`：预写 `# user comment keep me` / `# inner note` → 调 `write_home_channel` → **回读文件**断言注释仍在。
+- `test_env_write_failure_is_not_silent_ok`：monkeypatch `save_env_value` 抛 `OSError` → 断言 `ok=False`、`env_error` 非空，且 `os.environ` **没被写成假成功值**。
+
+**复跑**：`test_m4_home_channel_gui.py + test_home_channel_resolution.py` **22 passed**（与回执一致）。
+连同 W 侧回归一起跑：`tests/vermes_cli/test_m4_home_channel_gui.py + test_home_channel_resolution.py + tests/gateway/test_notices_dedup.py + tests/gateway/test_email.py` = **97 passed**。
+
+**变异测试 ×2（证明新断言不是恒真）**：
+
+| 变异 | 结果 |
+|---|---|
+| A：把 helper 换回旧的 `safe_load → yaml.dump` | `test_config_yaml_preserves_comments` 红，`AssertionError: '# user comment keep me' not found in 'platforms:\n feishu:\n…'` —— **失败原因正当**（确实是被抹了） |
+| B：把 `env_error` 改回吞掉、`os.environ` 无条件同步 | `test_env_write_failure_is_not_silent_ok` 红（`True is not false`） |
+
+两个探针均已回退，`grep MUTATION-PROBE` 零残留，工作树干净。
+
+**P3 落实路径正确**：`_schema_to_dict` 传入的 `config_data` 来自 `_load_config_yaml()`（`:253`），
+是全量 config dict，结构与 `config_home_channel_chat_id()` 的期望一致（`:170/:194` 本来就按 `platforms.<key>` 取），**不会因传 dict 而读空**。
+
+**mimo 主动披露的 P3 残留属实且定性准确**：
+`blueprints/gateway_channels.py:61-67 _save_config_yaml` 仍是 `safe_load → mutate → yaml.dump`。
+`git log -S"_save_config_yaml"` → 引入于 `9304923c5c feat(brand): Vermes 彻底 fork 品牌化`，**早于 M4**，确属既有代码。
+
+---
+
+## ⚠️ 新发现：P1 只关了一半（同一 root cause 的第二条写路径）
+
+`_save_config_yaml`（`:61-67`）被三个端点调用，全部是 GUI 常用操作：
+
+| 端点 | 触发场景 |
+|---|---|
+| `PUT /gateway/channels/{key}`（`:337`） | **保存平台凭据** |
+| `DELETE /gateway/channels/{key}`（`:374`） | 清除凭据 |
+| `POST /gateway/channels/{key}/toggle`（`:399`） | **启用/禁用开关** |
+
+这三处走的还是 `safe_load → yaml.dump` 全量重写 → **同样会把 config.yaml 的 21 行注释抹掉**。
+
+也就是说，用户实际路径是：
+```
+GUI 设 home channel   → 注释保留 ✅（新 helper）
+GUI 改任一平台凭据/开关 → 注释照样全丢 ❌（旧路径）
+```
+只修 home-channel 这一条腿，**P1 的破坏面并未消除**，只是从「每次 GUI 保存」变成「每次改凭据/开关」。
+
+**建议（新工单 M5，归 mimo，文件仍在其足迹内）**：把 `_save_config_yaml` 也换成 ruamel round-trip。
+难点（也是我看它比 M4 难的地方）：这三处要改的是**任意多个嵌套键**（`platforms.<key>.token/api_key/extra.*`、顶层旧段清理、`enabled`），
+不是单一 dotted key —— `atomic_roundtrip_yaml_update` 的单键签名不够用，需要在 `utils.py` 加一个 `CommentedMap` 级别的
+`atomic_roundtrip_yaml_write_whole(path, mutate_fn)`：读入 CommentedMap → 交给回调原地改 → 原子写回。
+另 `save_channel` 里有 `plat_data.pop(...)` / `extra.clear()` —— 这些在 CommentedMap 上是**支持注释保留的**，改造可行性没问题。
+
+> 本轮**不做**：`vermes_cli/` 是 mimo 足迹，我不越界改。已在工单板 §3 登记为 M5 待领。

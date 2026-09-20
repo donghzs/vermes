@@ -60,6 +60,13 @@
 > **M1 提示**：脚本已存在于 Hermes skill root，**先读再搬，别从零写**（0.5d → 0.25d）。
 > **M2 提示**：`git remote -v` 实测 `upstream` / `upstream2` → `NousResearch/hermes-agent`，**管道没坏，烂的是文档**。
 > **M3 提示**：上游 35 条，本地原有 14 条；本切片 +3 文件（其中 2 条占位）。
+> **M4 点验（WorkBuddy 2026-09-20 09:50）**：`e697aa9066` 复跑 22 passed；helper 真实存在（`utils.py:203`）；两条新用例是**真行为测试**（回读文件断言注释、monkeypatch 抛错断言 `ok=False` 且 environ 未被污染）；**变异测试 ×2** 均已复红（↩ 换回 `yaml.dump` → 注释用例红；↩ 吞掉 env 错误 → 吞错用例红）。详见 `docs/CROSS_AUDIT_M_20260920.md` 末节。
+
+### §3b 新增工单（交叉审计派生，待领）
+
+| ID | 工单 | 落点 | 为什么现在要做 | 状态 |
+|---|---|---|---|---|
+| **M5** | `_save_config_yaml` 也换 ruamel round-trip | `vermes_cli/blueprints/gateway_channels.py:61-67`（调用点 `:337` 保存凭据 / `:374` 清除 / `:399` 开关） | **M4 只关掉了 P1 的一半**：这三个端点仍 `safe_load → yaml.dump` 全量重写，改任一平台凭据或开关照样抹掉 config.yaml 的 21 行注释。该函数引入于 `9304923c5c`（品牌 fork），早于 M4，属既有代码、非本次回归。难点：这三处改的是**任意嵌套键**而非单一 dotted key，`atomic_roundtrip_yaml_update` 签名不够，需加 `CommentedMap` 级 helper（`pop`/`clear` 在 CommentedMap 上仍保注释，改造可行） | ⏳ 待领（**归 mimo**，文件在其足迹内；WorkBuddy 不越界改） |
 
 ---
 
