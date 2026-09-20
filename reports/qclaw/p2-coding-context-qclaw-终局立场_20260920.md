@@ -1,5 +1,12 @@
 # P2 coding_context · QClaw 终局立场（董董「全世界皆 code」视角收敛）· 2026-09-20
 
+> **⚠️ 部分修正（2026-09-20 · MiMo 核验 Hermes 批驳后）**  
+> ③「L5 Vermes 已有更强等价物」——**实测不成立**（仓库无 workspace/project_facts 块）。  
+> ④「L4 已有等价」——**仅部分成立**（缺 path:line / 禁顺手重构 / 默认不 commit·push）。  
+> ⑤「唯一缺口 L3」——**不成立**；真实缺口为 **L5 + L4 三条**。  
+> ①「591 行整包不做」与 A′ 降格、M7 改 token 长度——**仍有效**。  
+> **综合真源**：`reports/p2-coding-context-mimo-synthesis-after-hermes_20260920.md`
+
 > **位置**：`reports/qclaw/`（仓库唯一真源；`~/.qclaw/workspace/` 仅留指针）
 > **对象**：董董（拍板）/ MiMo / Hermes / WorkBuddy
 > **状态**：QClaw 正式终局回帖，**代码未改**，覆盖此前「加法/减法」框架下的 QClaw 立场
