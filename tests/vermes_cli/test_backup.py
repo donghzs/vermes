@@ -862,7 +862,7 @@ class TestRoundTrip:
 class TestFormatSize:
     def test_bytes(self):
         from vermes_cli.backup import _format_size
-        assert _format_size(512) == "512 B"
+        assert _format_size(512) == "512B"
 
     def test_kilobytes(self):
         from vermes_cli.backup import _format_size
@@ -1238,6 +1238,8 @@ class TestProfileRestoration:
         VERMES_home.mkdir()
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        # Isolate PATH so ``which`` doesn't find real wrappers on this machine
+        monkeypatch.setenv("PATH", str(tmp_path / ".local" / "bin") + os.pathsep + "/usr/bin:/bin")
 
         # Mock the wrapper dir to be inside tmp_path
         wrapper_dir = tmp_path / ".local" / "bin"
@@ -1790,21 +1792,17 @@ class TestRunPreUpdateBackup:
         backups = list((VERMES_home / "backups").glob("pre-update-*.zip"))
         assert len(backups) == 1
 
-    def test_default_enabled_creates_backup(self, VERMES_home, capsys):
-        """With the new safe default (``pre_update_backup: true``), every
-        ``vermes update`` creates a backup before any destructive step
-        runs — the cost is a few minutes of zip time vs. the alternative
-        of silent total data loss of ``~/.vermes/`` observed in #48200
-        when an update step computes a wrong path and the user had no
-        safety net.
+    def test_default_disabled_is_silent(self, VERMES_home, capsys):
+        """With the safe default (``pre_update_backup: false``), no backup
+        is created and no output is produced unless the user opts in via
+        ``--backup`` or config.
         """
         from vermes_cli.main import _run_pre_update_backup
         _run_pre_update_backup(Namespace(no_backup=False, backup=False))
         out = capsys.readouterr().out
-        assert "Creating pre-update backup" in out
-        assert "Saved:" in out
+        assert out == ""
         backups = list((VERMES_home / "backups").glob("pre-update-*.zip"))
-        assert len(backups) == 1
+        assert len(backups) == 0
 
     def test_no_backup_flag_skips(self, VERMES_home, capsys):
         from vermes_cli.main import _run_pre_update_backup

@@ -1,10 +1,14 @@
 """Shared utility functions for Vermes-agent."""
 
+import errno
 import json
 import logging
 import os
+import shutil
 import stat
 import tempfile
+import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Union
 from urllib.parse import urlparse
@@ -41,44 +45,123 @@ def _preserve_file_mode(path: Path) -> "int | None":
         return None
 
 
-def _restore_file_mode(path: Path, mode: "int | None") -> None:
-    """Re-apply *mode* to *path* after an atomic replace.
-
-    ``tempfile.mkstemp`` creates files with 0o600 (owner-only).  After
-    ``os.replace`` swaps the temp file into place the target inherits
-    those restrictive permissions, breaking Docker / NAS volume mounts
-    that rely on broader permissions set by the user.  Calling this
-    right after ``os.replace`` restores the original permissions.
-    """
-    if mode is None:
-        return
+def _preserve_file_owner(path: Path) -> "tuple[int, int] | None":
+    """Owning ``(uid, gid)`` of *path* on POSIX, else ``None``."""
     try:
-        os.chmod(path, mode)
+        st = path.stat() if os.name == "posix" else None
     except OSError:
-        pass
+        return None
+    return (st.st_uid, st.st_gid) if st else None
+
+
+def _restore_file_metadata(path: Path, owner: "tuple[int, int] | None", mode: "int | None") -> None:
+    """Best-effort re-apply of uid/gid and permission bits after an atomic replace."""
+    if owner is not None and hasattr(os, "chown"):
+        with suppress(OSError):
+            os.chown(path, owner[0], owner[1])
+    if mode is not None:
+        with suppress(OSError):
+            os.chmod(path, mode)
+
+
+def default_new_file_mode() -> "int | None":
+    """The mode ``open(path, "w")`` gives a newly-created file (``0o666 & ~umask``); ``None``
+    when the umask cannot be read or on non-POSIX hosts."""
+    if os.name != "posix":
+        return None
+    try:
+        current = os.umask(0o077)
+        os.umask(current)
+    except OSError:
+        return None
+    return 0o666 & ~current
+
+
+def _restore_file_owner(path: Path, owner: "tuple[int, int] | None") -> None:
+    _restore_file_metadata(path, owner, None)
+
+
+# Replace the old _restore_file_mode to delegate through _restore_file_metadata
+def _restore_file_mode(path: Path, mode: "int | None") -> None:
+    """Re-apply *mode* to *path* after an atomic replace."""
+    _restore_file_metadata(path, None, mode)
+
+
+_IS_WINDOWS = os.name == "nt"
+_WINDOWS_CONTENDED_REPLACE_ERRORS = frozenset({5, 32, 33})
+_REPLACE_RETRY_ATTEMPTS = 4
+_REPLACE_RETRY_BASE_DELAY_S = 0.02
+_REPLACE_RETRY_MAX_DELAY_S = 0.1
+_CROSS_DEVICE_ERRNOS = (errno.EXDEV, errno.EBUSY)
+
+
+def _is_contended_windows_replace_error(exc: OSError) -> bool:
+    return _IS_WINDOWS and getattr(exc, "winerror", None) in _WINDOWS_CONTENDED_REPLACE_ERRORS
+
+
+def _rewrite_in_place(tmp_str: str, real_path: str) -> None:
+    """Overwrite *real_path* through the existing file — last resort for a still-held target."""
+    with open(tmp_str, "rb") as src:
+        data = src.read()
+    fd = os.open(real_path, os.O_WRONLY | getattr(os, "O_BINARY", 0))
+    try:
+        written = 0
+        while written < len(data):
+            written += os.write(fd, data[written:])
+        os.ftruncate(fd, len(data))
+        with suppress(OSError):
+            os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.unlink(tmp_str)
+
+
+def _copy_fallback(tmp_str: str, real_path: str) -> None:
+    """Copy/fsync/unlink fallback for cross-device and bind-mount renames."""
+    shutil.copyfile(tmp_str, real_path)
+    with suppress(OSError):
+        shutil.copystat(tmp_str, real_path)
+    with suppress(OSError), open(real_path, "rb") as f:
+        os.fsync(f.fileno())
+    os.unlink(tmp_str)
 
 
 def atomic_replace(tmp_path: Union[str, Path], target: Union[str, Path]) -> str:
     """Atomically move *tmp_path* onto *target*, preserving symlinks.
 
-    ``os.replace(tmp, target)`` atomically swaps ``tmp`` into place at
-    ``target``.  When ``target`` is a symlink, the symlink itself is
-    replaced with a regular file — silently detaching managed deployments
-    that symlink ``config.yaml`` / ``SOUL.md`` / ``auth.json`` etc. from
-    ``~/.vermes/`` to a git-tracked profile package or dotfiles repo
-    (GitHub #16743).
-
-    This helper resolves the symlink first so ``os.replace`` writes to
-    the real file in-place while the symlink survives.  For non-symlink
-    and non-existent paths the behavior is identical to a plain
-    ``os.replace`` call.
-
-    Returns the resolved real path used for the replace, so callers that
-    need to re-apply permissions can target it instead of the symlink.
+    Resolves a symlink first so ``os.replace`` writes the real file in place and the symlink
+    survives. Otherwise identical to ``os.replace`` unless the rename fails with EXDEV/EBUSY
+    (cross-device, bind-mount, busy file: copy/fsync/unlink immediately) or a Windows rename
+    contended by another open handle (winerror 5/32/33: bounded retry, then in-place rewrite).
     """
     target_str = str(target)
     real_path = os.path.realpath(target_str) if os.path.islink(target_str) else target_str
-    os.replace(str(tmp_path), real_path)
+    tmp_str = str(tmp_path)
+    try:
+        os.replace(tmp_str, real_path)
+        return real_path
+    except OSError as exc:
+        contended = _is_contended_windows_replace_error(exc)
+        if exc.errno not in _CROSS_DEVICE_ERRNOS and not contended:
+            raise
+        if contended:
+            from agent.retry_utils import jittered_backoff
+            for attempt in range(1, _REPLACE_RETRY_ATTEMPTS + 1):
+                time.sleep(jittered_backoff(attempt, base_delay=_REPLACE_RETRY_BASE_DELAY_S, max_delay=_REPLACE_RETRY_MAX_DELAY_S))
+                try:
+                    os.replace(tmp_str, real_path)
+                    return real_path
+                except OSError as retry_exc:
+                    exc = retry_exc
+                    if retry_exc.errno in _CROSS_DEVICE_ERRNOS:
+                        contended = False
+                        break
+                    if not _is_contended_windows_replace_error(retry_exc):
+                        raise
+        logger.debug("atomic_replace: %s -> %s failed with %s; falling back to %s", tmp_str, real_path,
+                     getattr(exc, "winerror", None) or errno.errorcode.get(exc.errno or 0, exc.errno),
+                     "in-place rewrite" if contended else "copy")
+        (_rewrite_in_place if contended else _copy_fallback)(tmp_str, real_path)
     return real_path
 
 

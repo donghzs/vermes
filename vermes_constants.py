@@ -119,6 +119,13 @@ def get_vermes_home() -> Path:
     return Path.home() / ".vermes"
 
 
+# Root-level directories that are excluded from backups and skipped during
+# profile ``--clone-all`` copies.  These hold large regeneratable runtimes
+# (model caches, node installs, Python venvs) that should never ship in a
+# backup zip or be cloned into a new profile.
+LOCAL_RUNTIME_ROOT_DIRS: frozenset[str] = frozenset({"models", "runtimes", "node"})
+
+
 def get_default_vermes_root() -> Path:
     """Return the root Vermes directory for profile-level operations.
 

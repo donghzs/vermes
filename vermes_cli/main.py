@@ -8165,8 +8165,8 @@ def _run_pre_update_backup(args) -> None:
     """
     # CLI flags win over config.  --no-backup beats --backup if both are set.
     if getattr(args, "no_backup", False):
-        logger.info("◆ Pre-update backup: skipped (--no-backup)")
-        logger.info()
+        print("Pre-update backup: skipped (--no-backup)")
+        print()
         return
 
     force_backup = bool(getattr(args, "backup", False))
@@ -8194,41 +8194,34 @@ def _run_pre_update_backup(args) -> None:
     try:
         from vermes_cli.backup import create_pre_update_backup
     except Exception as exc:
-        logger.info(
-            f"⚠ Pre-update backup: could not load backup module ({exc}); continuing update."
+        print(
+            f"Pre-update backup: could not load backup module ({exc}); continuing update."
         )
-        logger.info()
+        print()
         return
 
-    logger.info("◆ Creating pre-update backup...")
+    print("Creating pre-update backup...")
     t0 = _time.monotonic()
     try:
         out_path = create_pre_update_backup(keep=int(keep))
     except Exception as exc:  # defensive — helper already swallows, but just in case
-        logger.info(f"  ⚠ Backup failed: {exc}")
-        logger.info("  Continuing with update.")
-        logger.info()
+        print(f"  Backup failed: {exc}")
+        print("  Continuing with update.")
+        print()
         return
 
     elapsed = _time.monotonic() - t0
 
     if out_path is None:
-        logger.info("  ⚠ Backup skipped (no files found or write failed); continuing update.")
-        logger.info()
+        print("  Backup skipped (no files found or write failed); continuing update.")
+        print()
         return
 
     try:
-        size_bytes = out_path.stat().st_size
-    except OSError:
-        size_bytes = 0
-
-    # Human-readable size
-    size_str = f"{size_bytes} B"
-    for unit in ("KB", "MB", "GB"):
-        if size_bytes < 1024:
-            break
-        size_bytes /= 1024
-        size_str = f"{size_bytes:.1f} {unit}"
+        from vermes_cli.sizefmt import format_bytes
+        size_str = format_bytes(out_path.stat().st_size)
+    except Exception:
+        size_str = "?"
 
     # Render path using display_vermes_home so the user sees ~/.vermes/...
     try:
@@ -8242,11 +8235,11 @@ def _run_pre_update_backup(args) -> None:
     except Exception:
         display_path = str(out_path)
 
-    logger.info(f"  Saved:    {display_path} ({size_str}, {elapsed:.1f}s)")
-    logger.info(f"  Restore:  vermes import {out_path}")
-    logger.info(f"  Disable:  omit --backup (backups are off by default)")
-    logger.info(f"            set updates.pre_update_backup: false in config.yaml")
-    logger.info()
+    print(f"  Saved:    {display_path} ({size_str}, {elapsed:.1f}s)")
+    print(f"  Restore:  Vermes import {out_path}")
+    print(f"  Disable:  omit --backup (backups are off by default)")
+    print(f"            set updates.pre_update_backup: false in config.yaml")
+    print()
 
 
 def cmd_update(args):

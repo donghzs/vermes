@@ -21,7 +21,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from vermes_constants import get_default_vermes_root, get_vermes_home, display_vermes_home
+from vermes_constants import (
+    LOCAL_RUNTIME_ROOT_DIRS,
+    get_default_vermes_root,
+    get_vermes_home,
+    display_vermes_home,
+)
+from vermes_cli.sizefmt import format_bytes as _format_size
 
 logger = logging.getLogger(__name__)
 
@@ -33,36 +39,61 @@ logger = logging.getLogger(__name__)
 # Directory names to skip entirely (matched against each path component)
 _EXCLUDED_DIRS = {
     "Vermes-agent", "vermes",     # the codebase repo(s) — re-clone instead
+    "vermes-agent",               # lowercase variant
     "__pycache__",      # bytecode caches — regenerated on import
-    ".git",             # nested git dirs (profiles shouldn't have these, but safety)
-    "node_modules",     # js deps if website/ somehow leaks in
-    "backups",          # prior auto-backups — don't nest backups exponentially
-    "checkpoints",      # session-local trajectory caches — regenerated per-session,
-                        # session-hash-keyed so they don't port to another machine anyway
+    ".git",             # nested git dirs
+    "node_modules",     # js deps
+    "backups",          # prior auto-backups — don't nest
+    "state-snapshots",  # quick snapshot dirs
+    "checkpoints",      # session-local trajectory caches
+    "browser-profiles", # Chromium独占锁致 sqlite3.backup() SQLITE_BUSY 挂死
+    "browser-profile",  # 凭据存储
+    ".venv", "venv",    # Python virtual envs
+    "site-packages",    # installed packages
+    ".cache",           # tool caches
+    ".tox", ".nox",     # test envs
+    ".pytest_cache", ".mypy_cache", ".ruff_cache",  # linter/test caches
 }
+
+# Root-level directories excluded from backup (models/runtimes/node — too large, regeneratable)
+_EXCLUDED_ROOT_DIRS = LOCAL_RUNTIME_ROOT_DIRS
+
+# Cache subdirectories that ARE preserved (user data, not regeneratable)
+_KEPT_CACHE_SUBDIRS = {"images", "audio", "videos", "documents", "screenshots", "citations"}
+
+# SQLite sidecar suffixes — paired with safe-copy of the .db itself
+_SQLITE_SIDECAR_SUFFIXES = (".db-wal", ".db-shm", ".db-journal")
 
 # File-name suffixes to skip
 _EXCLUDED_SUFFIXES = (
     ".pyc",
     ".pyo",
-    # SQLite sidecar files — the backup takes a consistent snapshot of ``*.db``
-    # via ``sqlite3.backup()``, so shipping the live WAL / shared-memory /
-    # rollback-journal alongside would pair a fresh snapshot with stale sidecar
-    # state and produce a torn restore on the next open. They're transient and
-    # regenerated on first connection anyway.
-    ".db-wal",
-    ".db-shm",
-    ".db-journal",
+    *_SQLITE_SIDECAR_SUFFIXES,
 )
 
 # File names to skip (runtime state that's meaningless on another machine)
 _EXCLUDED_NAMES = {
+    ".backup.lock",
     "gateway.pid",
     "cron.pid",
 }
 
+# Prefixes to exclude (retired-WAL capture dirs, emergency backups)
+_EXCLUDED_PREFIXES = (
+    "state.db.pre-update-emergency-",
+)
+
+# Files to skip during import (runtime state from the source machine)
+_IMPORT_SKIP_NAMES = {
+    "gateway_state.json",
+    "gateway.pid",
+    "cron.pid",
+    "gateway.lock",
+    "processes.json",
+}
+
 # zipfile.open() drops Unix mode bits on extract; restore tightens these to 0600.
-_SECRET_FILE_NAMES = {".env", "auth.json", "state.db"}
+_SECRET_FILE_NAMES = {".env", "auth.json", "state.db", "vault.key", "vault.json.enc"}
 
 # Reserved archive subtree for provider state that lives OUTSIDE VERMES_HOME
 # (e.g. ~/.honcho, ~/.hindsight). The active memory provider declares these via
@@ -148,18 +179,51 @@ def _iter_external_files(base: Path) -> List[Path]:
     return files
 
 
+def _in_excluded_root_dir(rel_path: Path) -> bool:
+    """True if *rel_path* is inside a root-level excluded directory.
+
+    Only matches at the root level or under ``profiles/<name>/`` (carved out
+    so a profile's own ``models/`` or ``runtimes/`` dir is still captured).
+    Deep nested dirs with the same name are user data, not runtime caches.
+    """
+    parts = list(rel_path.parts)
+    # Strip ``profiles/<name>/`` prefix so the check applies per-profile
+    if len(parts) >= 3 and parts[0] == "profiles":
+        parts = parts[2:]
+    if not parts:
+        return False
+    if parts[0] in _EXCLUDED_ROOT_DIRS:
+        return True
+    # ``.cache/`` is excluded unless it's under a kept subdirectory
+    if parts[0] == ".cache" and len(parts) >= 2 and parts[1] not in _KEPT_CACHE_SUBDIRS:
+        return True
+    return False
+
+
 def _should_exclude(rel_path: Path) -> bool:
     """Return True if *rel_path* (relative to vermes root) should be skipped."""
+    if _in_excluded_root_dir(rel_path):
+        return True
+
     parts = rel_path.parts
 
-    # Any path component matches an excluded dir name
-    for part in parts:
-        if part in _EXCLUDED_DIRS:
+    # ``Vermes-agent`` / ``vermes-agent`` only match at the root level;
+    # nested same-named dirs (e.g. skills/my-skill/vermes-agent/) are preserved.
+    for p in parts:
+        if p in _EXCLUDED_DIRS:
+            if p in ("Vermes-agent", "vermes-agent", "hermes-agent"):
+                if p == parts[0]:
+                    return True
+                # nested — don't exclude
+                continue
             return True
 
     name = rel_path.name
 
     if name in _EXCLUDED_NAMES:
+        return True
+
+    if any(name.startswith(p) for p in _EXCLUDED_PREFIXES):
         return True
 
     if name.endswith(_EXCLUDED_SUFFIXES):
@@ -199,15 +263,6 @@ def _safe_copy_db(src: Path, dst: Path) -> bool:
 # Backup
 # ---------------------------------------------------------------------------
 
-def _format_size(nbytes: int) -> str:
-    """Human-readable file size."""
-    for unit in ("B", "KB", "MB", "GB"):
-        if nbytes < 1024:
-            return f"{nbytes:.1f} {unit}" if unit != "B" else f"{nbytes} {unit}"
-        nbytes /= 1024
-    return f"{nbytes:.1f} TB"
-
-
 def run_backup(args) -> None:
     """Create a zip backup of the Vermes home directory."""
     VERMES_root = get_default_vermes_root()
@@ -244,10 +299,12 @@ def run_backup(args) -> None:
         rel_dir = dp.relative_to(VERMES_root)
 
         # Prune excluded directories in-place so os.walk doesn't descend
+        is_root = rel_dir == Path(".")
         orig_dirnames = dirnames[:]
         dirnames[:] = [
             d for d in dirnames
-            if d not in _EXCLUDED_DIRS
+            if (d not in _EXCLUDED_DIRS or (d in ("Vermes-agent", "vermes-agent", "hermes-agent") and not is_root))
+            and not _in_excluded_root_dir(rel_dir / d)
         ]
         for removed in set(orig_dirnames) - set(dirnames):
             skipped_dirs.add(str(rel_dir / removed))
@@ -255,6 +312,10 @@ def run_backup(args) -> None:
         for fname in filenames:
             fpath = dp / fname
             rel = fpath.relative_to(VERMES_root)
+
+            # Skip symlinks — don't dereference files outside VERMES_HOME
+            if fpath.is_symlink():
+                continue
 
             if _should_exclude(rel):
                 continue
@@ -307,7 +368,7 @@ def run_backup(args) -> None:
             try:
                 # Safe copy for SQLite databases (handles WAL mode)
                 if abs_path.suffix == ".db":
-                    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+                    with tempfile.NamedTemporaryFile(suffix=".db", delete=False, dir=str(out_path.parent)) as tmp:
                         tmp_db = Path(tmp.name)
                     if _safe_copy_db(abs_path, tmp_db):
                         zf.write(tmp_db, arcname=str(rel_path))
@@ -536,6 +597,11 @@ def run_import(args) -> None:
             if not rel:
                 continue
 
+            # Skip runtime state files that shouldn't be restored from backup
+            if Path(rel).name in _IMPORT_SKIP_NAMES:
+                skipped_runtime.append(str(rel))
+                continue
+
             target = VERMES_root / rel
 
             # Security: reject absolute paths and traversals
@@ -577,6 +643,13 @@ def run_import(args) -> None:
                 logger.info(e)
             if len(errors) > 10:
                 logger.info(f"  ... and {len(errors) - 10} more")
+
+        if skipped_runtime:
+            logger.info(f"\n  Skipped {len(skipped_runtime)} runtime state file(s):")
+            for s in skipped_runtime[:10]:
+                logger.info(f"    {s}")
+            if len(skipped_runtime) > 10:
+                logger.info(f"  ... and {len(skipped_runtime) - 10} more")
 
         # Post-import: restore profile wrapper scripts
         profiles_dir = VERMES_root / "profiles"
@@ -655,6 +728,7 @@ _QUICK_STATE_FILES = (
     "cron/jobs.json",
     "gateway_state.json",
     "channel_directory.json",
+    "channel_aliases.json",
     "processes.json",
     # Pairing stores (generic + per-platform JSONs outside state.db)
     "pairing",                          # legacy location (gateway/pairing.py)
@@ -675,11 +749,18 @@ def create_quick_snapshot(
     label: Optional[str] = None,
     VERMES_home: Optional[Path] = None,
     files: Optional[tuple] = None,
+    keep: Optional[int] = None,
 ) -> Optional[str]:
     """Create a quick state snapshot of critical files.
 
     Copies STATE_FILES to a timestamped directory under state-snapshots/.
     Auto-prunes old snapshots beyond the keep limit.
+
+    Args:
+        label: Optional label to embed in the snapshot ID.
+        VERMES_home: Override the Vermes home directory.
+        files: Override the set of files to snapshot (defaults to _QUICK_STATE_FILES).
+        keep: Override the prune limit (defaults to _QUICK_DEFAULT_KEEP).
 
     Returns:
         Snapshot ID (timestamp-based), or None if no files found.
@@ -749,7 +830,7 @@ def create_quick_snapshot(
         json.dump(meta, f, indent=2)
 
     # Auto-prune
-    _prune_quick_snapshots(root, keep=_QUICK_DEFAULT_KEEP)
+    _prune_quick_snapshots(root, keep=keep if keep is not None else _QUICK_DEFAULT_KEEP)
 
     logger.info("State snapshot created: %s (%d files)", snap_id, len(manifest))
     return snap_id
@@ -916,13 +997,23 @@ def _write_full_zip_backup(out_path: Path, VERMES_root: Path) -> Optional[Path]:
         for dirpath, dirnames, filenames in os.walk(VERMES_root, followlinks=False):
             dp = Path(dirpath)
             # Prune excluded directories in-place so os.walk doesn't descend
-            dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIRS]
+            rel_dir = dp.relative_to(VERMES_root)
+            is_root = rel_dir == Path(".")
+            dirnames[:] = [
+                d for d in dirnames
+                if (d not in _EXCLUDED_DIRS or (d in ("Vermes-agent", "vermes-agent", "hermes-agent") and not is_root))
+                and not _in_excluded_root_dir(rel_dir / d)
+            ]
 
             for fname in filenames:
                 fpath = dp / fname
                 try:
                     rel = fpath.relative_to(VERMES_root)
                 except ValueError:
+                    continue
+
+                # Skip symlinks — don't dereference files outside VERMES_HOME
+                if fpath.is_symlink():
                     continue
 
                 if _should_exclude(rel):
@@ -948,7 +1039,7 @@ def _write_full_zip_backup(out_path: Path, VERMES_root: Path) -> Optional[Path]:
             for abs_path, rel_path in files_to_add:
                 try:
                     if abs_path.suffix == ".db":
-                        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+                        with tempfile.NamedTemporaryFile(suffix=".db", delete=False, dir=str(out_path.parent)) as tmp:
                             tmp_db = Path(tmp.name)
                         try:
                             if _safe_copy_db(abs_path, tmp_db):
@@ -1134,3 +1225,75 @@ def create_pre_migration_backup(
 
     _prune_pre_migration_backups(backup_dir, keep=keep)
     return out_path
+
+
+# ---------------------------------------------------------------------------
+# Cron job restoration (used after migration/import)
+# ---------------------------------------------------------------------------
+
+def _count_cron_jobs(cron_path: Path) -> Optional[int]:
+    """Count jobs in a cron jobs.json file. Returns None if unreadable."""
+    if not cron_path.is_file():
+        return None
+    try:
+        data = json.loads(cron_path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if isinstance(data, list):
+        return len(data)
+    if isinstance(data, dict):
+        jobs = data.get("jobs")
+        if isinstance(jobs, list):
+            return len(jobs)
+    return None
+
+
+def restore_cron_jobs_if_emptied(
+    snap_id: Optional[str] = None,
+    VERMES_home: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """Restore cron jobs from a snapshot if the live file is empty.
+
+    Conservative: only restores when the snapshot has jobs and the live file
+    has fewer (or zero). Returns a dict with restored/job_count/snapshot_id,
+    or None if no restoration was needed or possible.
+
+    Args:
+        snap_id: Snapshot ID to restore from. If None, uses the most recent.
+        VERMES_home: Override the Vermes home directory.
+    """
+    home = VERMES_home or get_vermes_home()
+
+    if snap_id is None or snap_id == "":
+        snapshots = list_quick_snapshots(VERMES_home=home)
+        if not snapshots:
+            return None
+        snap_id = snapshots[0]["id"]  # most recent
+
+    snap_dir = _quick_snapshot_root(home) / snap_id
+    snap_cron = snap_dir / "cron" / "jobs.json"
+    live_cron = home / "cron" / "jobs.json"
+
+    snap_count = _count_cron_jobs(snap_cron)
+    if snap_count is None or snap_count == 0:
+        return None
+
+    live_count = _count_cron_jobs(live_cron)
+    if live_count is None:
+        return None  # live file unreadable — don't risk overwriting
+    if live_count >= snap_count:
+        return None  # live has same or more jobs — nothing to restore
+
+    # Restore
+    try:
+        import shutil as _shutil
+        _shutil.copy2(snap_cron, live_cron)
+    except OSError as exc:
+        logger.warning("Failed to restore cron jobs from snapshot %s: %s", snap_id, exc)
+        return None
+
+    logger.info(
+        "Restored %d cron job(s) from snapshot %s (live had %d)",
+        snap_count, snap_id, live_count,
+    )
+    return {"restored": True, "job_count": snap_count, "snapshot_id": snap_id}
