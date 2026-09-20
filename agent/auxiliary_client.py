@@ -3592,7 +3592,14 @@ def resolve_provider_client(
             custom_key = custom_entry.get("api_key", "").strip()
             custom_key_env = (custom_entry.get("key_env") or custom_entry.get("api_key_env") or "").strip()
             if not custom_key and custom_key_env:
-                custom_key = os.getenv(custom_key_env, "").strip()
+                # Resolve from os.environ OR ~/.vermes/.env file (the latter
+                # does not require dotenv to be injected into the process
+                # env, so desktop/dev uvicorn paths resolve correctly).
+                try:
+                    from vermes_cli.config import get_env_value
+                    custom_key = (get_env_value(custom_key_env) or "").strip()
+                except Exception:
+                    custom_key = os.getenv(custom_key_env, "").strip()
             custom_key = custom_key or "no-key-required"
             if custom_key == "no-key-required":
                 logger.warning(

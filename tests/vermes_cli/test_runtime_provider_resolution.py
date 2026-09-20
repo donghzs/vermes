@@ -832,6 +832,71 @@ def test_named_custom_provider_uses_key_env_from_providers_dict(monkeypatch):
     assert resolved["model"] == "acme-large"
 
 
+def test_named_custom_provider_resolves_key_from_env_file(monkeypatch):
+    """key_env must resolve from ~/.vermes/.env file, not just os.environ.
+
+    Desktop/dev entrypoints (uvicorn web_server) do not inject dotenv into
+    os.environ; a provider whose key lives only in .env must still resolve.
+    Regression for the plaintext-key cleanup: inline api_key was removed from
+    config.yaml, so resolution must read the on-disk .env file.
+    """
+    monkeypatch.delenv("MYCORP_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(
+        rp,
+        "load_config",
+        lambda: {
+            "providers": {
+                "mycorp-proxy": {
+                    "base_url": "https://proxy.example.com/v1",
+                    "default_model": "acme-large",
+                    "key_env": "MYCORP_API_KEY",
+                    "name": "MyCorp Proxy",
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(
+        rp,
+        "resolve_provider",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError(
+                "resolve_provider should not be called for named custom providers"
+            )
+        ),
+    )
+    # Key is NOT in os.environ — only reachable via get_env_value → .env file.
+    monkeypatch.setattr(rp, "_resolve_env_key", lambda k: "file-secret")
+
+    resolved = rp.resolve_runtime_provider(requested="mycorp-proxy")
+    assert resolved["api_key"] == "file-secret"
+
+
+def test_resolve_env_key_reads_dotenv_file_when_not_in_os_environ(monkeypatch):
+    """_resolve_env_key must fall back to the on-disk .env file via
+    get_env_value, so desktop/dev entrypoints without dotenv injection
+    still resolve provider keys."""
+    monkeypatch.delenv("MYCORP_API_KEY", raising=False)
+
+    # Simulate get_env_value reading ~/.vermes/.env (os.environ lacks the key).
+    def fake_get_env_value(key):
+        return "from-dotenv-file" if key == "MYCORP_API_KEY" else None
+
+    import vermes_cli.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "get_env_value", fake_get_env_value)
+
+    assert rp._resolve_env_key("MYCORP_API_KEY") == "from-dotenv-file"
+
+
+def test_resolve_env_key_empty_when_absent(monkeypatch):
+    monkeypatch.delenv("MYCORP_API_KEY", raising=False)
+    import vermes_cli.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "get_env_value", lambda k: None)
+    assert rp._resolve_env_key("MYCORP_API_KEY") == ""
+    assert rp._resolve_env_key("") == ""
+
+
 def test_named_custom_provider_falls_back_to_openai_api_key(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "env-openai-key")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)

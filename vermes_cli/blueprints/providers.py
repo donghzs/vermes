@@ -218,8 +218,13 @@ async def add_provider(body: ProviderAddRequest):
         if not isinstance(entry, dict):
             entry = {}
         entry["base_url"] = body.base_url
-        if not template and body.api_key:
-            entry["api_key"] = body.api_key
+        # Never persist the raw secret inline in config.yaml — credentials
+        # live in ~/.vermes/.env (via save_env_value above). Record the
+        # env-var name so the runtime can resolve the key on demand, and
+        # drop any legacy inline key that a previous build may have written.
+        # See #15803 / issue: plaintext provider keys in config.yaml.
+        entry["key_env"] = env_key
+        entry.pop("api_key", None)
         providers[body.provider_id] = entry
         cfg["providers"] = providers
         save_config(cfg)

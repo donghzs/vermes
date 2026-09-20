@@ -71,6 +71,23 @@ def _normalize_custom_provider_name(value: str) -> str:
     return value.strip().lower().replace(" ", "-")
 
 
+def _resolve_env_key(key_env: str) -> str:
+    """Resolve an env-var-named credential from os.environ OR ~/.vermes/.env.
+
+    ``get_env_value`` reads the on-disk .env file as a fallback, so provider
+    keys resolve even on entrypoints (desktop/dev uvicorn) that never inject
+    dotenv into the process environment.  Credentials should live in .env,
+    not inline in config.yaml — see the plaintext-key cleanup.
+    """
+    if not key_env:
+        return ""
+    try:
+        from vermes_cli.config import get_env_value
+        return (get_env_value(key_env) or "").strip()
+    except Exception:
+        return os.getenv(key_env, "").strip()
+
+
 def _loopback_hostname(host: str) -> bool:
     h = (host or "").lower().rstrip(".")
     return h in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
@@ -489,7 +506,7 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
             name_norm = _normalize_custom_provider_name(ep_name)
             # Resolve the API key from the env var name stored in key_env
             key_env = str(entry.get("key_env", "") or "").strip()
-            resolved_api_key = os.getenv(key_env, "").strip() if key_env else ""
+            resolved_api_key = _resolve_env_key(key_env)
             # Fall back to inline api_key when key_env is absent or unresolvable
             if not resolved_api_key:
                 resolved_api_key = str(entry.get("api_key", "") or "").strip()

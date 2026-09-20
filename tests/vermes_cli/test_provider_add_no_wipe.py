@@ -66,3 +66,54 @@ def test_real_api_key_is_written(monkeypatch):
         provider_id="openai", api_key="sk-real-123", base_url="https://api.openai.com/v1")))
 
     assert ("OPENAI_API_KEY", "sk-real-123") in calls
+
+
+def test_custom_provider_key_written_to_env_not_plaintext(monkeypatch):
+    """Non-template providers must persist key to .env + key_env, never inline.
+
+    Regression for the plaintext-key cleanup (issue #15803): a provider absent
+    from PROVIDER_TEMPLATES (e.g. agnes) used to write the raw ``api_key``
+    inline into config.yaml.  It must instead write the secret to .env via
+    ``save_env_value`` and record only ``key_env`` in config.yaml.
+    """
+    calls = []
+    saved_cfg = {}
+    monkeypatch.setattr(
+        "vermes_cli.blueprints.providers.save_env_value",
+        lambda k, v: calls.append((k, v)),
+    )
+    monkeypatch.setattr("vermes_cli.blueprints.providers.load_config", lambda: {"providers": {}})
+    monkeypatch.setattr("vermes_cli.blueprints.providers.save_config", lambda cfg: saved_cfg.update(cfg))
+
+    _run(add_provider(ProviderAddRequest(
+        provider_id="agnes", api_key="cpk-secret-123", base_url="https://apihub.agnes-ai.cn/v1")))
+
+    # Secret went to .env with a derived key name.
+    assert ("AGNES_API_KEY", "cpk-secret-123") in calls
+
+    # config.yaml entry records key_env and base_url, but NO inline api_key.
+    entry = saved_cfg["providers"]["agnes"]
+    assert entry["key_env"] == "AGNES_API_KEY"
+    assert entry["base_url"] == "https://apihub.agnes-ai.cn/v1"
+    assert "api_key" not in entry
+
+
+def test_custom_provider_empty_key_still_records_key_env(monkeypatch):
+    """Saving base_url for an already-configured custom provider (masked key)
+    must not drop its ``key_env`` pointer."""
+    calls = []
+    saved_cfg = {}
+    monkeypatch.setattr(
+        "vermes_cli.blueprints.providers.save_env_value",
+        lambda k, v: calls.append((k, v)),
+    )
+    monkeypatch.setattr("vermes_cli.blueprints.providers.load_config", lambda: {"providers": {}})
+    monkeypatch.setattr("vermes_cli.blueprints.providers.save_config", lambda cfg: saved_cfg.update(cfg))
+
+    _run(add_provider(ProviderAddRequest(
+        provider_id="agnes", api_key="", base_url="https://apihub.agnes-ai.cn/v1")))
+
+    assert not any(k == "AGNES_API_KEY" for (k, _) in calls)
+    entry = saved_cfg["providers"]["agnes"]
+    assert entry["key_env"] == "AGNES_API_KEY"
+    assert "api_key" not in entry
