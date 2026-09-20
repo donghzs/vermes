@@ -416,6 +416,18 @@ TASK_COMPLETION_GUIDANCE = (
     "再提示用户点击下载或在文件夹中打开。"
 )
 
+# W-L4：编辑护栏（通用纪律，与 coding 姿态/cwd 无关；董董 2026-09-20 批示）
+# 提示层先行；approval.py 硬闸「观察后置」（QClaw 保留：防与 git_commit_done 冲突）
+EDITING_GUARDRAILS_GUIDANCE = (
+    "# Editing guardrails\n"
+    "- When citing code or files, reference exact locations as `path:line`. "
+    "Do not paste entire files or refer vaguely to \"somewhere in X\".\n"
+    "- Change only what the task requires. Do not refactor, reformat, or "
+    "\"clean up\" unrelated code in the same change.\n"
+    "- Do not run `git commit` or `git push` unless the user explicitly asked. "
+    "Report what you changed and let the user decide when to commit.\n"
+)
+
 # OpenAI GPT/Codex-specific execution guidance.  Addresses known failure modes
 # where GPT models abandon work on partial results, skip prerequisite lookups,
 # hallucinate instead of using tools, and declare "done" without verification.
@@ -1149,14 +1161,16 @@ def resolve_compact_skill_categories(
     cwd: "str | os.PathLike | None" = None,
     platform: "str | None" = None,
 ) -> "frozenset[str] | None":
-    """P1 门控 + A′ 渠道硬门：config ``agent.compact_skill_categories`` ∈ {off, auto}。
+    """技能索引 names-only 门控（2026-09-20 终局：**token 经济**，非 coding 姿态）。
 
-    * ``off`` / 缺省 / 无法解析 → ``None``（**不降级**，安全默认）
-    * ``auto`` → 仅当 **平台是交互式编码平台**（非 messaging/群聊）**且**
-      ``is_coding_dir(cwd)`` 为真时返回 deny-list，否则 None
-    * A′ 渠道硬门：messaging/IM 渠道（telegram/feishu/qqbot/discord/slack/…）以及
-      未知/空 platform 一律**永不降级**——防止 gateway 单进程 cwd 为仓库根时，
-      把群聊/IM 会话整锅误判成「代码目录」触发 names-only。
+    * ``off`` / 缺省 / 配置异常 → ``None``
+    * ``auto`` → 估算技能索引描述字节；**超过** ``agent.skill_index_compact_threshold_bytes``
+      （默认 20000）时返回 deny-list。**与 platform/cwd 解耦**（IM 超限同样降级）。
+    * ``on``/``true``… → 用户显式要求时始终降级
+    * 估算失败 → ``None``（fail-safe，不降级）
+
+    历史：P1 曾按「代码目录 + 交互式平台」触发；QClaw/Hermes/MiMo 终局改为长度阈值。
+    A′ 渠道硬门代码路径仍保留给「非 auto 的 coding 判定」类用途；**auto 不再走平台白名单**。
     """
     try:
         from vermes_cli.config import load_config
@@ -1165,13 +1179,56 @@ def resolve_compact_skill_categories(
         mode = str(agent_cfg.get("compact_skill_categories") or "off").strip().lower()
     except Exception:
         return None
-    if mode in ("auto", "on", "true", "1", "yes"):
-        # 渠道硬门：白名单制，默认拒绝——非交互式平台（messaging/未知/空）不降级。
-        if (platform or "").strip().lower() not in _INTERACTIVE_CODING_PLATFORMS:
+    if mode in ("on", "true", "1", "yes", "always"):
+        return frozenset(_NON_CODING_SKILL_CATEGORIES)
+    if mode in ("auto",):
+        try:
+            threshold = int(agent_cfg.get("skill_index_compact_threshold_bytes") or 20000)
+        except (TypeError, ValueError):
+            threshold = 20000
+        if threshold <= 0:
             return None
-        return frozenset(_NON_CODING_SKILL_CATEGORIES) if is_coding_dir(cwd) else None
-    # off / 未知值：fail-safe 不降级
+        est = estimate_skills_index_bytes()
+        if est >= threshold:
+            return frozenset(_NON_CODING_SKILL_CATEGORIES)
+        return None
     return None
+
+
+def estimate_skills_index_bytes() -> int:
+    """估算技能索引（名称+描述）字节数；失败返回 0（不触发降级）。"""
+    try:
+        from agent.skill_utils import get_all_skills_dirs, iter_skill_index_files, parse_frontmatter
+        total = 0
+        dirs = get_all_skills_dirs()
+        if not dirs:
+            return 0
+        for d in dirs:
+            try:
+                if not Path(d).is_dir():
+                    continue
+                for f in iter_skill_index_files(d, "SKILL.md"):
+                    try:
+                        text = f.read_text(encoding="utf-8", errors="replace")
+                        fm, _ = parse_frontmatter(text)
+                        total += len(str(fm.get("description") or "").encode("utf-8"))
+                        total += len(str(fm.get("name") or "").encode("utf-8"))
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        return total
+    except Exception:
+        return 0
+
+
+def build_workspace_block(cwd=None, platform: "str | None" = None) -> str:
+    """W-L5：工作区事实块（有 git 区才非空）。实现见 agent.workspace_facts。"""
+    try:
+        from agent.workspace_facts import build_workspace_block as _bwb
+        return _bwb(cwd, platform=platform)
+    except Exception:
+        return ""
 
 
 def _demoted_categories(

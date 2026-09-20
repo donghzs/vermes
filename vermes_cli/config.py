@@ -573,9 +573,11 @@ DEFAULT_CONFIG = {
     "agent": {
         "max_turns": 90,
         # P1/M7：技能索引 names-only 降级。off=默认全量描述；
-        # auto=仅当 cwd 像代码项目（pyproject/package.json 等）时把
-        # deny-list 类目折叠为仅名称（条目仍保留，可 skill_view）。
+        # auto=索引描述字节超过 skill_index_compact_threshold_bytes 时降级
+        # （token 经济，与 coding 场景/渠道解耦）；on=始终降级。
         "compact_skill_categories": "off",
+        # auto 降级阈值（技能名称+描述估算字节）；<=0 表示 auto 永不降级
+        "skill_index_compact_threshold_bytes": 20000,
         # Inactivity timeout for gateway agent execution (seconds).
         # The agent can run indefinitely as long as it's actively calling
         # tools or receiving API responses.  Only fires when the agent has

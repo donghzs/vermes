@@ -68,15 +68,33 @@ class TestResolveCompactGate(unittest.TestCase):
         self._write_config("off")
         self.assertIsNone(resolve_compact_skill_categories(self.code_dir, platform="cli"))
 
-    def test_auto_only_in_coding_dir(self):
-        from agent.prompt_builder import resolve_compact_skill_categories
-        self._write_config("auto")
-        self.assertIsNone(resolve_compact_skill_categories(self.plain_dir, platform="cli"))
-        cats = resolve_compact_skill_categories(self.code_dir, platform="cli")
-        self.assertIsNotNone(cats)
-        self.assertIn("creative", cats)
-        self.assertIn("daily", cats)  # 本地补充
-        self.assertNotIn("research", cats)  # 保守保留
+    def test_auto_token_threshold_not_coding_dir(self):
+        """终局：auto = token 阈值，不再用 is_coding_dir 作门控。"""
+        from agent import prompt_builder as pb
+        import vermes_cli.config as cfg_mod
+        real_load = cfg_mod.load_config
+        real_est = pb.estimate_skills_index_bytes
+        try:
+            cfg_mod.load_config = lambda *a, **k: {
+                "agent": {
+                    "compact_skill_categories": "auto",
+                    "skill_index_compact_threshold_bytes": 1,
+                }
+            }
+            pb.estimate_skills_index_bytes = lambda: 99999
+            cats = pb.resolve_compact_skill_categories(self.plain_dir)
+            self.assertIsNotNone(cats)
+            self.assertIn("creative", cats)
+            cfg_mod.load_config = lambda *a, **k: {
+                "agent": {
+                    "compact_skill_categories": "auto",
+                    "skill_index_compact_threshold_bytes": 10**9,
+                }
+            }
+            self.assertIsNone(pb.resolve_compact_skill_categories(self.code_dir))
+        finally:
+            cfg_mod.load_config = real_load
+            pb.estimate_skills_index_bytes = real_est
 
     def test_unknown_mode_fails_safe_off(self):
         from agent.prompt_builder import resolve_compact_skill_categories

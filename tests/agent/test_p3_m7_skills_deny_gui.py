@@ -31,19 +31,28 @@ class TestP3DenyList(unittest.TestCase):
             parent = name.split("/", 1)[0]
             self.assertNotIn(parent, deny, name)
 
-    def test_auto_still_gated_by_coding_dir(self):
-        from agent.prompt_builder import resolve_compact_skill_categories
+    def test_auto_token_threshold_gate(self):
+        """终局：auto 用 token 阈值，非 coding-dir。"""
+        from agent import prompt_builder as pb
         import vermes_cli.config as cfg_mod
         code = Path(tempfile.mkdtemp(prefix="p3-code-"))
         (code / "package.json").write_text("{}", encoding="utf-8")
-        plain = Path(tempfile.mkdtemp(prefix="p3-plain-"))
-        real = cfg_mod.load_config
+        real_load = cfg_mod.load_config
+        real_est = pb.estimate_skills_index_bytes
         try:
-            cfg_mod.load_config = lambda *a, **k: {"agent": {"compact_skill_categories": "auto"}}
-            self.assertIsNotNone(resolve_compact_skill_categories(code, platform="cli"))
-            self.assertIsNone(resolve_compact_skill_categories(plain, platform="cli"))
+            cfg_mod.load_config = lambda *a, **k: {
+                "agent": {
+                    "compact_skill_categories": "auto",
+                    "skill_index_compact_threshold_bytes": 1,
+                }
+            }
+            pb.estimate_skills_index_bytes = lambda: 99999
+            cats = pb.resolve_compact_skill_categories(code)
+            self.assertIsNotNone(cats)
+            self.assertIn("agnes-video-t2v", cats)
         finally:
-            cfg_mod.load_config = real
+            cfg_mod.load_config = real_load
+            pb.estimate_skills_index_bytes = real_est
 
 
 class TestDefaultConfigOff(unittest.TestCase):
@@ -104,16 +113,26 @@ class TestM7ConfigRoundtrip(unittest.TestCase):
 
     def test_resolve_reads_patched_config(self):
         from vermes_cli.blueprints import config as cfg_bp
-        from agent.prompt_builder import resolve_compact_skill_categories
+        from agent import prompt_builder as pb
         import asyncio
 
         code = Path(tempfile.mkdtemp(prefix="m7-code-"))
         (code / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
-        self.assertIsNone(resolve_compact_skill_categories(code, platform="cli"))
+        self.assertIsNone(pb.resolve_compact_skill_categories(code, platform="cli"))
         asyncio.new_event_loop().run_until_complete(
-            cfg_bp.patch_config({"agent": {"compact_skill_categories": "auto"}})
+            cfg_bp.patch_config({
+                "agent": {
+                    "compact_skill_categories": "auto",
+                    "skill_index_compact_threshold_bytes": 1,
+                }
+            })
         )
-        cats = resolve_compact_skill_categories(code, platform="cli")
+        real_est = pb.estimate_skills_index_bytes
+        pb.estimate_skills_index_bytes = lambda: 99999
+        try:
+            cats = pb.resolve_compact_skill_categories(code, platform="cli")
+        finally:
+            pb.estimate_skills_index_bytes = real_est
         self.assertIsNotNone(cats)
         self.assertIn("agnes-video-t2v", cats)
         self.assertIn("metaphysics", cats)

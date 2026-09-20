@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional
 
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY,
+    EDITING_GUARDRAILS_GUIDANCE,
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     VERMES_AGENT_HELP_GUIDANCE,
     IMAGE_GENERATE_GUIDANCE,
@@ -59,6 +60,7 @@ _PROCESSOR_FALLBACK = {
     "identity": DEFAULT_AGENT_IDENTITY,
     "help_guidance": VERMES_AGENT_HELP_GUIDANCE,
     "task_completion": TASK_COMPLETION_GUIDANCE,
+    "editing_guardrails": EDITING_GUARDRAILS_GUIDANCE,
     "memory_guidance": MEMORY_GUIDANCE,
     "session_search": SESSION_SEARCH_GUIDANCE,
     "skills_guidance": SKILLS_GUIDANCE,
@@ -238,6 +240,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # task_completion (config_flag)
     if getattr(agent, "_task_completion_guidance", True) and agent.valid_tool_names:
         stable_parts.append(_proc_or_default("task_completion"))
+        # W-L4：编辑护栏与完成纪律同注入条件（提示层；硬闸后置）
+        stable_parts.append(_proc_or_default("editing_guardrails"))
 
     # Tool-aware behavioral guidance: only inject when the tools are loaded
     tool_guidance = []
@@ -442,6 +446,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
 
     # ── Context tier (cwd-dependent, may change between sessions) ─
     context_parts: List[str] = []
+    _context_cwd = os.getenv("TERMINAL_CWD") or None
 
     # Note: ephemeral_system_prompt is NOT included here. It's injected at
     # API-call time only so it stays out of the cached/stored system prompt.
@@ -453,11 +458,21 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         # mode).  The gateway process runs from the Vermes-agent install
         # dir, so os.getcwd() would pick up the repo's AGENTS.md and
         # other dev files — inflating token usage by ~10k for no benefit.
-        _context_cwd = os.getenv("TERMINAL_CWD") or None
         context_files_prompt = _r.build_context_files_prompt(
             cwd=_context_cwd, skip_soul=_soul_loaded)
         if context_files_prompt:
             context_parts.append(context_files_prompt)
+
+    # W-L5：工作区事实块（有 git 区才注入；gateway 无 TERMINAL_CWD 且 messaging → 跳过）
+    try:
+        _ws_block = _r.build_workspace_block(
+            _context_cwd,
+            platform=getattr(agent, "platform", None),
+        )
+        if _ws_block:
+            context_parts.append(_ws_block)
+    except Exception:
+        pass
 
     # ── Volatile tier (changes per session/turn — never cached) ───
     volatile_parts: List[str] = []
