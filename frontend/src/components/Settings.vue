@@ -157,7 +157,7 @@ const SETTING_TABS = [
   { id: 'services',   icon: '🔑', label: '服务',     kw: '凭证 api key token 服务 粘贴 自动识别 credential service' },
   { id: 'literature', icon: '📖', label: '文献源',   kw: '文献 论文 检索 arxiv 学术 scholarforge 源' },
   { id: 'channels',   icon: '📱', label: '移动接入', kw: '渠道 移动 手机 微信 telegram 飞书 接入 教程 gateway channel' },
-  { id: 'security',   icon: '🔒', label: '安全',     kw: '安全 审批 权限 工具审批 自我进化 档位 凭证健康 security' },
+  { id: 'security',   icon: '🔒', label: '安全',     kw: '安全 审批 权限 工具审批 自我进化 档位 凭证健康 技能索引 compact skill security' },
   { id: 'mcp',        icon: '🔌', label: 'MCP',      kw: 'mcp 插件 工具 目录 一键安装 已安装 安全校验' },
   { id: 'knowledge',  icon: '📚', label: '知识库',   kw: '知识库 rag 文档 索引 向量 检索 knowledge' },
   { id: 'migration',  icon: '📦', label: '迁移',     kw: '迁移 导入 搬家 hermes 配置 migration' },
@@ -184,7 +184,7 @@ watch(activeTab, (tab) => {
   if (tab === 'services' && Object.keys(serviceGroups.value).length === 0 && !servicesLoading.value) loadServices()
   if (tab === 'literature' && literaturePaid.value.length === 0 && literatureFree.value.length === 0 && literatureCustom.value.length === 0 && !literatureLoading.value) loadLiterature()
   if (tab === 'knowledge' && ragDocs.value.length === 0 && !ragLoading.value) fetchRagDocs()
-  if (tab === 'security') { loadTierMode(); loadCredHealth() }
+  if (tab === 'security') { loadTierMode(); loadCredHealth(); loadCompactSkills() }
   if (tab === 'mcp') { loadMcpCatalog(); loadMcpServers(); loadMcpSecurityRules() }
   if (tab === 'migration') { loadMigrationSources() }
 })
@@ -214,6 +214,48 @@ const TIER_MODES = [
 ]
 const tierMode = ref('balanced')
 const tierSaving = ref(false)
+
+// ── M7 技能索引降级（P1/P3 的 UI 入口）────────────────────────────
+// config: agent.compact_skill_categories = off | auto
+// off（默认）= 全量技能描述；auto = 仅代码项目目录把非编码类目降为 names-only
+const COMPACT_SKILL_MODES = [
+  { id: 'off', label: '关闭', desc: '系统提示词始终列出完整技能描述（默认，最稳妥）' },
+  { id: 'auto', label: '自动', desc: '在代码项目目录（含 pyproject/package.json 等）将非编码类技能降为「仅名称」，约省 18% 技能索引字节；技能仍可用 skill_view 加载' },
+]
+const compactSkillMode = ref('off')
+const compactSkillSaving = ref(false)
+
+async function loadCompactSkills() {
+  try {
+    const data = await api.get('/config')
+    const mode = data?.config?.agent?.compact_skill_categories
+      ?? data?.agent?.compact_skill_categories
+      ?? 'off'
+    compactSkillMode.value = (mode === 'auto') ? 'auto' : 'off'
+  } catch (e) {
+    console.error('[Config] Failed to load compact_skill_categories:', e)
+  }
+}
+
+async function setCompactSkillMode(mode) {
+  if (mode === compactSkillMode.value || compactSkillSaving.value) return
+  const prev = compactSkillMode.value
+  compactSkillMode.value = mode
+  compactSkillSaving.value = true
+  try {
+    const r = await fetch('/api/config', {
+      method: 'PATCH',
+      headers: withSessionToken({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ agent: { compact_skill_categories: mode } }),
+    })
+    if (!r.ok) throw new Error('HTTP ' + r.status)
+  } catch (e) {
+    compactSkillMode.value = prev
+    console.error('[Config] Failed to save compact_skill_categories:', e)
+  } finally {
+    compactSkillSaving.value = false
+  }
+}
 
 // ── 迁移 ──
 const migrationSources = ref([])
@@ -2593,6 +2635,36 @@ async function toggleChannel(platformKey) {
           <p class="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3">
             两条底线不受档位影响：<strong>改自己的源码</strong>和<strong>安装新依赖</strong>永远会先问你；
             自动做过的调整都会出现在「进化」面板里，24 小时内可以一键撤回。
+          </p>
+        </div>
+
+        <!-- M7：技能索引降级（P1 names-only） -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div>
+            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">🗂️ 编码场景技能索引</h3>
+            <p class="text-xs text-gray-400 mt-1">
+              控制系统提示词里技能列表的呈现方式。不影响技能是否安装，只影响每轮 prompt 的字节数。
+            </p>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              v-for="t in COMPACT_SKILL_MODES"
+              :key="t.id"
+              @click="setCompactSkillMode(t.id)"
+              :disabled="compactSkillSaving"
+              class="rounded-lg border px-3 py-2 text-sm transition text-left disabled:opacity-60"
+              :class="compactSkillMode === t.id
+                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'">
+              <span class="font-medium">{{ t.label }}</span>
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 min-h-[2rem]">
+            {{ COMPACT_SKILL_MODES.find(t => t.id === compactSkillMode)?.desc }}
+          </p>
+          <p class="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3">
+            当前配置：<code class="text-[11px]">agent.compact_skill_categories = {{ compactSkillMode }}</code>
+            · 实测基线见 <code class="text-[11px]">reports/skills-index-p1-baseline-20260920.md</code>
           </p>
         </div>
 

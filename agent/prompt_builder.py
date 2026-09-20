@@ -1096,8 +1096,14 @@ _NON_CODING_SKILL_CATEGORIES = frozenset({
     "gaming", "gifs", "health", "media", "music", "note-taking",
     "productivity", "shopping", "smart-home", "social-media", "travel",
     "yuanbao",
-    # 本地补充（P1 校准，规格书 2.2）；research 保守保留（编码可能查文档）
+    # P1 本地补充（规格书 2.2）
     "daily", "content-marketing", "openclaw-imports",
+    # P3 细校（保守：仅明确非编码；research/ppt/docx 等编码相邻保留全量）
+    "metaphysics", "weather", "eco-decision-framework", "wechat-official-account",
+    "email-skill", "imap-smtp-email",
+    "agnes-multi-modal-integration", "agnes-shot-generator",
+    "agnes-video-i2v", "agnes-video-keyframes", "agnes-video-multi-img",
+    "agnes-video-t2v",
 })
 
 # 上游 coding_context.py:32-35 —— 代码项目根标记（廉价文件名探测）
