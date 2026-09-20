@@ -68,33 +68,27 @@ class TestResolveCompactGate(unittest.TestCase):
         self._write_config("off")
         self.assertIsNone(resolve_compact_skill_categories(self.code_dir, platform="cli"))
 
-    def test_auto_token_threshold_not_coding_dir(self):
-        """终局：auto = token 阈值，不再用 is_coding_dir 作门控。"""
+    def test_auto_pure_channel_gate_not_coding_dir(self):
+        """拍板：auto = 纯渠道门；与 coding-dir / 成本阈值无关。"""
         from agent import prompt_builder as pb
         import vermes_cli.config as cfg_mod
         real_load = cfg_mod.load_config
-        real_est = pb.estimate_skills_index_bytes
         try:
             cfg_mod.load_config = lambda *a, **k: {
-                "agent": {
-                    "compact_skill_categories": "auto",
-                    "skill_index_compact_threshold_bytes": 1,
-                }
+                "agent": {"compact_skill_categories": "auto"}
             }
-            pb.estimate_skills_index_bytes = lambda: 99999
-            cats = pb.resolve_compact_skill_categories(self.plain_dir)
+            # plain dir + interactive → 降级（coding-dir 不再是条件）
+            cats = pb.resolve_compact_skill_categories(self.plain_dir, platform="cli")
             self.assertIsNotNone(cats)
             self.assertIn("creative", cats)
-            cfg_mod.load_config = lambda *a, **k: {
-                "agent": {
-                    "compact_skill_categories": "auto",
-                    "skill_index_compact_threshold_bytes": 10**9,
-                }
-            }
-            self.assertIsNone(pb.resolve_compact_skill_categories(self.code_dir))
+            # A′：IM 永不降级
+            self.assertIsNone(
+                pb.resolve_compact_skill_categories(self.code_dir, platform="telegram")
+            )
         finally:
             cfg_mod.load_config = real_load
-            pb.estimate_skills_index_bytes = real_est
+
+
 
     def test_unknown_mode_fails_safe_off(self):
         from agent.prompt_builder import resolve_compact_skill_categories

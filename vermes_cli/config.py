@@ -572,12 +572,17 @@ DEFAULT_CONFIG = {
     },
     "agent": {
         "max_turns": 90,
-        # P1/M7：技能索引 names-only 降级。off=默认全量描述；
-        # auto=索引描述字节超过 skill_index_compact_threshold_bytes 时降级
-        # （token 经济，与 coding 场景/渠道解耦）；on=始终降级。
+        # M7：技能索引 names-only 降级（token 经济）。
+        # off=默认全量描述；
+        # auto=纯渠道门：platform ∈ _INTERACTIVE_CODING_PLATFORMS 才降级
+        #      （IM/未知/空 platform 永不降级）；无成本/比例阈值。
+        # on=始终降级（显式，跨渠道）。
+        # 历史：成本面（字节/比例阈值）已于 2026-09-20 拍板删除。
         "compact_skill_categories": "off",
-        # auto 降级阈值（技能名称+描述估算字节）；<=0 表示 auto 永不降级
-        "skill_index_compact_threshold_bytes": 20000,
+        # Phase 1：SkillRouter prefetch（技能提示注入）。
+        # 默认 False：检索质量未完全达标前不打扰（QClaw 审计 2026-09-20）。
+        # 需要时显式打开：agent.skill_router_enabled: true
+        "skill_router_enabled": False,
         # Inactivity timeout for gateway agent execution (seconds).
         # The agent can run indefinitely as long as it's actively calling
         # tools or receiving API responses.  Only fires when the agent has

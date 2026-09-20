@@ -220,7 +220,7 @@ const tierSaving = ref(false)
 // off（默认）= 全量技能描述；auto = 仅代码项目目录把非编码类目降为 names-only
 const COMPACT_SKILL_MODES = [
   { id: 'off', label: '关闭', desc: '系统提示词始终列出完整技能描述（默认）' },
-  { id: 'auto', label: '自动', desc: '技能索引估算超过阈值时（默认约 2 万字节）将部分技能降为「仅名称」以省 prompt；与是否在写代码无关。技能仍可用 skill_view 加载' },
+  { id: 'auto', label: '自动', desc: '纯渠道门：在 CLI/Web/Desktop 等交互式入口将部分技能降为「仅名称」；IM/群聊永不降级。无字节/比例阈值。技能仍可用 skill_view 加载' },
 ]
 const compactSkillMode = ref('off')
 const compactSkillSaving = ref(false)
@@ -2664,8 +2664,7 @@ async function toggleChannel(platformKey) {
           </p>
           <p class="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3">
             当前配置：<code class="text-[11px]">agent.compact_skill_categories = {{ compactSkillMode }}</code>
-            · auto 阈值：<code class="text-[11px]">agent.skill_index_compact_threshold_bytes</code>
-            · 基线见 <code class="text-[11px]">reports/skills-index-p1-baseline-20260920.md</code>
+            · auto=纯渠道门（交互式降级，IM/群聊不降级）
           </p>
         </div>
 
