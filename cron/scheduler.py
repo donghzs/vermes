@@ -370,7 +370,13 @@ def _resolve_home_env_var(platform_name: str) -> str:
 
 
 def _get_home_target_chat_id(platform_name: str) -> str:
-    """Return the configured home target chat/room ID for a delivery platform."""
+    """Return the configured home target chat/room ID for a delivery platform.
+
+    env var → legacy env var → config.yaml ``home_channel``. The config leg
+    matters because a home channel set via ``/sethome`` (or written straight to
+    config.yaml) is invisible to ``os.getenv``; without it the delivery is
+    silently dropped rather than failing loudly.
+    """
     env_var = _resolve_home_env_var(platform_name)
     if not env_var:
         return ""
@@ -379,7 +385,19 @@ def _get_home_target_chat_id(platform_name: str) -> str:
         legacy = _LEGACY_HOME_TARGET_ENV_VARS.get(env_var)
         if legacy:
             value = os.getenv(legacy, "")
-    return value
+    if value:
+        return value
+    try:
+        from gateway.gateway_utils import config_home_channel_chat_id
+        # Pass the config dict explicitly: standalone cron workers have no
+        # gateway.run loaded, and gateway_utils' own loader depends on it.
+        cfg = load_config()
+        return config_home_channel_chat_id(platform_name, cfg if isinstance(cfg, dict) else None)
+    except Exception as exc:
+        logger.debug(
+            "home channel config fallback unavailable for %s: %s", platform_name, exc
+        )
+    return ""
 
 
 def _get_home_target_thread_id(platform_name: str) -> Optional[str]:

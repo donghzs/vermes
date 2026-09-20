@@ -30,7 +30,7 @@ from typing import Optional, Any, List, Dict
 from agent.i18n import t
 from gateway._run_attr import _get_run_attr
 from gateway.config import Platform, GatewayConfig, PlatformConfig
-from gateway.gateway_utils import _home_target_env_var, _platform_config_key
+from gateway.gateway_utils import _platform_config_key, resolve_home_channel_chat_id
 from gateway.platforms.base import (
     EphemeralReply,
     MessageEvent,
@@ -2086,8 +2086,16 @@ class MessageHandlerMixin:
         # Skip for webhooks - they deliver directly to configured targets (github_comment, etc.)
         if not history and source.platform and source.platform != Platform.LOCAL and source.platform != Platform.WEBHOOK:
             platform_name = source.platform.value
-            env_key = _home_target_env_var(platform_name)
-            if not os.getenv(env_key):
+            # Single source of truth: env -> legacy env -> config.
+            # An env-only check misses two real cases:
+            #   1) config-only setups — home channel written to config.yaml
+            #      (GUI / hand-edited YAML) is invisible to os.getenv;
+            #   2) .env edited from outside the process — the gateway loads
+            #      .env once at startup (gateway/run.py load_vermes_dotenv).
+            # `/sethome` itself is NOT affected: save_env_value() also updates
+            # os.environ in-process (vermes_cli/config.py:5144).
+            # See reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md E1.
+            if not resolve_home_channel_chat_id(platform_name, config=self.config):
                 # Slack dispatches all Vermes commands through a single
                 # parent slash command `/Vermes`; bare `/sethome` is not
                 # registered and would fail with "app did not respond".

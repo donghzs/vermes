@@ -6,6 +6,7 @@ remain in gateway/run.py for backward-compatible monkeypatching.
 """
 
 import logging
+import os
 import re
 import sys
 from typing import Any, Optional
@@ -54,6 +55,72 @@ def _home_target_env_var(platform_name: str) -> str:
 def _home_thread_env_var(platform_name: str) -> str:
     """Return the optional thread/topic env var for a platform home target."""
     return f"{_home_target_env_var(platform_name)}_THREAD_ID"
+
+
+# Legacy env var names accepted when the primary home-channel env var is unset.
+# Renames that predate the stabilised platform key (qq → qqbot).
+_LEGACY_HOME_TARGET_ENV_VARS = {
+    "QQBOT_HOME_CHANNEL": "QQ_HOME_CHANNEL",
+}
+
+
+def config_home_channel_chat_id(platform_name: str, config: Any = None) -> str:
+    """Read ``home_channel.chat_id`` for a platform from config alone (no env).
+
+    Accepts either an in-process ``GatewayConfig`` (``/sethome`` keeps it in
+    sync via ``platform_config.home_channel``) or a raw ``config.yaml`` dict.
+    Returns "" when the platform has no home channel.
+
+    Why this exists: ``/sethome`` persists to ``~/.vermes/.env``, but a
+    long-running gateway process does not re-read .env — its ``os.environ``
+    predates the write. The in-process config is the only fresh view, so any
+    consumer that reads env alone will keep reporting "no home channel".
+    """
+    getter = getattr(config, "get_home_channel", None) if config is not None else None
+    if callable(getter):
+        try:
+            home = getter(Platform(platform_name))
+        except Exception:
+            home = None
+        chat_id = getattr(home, "chat_id", None)
+        return str(chat_id) if chat_id else ""
+
+    cfg = config if isinstance(config, dict) else _load_gateway_config()
+    if not isinstance(cfg, dict):
+        return ""
+    platforms = cfg.get("platforms") or {}
+    if not isinstance(platforms, dict):
+        return ""
+    entry = platforms.get((platform_name or "").lower()) or {}
+    if not isinstance(entry, dict):
+        return ""
+    home = entry.get("home_channel") or {}
+    if isinstance(home, dict):
+        chat_id = home.get("chat_id")
+        return str(chat_id) if chat_id else ""
+    return ""
+
+
+def resolve_home_channel_chat_id(platform_name: str, config: Any = None) -> str:
+    """Single source of truth for "is a home channel configured for <platform>".
+
+    Order: env var → legacy env var → config (GatewayConfig or config.yaml).
+    The env leg stays first so an explicit operator override keeps winning; the
+    config leg is the fallback that makes a config-only home channel visible to
+    the two call sites that historically read ``os.getenv`` only
+    (the new-session notice prompt and cron delivery).
+    """
+    name = (platform_name or "").lower()
+    env_var = _home_target_env_var(name)
+    if env_var:
+        value = (os.getenv(env_var) or "").strip()
+        if not value:
+            legacy = _LEGACY_HOME_TARGET_ENV_VARS.get(env_var)
+            if legacy:
+                value = (os.getenv(legacy) or "").strip()
+        if value:
+            return value
+    return config_home_channel_chat_id(name, config)
 
 
 def _platform_config_key(platform: "Platform") -> str:
