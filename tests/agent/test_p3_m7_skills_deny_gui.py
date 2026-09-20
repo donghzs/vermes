@@ -31,28 +31,25 @@ class TestP3DenyList(unittest.TestCase):
             parent = name.split("/", 1)[0]
             self.assertNotIn(parent, deny, name)
 
-    def test_auto_token_threshold_gate(self):
-        """终局：auto 用 token 阈值，非 coding-dir。"""
+    def test_auto_pure_channel_gate(self):
+        """拍板：auto = 纯渠道门。"""
         from agent import prompt_builder as pb
         import vermes_cli.config as cfg_mod
         code = Path(tempfile.mkdtemp(prefix="p3-code-"))
         (code / "package.json").write_text("{}", encoding="utf-8")
         real_load = cfg_mod.load_config
-        real_est = pb.estimate_skills_index_bytes
         try:
             cfg_mod.load_config = lambda *a, **k: {
-                "agent": {
-                    "compact_skill_categories": "auto",
-                    "skill_index_compact_threshold_bytes": 1,
-                }
+                "agent": {"compact_skill_categories": "auto"}
             }
-            pb.estimate_skills_index_bytes = lambda: 99999
-            cats = pb.resolve_compact_skill_categories(code)
+            self.assertIsNone(pb.resolve_compact_skill_categories(code, platform="telegram"))
+            cats = pb.resolve_compact_skill_categories(code, platform="cli")
             self.assertIsNotNone(cats)
             self.assertIn("agnes-video-t2v", cats)
         finally:
             cfg_mod.load_config = real_load
-            pb.estimate_skills_index_bytes = real_est
+
+
 
 
 class TestDefaultConfigOff(unittest.TestCase):
@@ -121,21 +118,14 @@ class TestM7ConfigRoundtrip(unittest.TestCase):
         self.assertIsNone(pb.resolve_compact_skill_categories(code, platform="cli"))
         asyncio.new_event_loop().run_until_complete(
             cfg_bp.patch_config({
-                "agent": {
-                    "compact_skill_categories": "auto",
-                    "skill_index_compact_threshold_bytes": 1,
-                }
+                "agent": {"compact_skill_categories": "auto"},
             })
         )
-        real_est = pb.estimate_skills_index_bytes
-        pb.estimate_skills_index_bytes = lambda: 99999
-        try:
-            cats = pb.resolve_compact_skill_categories(code, platform="cli")
-        finally:
-            pb.estimate_skills_index_bytes = real_est
+        cats = pb.resolve_compact_skill_categories(code, platform="cli")
         self.assertIsNotNone(cats)
         self.assertIn("agnes-video-t2v", cats)
         self.assertIn("metaphysics", cats)
+        self.assertIsNone(pb.resolve_compact_skill_categories(code, platform="telegram"))
 
 
 if __name__ == "__main__":

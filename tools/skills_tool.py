@@ -624,8 +624,53 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
 
 
 def _sort_skills(skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Keep every skill listing path ordered the same way."""
-    return sorted(skills, key=lambda s: (s.get("category") or "", s["name"]))
+    """Order skill listings: category → heat tie-breaker → name.
+
+    Heat is a **soft tie-breaker inside the same category only** — never a
+    global re-sort. Skills without usage telemetry keep name order after
+    recorded ones in that category (curator discipline: use_count=0 is
+    absence of evidence, not low value).
+    """
+    try:
+        from tools.skill_usage import load_usage
+        usage = load_usage() or {}
+    except Exception:
+        usage = {}
+
+    def _key(s: Dict[str, Any]):
+        name = s.get("name") or ""
+        rec = usage.get(name)
+        if isinstance(rec, dict):
+            use_count = int(rec.get("use_count") or 0)
+            has = 1
+        else:
+            use_count = 0
+            has = 0
+        # has=1 first; among recorded, higher use_count first; then name
+        return (s.get("category") or "", -has, -use_count if has else 0, name)
+
+    return sorted(skills, key=_key)
+
+
+def _annotate_usage(skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Attach use_count only for skills that have usage telemetry records."""
+    try:
+        from tools.skill_usage import load_usage
+        usage = load_usage() or {}
+    except Exception:
+        return skills
+    for s in skills:
+        rec = usage.get(s.get("name") or "")
+        if isinstance(rec, dict) and rec:
+            # only surface when there is at least one recorded counter
+            uc = rec.get("use_count")
+            vc = rec.get("view_count")
+            if (isinstance(uc, int) and uc > 0) or (isinstance(vc, int) and vc > 0):
+                s["use_count"] = int(uc or 0)
+                if isinstance(vc, int) and vc > 0:
+                    s["view_count"] = vc
+    return skills
+
 
 
 def _load_category_description(category_dir: Path) -> Optional[str]:
@@ -716,8 +761,9 @@ def skills_list(category: str = None, task_id: str = None) -> str:
         if category:
             all_skills = [s for s in all_skills if s.get("category") == category]
 
-        # Sort by category then name
+        # Sort by category, then heat tie-breaker + name
         all_skills = _sort_skills(all_skills)
+        all_skills = _annotate_usage(all_skills)
 
         # Extract unique categories
         categories = sorted(

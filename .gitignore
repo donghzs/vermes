@@ -33,7 +33,9 @@ vermes-onefile.spec
 hermes_agent.egg-info/
 
 # ── Frontend ──
+node_modules
 node_modules/
+
 frontend/dist/
 frontend/coverage/
 vermes_cli/web_dist.bak.v1/

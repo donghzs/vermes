@@ -108,49 +108,41 @@ class TestM7TokenThreshold(unittest.TestCase):
         self._set_agent(compact_skill_categories="off")
         self.assertIsNone(resolve_compact_skill_categories(platform="cli"))
 
-    def test_auto_under_threshold_no_demote(self):
+    def test_auto_pure_channel_gate(self):
+        """拍板：auto = 纯渠道门，无成本阈值。"""
         from agent.prompt_builder import resolve_compact_skill_categories
-        self._set_agent(
-            compact_skill_categories="auto",
-            skill_index_compact_threshold_bytes=10**9,
-        )
-        self.assertIsNone(resolve_compact_skill_categories(platform="cli"))
-        # 与渠道无关：阈值未超 → IM 也不降级
-        self.assertIsNone(resolve_compact_skill_categories(platform="telegram"))
-
-    def test_auto_over_threshold_demotes_even_on_im(self):
-        from agent import prompt_builder as pb
-        self._set_agent(
-            compact_skill_categories="auto",
-            skill_index_compact_threshold_bytes=1,
-        )
-        real_est = pb.estimate_skills_index_bytes
-        pb.estimate_skills_index_bytes = lambda: 99999
-        try:
-            cats = pb.resolve_compact_skill_categories(platform="telegram")
-        finally:
-            pb.estimate_skills_index_bytes = real_est
+        self._set_agent(compact_skill_categories="auto")
+        # 交互式 → 降级
+        cats = resolve_compact_skill_categories(platform="cli")
         self.assertIsNotNone(cats)
         self.assertIn("creative", cats)
+        # IM / 未知 / 空 → 不降级
+        for platform in ("telegram", "feishu", "", None):
+            self.assertIsNone(resolve_compact_skill_categories(platform=platform), platform)
 
     def test_on_always_demotes(self):
         from agent.prompt_builder import resolve_compact_skill_categories
-        self._set_agent(compact_skill_categories="on", skill_index_compact_threshold_bytes=10**9)
+        self._set_agent(compact_skill_categories="on")
         self.assertIsNotNone(resolve_compact_skill_categories(platform="telegram"))
 
-    def test_default_config_threshold_present(self):
+    def test_default_config_no_cost_fields(self):
         from vermes_cli.config import DEFAULT_CONFIG
-        self.assertIn("skill_index_compact_threshold_bytes", DEFAULT_CONFIG["agent"])
-        self.assertEqual(DEFAULT_CONFIG["agent"]["compact_skill_categories"], "off")
+        agent = DEFAULT_CONFIG["agent"]
+        self.assertEqual(agent["compact_skill_categories"], "off")
+        self.assertNotIn("skill_index_compact_ratio_pct", agent)
+        self.assertNotIn("skill_index_compact_threshold_bytes", agent)
+        self.assertIs(agent.get("skill_router_enabled"), False)
 
 
 class TestSettingsCopy(unittest.TestCase):
-    def test_auto_copy_mentions_threshold_not_coding_dir(self):
+    def test_auto_copy_mentions_channel_not_threshold(self):
         src = (Path(__file__).resolve().parents[2] /
                "frontend/src/components/Settings.vue").read_text(encoding="utf-8")
-        self.assertIn("阈值", src)
-        self.assertIn("skill_index_compact_threshold", src.replace(" ", "") or src)  # optional
         self.assertIn("compact_skill_categories", src)
+        # 成本面已删：Settings 文案不应再指向已删除的字节/比例阈值键
+        normalized = src.replace(" ", "")
+        self.assertNotIn("skill_index_compact_threshold", normalized)
+        self.assertNotIn("skill_index_compact_ratio", normalized)
 
 
 if __name__ == "__main__":

@@ -1217,6 +1217,33 @@ def init_agent(
         except Exception as _dme:
             _ra().logger.debug("DocMemory provider init failed: %s", _dme)
 
+    # SkillRouter — Phase 1 L2. Prefetch skill hints via independent FTS5
+    # skills index; cache-safe injection through MemoryManager.prefetch_all.
+    # Default OFF (QClaw audit): retrieval quality not yet trusted enough to
+    # inject by default. Enable with agent.skill_router_enabled: true.
+    _skill_router_enabled = False
+    if isinstance(_agent_cfg, dict):
+        agent_section = _agent_cfg.get("agent") if isinstance(_agent_cfg.get("agent"), dict) else _agent_cfg
+        if isinstance(agent_section, dict) and "skill_router_enabled" in agent_section:
+            _skill_router_enabled = bool(agent_section.get("skill_router_enabled", False))
+
+    if not skip_memory and _skill_router_enabled:
+        try:
+            from agent.skill_router import SkillRouter
+            if agent._memory_manager is None:
+                from agent.memory_manager import MemoryManager as _MM
+                agent._memory_manager = _MM()
+            _sr = SkillRouter()
+            if _sr.is_available():
+                agent._memory_manager.add_provider(_sr)
+                _sr.initialize(session_id=agent.session_id,
+                               platform=platform or "cli",
+                               VERMES_home=str(get_vermes_home()),
+                               agent_context="primary")
+                _ra().logger.info("SkillRouter provider activated (prefetch skill hints)")
+        except Exception as _sre:
+            _ra().logger.debug("SkillRouter init failed: %s", _sre)
+
     # Unified memory base (Slice 3/4): wire the L4 federation hook so
     # ``memory_search`` / ``recall_hierarchical`` fan out across every active
     # provider (built-in RAG + any external KB), and seed the fabric index on

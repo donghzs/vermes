@@ -1,0 +1,166 @@
+{
+  "generated_at": "2026-09-20T10:04:55.931812+00:00",
+  "home": "/Users/dongzusheng/.vermes",
+  "usage_json": {
+    "usage_json_path": "/Users/dongzusheng/.vermes/skills/.usage.json",
+    "usage_records": 91,
+    "runtime_skills": 245,
+    "coverage_pct": 37.14,
+    "use_counts": {
+      "vermes-runtime-diagnostic": 86,
+      "scholarforge-thesis-pipeline": 68,
+      "gateway-telegram": 30,
+      "docx": 28,
+      "qimen-bazi-paipan": 27,
+      "audit-verification-workflow": 21,
+      "ch9329-hid-control": 19,
+      "wechat-official-account": 18,
+      "competitive-analysis": 17,
+      "text-to-cad-pipeline": 17,
+      "crawl4ai-web-extraction": 16,
+      "memory-benchmark": 16,
+      "chinese-content-marketing": 12,
+      "botmode-testing": 10,
+      "repo-comparison": 10,
+      "agent-framework-audit": 9,
+      "compiled-binary-audit": 9,
+      "kanban-orchestrator": 9,
+      "vermes-configuration-diagnostics": 9,
+      "dual-audit": 8,
+      "open-agent-ecosystem-research": 8,
+      "vermes-development": 8,
+      "delegate-task": 7,
+      "memory-enhancement-patterns": 7,
+      "scholarforge-citation-audit": 7,
+      "short-drama-pipeline": 7,
+      "smart-hardware-product-launch": 7,
+      "vermes-sse-architecture": 7,
+      "capability-benchmarking": 6,
+      "codebase-audit": 6,
+      "local-mlx": 6,
+      "office-collaboration": 6,
+      "agent-tool-diagnostics": 5,
+      "agnes-multi-modal-integration": 5,
+      "agnes-video-t2v": 5,
+      "docx-thesis-analysis": 5,
+      "paper-writing-frameworks": 5,
+      "agent-studio-template-engine": 4,
+      "cross-agent-collaboration": 4,
+      "pdf": 4,
+      "reportlab-chinese-pdf": 4,
+      "agnes-video-multi-img": 3,
+      "computer-use": 3,
+      "docx-thesis-modification": 3,
+      "memory-system-comparison": 3,
+      "multi-search-engine": 3,
+      "vermes-build-release": 3,
+      "web-research": 3,
+      "agnes-image": 2,
+      "agnes-shot-generator": 2,
+      "cloud-upload-backup": 2,
+      "kanban-worker": 2,
+      "macos-computer-use": 2,
+      "native-mcp": 2,
+      "skillhub-discovery": 2,
+      "vermes": 2,
+      "vermes-architecture": 2,
+      "vermes-cloud-architecture": 2,
+      "vermes-windows-build": 2,
+      "agent-leaderboard-scraping": 1,
+      "agnes-image-testing": 1,
+      "agnes-video": 1,
+      "agnes-video-i2v": 1,
+      "agnes-video-keyframes": 1,
+      "artifact-rendering-test": 1,
+      "arxiv": 1,
+      "code-audit-verification": 1,
+      "debugging-hermes-tui-commands": 1,
+      "eco-decision-framework": 1,
+      "email-skill": 1,
+      "flight-booking-china": 1,
+      "freecad-cli-modeling": 1,
+      "gateway-session-storm-diagnosis": 1,
+      "github": 1,
+      "healthcheck": 1,
+      "hermes-agent": 1,
+      "hermes-agent-skill-authoring": 1,
+      "himalaya": 1,
+      "humanizer": 1,
+      "ocr-and-documents": 1,
+      "persona-switch": 1,
+      "qclaw-skill-creator": 1,
+      "security-audit": 1,
+      "security-audit-credentials": 1,
+      "subagent-driven-development": 1,
+      "vermes-desktop-plugins": 1,
+      "vermes-electron-build": 1,
+      "weather": 1,
+      "web-demo-recording": 1,
+      "xlsx": 1,
+      "html-demo-gif-recording": 0
+    },
+    "top8": [
+      {
+        "skill": "vermes-runtime-diagnostic",
+        "use_count": 86
+      },
+      {
+        "skill": "scholarforge-thesis-pipeline",
+        "use_count": 68
+      },
+      {
+        "skill": "gateway-telegram",
+        "use_count": 30
+      },
+      {
+        "skill": "docx",
+        "use_count": 28
+      },
+      {
+        "skill": "qimen-bazi-paipan",
+        "use_count": 27
+      },
+      {
+        "skill": "audit-verification-workflow",
+        "use_count": 21
+      },
+      {
+        "skill": "ch9329-hid-control",
+        "use_count": 19
+      },
+      {
+        "skill": "wechat-official-account",
+        "use_count": 18
+      }
+    ],
+    "top8_share_pct": 46.7,
+    "gini": 0.6308,
+    "view_vs_use": {
+      "skills_with_views": 90,
+      "skills_with_uses": 90,
+      "total_views": 636,
+      "total_uses": 636
+    }
+  },
+  "state_db": {
+    "state_db_path": "/Users/dongzusheng/.vermes/state.db",
+    "state_db_bytes": 108765184,
+    "total_sessions": 373,
+    "sessions_with_skill_view": 8,
+    "load_rate_pct": 2.14,
+    "skill_view_events": 8,
+    "unique_skills_loaded": 7,
+    "repeat_load": {
+      "sessions_with_any_repeat": 0,
+      "repeat_event_count": 0,
+      "max_repeats_in_session": 0,
+      "top_repeat_skills": []
+    },
+    "used_after_load_pct": 50.0,
+    "used_after_load_detail": {
+      "load_events": 8,
+      "load_events_with_followup_mention": 4
+    },
+    "error": null
+  }
+}

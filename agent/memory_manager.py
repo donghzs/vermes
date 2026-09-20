@@ -45,7 +45,8 @@ logger = logging.getLogger(__name__)
 # requires changing one place. Each name here MUST also be registered in
 # agent_init.py as an always-on provider (parallel to RAGProvider).
 # ---------------------------------------------------------------------------
-_FIRST_PARTY_PROVIDER_NAMES = frozenset({"builtin", "rag", "docmemory"})
+_FIRST_PARTY_PROVIDER_NAMES = frozenset({"builtin", "rag", "docmemory", "skill_router"})
+
 
 
 # ---------------------------------------------------------------------------

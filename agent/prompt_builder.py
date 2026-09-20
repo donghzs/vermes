@@ -1161,16 +1161,16 @@ def resolve_compact_skill_categories(
     cwd: "str | os.PathLike | None" = None,
     platform: "str | None" = None,
 ) -> "frozenset[str] | None":
-    """技能索引 names-only 门控（2026-09-20 终局：**token 经济**，非 coding 姿态）。
+    """技能索引 names-only 门控（2026-09-20 拍板：auto = **纯渠道门**）。
 
     * ``off`` / 缺省 / 配置异常 → ``None``
-    * ``auto`` → 估算技能索引描述字节；**超过** ``agent.skill_index_compact_threshold_bytes``
-      （默认 20000）时返回 deny-list。**与 platform/cwd 解耦**（IM 超限同样降级）。
-    * ``on``/``true``… → 用户显式要求时始终降级
-    * 估算失败 → ``None``（fail-safe，不降级）
+    * ``auto`` → **仅**当 ``platform ∈ _INTERACTIVE_CODING_PLATFORMS`` 时返回
+      deny-list；messaging / 未知 / 空 platform **永不降级**（A′）。
+      **无成本/比例/字节阈值**（已拍板删除：假动态，在真实索引体量下恒触发）。
+    * ``on``/``true``… → 用户显式要求时**始终**降级（跨渠道）
 
-    历史：P1 曾按「代码目录 + 交互式平台」触发；QClaw/Hermes/MiMo 终局改为长度阈值。
-    A′ 渠道硬门代码路径仍保留给「非 auto 的 coding 判定」类用途；**auto 不再走平台白名单**。
+    历史：成本面（字节阈值 / 比例阈值 / context 回落 / 索引字节估算）已于
+    2026-09-20 拍板删除；auto 只保留渠道语义，避免假动态死开关。
     """
     try:
         from vermes_cli.config import load_config
@@ -1182,47 +1182,16 @@ def resolve_compact_skill_categories(
     if mode in ("on", "true", "1", "yes", "always"):
         return frozenset(_NON_CODING_SKILL_CATEGORIES)
     if mode in ("auto",):
-        try:
-            threshold = int(agent_cfg.get("skill_index_compact_threshold_bytes") or 20000)
-        except (TypeError, ValueError):
-            threshold = 20000
-        if threshold <= 0:
-            return None
-        est = estimate_skills_index_bytes()
-        if est >= threshold:
+        # A′ 渠道硬门：仅交互式/程序化入口在 auto 下降级
+        if platform in _INTERACTIVE_CODING_PLATFORMS:
             return frozenset(_NON_CODING_SKILL_CATEGORIES)
         return None
     return None
 
 
-def estimate_skills_index_bytes() -> int:
-    """估算技能索引（名称+描述）字节数；失败返回 0（不触发降级）。"""
-    try:
-        from agent.skill_utils import get_all_skills_dirs, iter_skill_index_files, parse_frontmatter
-        total = 0
-        dirs = get_all_skills_dirs()
-        if not dirs:
-            return 0
-        for d in dirs:
-            try:
-                if not Path(d).is_dir():
-                    continue
-                for f in iter_skill_index_files(d, "SKILL.md"):
-                    try:
-                        text = f.read_text(encoding="utf-8", errors="replace")
-                        fm, _ = parse_frontmatter(text)
-                        total += len(str(fm.get("description") or "").encode("utf-8"))
-                        total += len(str(fm.get("name") or "").encode("utf-8"))
-                    except Exception:
-                        continue
-            except Exception:
-                continue
-        return total
-    except Exception:
-        return 0
-
 
 def build_workspace_block(cwd=None, platform: "str | None" = None) -> str:
+
     """W-L5：工作区事实块（有 git 区才非空）。实现见 agent.workspace_facts。"""
     try:
         from agent.workspace_facts import build_workspace_block as _bwb
