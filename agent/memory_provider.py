@@ -206,89 +206,6 @@ class MemoryProvider(ABC):
             )
             return []
 
-
-def _normalize_provider_search_result(
-    raw: Any, source: str
-) -> List[Dict[str, Any]]:
-    """Coerce a provider search-tool result (JSON string or already-parsed)
-    into the unified recall hit shape.
-
-    Generic and fail-soft: handles the common shapes returned by the various
-    KB plugins' ``*_search`` tools (a top-level list, or a dict with a
-    ``results``/``memories``/``matches``/``items``/``hits``/``data`` list, or a
-    single dict). For each item it picks the most content-like string field.
-    """
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw) if isinstance(raw, str) else raw
-    except Exception:
-        return []
-    items: Optional[List[Any]] = None
-    if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        for key in ("results", "memories", "matches", "items", "hits", "data"):
-            v = data.get(key)
-            if isinstance(v, list):
-                items = v
-                break
-        if items is None:
-            items = [data]  # the dict itself is a single hit
-    if not items:
-        return []
-    hits: List[Dict[str, Any]] = []
-    for it in items:
-        if isinstance(it, str):
-            hits.append(
-                {
-                    "content": it,
-                    "pointer": f"{source}#{abs(hash(it)) % 100000}",
-                    "source": source,
-                    "score": 0.0,
-                }
-            )
-        elif isinstance(it, dict):
-            content = (
-                it.get("content")
-                or it.get("memory")
-                or it.get("text")
-                or it.get("excerpt")
-                or it.get("chunk")
-                or it.get("summary")
-            )
-            if not content and isinstance(it.get("content"), list):
-                content = " ".join(str(x) for x in it["content"])
-            if not content:
-                strs = [
-                    str(v)
-                    for v in it.values()
-                    if isinstance(v, str) and len(v) > 20
-                ]
-                content = max(strs, key=len) if strs else ""
-            if not content:
-                continue
-            pid = (
-                it.get("id")
-                or it.get("pointer")
-                or it.get("key")
-                or f"{source}#{abs(hash(content)) % 100000}"
-            )
-            try:
-                score = float(it.get("score") or it.get("similarity") or 0.0)
-            except (TypeError, ValueError):
-                score = 0.0
-            hits.append(
-                {
-                    "content": content if isinstance(content, str) else str(content),
-                    "pointer": pid,
-                    "source": source,
-                    "score": score,
-                }
-            )
-        # non-str/dict items are ignored
-    return hits
-
     def shutdown(self) -> None:
         """Clean shutdown — flush queues, close connections."""
 
@@ -448,3 +365,85 @@ def _normalize_provider_search_result(
         from config/env only. Default returns an empty list (nothing external).
         """
         return []
+
+def _normalize_provider_search_result(
+    raw: Any, source: str
+) -> List[Dict[str, Any]]:
+    """Coerce a provider search-tool result (JSON string or already-parsed)
+    into the unified recall hit shape.
+
+    Generic and fail-soft: handles the common shapes returned by the various
+    KB plugins' ``*_search`` tools (a top-level list, or a dict with a
+    ``results``/``memories``/``matches``/``items``/``hits``/``data`` list, or a
+    single dict). For each item it picks the most content-like string field.
+    """
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return []
+    items: Optional[List[Any]] = None
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        for key in ("results", "memories", "matches", "items", "hits", "data"):
+            v = data.get(key)
+            if isinstance(v, list):
+                items = v
+                break
+        if items is None:
+            items = [data]  # the dict itself is a single hit
+    if not items:
+        return []
+    hits: List[Dict[str, Any]] = []
+    for it in items:
+        if isinstance(it, str):
+            hits.append(
+                {
+                    "content": it,
+                    "pointer": f"{source}#{abs(hash(it)) % 100000}",
+                    "source": source,
+                    "score": 0.0,
+                }
+            )
+        elif isinstance(it, dict):
+            content = (
+                it.get("content")
+                or it.get("memory")
+                or it.get("text")
+                or it.get("excerpt")
+                or it.get("chunk")
+                or it.get("summary")
+            )
+            if not content and isinstance(it.get("content"), list):
+                content = " ".join(str(x) for x in it["content"])
+            if not content:
+                strs = [
+                    str(v)
+                    for v in it.values()
+                    if isinstance(v, str) and len(v) > 20
+                ]
+                content = max(strs, key=len) if strs else ""
+            if not content:
+                continue
+            pid = (
+                it.get("id")
+                or it.get("pointer")
+                or it.get("key")
+                or f"{source}#{abs(hash(content)) % 100000}"
+            )
+            try:
+                score = float(it.get("score") or it.get("similarity") or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            hits.append(
+                {
+                    "content": content if isinstance(content, str) else str(content),
+                    "pointer": pid,
+                    "source": source,
+                    "score": score,
+                }
+            )
+        # non-str/dict items are ignored
+    return hits

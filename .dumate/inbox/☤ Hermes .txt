@@ -1,0 +1,53 @@
+ ☤ Hermes ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+核完了。判定：数据准确率高，但决定性结论不成立 —— 它漏查了上游的通用插件 hook 面，导致最关键的判定反了。
+
+一、先说可靠的部分（我抽查 30+ 处，逐条复核）
+
+  ✅ 行号准得惊人：agent/memory_manager.py 5/5 全中（:115 :326-328 :394 :480 :674，文件 836 行）；memory_fabric.py 9/9 全中（recall :527、record :937、index_note :407、set_l4 :1013、set_l3 :1026、recall_hierarchical :1091、format_curated :1367、get_memory_detail :902、search_notes :774，1377 行）
+  ✅ 平台侧数字全中：weixin 2169 / yuanbao 4877 / base.py 3840 / connect() 无 is_reconnect；上游 base.py 4629 + is_reconnect 在 :2554
+  ✅ 7 个共享基础设施文件（_shared.py、access_policy_mixin.py、base_exec_approval.py、event.py、media_cache.py、webhook_coalesce.py、webhook_filters.py）上游有、Vermes 确实全无 —— 这条很有价值
+  ✅ plugins/memory/ 8 个 provider + hindsight:318 / honcho:112 两个实现类行号精确
+  ✅ ContextEngine 14 项里 12 项行号精确；compress() 确实多了 force + memory_context
+  ✅ conversation_loop.py:1236 pre_task_recall / :839 post_task_reflect、system_prompt.py:486、tool_executor.py:624 全部命中
+
+二、硬错误（3 处，都影响结论）
+
+  ❌ ① 「上游无 tool_executor.py / system_prompt.py，是 Vermes 独有文件」
+     实测：上游 agent/tool_executor.py 1813 行、agent/system_prompt.py 817 行都存在。
+     它拿"5 个调用点全在 Vermes 独有文件"当 core patch 的理由 —— 前提就错了。
+
+  ❌ ② 「上游无对应 hook 面」（这是决定性错误）
+     实测上游 hermes_cli/plugins.py:108 的 VALID_HOOKS 有 20+ 个 hook，其中三个正好覆盖它识别的三个注入点：
+       · post_tool_call（model_tools.py:674，带 tool_name/args/result）→ 覆盖它说的 record_tool_outcome 工具执行闭环
+         先例：plugins/disk-cleanup/init.py:183 就是这么挂的
+       · pre_llm_call → 上下文注入 user message，绝不进 system prompt（agent/turn_context.py:686-687 原文；落点 :413 plugin_user_context、:740-762 拼装）→ 覆盖"每 N 轮动态注入"，而且天然 cache-safe，它担心的"动态注入破缓存"上游早有解法
+       · ctx.register_system_prompt_section（plugins.py:940 → agent/system_prompt.py:125）→ 覆盖"turn=1 全量注入"的静态路径
+     它只 grep 了 ABC（memory/context engine），没查 register_* 与 hook 面，于是得出"上游无 hook"。
+
+  ❌ ③ 「Vermes plugins/platforms/ 不存在」→ 实际存在：google_chat / irc / line / simplex / teams 共 5 个目录。
+
+三、偏差（不致命但会误导）
+
+  ⚠️ 上游 gateway/platforms/*.py 是 32 不是 29；.spec 是 5 不是 7（它自己也只列出 5 个）
+  ⚠️ memory_fabric 公开入口实测 18 个（AST 计数），不是 20
+  ⚠️ MemoryProvider "全部抽象方法"表述错：只有 4 个 @abstractmethod，其余是可选默认实现 → 插件门槛比它写的低
+  ⚠️ ContextEngine.name 行号 83 → 实际 52；emit_automatic_compaction_status :72 是属性不是方法
+  ⚠️ continuity_facade.py:129 → 定义实际在 :93
+
+四、结论级问题：判定口径混用（这才是重点）
+
+  它自己的 §3 定义「只能 core patch = hook 表达不了」，而它在 §2.1 里给出了 hook 签名（learned_experience_block）—— 说明能表达。随后它用"触碰缓存 invariant + 上游接受概率低"把它降级为 core patch，这是把判据（可表达性）和可行性（上游接受度）混在一个格里。
+  正确的三档应该这样落：
+    自进化 → 可插件化（静态首轮块走 registered system prompt section；每 N 轮动态块走 pre_llm_call；工具后记录走 post_tool_call），代价是 Vermes 侧改注入载体，不动 core
+    记忆织物 → 可插件化（ABC 只强制 4 个方法；分层召回/策展/使用统计是插件内部自由；turn 前召回 = prefetch()、turn 后反思 = sync_turn()）。"17/20 入口无 ABC 对应"是事实，但推不出"需上游开口"
+    工作流 → 需上游开口 ✅ 这条它判对了（上游确无 DAG 引擎概念），而这属于发行版化可接受的一档 —— 上游自己的哲学就是 "widen the generic plugin surface"
+  → 因此「独立分叉（A）」的决定性理由不成立：发行版化在技术上有路径，成本在"实现改造量 + 上游对新通用 hook 的接受度"，不是"被自进化杀死"。
+
+五、给百度搭子的返工清单（最小改动）
+
+  1. 补一节「扩展面普查」：VALID_HOOKS（plugins.py:108）+ ctx.register_hook / register_tool / register_system_prompt_section / register_cli_command + invoke_middleware，把它纳入判定基准
+  2. 修正 3 处硬错误 + 5 处偏差，结论从「独立分叉（A）」改为「发行版化可行；成本 = 改造量 + 上游接受度」，三块落点按上面第四节的表重写
+  3. 合规声明里「未编造接口名/行号」这条不成立（有 2-3 处错），改为「已尽力核实，本轮修订 N 处」
+  4. 保留它写对且最有价值的两条：中文平台硬编码是架构债（上游已插件化）、7 个安全/可靠性基础设施文件缺失应优先反向 cherry-pick
+
+一句话：它的"手"很稳（行号精度罕见地高），但"漏看了一整个扩展面"，而这一个面正好决定了要拍板的问题。
