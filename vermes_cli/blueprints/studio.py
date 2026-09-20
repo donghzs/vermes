@@ -601,7 +601,14 @@ def _resolve_key_entry(entry: Dict[str, Any]) -> str:
         return ""
     if key_env.startswith("${") and key_env.endswith("}"):
         key_env = key_env[2:-1]
-    return os.environ.get(key_env, "")
+    # Prefer get_env_value so keys resolve on entrypoints (dev uvicorn) that
+    # never inject dotenv into os.environ — same fix as the plaintext-key
+    # cleanup (see reports/qclaw/audit-plaintext-provider-key_20260920.md).
+    try:
+        from vermes_cli.config import get_env_value
+        return (get_env_value(key_env) or "").strip()
+    except Exception:
+        return os.environ.get(key_env, "")
 
 
 @router.get("/effective-config")

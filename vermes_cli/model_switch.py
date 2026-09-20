@@ -1522,7 +1522,17 @@ def list_authenticated_providers(
             api_key = str(ep_cfg.get("api_key", "") or "").strip()
             if not api_key:
                 key_env = str(ep_cfg.get("key_env", "") or "").strip()
-                api_key = os.environ.get(key_env, "").strip() if key_env else ""
+                if key_env:
+                    # Prefer get_env_value so custom-endpoint /models discovery
+                    # resolves keys on entrypoints (dev uvicorn) that never
+                    # inject dotenv into os.environ — same fix as the
+                    # plaintext-key cleanup.
+                    try:
+                        from vermes_cli.config import get_env_value
+                        api_key = (get_env_value(key_env) or "").strip()
+                    except Exception:
+                        import os
+                        api_key = os.environ.get(key_env, "").strip()
             discover = ep_cfg.get("discover_models", True)
             if isinstance(discover, str):
                 discover = discover.lower() not in {"false", "no", "0"}
