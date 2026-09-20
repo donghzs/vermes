@@ -33,7 +33,7 @@
 
 | ID | 工单 | 落点 | 验收 | 状态 |
 |---|---|---|---|---|
-| **W1** | 品牌大小写不一致**定点**判定（irc） | `tests/gateway/test_irc_adapter.py:223/379`、源码 `plugins/platforms/irc/adapter.py:409-424` | **已定性（2026-09-20 08:30）：测试期望过时，源码正确**。实测 `AssertionError: assert 'Vermes_' == 'VERMES_'`；源码 `:112` 默认 `nickname="Vermes-bot"`（新品牌），`:414` 注释仍是旧的 `VERMES_` 但代码品牌自适应（`self.nickname + "_"`）。**修法：改测试期望 `VERMES_`→`Vermes_`（约 5 处），注释 `:414` 顺手订正。禁止全仓 sweep** | 🔨 定性完成，待修 |
+| **W1** | 品牌大小写不一致**定点**判定（irc） | `tests/gateway/test_irc_adapter.py:223/379`、源码 `plugins/platforms/irc/adapter.py:409-424` | ✅ **已完成（代码在 `f89435a43c`）**：定性「测试期望过时，源码正确」；测试 `VERMES_`→`Vermes_`（5 处）+ `:414` 注释订正。源码默认 `nickname="Vermes-bot"`，重试后缀品牌自适应。**未做全仓 VERMES_ sweep**。irc+reconnect 合计 **73 passed**（mimo 复跑） | ✅ |
 | **W2** | E 类 4 条 reconnect 失败根因判定 | `gateway/lifecycle_mixin.py`、`gateway/watcher_mixin.py` | ✅ **已修（2026-09-20 08:45）：判定为「真 bug」×2，非噪声**。①**主因**：`_connect_one` 失败时**整体替换** `_failed_platforms[platform]` entry，而 watcher 在 `watcher_mixin.py:235` 已持有旧引用 → 递增写进孤儿 dict → attempts 永不累积（circuit breaker `_PAUSE_AFTER_FAILURES=10` 永远不触发）+ 指数退避被重置为恒定 30s。②**死分支**：watcher 的 non-retryable 移除分支探测 `self.adapters.get(platform)`，但失败 adapter 只在**成功**连接时才注册 → 恒为 None → 不可重试的平台被**无限重试**。③`_create_adapter` 返回 None（插件缺失）同样无限重试。**修法**：entry 原地更新 + result 携带 `retryable` 标记 + no-adapter 时出队。验收：4 条全绿（29 passed），回归 139 passed / 2 failed（均为 pre-existing 环境缺依赖）。**变异测试**：改回整体替换 → #2#3 立刻红（非侥幸） | ✅ 完成 |
 | **W3** | G 类 email self-message 过滤（**疑真 bug**） | `gateway/platforms/email.py:437` | ✅ **已判定 + 已修（2026-09-20 09:10）：真缺陷，但不是活跃生产 bug**。根因：`if sender_addr == self._address.lower()` —— **左侧未归一化、右侧归一化**的不对称比较（同方法内 `_is_automated_sender:94`、allowlist `:453` 都做了 `.lower()`，只有 437 漏了）。真实链路唯一调用方 `_check_inbox:363 → _fetch_new_messages:414 → _extract_email_address:182/183`（已 lower），所以**生产上不会漏过滤**；测试绕过归一化层直接喂混合大小写地址，正好暴露该脆弱点。**修法**：两侧都 `.strip().lower()` 后比较（真实链路是 no-op）。验收：`tests/gateway/test_email.py` **60 passed**（修复前该用例 1 failed）。**未隔离、未改测试** | ✅ 完成 |
 | **W4** | A3 提示去重（独立 `notices` 域） | **新增** `gateway/notices.py`（落点 `~/.vermes/notices.json`）+ `gateway/message_handler_mixin.py` 抽出 `_maybe_prompt_missing_home_channel()` | ✅ **已完成（2026-09-20 09:25）**。落点订正：`~/.vermes/gateway_state.json` **就是** `gateway/status.py` 写的 pid/健康文件（实读含 `pid/kind/gateway_state/platforms`）→ 路线图 A3 原落点正是 E7 警告的污染点，故按 W4 走**独立文件**。语义：**按 (platform, key) 持久化去重**，取代 `not history`（会话级节流，每次新会话都重弹）；跨重启仍生效。实现要点：mtime 感知的内存缓存（避免每轮消息读一次盘）、`os.replace` 原子写、**投递失败不标记**（下次仍提示）、文件损坏视为未提示且不抛。验收：`tests/gateway/test_notices_dedup.py` **15 passed**，含**真子进程**跨重启用例。**变异测试 ×2**：①只写内存不落盘 → 3 红（含跨重启用例）；②去掉去重判定 → `test_prompts_once_and_only_once` 红 | ✅ 完成 |
@@ -93,7 +93,34 @@
 | M1 | ✅ | 脚本实跑复现；唯一差异「近 90 天新增」实跑 **5 行 / 4 提交**（基线写 3/3），属 HEAD 时间漂移，非错报 |
 | M2 | ✅ | 四处版本均 2.5.0 实测通过；**工单板 2.4.9 是错的，已订正** |
 | M3 | ✅ | 两 lane `if: false` 确认；`js-tests` 依赖齐备（`vitest run` + lock 在）真能跑；未重复 `uv-lockfile-check.yml` |
-| M4 | ⚠️ P1×1 / P2×3 | 读侧单一口径 ✅、写读路径同源 ✅、blueprint↔api.js 一致 ✅、20 passed 复核通过；**P1：`yaml.dump` 全量重写 config.yaml —— 实证注释 21 行→0（681→661 行）** |
+| M4 | ⚠️ P1×1 / P2×3 → **返工已闭环** | 读侧单一口径 ✅；P1 yaml.dump / P2 非原子 / P2 吞 env 错 / P3 N 次读盘 已由 `e697aa9066` + `7458fd023d`（M5）关闭 |
+
+### mimo → WorkBuddy 审计结果（2026-09-20，A7 `f5e47ec9e2` + yaml 扫尾 `1bd16f6d87`）
+
+| 审计项 | 结论 | 证据 |
+|---|---|---|
+| A7 三道闸是否在写之前 | ✅ | `message_handler_mixin.py:125-157`：无 platform → 非 dm → is_bot → 已有 home（env 再 resolve）→ notices 已记 → 开关关，全部 `return False` 在 `_persist` 之前 |
+| Gate1 授权是否真在上游 | ✅ | `_handle_message` `:448-452` `_is_user_authorized` 拒绝后 `return None`；A7 调用点 `:2328` 在其后 |
+| 空 chat_type 不 fail-open | ✅ | `:133` `!= "dm"` 即拒；测试 `test_unset_chat_type_is_not_treated_as_dm` |
+| 不覆盖已有 home | ✅ | `env_home_channel_chat_id` 先于 `resolve_home_channel_chat_id`；测试 `test_existing_home_channel_is_never_overwritten` |
+| 开关 fail-closed | ✅ | `auto_set_home_channel_enabled`：空→True（默认开）；非法值→False+warning |
+| 是否第二套落盘 | ✅ A7 走 `write_home_channel` | `:163-168` 直接 import `vermes_cli.gateway_channels.write_home_channel`（与 GUI/M4/M5 同一函数） |
+| notices 去重 | ✅ | key=`home_channel_autoset`（与 `home_channel_missing` 分离）；**写失败不 mark**（`:182-189` 早退） |
+| 部分成功语义 | ✅ 可接受 | config 有值但 `ok=false`（env 失败）→ 记 log + 仍确认 + mark；避免「写了盘却下次再写」 |
+| 实跑 | ✅ | autoset + yuanbao + dm_topics + notices **69 passed** |
+| 6 处 yaml 扫尾是否落地 | ✅ | telegram/tui/holographic/profiles → `load_roundtrip_yaml`+`atomic_roundtrip_yaml_dump`；evolution×2 → `apply_patch_in_place`+`roundtrip_yaml_dumps`（`memory_reflection.py:606-612`、`chat.py:3307-3328`） |
+| 生产路径残留 `yaml.dump` | ✅ 可接受 | 仅 `utils.atomic_yaml_write` 实现体 + migrations + tests；用户 config 热路径已 round-trip |
+| 越界 | ✅ 无 | A7/yaml 扫尾均在 gateway/agent/utils/tui 等 W 侧或共享 utils；未改 frontend |
+
+#### mimo 审计发现（不阻塞合入，建议后续 W 工单）
+
+| 级别 | 发现 | 说明 |
+|---|---|---|
+| **P2** | **yuanbao `AutoSetHomeMiddleware` 仍是第二套 home 持久化** | `yuanbao.py:1599-1606` 用 `atomic_roundtrip_yaml_update(path, "YUANBAO_HOME_CHANNEL", chat_id)` 写 **config.yaml 顶层 key**，并 `os.environ[...]`；**不写** `.env`、**不写** `platforms.yuanbao.home_channel`，也**不走** `write_home_channel`。与 A7/GUI 不同 schema。进程内在 resolve 可命中（env）；重启后若 `.env` 无此键、`config_home_channel_chat_id` 只读 `platforms.*.home_channel`，则 **yaml 顶层 key 解析器看不见**。M5-a 只修了注释安全，未并口径。 |
+| **P2** | **yuanbao 双 autoset** | 元宝 DM 可能同时走 A7（通用）+ yuanbao middleware（平台专有）；顺序/覆盖语义未在测试中钉死。建议 yuanbao middleware 改为调用 `write_home_channel("yuanbao", ...)`，或明确让位给 A7。 |
+| **P3** | 工单板 §6 版本仍写 2.4.9 | 与 M2 实测 2.5.0 不一致（§3 已订正，§6 未改）。 |
+
+**mimo 审 W 结论：A7 + 6 处 yaml 扫尾通过；yuanbao 并口径建议开 W5。**
 
 **给 mimo 的返工项（均在 `vermes_cli/` 内，WorkBuddy 不动）：**
 - **P1** config.yaml 注释丢失：改用 `ruamel.yaml` round-trip（本机已装 `0.18.17`），或退而用仓库已有的 `from utils import atomic_yaml_write`
@@ -112,11 +139,12 @@
 
 ## §6 已知基线（2026-09-20 实测，可直接引用）
 
-- 本地 HEAD 段：`b7305707d4` → `a2fde2ba95` → `92f5134df0` → `d8c6f8fa1c`（**均在主线，未 push**）
-- 本地版本：`version.txt` = `2.4.9`（三源一致）
+- 本地 HEAD 段：最新 `1bd16f6d87`（A7 + yaml 扫尾）… 均在主线，**ahead origin 35，未 push**
+- 本地版本：`version.txt` = **2.5.0**（三源一致；旧板 2.4.9 已废）
 - 上游最新：v0.21.3（tag `v2026.9.14`）；v0.21.0 = "Pantheon/Bot Mode"
-- 上游 `AGENTS.md` **12** 个 / CI **35** 条；本地 **1** / **14**
+- 上游 `AGENTS.md` **12** 个 / CI **35** 条；本地 **1** / workflows 已 +3 文件（2 条 `if: false` 占位）
 - gateway 全量：**13 failed / 5820 passed / 13 skipped**，13 条已用对照实验（`git checkout eaa63411a2`）证明 **pre-existing**
+- A7 相关：`tests/gateway/test_autoset_home_channel.py` + yuanbao + notices 定向 **69 passed**（mimo 2026-09-20）
 - 契约测试：`tests/vermes_cli/test_home_channel_resolution.py` **12 passed**
 
 ## §7 关联
