@@ -337,6 +337,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         skills_prompt = _r.build_skills_system_prompt(
             available_tools=agent.valid_tool_names,
             available_toolsets=avail_toolsets,
+            # P1：config agent.compact_skill_categories=off|auto；auto 仅在代码目录降级
+            compact_categories=_r.resolve_compact_skill_categories(),
         )
     else:
         skills_prompt = ""

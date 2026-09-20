@@ -1085,6 +1085,89 @@ CONTEXT_TRUNCATE_TAIL_RATIO = 0.2
 _SKILLS_PROMPT_CACHE_MAX = 8
 _SKILLS_PROMPT_CACHE: OrderedDict[tuple, str] = OrderedDict()
 _SKILLS_PROMPT_CACHE_LOCK = threading.Lock()
+# P1：上次解析出的 compact 集合（cache_key 形态）。变化时主动 clear LRU。
+_LAST_COMPACT_SKILL_CATEGORIES: Optional[tuple] = None
+
+# ── P1 技能索引降级（coding pose names-only）──────────────────────────
+# 口径：deny-list + 降级≠隐藏。条目名永远保留，只省描述。
+_NON_CODING_SKILL_CATEGORIES = frozenset({
+    # 上游 deny-list（~/.hermes coding_context.py:138-143）
+    "apple", "communication", "cooking", "creative", "email", "finance",
+    "gaming", "gifs", "health", "media", "music", "note-taking",
+    "productivity", "shopping", "smart-home", "social-media", "travel",
+    "yuanbao",
+    # 本地补充（P1 校准，规格书 2.2）；research 保守保留（编码可能查文档）
+    "daily", "content-marketing", "openclaw-imports",
+})
+
+# 上游 coding_context.py:32-35 —— 代码项目根标记（廉价文件名探测）
+_PROJECT_MARKERS = (
+    "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt",
+    "package.json", "tsconfig.json", "deno.json",
+    "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "build.gradle.kts",
+    "Gemfile", "composer.json", "mix.exs",
+    "pubspec.yaml", "CMakeLists.txt", "Makefile", "Dockerfile",
+    "AGENTS.md", "CLAUDE.md", ".cursorrules",
+)
+
+_HIDDEN_NOTE = (
+    "\n(Categories marked [names only] are outside the current coding "
+    "context, so their descriptions are omitted — the skills work "
+    "normally and load with skill_view(name) as usual.)"
+)
+
+
+def is_coding_dir(cwd: "str | os.PathLike | None" = None) -> bool:
+    """True when *cwd* looks like a code workspace (project marker files)."""
+    root = Path(cwd) if cwd is not None else Path.cwd()
+    try:
+        if not root.is_dir():
+            return False
+        for name in _PROJECT_MARKERS:
+            if (root / name).exists():
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def resolve_compact_skill_categories(
+    cwd: "str | os.PathLike | None" = None,
+) -> "frozenset[str] | None":
+    """P1 门控：config ``agent.compact_skill_categories`` ∈ {off, auto}。
+
+    * ``off`` / 缺省 / 无法解析 → ``None``（**不降级**，安全默认）
+    * ``auto`` → 仅当 ``is_coding_dir(cwd)`` 为真时返回 deny-list，否则 None
+    """
+    try:
+        from vermes_cli.config import load_config
+        cfg = load_config() or {}
+        agent_cfg = cfg.get("agent") or {}
+        mode = str(agent_cfg.get("compact_skill_categories") or "off").strip().lower()
+    except Exception:
+        return None
+    if mode in ("auto", "on", "true", "1", "yes"):
+        return frozenset(_NON_CODING_SKILL_CATEGORIES) if is_coding_dir(cwd) else None
+    # off / 未知值：fail-safe 不降级
+    return None
+
+
+def _demoted_categories(
+    skills_by_category: "dict[str, list]",
+    compact_categories: "frozenset[str] | None",
+) -> "frozenset[str]":
+    compact = compact_categories or frozenset()
+    return frozenset(
+        cat for cat in skills_by_category
+        if cat.split("/", 1)[0] in compact
+    )
+
+
+def _basic_tools_phrase(available_tools: "set[str] | None") -> str:
+    """P1-6：无 web_search 会话不再提示 dangling 的 web_search（仅降级路径启用）。"""
+    if available_tools is not None and "web_search" not in available_tools:
+        return "terminal"
+    return "web_search or terminal"
 _SKILLS_SNAPSHOT_VERSION = 1
 
 
@@ -1240,11 +1323,12 @@ def _skill_should_show(
 def build_skills_system_prompt(
     available_tools: "set[str] | None" = None,
     available_toolsets: "set[str] | None" = None,
+    compact_categories: "frozenset[str] | None" = None,
 ) -> str:
     """Build a compact skill index for the system prompt.
 
     Two-layer cache:
-      1. In-process LRU dict keyed by (skills_dir, tools, toolsets)
+      1. In-process LRU dict keyed by (skills_dir, tools, toolsets, compact)
       2. Disk snapshot (``.skills_prompt_snapshot.json``) validated by
          mtime/size manifest — survives process restarts
 
@@ -1254,6 +1338,11 @@ def build_skills_system_prompt(
     scanned alongside the local ``~/.vermes/skills/`` directory.  External dirs
     are read-only — they appear in the index but new skills are always created
     in the local dir.  Local skills take precedence when names collide.
+
+    ``compact_categories``（P1 技能索引降级）:
+      * ``None`` — **不降级**，渲染与历史行为一致（回归基线）。
+      * ``frozenset`` — 命中类目（含嵌套 ``parent/child`` 跟随 parent）折叠为
+        ``[names only]`` 一行；**条目名永不删除**（上游教训：裁剪会静默丢能力）。
     """
     skills_dir = get_skills_dir()
     external_dirs = get_all_skills_dirs()[1:]  # skip local (index 0)
@@ -1264,6 +1353,7 @@ def build_skills_system_prompt(
     # ── Layer 1: in-process LRU cache ─────────────────────────────────
     # Include the resolved platform so per-platform disabled-skill lists
     # produce distinct cache entries (gateway serves multiple platforms).
+    # P1: compact_categories 必须进 cache_key，否则会话中途切换降级会读到旧格式。
     from gateway.session_context import get_session_env
     _platform_hint = (
         os.environ.get("VERMES_PLATFORM")
@@ -1271,6 +1361,7 @@ def build_skills_system_prompt(
         or ""
     )
     disabled = get_disabled_skill_names()
+    _compact_key = None if compact_categories is None else tuple(sorted(compact_categories))
     cache_key = (
         str(skills_dir.resolve()),
         tuple(str(d) for d in external_dirs),
@@ -1278,7 +1369,14 @@ def build_skills_system_prompt(
         tuple(sorted(str(ts) for ts in (available_toolsets or set()))),
         _platform_hint,
         tuple(sorted(disabled)),
+        _compact_key,
     )
+    # 降级集合变化时主动清 LRU：容量未满时旧条目不会被挤出，可能残留旧 prompt 格式。
+    global _LAST_COMPACT_SKILL_CATEGORIES
+    if _LAST_COMPACT_SKILL_CATEGORIES != _compact_key:
+        with _SKILLS_PROMPT_CACHE_LOCK:
+            _SKILLS_PROMPT_CACHE.clear()
+        _LAST_COMPACT_SKILL_CATEGORIES = _compact_key
     with _SKILLS_PROMPT_CACHE_LOCK:
         cached = _SKILLS_PROMPT_CACHE.get(cache_key)
         if cached is not None:
@@ -1414,8 +1512,21 @@ def build_skills_system_prompt(
     if not skills_by_category:
         result = ""
     else:
+        # P1：compact_categories=None → 不降级，措辞与历史逐字节一致
+        demoted = _demoted_categories(skills_by_category, compact_categories)
+        hidden_note = _HIDDEN_NOTE if demoted else ""
+        # 仅在启用降级时改写 basic tools 短语，保证 None 基线不变
+        if compact_categories is None:
+            _tools_phrase = "web_search or terminal"
+        else:
+            _tools_phrase = _basic_tools_phrase(available_tools)
         index_lines = []
         for category in sorted(skills_by_category.keys()):
+            entries = skills_by_category[category]
+            if category in demoted:
+                names = sorted({n for n, _ in entries})
+                index_lines.append(f"  {category} [names only]: {', '.join(names)}")
+                continue
             cat_desc = category_descriptions.get(category, "")
             if cat_desc:
                 index_lines.append(f"  {category}: {cat_desc}")
@@ -1440,7 +1551,7 @@ def build_skills_system_prompt(
             "than to miss critical steps, pitfalls, or established workflows. "
             "Skills contain specialized knowledge — API endpoints, tool-specific commands, "
             "and proven workflows that outperform general-purpose approaches. Load the skill "
-            "even if you think you could handle the task with basic tools like web_search or terminal. "
+            f"even if you think you could handle the task with basic tools like {_tools_phrase}. "
             "Skills also encode the user's preferred approach, conventions, and quality standards "
             "for tasks like code review, planning, and testing — load them even for tasks you "
             "already know how to do, because the skill defines how it should be done here.\n"
@@ -1454,6 +1565,7 @@ def build_skills_system_prompt(
             "After difficult/iterative tasks, offer to save as a skill. "
             "If a skill you loaded was missing steps, had wrong commands, or needed "
             "pitfalls you discovered, update it before finishing.\n"
+            f"{hidden_note}"
             "\n"
             "<available_skills>\n"
             + "\n".join(index_lines) + "\n"
