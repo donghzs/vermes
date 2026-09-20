@@ -53,7 +53,7 @@
 | ID | 工单 | 落点 | 验收 | 状态 |
 |---|---|---|---|---|
 | **M1** | A4 分歧度量脚本落地 | `scripts/diverge_metrics.py`（自 Hermes skill 搬入并适配） | 基线已出：上游核心工具 60 / Vermes 49；Jaccard 0.09–0.15；静默失败 runtime≈935 vs 243、近 90 天新增 3 行/3 提交 → `reports/diverge-baseline-20260920.md` | ✅ |
-| **M2** | A5 重写 `UPSTREAM_SYNC.md` | 仓库根 `UPSTREAM_SYNC.md` | 实测：Vermes **2.5.0**（version.txt+三 package.json）、上游 **v0.21.3**（tag `v2026.9.14`）、remote `upstream/upstream2`→`NousResearch/hermes-agent`；**未改 remote**；旧 0.18/v2.3 数字已废弃 | ✅ |
+| **M2** | A5 重写 `UPSTREAM_SYNC.md` | 仓库根 `UPSTREAM_SYNC.md` | 实测：Vermes **2.5.0**（version.txt+三 package.json）、上游 **v0.21.3**（tag `v2026.9.14`）、remote `upstream/upstream2`→`NousResearch/hermes-agent`；**未改 remote**；旧 0.18/v2.3 数字已废弃 | ✅（WorkBuddy 交叉审计已复核四处版本号；**工单板原文写的 2.4.9 才是错的，已订正**） |
 | **M3** | A6 补 3 条 CI lane | `.github/workflows/js-tests.yml`（真跑 vitest）`tests-os.yml` / `install-e2e.yml`（**`if: false` 占位**，防误伤） | 三文件在盘；不重复 `uv-lockfile-check.yml`；占位 lane 不会在 PR 上自动开跑 | ✅（占位待评估后启用） |
 | **M4** | A7 GUI 设置入口 + home channel | `frontend/src` Settings 移动接入 + `vermes_cli/gateway_channels.py` + `vermes_cli/blueprints/gateway_channels.py`（HTTP 面） | GUI 可设「默认通知频道」；`write_home_channel` 双写 config.yaml + .env + 进程 environ；**读侧只走** `resolve_home_channel_chat_id`（不另起口径）；测试 20 passed | ✅（首条 DM 自动设定：后端双写已备，gateway 侧 auto-set 属 WorkBuddy W 域，见 §4） |
 
@@ -77,6 +77,25 @@
 | 审计方 | 被审计对象 | 审计要点 |
 |---|---|---|
 | **mimo 审 WorkBuddy** | W1–W4 | ① 判定是否有源码行号证据 ② W3 若判真 bug 是否真修了（不是隔离了事） ③ W4 去重是否真持久化 ④ 有无越界改 frontend/scripts |
+| **WorkBuddy 审 mimo** | M1–M4（`9bbf2f1ece`） | ① M2 数字是否实测 ② M1 能否真跑 ③ M3 是否误伤现有流水线 ④ M4 是否另起 home channel 口径 |
+
+### WorkBuddy → mimo 审计结果（2026-09-20 09:40，已出 `docs/CROSS_AUDIT_M_20260920.md`）
+
+| ID | 判定 | 要点 |
+|---|---|---|
+| M1 | ✅ | 脚本实跑复现；唯一差异「近 90 天新增」实跑 **5 行 / 4 提交**（基线写 3/3），属 HEAD 时间漂移，非错报 |
+| M2 | ✅ | 四处版本均 2.5.0 实测通过；**工单板 2.4.9 是错的，已订正** |
+| M3 | ✅ | 两 lane `if: false` 确认；`js-tests` 依赖齐备（`vitest run` + lock 在）真能跑；未重复 `uv-lockfile-check.yml` |
+| M4 | ⚠️ P1×1 / P2×3 | 读侧单一口径 ✅、写读路径同源 ✅、blueprint↔api.js 一致 ✅、20 passed 复核通过；**P1：`yaml.dump` 全量重写 config.yaml —— 实证注释 21 行→0（681→661 行）** |
+
+**给 mimo 的返工项（均在 `vermes_cli/` 内，WorkBuddy 不动）：**
+- **P1** config.yaml 注释丢失：改用 `ruamel.yaml` round-trip（本机已装 `0.18.17`），或退而用仓库已有的 `from utils import atomic_yaml_write`
+- **P2** 非原子写（裸 `write_text`，半途被杀会截断 config.yaml）
+- **P2** `except Exception: pass` 吞掉 `save_env_value` 失败，但返回体读的是刚 set 的 `os.environ` → 「没落盘却报 ok」的静默失败（与 M1 自己度的口径应一致对待）
+- **P3** `_schema_to_dict` 每 schema 调一次 `read_home_channel` → 列表接口约 30 次配置加载
+
+> **复跑测试前必读**：沙箱下 pytest 会在默认 tmpdir 报 `PermissionError: EEXIST ... pytest-of-root`，看起来像测试挂了其实是环境问题。
+> 配方：`BT=~/wb-tmp/bt-$RANDOM; TMPDIR=~/wb-tmp .venv/bin/python -m pytest <paths> -q -p no:xdist -o addopts="" --basetemp=$BT`（`--basetemp` 必须每次新鲜）。
 | **WorkBuddy 审 mimo** | M1–M4 | ① M2 版本数字是否实测（`git remote -v`、`version.txt`、GitHub API）② M1 脚本能否真跑出数字 ③ M3 lane 是否会误伤现有流水线 ④ M4 是否引入 home channel 新口径（与 A1/A2 共享解析器冲突） |
 
 **审计纪律**：审计"已完成"声称时，① commit 用 `git cat-file` 验真 ② 文件用 `find` + `git diff` 验落地 ③ 测试实跑 ④ 专门找"新引入了什么"。
