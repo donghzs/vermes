@@ -1,6 +1,6 @@
 # 发行版边界闸门（2026-09-21）
 
-> 区间 `888bf8a344..main`（Vermes 侧 25 commits）。
+> 区间 `888bf8a344..main`（Vermes 侧 27 commits）。
 > 冻结锚 `888bf8a344`（非发版 tag）。
 > 判据：改动落在**上游跟随区**（`plugins/ tools/ harness/ cron/ .github/ docs/ scripts/`）
 > 且 **两账都未登记** = 契约税。已登记（DIVERSION_LEDGER）= 有意偏离，单列不税。
@@ -9,9 +9,9 @@
 
 | 分区 | 文件改动数 | 判定 |
 |---|---|---|
-| `own` | 87 | ✅ 发行版自有，正常 |
-| `other` | 29 | — |
-| `follow` | 16 | ⚠️ 契约税（未登记） |
+| `own` | 88 | ✅ 发行版自有，正常 |
+| `other` | 36 | — |
+| `follow` | 19 | ⚠️ 契约税（未登记） |
 | `core` | 1 | 🔍 核心 diverge，个案评估 |
 
 ## 2. 未登记契约税明细（follow 区改动 && 两账未登记）
@@ -22,6 +22,9 @@ _无。当前 Vermes 在跟随区零未登记改动 —— 边界干净。_
 
 | hash | 主题 | 路径 |
 |---|---|---|
+| `8a979249b437` | fix(security): honor permanent allowlist + never-interactive | `docs/DISTRIBUTION_MANIFEST.md` |
+| `8a979249b437` | fix(security): honor permanent allowlist + never-interactive | `tools/approval.py` |
+| `b71abb211c9b` | chore(distribution): 工作区收口 + approval 形状对比 + MiMo 残留入账 | `docs/DISTRIBUTION_MANIFEST.md` |
 | `f9d6a8e56127` | fix(security): strip profile authorization gates from cross- | `docs/DISTRIBUTION_MANIFEST.md` |
 | `f9d6a8e56127` | fix(security): strip profile authorization gates from cross- | `tools/env_passthrough.py` |
 | `9eaf328a3ddf` | fix(distribution): MiMo 三点残留注意项收口 | `docs/DISTRIBUTION_MANIFEST.md` |
