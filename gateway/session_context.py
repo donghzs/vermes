@@ -212,7 +212,7 @@ def leave_cron_session(token: "object") -> None:
 def set_current_session_id(session_id: str) -> "object":
     """Set the task-local ``VERMES_SESSION_ID``; return a reset token.
 
-    Pair with ``_reset_current_session_id(token)`` in a ``finally`` block
+    Pair with ``reset_current_session_id(token)`` in a ``finally`` block
     (same style as :func:`enter_cron_session` / :func:`leave_cron_session`).
 
     Unlike ``os.environ["VERMES_SESSION_ID"] = ...`` this is task-local, so

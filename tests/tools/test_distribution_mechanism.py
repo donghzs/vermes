@@ -106,9 +106,28 @@ def test_registered_diversion_matches_t3_files():
 def test_registered_file_does_not_exempt_siblings():
     """登记单文件不豁免同目录兄弟 —— 这是防放水的核心。"""
     ledger = uw.parse_diversion_ledger()
-    # tools/env_passthrough.py 已登记，但 tools/kanban_tools.py 不得因此免税
-    assert not uw.is_registered_diversion("tools/kanban_tools.py", ledger)
+    # tools/env_passthrough.py 已登记，但同目录未登记的兄弟不得因此免税。
+    # 注：tools/kanban_tools.py 曾作探针，现因 L-010（自有 bugfix）已登记，
+    # 不再适合作「未登记」探针——改用仍未登记的兄弟文件。
     assert not uw.is_registered_diversion("tools/skills_tool.py", ledger)
+    assert not uw.is_registered_diversion("tools/terminal_tool.py", ledger)
+    assert not uw.is_registered_diversion("tools/file_tools.py", ledger)
+
+
+def test_registered_follow_file_is_exempted():
+    """已登记的 follow 区文件确实免税（正例，含自有 bugfix 落点）。
+
+    自有 bugfix（L-007/L-008/L-010）若落点在 follow 区，同样享受路径级免税——
+    这是「已登记偏离不算税」的既有语义。但账本 §7c 已注记：免税是路径级、
+    非永久授权，后续对该文件的大改需重新评估登记。
+    """
+    ledger = uw.parse_diversion_ledger()
+    # 真上游取长落点
+    assert uw.is_registered_diversion("tools/approval.py", ledger)
+    assert uw.is_registered_diversion("agent/file_safety.py", ledger)
+    # 自有 bugfix 落点（L-007 cron/scheduler.py、L-010 tools/kanban_tools.py）
+    assert uw.is_registered_diversion("tools/kanban_tools.py", ledger)
+    assert uw.is_registered_diversion("cron/scheduler.py", ledger)
 
 
 def test_registered_docs_file_does_not_exempt_other_docs():
