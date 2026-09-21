@@ -4,7 +4,16 @@ import { ref } from 'vue'
 // activeTabId: 'tasks' | 'artifacts' | 'workspace' | 'changes' | 'file:<id>'
 const open = ref(false)
 const width = ref(420)
-const autoOpen = ref(true)  // 产物交付自动弹出右栏
+// 产物交付自动弹出右栏。
+// P0-1(2026-09-22): 只在后端 onDelivery 事件到达时触发 —— 该事件的 artifacts
+// 已由后端过滤为「最终交付物」。tool_step 的过程产物（execute_code 沙箱内的
+// write_file/patch，见 tools/code_execution_tool.py:1415）永不自动弹。
+// 用户偏好持久化：置 false 则完全不自动弹，仍可用「详情面板」按钮手动打开。
+const AUTO_OPEN_KEY = 'vermes-artifact-auto-open'
+function _readAutoOpen() {
+  try { return localStorage.getItem(AUTO_OPEN_KEY) !== 'false' } catch { return true }
+}
+const autoOpen = ref(_readAutoOpen())
 const activeTabId = ref('tasks')
 const fileTabs = ref([]) // { id: 'file:<id>', kind, title, path, icon }
 
@@ -63,9 +72,15 @@ export function useArtifactPanel() {
 
   function setWidth(w) { width.value = w }
 
+  // 用户可彻底关闭「交付物自动弹出」（设置项入口）。关闭后仍可手动开面板。
+  function setAutoOpen(v) {
+    autoOpen.value = !!v
+    try { localStorage.setItem(AUTO_OPEN_KEY, autoOpen.value ? 'true' : 'false') } catch { /* 隐私模式下忽略 */ }
+  }
+
   return {
     open, width, autoOpen, activeTabId, fileTabs,
     openPanel, closePanel, togglePanel,
-    setView, setTab, openFileTab, closeFileTab, openArtifactFile, setWidth,
+    setView, setTab, openFileTab, closeFileTab, openArtifactFile, setWidth, setAutoOpen,
   }
 }

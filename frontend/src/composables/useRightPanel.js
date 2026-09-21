@@ -5,7 +5,9 @@ import { ref } from 'vue'
 const open = ref(false)
 const tab = ref('artifacts') // 'artifacts' | 'files' | 'changes' | 'preview'
 const artifactTab = ref('artifacts')
-const autoOpenOnArtifact = ref(true)
+// autoOpenOnArtifact 已移除（2026-09-22, P0-3）：它是第二套「产物到达自动开面板」
+// 开关，但全仓无任何消费方，与 useArtifactPanel.autoOpen 并存会造成双状态机漂移。
+// 自动弹出统一由 useArtifactPanel.autoOpen 负责（且只在 onDelivery 时触发）。
 const panelWidth = ref(420)
 
 export function useRightPanel() {
@@ -22,5 +24,5 @@ export function useRightPanel() {
   function setArtifactTab(t) {
     artifactTab.value = t
   }
-  return { open, tab, artifactTab, autoOpenOnArtifact, panelWidth, openPanel, closePanel, setTab, setArtifactTab }
+  return { open, tab, artifactTab, panelWidth, openPanel, closePanel, setTab, setArtifactTab }
 }
