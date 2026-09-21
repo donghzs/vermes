@@ -190,19 +190,21 @@ def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = Non
     except Exception:
         _is_passthrough = lambda _: False  # noqa: E731
 
+    from tools.env_passthrough import _is_env_blocklisted
+
     sanitized: dict[str, str] = {}
 
     for key, value in (base_env or {}).items():
         if key.startswith(_vermes_PROVIDER_ENV_FORCE_PREFIX):
             continue
-        if key not in _vermes_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
+        if not _is_env_blocklisted(key, _vermes_PROVIDER_ENV_BLOCKLIST) or _is_passthrough(key):
             sanitized[key] = value
 
     for key, value in (extra_env or {}).items():
         if key.startswith(_vermes_PROVIDER_ENV_FORCE_PREFIX):
             real_key = key[len(_vermes_PROVIDER_ENV_FORCE_PREFIX):]
             sanitized[real_key] = value
-        elif key not in _vermes_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
+        elif not _is_env_blocklisted(key, _vermes_PROVIDER_ENV_BLOCKLIST) or _is_passthrough(key):
             sanitized[key] = value
 
     _inject_context_vermes_home(sanitized)
@@ -291,8 +293,10 @@ def _make_run_env(env: dict) -> dict:
     """Build a run environment with a sane PATH and provider-var stripping."""
     try:
         from tools.env_passthrough import is_env_passthrough as _is_passthrough
+        from tools.env_passthrough import _is_env_blocklisted
     except Exception:
         _is_passthrough = lambda _: False  # noqa: E731
+        def _is_env_blocklisted(name, blocklist): return name in blocklist
 
     merged = dict(os.environ | env)
     run_env = {}
@@ -300,7 +304,7 @@ def _make_run_env(env: dict) -> dict:
         if k.startswith(_vermes_PROVIDER_ENV_FORCE_PREFIX):
             real_key = k[len(_vermes_PROVIDER_ENV_FORCE_PREFIX):]
             run_env[real_key] = v
-        elif k not in _vermes_PROVIDER_ENV_BLOCKLIST or _is_passthrough(k):
+        elif not _is_env_blocklisted(k, _vermes_PROVIDER_ENV_BLOCKLIST) or _is_passthrough(k):
             run_env[k] = v
     existing_path = run_env.get("PATH", "")
     # The "/usr/bin not already present → inject sane POSIX path" heuristic

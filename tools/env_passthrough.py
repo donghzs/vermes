@@ -67,7 +67,22 @@ def _is_vermes_provider_credential(name: str) -> bool:
         from tools.environments.local import _vermes_PROVIDER_ENV_BLOCKLIST
     except Exception:
         return False
-    return name in _vermes_PROVIDER_ENV_BLOCKLIST
+    return _is_env_blocklisted(name, _vermes_PROVIDER_ENV_BLOCKLIST)
+
+
+def _is_env_blocklisted(name: str, blocklist: frozenset[str]) -> bool:
+    """Case-insensitive blocklist membership check.
+
+    Windows environment blocks resolve names case-insensitively, so a
+    case-variant registration (e.g. ``openai_api_key``) would be accepted
+    by a case-sensitive ``in`` check but resolve to the real
+    ``OPENAI_API_KEY`` via ``os.getenv()``, tunnelling the credential
+    into SSH/Docker children (GHSA-rhgp-j443-p4rf primitive, upstream
+    fix b534f4b8c8)."""
+    if name in blocklist:
+        return True
+    folded = name.casefold()
+    return any(folded == n.casefold() for n in blocklist)
 
 
 def register_env_passthrough(var_names: Iterable[str]) -> None:

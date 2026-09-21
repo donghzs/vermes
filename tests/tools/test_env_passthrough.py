@@ -229,3 +229,23 @@ class TestTerminalIntegration:
         # Arbitrary skill-specific var
         register_env_passthrough(["MY_SKILL_CUSTOM_CONFIG"])
         assert is_env_passthrough("MY_SKILL_CUSTOM_CONFIG")
+
+    def test_case_variant_of_blocklist_rejected(self):
+        """A case-variant registration (openai_api_key) must be refused just
+        like the canonical name: Windows os.getenv() is case-insensitive,
+        so a variant would tunnel the real OPENAI_API_KEY into children.
+        Upstream fix b534f4b8c8 (GHSA-rhgp-j443-p4rf)."""
+        from tools.env_passthrough import _is_vermes_provider_credential
+        for var in ("openai_api_key", "OpenAi_Api_Key", "anthropic_api_key",
+                    "deepseek_api_key"):
+            assert _is_vermes_provider_credential(var), f"{var} should be blocked"
+            register_env_passthrough([var])
+            assert not is_env_passthrough(var), f"{var} must not be allowed through"
+
+    def test_sanitize_strips_case_variant(self):
+        """_sanitize_subprocess_env must strip case-variant blocklist entries."""
+        from tools.environments.local import _sanitize_subprocess_env
+        env = {"openai_api_key": "secret", "PATH": "/usr/bin"}
+        result = _sanitize_subprocess_env(env)
+        assert "openai_api_key" not in result
+        assert "PATH" in result

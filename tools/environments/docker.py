@@ -549,7 +549,9 @@ class DockerEnvironment(BaseEnvironment):
         # Explicit docker_forward_env entries are an intentional opt-in and must
         # win over the generic Vermes secret blocklist. Only implicit passthrough
         # keys are filtered.
-        forward_keys = explicit_forward_keys | (passthrough_keys - _vermes_PROVIDER_ENV_BLOCKLIST)
+        from tools.env_passthrough import _is_env_blocklisted
+        blocked_passthrough = {k for k in passthrough_keys if not _is_env_blocklisted(k, _vermes_PROVIDER_ENV_BLOCKLIST)}
+        forward_keys = explicit_forward_keys | blocked_passthrough
         VERMES_env = _load_vermes_env_vars() if forward_keys else {}
         for key in sorted(forward_keys):
             value = os.getenv(key)
