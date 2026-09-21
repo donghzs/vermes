@@ -68,7 +68,7 @@
 |---|---|---|---|
 | G1 | **跟随区契约税** | `.venv/bin/python scripts/upstream_watch.py boundary --since <tag>` | 0 处=PASS；≤10 处=WARN（逐条登记）；>10 处=FAIL（先外置） |
 | G2 | 上游红线扫描 | `.venv/bin/python scripts/upstream_watch.py watch` | 红线命中项逐条人工判定，不得直接搬运 |
-| G3 | 并存不变量 | `python3 scripts/check_coexistence.py --deep` | FAIL 0 |
+| G3 | 并存不变量 | `python3 scripts/vermes/check_coexistence.py --deep` | FAIL 0 |
 | G4 | 目标测试 | `pytest <相关文件>` | 0 failed |
 | G5 | 版本号一致 | `cat version.txt` + 四处 package.json/pyproject | 全部等于 `vermes_cli/__init__.py:__version__` |
 
@@ -103,7 +103,7 @@
 | `scripts/upstream_watch.py watch` | 上游雷达：基线以来上游改动 → 分区分类 → 取长候选 + 红线告警；报告 `reports/upstream-watch-<date>.md` |
 | `scripts/upstream_watch.py boundary` | 边界闸门：Vermes 跟随区契约税；报告 `reports/dist-boundary-<date>.md` |
 | `scripts/diverge_metrics.py` | 同源相似度度量（Jaccard），判断某个 core 文件还能不能搬 |
-| `scripts/check_coexistence.py --deep` | 5 个安装并存不变量（12 项） |
+| `scripts/vermes/check_coexistence.py --deep` | 5 个安装并存不变量（12 项） |
 | `reports/.upstream-baseline.json` | 雷达基线，下次只看增量 |
 
 ---
@@ -170,6 +170,7 @@ S5 的前置核实项已登记为待办（§8）。
 |---|---|---|---|---|---|---|
 | L-001 | `b534f4b8c8cd` | `tools/env_passthrough.py` 等 3 文件 | 重写（Vermes 无 `_build_provider_env_blocklist`，用 `_is_env_blocklisted` casefold 等价实现） | `tests/tools/test_env_passthrough.py` 19 passed | ~0.5h | ✅ 已合入 `a48811769d` |
 | L-002 | `1c0d95badbac` | `agent/file_safety.py` | 重写（Vermes `is_write_denied`/`get_read_block_error` 各自内联目录判定，无上游 `_WRITE_DENIED_SECRET_DIRS`/`_READ_DENIED_DIRS` 元组，新增 `_WRITE_DENIED_SECRET_DIRS` 常量 + 两处目录级 deny） | `tests/agent/test_file_safety_secret_stores.py` 3 passed | ~0.5h | ✅ 已合入 |
+| L-003 | `1c0d95badbac` 部分 | `agent/file_safety.py` | **拒绝/暂缓**（有意分叉，非遗漏）：上游同 commit 把 `auth/google_oauth.json`、`cache/bws_cache.json` 也纳入 write-deny，且早前 #45947 已放松 control files（`auth.json`/`config.yaml`/`webhook_subscriptions.json` stay writable）。Vermes 未跟进这两层——control-file 语义是否放松是产品决策，google_oauth/bws_cache 是 read-denied 但未 write-denied，单独立项（见 T9） | —（无契约测试，未采纳） | — | ⏸ 暂缓 |
 
 ---
 
@@ -179,11 +180,13 @@ S5 的前置核实项已登记为待办（§8）。
 |---|---|---|
 | T1 | G1 契约税 48 处逐条判定（登记 vs 外置） | 待做（S1） |
 | T2 | 上游 canary CI lane（周跑：fetch → 雷达 → 契约测试） | 待做（S1） |
-| T6 | 上游意图级巡检脚本（月度：安全修复 → Vermes 对应物清单） | ✅ **已落地** `b25021d044`，映射收紧 `78664dc3f2`（首跑口径：`intake --max 8000` → 3154 commits / 220 候选 / GHSA 1 / fixsec 6 / 有对应物 21；报告名含 `--since`/`--max` 防覆盖，命令行写进报告头） |
+| T6 | 上游意图级巡检脚本（月度：安全修复 → Vermes 对应物清单） | ✅ **已落地** `b25021d044`，口径拧紧 `c1e2d3248c`，红线精确覆盖修正 `（本 commit）`（首跑口径：`intake --max 8000` → 3154 commits / 220 候选 / GHSA 1 / fixsec 6 / 有对应物 21；报告名含 `--since`/`--max` 防覆盖，命令行写进报告头；own 区路径永判红线，不被精确映射放行） |
 | T7 | walking skeleton 插件化评审（ContextEngine 试点） | ✅ **评审文档已出** `reports/vermes-plugin-walking-skeleton-review_20260921.md`（纸面，未写迁移代码） |
 | T3 | 核实 Vermes 的凭据 env 屏蔽名单（`tools/env_passthrough.py` / `tools/environments/docker.py`）是否大小写敏感 —— 若是即与上游 `b534f4b8c8cd` 同类漏洞 | ✅ **已完成** `a48811769d`（`_is_env_blocklisted` casefold，已登记 DIVERSION_LEDGER D-001 + TAKEALONG_LEDGER L-001） |
 | T4 | 形态 B（引擎作依赖）前置核实 | **已核实 2026-09-21**：`hermes-agent` **确实在 PyPI**（`https://pypi.org/pypi/hermes-agent`，作者 Nous Research，MIT，requires Python ≥3.11 <3.14，extras 覆盖 wecom/feishu/dingtalk/acp/mcp 等 40 项）。**但 PyPI 最新版 0.19.0 落后于 GitHub v0.21.3**（tag `v2026.9.14`）→ 形态 B 有路径，代价是**跟随版本落后上游 2 个小版本**，且需重做打包链 |
 | T5 | `scripts/sync-version.sh` 在本机 shell shim 下静默失败（EXIT=1 无输出），v2.5.1 改用 jq/sed 同步 | 待修 |
+| T8 | `agent/file_safety.py` 后续取长需对上游 HEAD 新表结构（`1c0d95badbac` 之后又改 3 次：`b98ff81978`/`df72fdaa2b` 把 vault/browser-profile 折叠进 protected-subpath 表、`c9956192a3` 抽坐标 helper、`e342248e1a` 去 no-op suppress）——已取长文件设「复查点」 | 待做（下次取长 file_safety 前） |
+| T9 | #45947 control-file 语义分叉（Vermes 未放松 control files stay writable）+ `auth/google_oauth.json`/`cache/bws_cache.json` 读拒写未拒 → 是否跟进？ | 待拍板（产品决策，见 L-003） |
 
 ---
 

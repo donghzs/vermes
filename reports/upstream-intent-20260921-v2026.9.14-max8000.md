@@ -18,7 +18,7 @@
 
 | 信号 | hash | 日期 | 主题 | Vermes 对应物 | 建议 |
 |---|---|---|---|---|---|
-| GHSA | `9345c67854f6` | 2026-09-18 | fix(webhook): per-route toolsets bind to the authenticated route, not  | gateway/platforms/webhook.py | 移植/评估 |
+| GHSA | `9345c67854f6` | 2026-09-18 | fix(webhook): per-route toolsets bind to the authenticated route, not  | 红线区 | 红线只读 |
 | fix(security) | `d966b34cc36f` | 2026-08-24 | fix(security): gateway lifecycle guard recognises Windows command spel | — | 人工判 |
 | fix(security) | `1c0d95badbac` | 2026-09-14 | fix(security): write-deny HERMES_HOME secret stores, keep control file | agent/file_safety.py | 移植/评估 |
 | fix(security) | `e7cd1848c9bb` | 2026-09-14 | fix(security): deny writes to read-blocked Hermes credential stores | agent/file_safety.py | 移植/评估 |
@@ -38,7 +38,7 @@
 | 安全语义 | `46503f16727d` | 2026-09-04 | fix(auth): isolate Codex singleton sync by principal | — | 人工判 |
 | 安全语义 | `23afade67bf9` | 2026-09-04 | fix(credential-pool): seed env-source entries not in registry tuple | — | 人工判 |
 | 安全语义 | `d968db3c4b9f` | 2026-09-05 | fix(mcp): propagate an extended connect_timeout into config for OAuth  | — | 人工判 |
-| 安全语义 | `c0362da9a6e9` | 2026-09-06 | fix(cron): redact secrets from delivery content before sending | — | 人工判 |
+| 安全语义 | `c0362da9a6e9` | 2026-09-06 | fix(cron): redact secrets from delivery content before sending | cron/scheduler.py | 移植/评估 |
 | 安全语义 | `ea870b4d3eac` | 2026-09-07 | fix(approval): anchor launchctl lookaheads to prevent GIL starvation | — | 人工判 |
 | 安全语义 | `1a6503a5203c` | 2026-09-08 | fix(mcp): thread RFC 9207 iss through every OAuth callback relay | — | 人工判 |
 | 安全语义 | `56ea9bab92cc` | 2026-09-09 | feat(desktop): stack approvals and advance exact requests with Enter | — | 人工判 |

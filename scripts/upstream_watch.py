@@ -146,9 +146,12 @@ UPSTREAM_VERMES_MAP: dict[str, str | None] = {
     "tools/approval.py": "tools/approval.py",
     "tools/skills_hub.py": "tools/skills_hub.py",
     "cron/scheduler.py": "cron/scheduler.py",
+    # cron delivery/secret 类别名表：上游拆分文件 → Vermes 语义等价点
+    "cron/scheduler_delivery.py": "cron/scheduler.py",
+    "cron/delivery_queue.py": "cron/scheduler.py",
+    "cron/bot_chat_delivery.py": "cron/scheduler.py",
+    "cron/scheduler_worker_env.py": "cron/scheduler.py",
     "cron/": "cron/",
-    "gateway/platforms/webhook.py": "gateway/platforms/webhook.py",
-    "gateway/webhook.py": "gateway/webhook.py",
     "plugins/memory/": "plugins/memory/",
     "agent/file_safety.py": "agent/file_safety.py",
 }
@@ -169,10 +172,22 @@ INTENT_SKIP_RE = re.compile(
 def _vermes_counterpart(upstream_path: str) -> tuple[str, str]:
     """返回 (vermes_path, 判定)。判定 ∈ {"有对应物", "无", "红线"}。
 
-    查找优先级：先精确文件匹配（具体文件可覆盖目录红线，如
-    gateway/platforms/webhook.py 覆盖 gateway/platforms/ 红线），再目录前缀。
+    规则（红线优先，不可被精确映射放行）：
+    1. 若路径落在 ZONES.own（发行版自有资产），一律「红线」——即使映射表里有
+       精确同名条目也不行。own 区是 Vermes 自有资产，上游同名改动只可"参考思路"，
+       不鼓励 cherry-pick 进中文平台/自有资产。
+    2. 否则查映射表：精确文件匹配优先于目录前缀；目录前缀映射拼上游文件名判存在。
+    3. 未命中 → 「无」。
+
+    为什么红线不能用精确映射覆盖：`gateway/platforms/webhook.py` 虽在映射表有
+    精确条目，但 classify() 是 own（中文平台资产），上游 GHSA fix 的正确姿态是
+    「红线只读 → 人工读 diff → 判 Vermes 是否有等价面 → 有则在意图层重写」，
+    而不是脚本直接标「移植/评估」鼓励 cherry-pick。
     """
-    # 先精确文件匹配（非斜杠结尾的键）
+    # 1. own 区（发行版自有）永远红线，无论映射表怎么写
+    if classify(upstream_path) == "own":
+        return upstream_path, "红线"
+    # 2. 精确文件匹配（非斜杠结尾的键）
     for up_prefix, vm in UPSTREAM_VERMES_MAP.items():
         if up_prefix.endswith("/"):
             continue
@@ -180,7 +195,7 @@ def _vermes_counterpart(upstream_path: str) -> tuple[str, str]:
             if vm is None:
                 return upstream_path, "红线"
             return vm, ("有对应物" if os.path.exists(os.path.join(ROOT, vm)) else "无")
-    # 再目录前缀匹配（含红线目录）
+    # 3. 目录前缀匹配（含红线目录）
     for up_prefix, vm in UPSTREAM_VERMES_MAP.items():
         if not upstream_path.startswith(up_prefix):
             continue

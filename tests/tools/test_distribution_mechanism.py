@@ -183,11 +183,23 @@ def test_vermes_counterpart_redline():
     assert verdict3 == "有对应物"
 
 
-def test_vermes_counterpart_specific_overrides_dir_redline():
-    """精确文件匹配覆盖目录红线：gateway/platforms/webhook.py 有映射，非红线。"""
+def test_own_zone_never_bypassed_by_specific_map():
+    """own 区路径即使命中精确映射也输出「红线只读」（防 cherry-pick 进自有资产）。"""
+    # gateway/platforms/webhook.py 是 own 区（classify=own），不得标「移植/评估」
     vm, verdict = uw._vermes_counterpart("gateway/platforms/webhook.py")
-    assert vm == "gateway/platforms/webhook.py"
+    assert verdict == "红线", f"own 区不得被精确映射放行：got {verdict} ({vm})"
+    # scholarforge/ 同（own 区）
+    _, v2 = uw._vermes_counterpart("scholarforge/cnki_fetcher.py")
+    assert v2 == "红线"
+
+
+def test_cron_delivery_alias_maps_to_scheduler():
+    """cron delivery/secret 类上游文件映射到 Vermes cron/scheduler.py（语义等价点）。"""
+    vm, verdict = uw._vermes_counterpart("cron/scheduler_delivery.py")
+    assert vm == "cron/scheduler.py"
     assert verdict == "有对应物"
+    _, v2 = uw._vermes_counterpart("cron/delivery_queue.py")
+    assert v2 == "有对应物"
 
 
 def test_vermes_counterpart_missing():
