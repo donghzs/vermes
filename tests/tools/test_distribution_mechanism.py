@@ -150,3 +150,50 @@ def test_classify_docs_vermes_is_own():
     assert uw.classify("docs/OTHER.md") == "follow"
     assert uw.classify("scripts/vermes/x.py") == "own"
     assert uw.classify("scripts/other.py") == "follow"
+
+
+# ---------------------------------------------------------------------------
+# 4. 意图级巡检：上游 → Vermes 对应物映射
+# ---------------------------------------------------------------------------
+
+def test_vermes_counterpart_file_level():
+    """文件级映射：tools/approval.py 存在 → 有对应物。"""
+    vm, verdict = uw._vermes_counterpart("tools/approval.py")
+    assert vm == "tools/approval.py"
+    assert verdict == "有对应物"
+
+
+def test_vermes_counterpart_dir_prefix_resolves_file():
+    """目录前缀映射：tools/environments/local.py → 拼文件名后判定对应文件是否存在。"""
+    vm, verdict = uw._vermes_counterpart("tools/environments/local.py")
+    assert vm == "tools/environments/local.py"
+    assert verdict == "有对应物"
+
+
+def test_vermes_counterpart_redline():
+    """gateway/platforms/ 与 agent/ 是红线，返回红线只读。"""
+    _, verdict = uw._vermes_counterpart("gateway/platforms/webhook.py")
+    assert verdict == "红线"
+    _, verdict2 = uw._vermes_counterpart("agent/memory_fabric.py")
+    assert verdict2 == "红线"
+
+
+def test_vermes_counterpart_missing():
+    """未映射的路径 → 无。"""
+    _, verdict = uw._vermes_counterpart("some/unknown/path.py")
+    assert verdict == "无"
+
+
+def test_intent_skip_re_matches_docs():
+    """纯文档/chore/test 提交被巡检排除。"""
+    assert uw.INTENT_SKIP_RE.search("docs(website): tell readers")
+    assert uw.INTENT_SKIP_RE.search("chore(deps): bump")
+    assert uw.INTENT_SKIP_RE.search("test(agent): fixture")
+    assert not uw.INTENT_SKIP_RE.search("fix(security): leak")
+
+
+def test_intent_security_re_matches_ghsa():
+    """安全信号匹配 GHSA/CVE/fix(security)。"""
+    assert uw.INTENT_SECURITY_RE.search("fix(security): ... GHSA-2fmg-cjqm-hhrj")
+    assert uw.INTENT_SECURITY_RE.search("fix: CVE-2026-xxxx")
+    assert uw.INTENT_SECURITY_RE.search("fix(approval): honor allowlists")

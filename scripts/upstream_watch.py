@@ -23,6 +23,8 @@ Vermes 与上游 `upstream = NousResearch/hermes-agent` 的 **git 历史完全�
               输出「取长候选 + 红线告警」
     boundary  边界闸门：Vermes 自身改动是否落在「上游跟随区」
               （落在跟随区 = 契约税，需登记或外置为插件）
+    intake    意图级巡检：上游安全/正确性修复 → Vermes 对应物清单
+              （只出清单，不自动改代码）
 
 ## 用法
 
@@ -31,6 +33,7 @@ Vermes 与上游 `upstream = NousResearch/hermes-agent` 的 **git 历史完全�
     python3 scripts/upstream_watch.py watch --fetch      # 先 git fetch upstream
     python3 scripts/upstream_watch.py boundary              # 默认读冻结锚 FREEZE_REF
     python3 scripts/upstream_watch.py boundary --since 888bf8a344
+    python3 scripts/upstream_watch.py intake               # 默认上游最新 tag → HEAD
 
 分区定义见 docs/DISTRIBUTION_MANIFEST.md（本文件内置同一份默认值，二者需同步）。
 """
@@ -110,12 +113,168 @@ VALUE_PATTERNS = [
     (re.compile(r"^test(\(|:)|^chore\(deps\)", re.I), "chore", 0),
 ]
 
+# ---------------------------------------------------------------------------
+# 意图级巡检：上游安全/正确性修复 → Vermes 对应物映射
+# ---------------------------------------------------------------------------
+
+# 上游路径 → Vermes 对应物。值 None = 红线（只参考思路，默认不建议直接搬）。
+# 值 str = Vermes 侧存在的对应路径（有则输出"有对应物"，无则输出"无"）。
+UPSTREAM_VERMES_MAP: dict[str, str | None] = {
+    "gateway/platforms/": None,            # 红线：gateway 平台层
+    "agent/": None,                        # 红线：agent 核心
+    "tools/env_passthrough.py": "tools/env_passthrough.py",
+    "tools/environments/": "tools/environments/",
+    "tools/approval.py": "tools/approval.py",
+    "tools/skills_hub.py": "tools/skills_hub.py",
+    "cron/scheduler.py": "cron/scheduler.py",
+    "cron/lifecycle_guard.py": "cron/lifecycle_guard.py",
+    "plugins/memory/": "plugins/memory/",
+}
+
+# 安全信号：主题/正文命中这些词 = 意图级候选（并集，不只看 fix(security)）
+INTENT_SECURITY_RE = re.compile(
+    r"GHSA-|CVE-|security|credential|secret|auth|approval|sandbox|injection|token|key leak|bypass",
+    re.I,
+)
+
+# 纯文档/噪声，巡检直接排除
+INTENT_SKIP_RE = re.compile(
+    r"^(docs?|catalog|chore\(deps\)|test)[(:]|website|readme|typo|re-pin",
+    re.I,
+)
+
+
+def _vermes_counterpart(upstream_path: str) -> tuple[str, str]:
+    """返回 (vermes_path, 判定)。判定 ∈ {"有对应物", "无", "红线"}。
+
+    目录前缀映射（如 tools/environments/）判定：把上游相对路径拼到 Vermes 根，
+    检查对应文件是否存在（而非只判目录存在）。
+    """
+    for up_prefix, vm in UPSTREAM_VERMES_MAP.items():
+        if not upstream_path.startswith(up_prefix):
+            continue
+        if vm is None:
+            return upstream_path, "红线"
+        if vm.endswith("/"):
+            # 目录前缀映射：拼上游文件名
+            rel = upstream_path[len(up_prefix):]
+            vm_full = vm + rel
+            return vm_full, ("有对应物" if os.path.exists(os.path.join(ROOT, vm_full)) else "无")
+        # 文件级映射
+        return vm, ("有对应物" if os.path.exists(os.path.join(ROOT, vm)) else "无")
+    return upstream_path, "无"
+
+
+def cmd_intake(args: argparse.Namespace) -> int:
+    """意图级巡检：上游安全/正确性修复 → Vermes 有对应物/红线/无 清单。
+
+    只出清单，不自动改代码。人月更：跑脚本 → 读清单 → 采纳则改代码+契约测试
+    + TAKEALONG §7c → 拒绝也记一行。
+    """
+    up_repo = os.path.expanduser(args.upstream_repo)
+    if not os.path.isdir(os.path.join(up_repo, ".git")):
+        print(f"[error] 上游仓库不存在: {up_repo}", file=sys.stderr)
+        return 2
+
+    head = git_at(up_repo, "rev-parse", "--short", "HEAD").strip()
+    since = args.since or git_at(up_repo, "describe", "--tags", "--abbrev=0", "HEAD").strip()
+    if not since:
+        print("[error] 无法确定上游基线，请用 --since 指定", file=sys.stderr)
+        return 2
+
+    print(f"[intake] 上游 {since} → {head}，上限 {args.max} commits")
+    commits = collect_commits_from(up_repo, f"{since}..HEAD", args.max)
+    if not commits:
+        print("[intake] 无提交")
+        return 0
+
+    # 逐条判定
+    rows: list[dict] = []
+    n_ghsa = n_fixsec = n_security_semantic = n_counterpart = 0
+    for c in commits:
+        subject = c["subject"]
+        if INTENT_SKIP_RE.search(subject):
+            continue
+        # 信号分类
+        is_ghsa = bool(re.search(r"GHSA-", subject, re.I))
+        is_fixsec = bool(re.search(r"^fix\(?security", subject, re.I))
+        is_security_semantic = bool(INTENT_SECURITY_RE.search(subject))
+        if not (is_ghsa or is_fixsec or is_security_semantic):
+            continue
+        n_ghsa += is_ghsa
+        n_fixsec += is_fixsec
+        if is_security_semantic:
+            n_security_semantic += 1
+        # 对应物判定（取该 commit 首个有映射的路径）
+        vm_path, verdict = "", "无"
+        for p in c["paths"]:
+            vm_path, verdict = _vermes_counterpart(p)
+            if verdict != "无":
+                break
+        if verdict == "有对应物":
+            n_counterpart += 1
+        rows.append({
+            "hash": c["hash"],
+            "date": c["date"],
+            "subject": subject,
+            "signal": ("GHSA" if is_ghsa else ("fix(security)" if is_fixsec else "安全语义")),
+            "paths": c["paths"],
+            "vermes": vm_path,
+            "verdict": verdict,
+        })
+
+    # 排序：GHSA > fix(security) > 安全语义；同档按日期倒序
+    rank = {"GHSA": 0, "fix(security)": 1, "安全语义": 2}
+    rows.sort(key=lambda r: (rank[r["signal"]], r["date"]), reverse=False)
+
+    date_tag = datetime.now().strftime("%Y%m%d")
+    out_path = os.path.join(REPORTS_DIR, f"upstream-intent-{date_tag}.md")
+    lines: list[str] = [
+        f"# 上游意图级巡检 · 安全/正确性修复候选（{datetime.now():%Y-%m-%d}）\n",
+        f"> 上游 `{since}` → `{head}`，扫描 {len(commits)} commits，命中候选 {len(rows)} 条。",
+        "> 只出清单不自动改代码；人月更，采纳→改代码+契约测试+TAKEALONG §7c，拒绝也记一行。\n",
+        "## 0. 校准摘要\n",
+        "| 口径 | 数量 |",
+        "|---|---|",
+        f"| 显式 GHSA | {n_ghsa} |",
+        f"| fix(security) 标签 | {n_fixsec} |",
+        f"| 安全语义候选 | {n_security_semantic} |",
+        f"| 有 Vermes 对应物 | {n_counterpart} |",
+        "",
+        "## 1. 候选清单\n",
+        "| 信号 | hash | 日期 | 主题 | Vermes 对应物 | 建议 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        sug = {"有对应物": "移植/评估", "红线": "红线只读", "无": "拒绝/无需"}[r["verdict"]]
+        lines.append(
+            f"| {r['signal']} | `{r['hash']}` | {r['date']} | {r['subject'][:70]} | "
+            f"{r['vermes'] or '—'} | {sug} |"
+        )
+    lines.append("")
+    lines.append("## 2. 处置纪律\n")
+    lines.append("1. 采纳：改代码 + 契约测试 + TAKEALONG_LEDGER §7c 登记（含来源 commit/落点/验收/人时）。")
+    lines.append("2. 拒绝：也在 §7c 记一行（防重复考古）。")
+    lines.append("3. 红线：只输出思路参考，默认不直接搬。")
+
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    print(f"[intake] 候选 {len(rows)} 条（GHSA {n_ghsa} / fixsec {n_fixsec} / 安全语义 {n_security_semantic} / 有对应物 {n_counterpart}）")
+    print(f"[intake] 报告 → {out_path}")
+    return 0
+
 
 def git(*args: str) -> str:
     """跑 git 命令；失败返回空串（本脚本是只读雷达，不因单点失败中断）。"""
+    return git_at(ROOT, *args)
+
+
+def git_at(repo: str, *args: str) -> str:
+    """在指定仓库跑 git 命令；失败返回空串。"""
     try:
         out = subprocess.run(
-            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True
+            ["git", *args], cwd=repo, capture_output=True, text=True, check=True
         )
         return out.stdout
     except subprocess.CalledProcessError as exc:
@@ -224,9 +383,15 @@ def save_baseline(head: str, since: str, n_commits: int) -> None:
 
 def collect_commits(ref_range: str, max_commits: int) -> list[dict]:
     """解析 `git log --name-only`，返回 commit 列表（含改动路径）。"""
+    return collect_commits_from(ROOT, ref_range, max_commits)
+
+
+def collect_commits_from(repo: str, ref_range: str, max_commits: int) -> list[dict]:
+    """同上，但可在指定仓库（如上游 ~/.hermes/hermes-agent）跑。"""
     sep = "\x1f"
     fmt = f"%H{sep}%ad{sep}%s"
-    raw = git(
+    raw = git_at(
+        repo,
         "log", ref_range, "--name-only", f"--pretty=format:{fmt}",
         "--date=short", f"--max-count={max_commits}",
     )
@@ -473,6 +638,12 @@ def main() -> int:
     b.add_argument("--since", default=None, help=f"基线 ref（默认冻结锚 {FREEZE_REF}，不跟发版 tag）")
     b.add_argument("--max", type=int, default=2000)
     b.set_defaults(func=cmd_boundary)
+
+    i = sub.add_parser("intake", help="意图级巡检：上游安全/正确性修复 → Vermes 对应物清单")
+    i.add_argument("--since", default=None, help="上游基线 ref（默认上游最新 tag）")
+    i.add_argument("--max", type=int, default=2000)
+    i.add_argument("--upstream-repo", default="~/.hermes/hermes-agent", help="上游仓库路径（默认 ~/.hermes/hermes-agent）")
+    i.set_defaults(func=cmd_intake)
 
     args = ap.parse_args()
     return args.func(args)
