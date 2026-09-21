@@ -3682,6 +3682,28 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
     logger.info("Cron ticker stopped")
 
 
+def sanitize_gateway_process_env() -> None:
+    """Purge process-global cron markers at gateway startup.
+
+    The gateway runs the cron ticker in-process (``_start_cron_ticker``), and
+    cron-session detection is task-local (``gateway.session_context._CRON_SESSION``
+    contextvar) since the P0 fix — a cron job inside the gateway must NOT leak
+    its marker into later real user messages.
+
+    ``VERMES_CRON_SESSION`` survives in the environment only as a fallback for
+    the standalone ``vermes cron`` daemon and legacy test/CLI processes. A
+    desktop launch (``electron/main.js``) or any parent that has ``export``ed
+    ``VERMES_CRON_SESSION=1`` would otherwise inject that stale value into the
+    gateway process via ``env={...process.env}``, and ``is_cron_session()``'s
+    env fallback would misclassify every real user message as cron.
+
+    Pop it once at startup (single-threaded, before adapters/cron) so the
+    gateway's own process is clean; the env fallback then only ever fires in
+    processes that legitimately mark themselves cron via the env var.
+    """
+    os.environ.pop("VERMES_CRON_SESSION", None)
+
+
 async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = False, verbosity: Optional[int] = 0) -> bool:
     """
     Start the gateway and run until interrupted.
@@ -3696,6 +3718,13 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
                  Useful for systemd services to avoid restart-loop deadlocks
                  when the previous process hasn't fully exited yet.
     """
+    # ── Process-env hygiene ────────────────────────────────────────────
+    # Must run before the duplicate-instance guard / adapters / cron. See
+    # sanitize_gateway_process_env() for the full rationale (P0 follow-up:
+    # stale VERMES_CRON_SESSION leaking in from a desktop launch would
+    # misclassify real user messages as cron via the env fallback).
+    sanitize_gateway_process_env()
+
     # ── Duplicate-instance guard ──────────────────────────────────────
     # Prevent two gateways from running under the same VERMES_HOME.
     # The PID file is scoped to VERMES_HOME, so future multi-profile

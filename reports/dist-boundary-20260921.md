@@ -1,6 +1,6 @@
 # 发行版边界闸门（2026-09-21）
 
-> 区间 `888bf8a344..main`（Vermes 侧 28 commits）。
+> 区间 `888bf8a344..main`（Vermes 侧 30 commits）。
 > 冻结锚 `888bf8a344`（非发版 tag）。
 > 判据：改动落在**上游跟随区**（`plugins/ tools/ harness/ cron/ .github/ docs/ scripts/`）
 > 且 **两账都未登记** = 契约税。已登记（DIVERSION_LEDGER）= 有意偏离，单列不税。
@@ -10,9 +10,9 @@
 | 分区 | 文件改动数 | 判定 |
 |---|---|---|
 | `own` | 88 | ✅ 发行版自有，正常 |
-| `other` | 37 | — |
-| `follow` | 19 | ⚠️ 契约税（未登记） |
-| `core` | 1 | 🔍 核心 diverge，个案评估 |
+| `other` | 39 | — |
+| `follow` | 23 | ⚠️ 契约税（未登记） |
+| `core` | 2 | 🔍 核心 diverge，个案评估 |
 
 ## 2. 未登记契约税明细（follow 区改动 && 两账未登记）
 
@@ -22,6 +22,10 @@ _无。当前 Vermes 在跟随区零未登记改动 —— 边界干净。_
 
 | hash | 主题 | 路径 |
 |---|---|---|
+| `ccd0dd209469` | docs(distribution): 登记 T12（进程级会话状态残留纵深项，落 L-008） | `docs/DISTRIBUTION_MANIFEST.md` |
+| `92c6c4792a28` | fix(security): VERMES_CRON_SESSION 改 contextvar，修 gateway 内嵌 | `cron/scheduler.py` |
+| `92c6c4792a28` | fix(security): VERMES_CRON_SESSION 改 contextvar，修 gateway 内嵌 | `docs/DISTRIBUTION_MANIFEST.md` |
+| `92c6c4792a28` | fix(security): VERMES_CRON_SESSION 改 contextvar，修 gateway 内嵌 | `tools/approval.py` |
 | `8a979249b437` | fix(security): honor permanent allowlist + never-interactive | `docs/DISTRIBUTION_MANIFEST.md` |
 | `8a979249b437` | fix(security): honor permanent allowlist + never-interactive | `tools/approval.py` |
 | `b71abb211c9b` | chore(distribution): 工作区收口 + approval 形状对比 + MiMo 残留入账 | `docs/DISTRIBUTION_MANIFEST.md` |
