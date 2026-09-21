@@ -366,13 +366,62 @@ _ENV_WRITE_ALLOWED_KEYS: frozenset = frozenset({
 def _allowed_env_keys():
     """Allowlist for PUT /api/env.
 
-    Starts from the hardcoded provider/LLM keys and is unioned with every
-    dynamically registered business-service env var, so the unified "services"
-    API form (driven by the same ``register_service`` registry the schema
-    endpoint uses) can persist credentials. Single source of truth = the
-    registry, so the two can never drift.
+    Unions multiple authoritative sources so a provider key the frontend can
+    render and the user can fill is never rejected on save ("can see but can't
+    store"). Sources, in order of specificity:
+
+    1. Hardcoded ``_ENV_WRITE_ALLOWED_KEYS`` (legacy provider/LLM keys).
+    2. ``chat.PROVIDERS`` — every provider's ``env_key`` (this is the single
+       source the Settings UI's ``getEnvKey`` maps provider id → env var from).
+    3. ``providers.list_providers()`` — every model-provider profile's
+       ``env_vars`` (the read-path ``_inject_profile_env_vars`` source).
+    4. ``PROVIDER_TEMPLATES`` — every provider template's ``api_key_env``
+       (covers providers that exist in the add-provider form but have no
+       model-provider profile, e.g. scnet).
+    5. Dynamically registered business-service env vars from
+       ``get_registered_services`` (the unified services form).
+
+    Each source is wrapped in try/except and added lazily so a missing or
+    partially-initialized module can never break env writes.
     """
     keys = set(_ENV_WRITE_ALLOWED_KEYS)
+
+    # 2. chat.PROVIDERS env_key
+    try:
+        from vermes_cli.blueprints.chat import PROVIDERS
+
+        for _pdef in PROVIDERS.values():
+            if isinstance(_pdef, dict):
+                _k = _pdef.get("env_key")
+                if _k:
+                    keys.add(_k)
+    except Exception:
+        pass
+
+    # 3. model-provider profiles env_vars
+    try:
+        from providers import list_providers
+
+        for _pp in list_providers():
+            for _var in getattr(_pp, "env_vars", ()) or ():
+                if _var:
+                    keys.add(_var)
+    except Exception:
+        pass
+
+    # 4. add-provider templates api_key_env
+    try:
+        from vermes_cli.blueprints.providers import PROVIDER_TEMPLATES
+
+        for _tpl in PROVIDER_TEMPLATES.values():
+            if isinstance(_tpl, dict):
+                _k = _tpl.get("api_key_env")
+                if _k:
+                    keys.add(_k)
+    except Exception:
+        pass
+
+    # 5. business services (register_service registry)
     try:
         from agent.service_credentials import get_registered_services
 

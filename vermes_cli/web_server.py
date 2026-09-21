@@ -43,7 +43,6 @@ from vermes_cli.config import (
     load_config,
     load_env,
     save_config,
-    save_env_value,
     remove_env_value,
     redact_key,
 )
@@ -933,15 +932,6 @@ class ConfigUpdate(BaseModel):
     config: dict
 
 
-class EnvVarUpdate(BaseModel):
-    key: str
-    value: str
-
-
-class EnvVarDelete(BaseModel):
-    key: str
-
-
 class EnvVarReveal(BaseModel):
     key: str
 
@@ -1336,47 +1326,11 @@ async def get_env_vars():
     return result
 
 
-# Allowed keys for /api/env PUT – prevent arbitrary .env writes
-_ENV_WRITE_ALLOWED_KEYS: frozenset = frozenset({
-    "DEFAULT_MODEL", "DEFAULT_PROVIDER", "THEME", "LANGUAGE",
-    # 主流 provider
-    "VBIT_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY",
-    "QWEN_API_KEY", "ZHIPU_API_KEY", "MISTRAL_API_KEY",
-    "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
-    # 国产 provider
-    "XIAOMI_API_KEY", "DOUBAO_API_KEY", "MOONSHOT_API_KEY",
-    "BAICHUAN_API_KEY", "YI_API_KEY", "SPARK_API_KEY",
-    "SILICONFLOW_API_KEY", "Baidu_API_KEY", "BAIDU_API_KEY",
-    "XINGHUO_API_KEY", "STEPFUN_API_KEY", "MINIMAX_API_KEY",
-    "ANT_LING_API_KEY",
-    # 国际 provider
-    "GEMINI_API_KEY", "GROQ_API_KEY", "TOGETHER_API_KEY",
-    "COHERE_API_KEY",
-    # 自定义
-    "CUSTOM_API_KEY",
-    # 文献源 env keys（ScholarForge literature providers）
-    "CNKI_API_KEY", "CNKI_GATEWAY_URL", "CNKI_USERNAME", "CNKI_PASSWORD",
-    "WANFANG_API_KEY", "WANFANG_USER", "WANFANG_PASSWORD",
-    "VIP_API_KEY", "VIP_GATEWAY_URL", "VIP_USERNAME", "VIP_PASSWORD",
-    "SCOPUS_API_KEY", "SCOPUS_INST_TOKEN",
-    "IEEE_API_KEY", "WOS_API_KEY", "SCIENCEDIRECT_API_KEY",
-    "SPRINGER_API_KEY", "S2_API_KEY", "CORE_API_KEY",
-    "EBSCO_USER_ID", "EBSCO_PASSWORD", "EBSCO_PROFILE",
-})
-
-async def set_env_var(body: EnvVarUpdate, request: Request):
-    # /api/env was removed from _PUBLIC_API_PATHS — now requires session token.
-    # All env endpoints (GET/PUT/DELETE/reveal) are token-gated.
-    if body.key not in _ENV_WRITE_ALLOWED_KEYS:
-        raise HTTPException(status_code=403, detail=f"Key '{body.key}' is not allowed")
-    try:
-        _log.info(f"[ENV] Updated {body.key}")
-        save_env_value(body.key, body.value)
-        return {"ok": True, "key": body.key}
-    except Exception:
-        _log.exception("PUT /api/env failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
+# NOTE: the /api/env PUT allowlist lives in vermes_cli/blueprints/config.py
+# (_allowed_env_keys) and is registered via blueprints.config.register_to(app).
+# The duplicate _ENV_WRITE_ALLOWED_KEYS + set_env_var that used to live here
+# were dead code (no route decoration, no add_api_route) and have been removed
+# to stop the two allowlists from drifting apart.
 
 async def reveal_env_var(body: EnvVarReveal, request: Request):
     """Return the real (unredacted) value of a single env var.
