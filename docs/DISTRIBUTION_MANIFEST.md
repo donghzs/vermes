@@ -178,6 +178,8 @@ S5 的前置核实项已登记为待办（§8）。
 |---|---|---|
 | T1 | G1 契约税 48 处逐条判定（登记 vs 外置） | 待做（S1） |
 | T2 | 上游 canary CI lane（周跑：fetch → 雷达 → 契约测试） | 待做（S1） |
+| T6 | 上游意图级巡检脚本（月度：安全修复 → Vermes 对应物清单） | ✅ **已落地** `b25021d044`（`upstream_watch.py intake` 子命令，首跑 224 候选 / 16 有对应物） |
+| T7 | walking skeleton 插件化评审（ContextEngine 试点） | ✅ **评审文档已出** `reports/vermes-plugin-walking-skeleton-review_20260921.md`（纸面，未写迁移代码） |
 | T3 | 核实 Vermes 的凭据 env 屏蔽名单（`tools/env_passthrough.py` / `tools/environments/docker.py`）是否大小写敏感 —— 若是即与上游 `b534f4b8c8cd` 同类漏洞 | ✅ **已完成** `a48811769d`（`_is_env_blocklisted` casefold，已登记 DIVERSION_LEDGER D-001 + TAKEALONG_LEDGER L-001） |
 | T4 | 形态 B（引擎作依赖）前置核实 | **已核实 2026-09-21**：`hermes-agent` **确实在 PyPI**（`https://pypi.org/pypi/hermes-agent`，作者 Nous Research，MIT，requires Python ≥3.11 <3.14，extras 覆盖 wecom/feishu/dingtalk/acp/mcp 等 40 项）。**但 PyPI 最新版 0.19.0 落后于 GitHub v0.21.3**（tag `v2026.9.14`）→ 形态 B 有路径，代价是**跟随版本落后上游 2 个小版本**，且需重做打包链 |
 | T5 | `scripts/sync-version.sh` 在本机 shell shim 下静默失败（EXIT=1 无输出），v2.5.1 改用 jq/sed 同步 | 待修 |
