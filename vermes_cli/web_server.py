@@ -1524,18 +1524,18 @@ def _ws_client_reason(ws: "WebSocket") -> Optional[str]:
 def _ws_client_is_allowed(ws: "WebSocket") -> bool:
     """Check if the WebSocket client IP is acceptable.
 
-    Allows loopback always; allows any IP when bound to all-interfaces
-    (--insecure mode, guarded by session token auth).
+    Delegates to :func:`_ws_client_reason`, which implements the full policy:
+
+    - auth gate active (``app.state.auth_required``) → always allow (the
+      session-token check already ran upstream).
+    - bound to a non-loopback interface (explicit ``--host 0.0.0.0``/LAN bind)
+      → allow; this is the operator's explicit opt-in, guarded by the auth gate.
+    - loopback-bound with auth disabled → fail-closed: only loopback peers
+      pass, and an empty/unidentifiable peer is rejected (not default-allowed).
+
+    Returns True exactly when ``_ws_client_reason(ws)`` is None.
     """
-    if _is_public_bind():
-        return True
-    client_host = ws.client.host if ws.client else ""
-    if not client_host:
-        # Fail-closed: see _ws_client_reason for rationale. An empty
-        # client_host on a loopback-bound dashboard with auth disabled
-        # must be rejected, not accepted as a default-allow.
-        return False
-    return client_host in _LOOPBACK_HOSTS
+    return _ws_client_reason(ws) is None
 
 # Per-channel subscriber registry used by /api/pub (PTY-side gateway → dashboard)
 # and /api/events (dashboard → browser sidebar).  Keyed by an opaque channel id
