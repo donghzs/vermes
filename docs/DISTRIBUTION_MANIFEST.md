@@ -164,13 +164,18 @@ S5 的前置核实项已登记为待办（§8）。
 
 > 语义：从上游搬进来的能力/修复，逐条登记（价值、来源、落点、验收、人时）。
 > 与 §7「已合入」表互补：§7 记“搬了什么”，本节记“搬的成本与验收”。
-> 字段：`id` / `上游 commit` / 落点 / 类型（移植|重写|拒绝） / 验收测试 / 人时 / 状态。
+> 字段：`id` / `上游 commit` / 落点 / 类型（移植|重写|拒绝） / 验收测试 / 人时 / 上游后续变更 / 状态。
+> 脚本 `upstream_watch.py` 同样解析本表（`<!--TAKEALONG_LEDGER:START-->` 至 `END` 之间），
+> 使 boundary 能识别「取长改动落在 follow 区」不算税（与 DIVERSION 等效）。
 
-| id | 上游 commit | 落点 | 类型 | 验收 | 人时 | 状态 |
-|---|---|---|---|---|---|---|
-| L-001 | `b534f4b8c8cd` | `tools/env_passthrough.py` 等 3 文件 | 重写（Vermes 无 `_build_provider_env_blocklist`，用 `_is_env_blocklisted` casefold 等价实现） | `tests/tools/test_env_passthrough.py` 19 passed | ~0.5h | ✅ 已合入 `a48811769d` |
-| L-002 | `1c0d95badbac` | `agent/file_safety.py` | 重写（Vermes `is_write_denied`/`get_read_block_error` 各自内联目录判定，无上游 `_WRITE_DENIED_SECRET_DIRS`/`_READ_DENIED_DIRS` 元组，新增 `_WRITE_DENIED_SECRET_DIRS` 常量 + 两处目录级 deny） | `tests/agent/test_file_safety_secret_stores.py` 3 passed | ~0.5h | ✅ 已合入 |
-| L-003 | `1c0d95badbac` 部分 | `agent/file_safety.py` | **拒绝/暂缓**（有意分叉，非遗漏）：上游同 commit 把 `auth/google_oauth.json`、`cache/bws_cache.json` 也纳入 write-deny，且早前 #45947 已放松 control files（`auth.json`/`config.yaml`/`webhook_subscriptions.json` stay writable）。Vermes 未跟进这两层——control-file 语义是否放松是产品决策，google_oauth/bws_cache 是 read-denied 但未 write-denied，单独立项（见 T9） | —（无契约测试，未采纳） | — | ⏸ 暂缓 |
+<!--TAKEALONG_LEDGER:START-->
+| id | 上游 commit | 落点 | 类型 | 验收 | 人时 | 上游后续变更 | 状态 |
+|---|---|---|---|---|---|---|---|
+| L-001 | `b534f4b8c8cd` | `tools/env_passthrough.py`, `tools/environments/local.py`, `tools/environments/docker.py` | 重写（Vermes 无 `_build_provider_env_blocklist`，用 `_is_env_blocklisted` casefold 等价实现） | `tests/tools/test_env_passthrough.py` 19 passed | ~0.5h | 0 | ✅ 已合入 `a48811769d` |
+| L-002 | `1c0d95badbac` | `agent/file_safety.py` | 重写（Vermes `is_write_denied`/`get_read_block_error` 各自内联目录判定，无上游 `_WRITE_DENIED_SECRET_DIRS`/`_READ_DENIED_DIRS` 元组，新增 `_WRITE_DENIED_SECRET_DIRS` 常量 + 两处目录级 deny） | `tests/agent/test_file_safety_secret_stores.py` 3 passed | ~0.5h | 4（高 churn，见 T8 复查点） | ✅ 已合入 |
+| L-003 | `1c0d95badbac` 部分 | `agent/file_safety.py` | **拒绝/暂缓**（有意分叉，非遗漏）：上游同 commit 把 `auth/google_oauth.json`、`cache/bws_cache.json` 也纳入 write-deny，且早前 #45947 已放松 control files（`auth.json`/`config.yaml`/`webhook_subscriptions.json` stay writable）。Vermes 未跟进这两层——control-file 语义是否放松是产品决策，google_oauth/bws_cache 是 read-denied 但未 write-denied，单独立项（见 T9） | —（无契约测试，未采纳） | — | — | ⏸ 暂缓 |
+| L-004 | `2afb405337c3` | `tools/approval.py` | 部分采纳/重写（三层取一层）：上游修 approval 队列「pop 与 outcome 提交分裂」竞态（resolve/clear_session/unregister 在锁内 pop、锁外提交 `entry.result`+`event.set()`，waiter `_drop_entry` 锁内读 result 可能 pop-and-lose 用户已 acked 的选择成 timeout）。Vermes `tools/approval.py:581-582/1095-1104/552-554` 完全同构，已把三处提交移进同一临界区。第 1 层（on_result(None)→withdraw）依赖 server→client 往返协议（`server_requests`），Vermes 单向 `register_gateway_notify`+`_emit` 无等价面；第 3 层（settle 状态映射）依赖 request.cancel 通知机制，Vermes 无 settle——此两层拒绝 | `tests/tools/test_approval_lock_commit.py` 4 passed | ~0.6h | 0 | ✅ 已合入 |
+<!--TAKEALONG_LEDGER:END-->
 
 ---
 

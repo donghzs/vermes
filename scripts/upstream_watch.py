@@ -361,23 +361,20 @@ def classify(path: str) -> str:
     return "other"
 
 
-def parse_diversion_ledger() -> tuple[set[str], set[str]]:
-    """从 DISTRIBUTION_MANIFEST.md 解析 DIVERSION_LEDGER，返回 (exact_files, dir_prefixes)。
+def _parse_ledger_block(marker: str, path_col: int) -> tuple[set[str], set[str]]:
+    """解析一个被 `<!--MARKER:START-->`…`<!--MARKER:END-->` 包裹的账本表。
 
-    账本用固定 HTML 注释包裹（<!--DIVERSION_LEDGER:START--> 至 END），
-    每行是 markdown 表格行，第二列是登记路径（逗号分隔可列多个）。
-
-    语义（精确匹配，禁止放水）：
-    - 文件条目（带扩展名，如 tools/env_passthrough.py）→ 进 exact_files，仅精确匹配该文件
-    - 目录条目（以 / 结尾，如 docs/vermes/）→ 进 dir_prefixes，才豁免其子路径
-    - 文件条目**不**升格为父目录免税（防整个 tools/ docs/ 被放水）
+    path_col 是该表里「落点路径」所在列（0-based）：DIVERSION 是第 1 列（index 1），
+    TAKEALONG 是第 2 列（index 2）。返回 (exact_files, dir_prefixes)。
     """
     exact_files: set[str] = set()
     dir_prefixes: set[str] = set()
     if not os.path.exists(MANIFEST_PATH):
         return exact_files, dir_prefixes
     text = open(MANIFEST_PATH, encoding="utf-8").read()
-    m = re.search(r"<!--DIVERSION_LEDGER:START-->\s*(.*?)<!--DIVERSION_LEDGER:END-->", text, re.S)
+    m = re.search(
+        rf"<!--{marker}:START-->\s*(.*?)<!--{marker}:END-->", text, re.S
+    )
     if not m:
         return exact_files, dir_prefixes
     for line in m.group(1).splitlines():
@@ -385,9 +382,10 @@ def parse_diversion_ledger() -> tuple[set[str], set[str]]:
         if not line.startswith("|"):
             continue
         cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) < 2 or cells[0] in ("id", "---", "---"):
+        # 跳过头/分隔行（首列是 id 或 ---）
+        if len(cells) <= path_col or cells[0] in ("id", "---", ":---", ""):
             continue
-        cell = cells[1]
+        cell = cells[path_col]
         # 逗号/顿号分隔多个路径；剥反引号与括号注释（全角+半角）
         raw_paths = [p for p in re.split(r"[,、]", cell) if p.strip()]
         for raw in raw_paths:
@@ -405,6 +403,21 @@ def parse_diversion_ledger() -> tuple[set[str], set[str]]:
             else:
                 # 无扩展名且无斜杠结尾 → 按目录前缀处理（如 "docs/vermes"）
                 dir_prefixes.add(path.rstrip("/") + "/")
+    return exact_files, dir_prefixes
+
+
+def parse_diversion_ledger() -> tuple[set[str], set[str]]:
+    """合并解析两本账（DIVERSION + TAKEALONG），返回 (exact_files, dir_prefixes)。
+
+    两本账对 boundary 等价：取长（TAKEALONG）改动落在 follow 区同样不算税，
+    否则 L-00x 取长会假阳性成「未登记契约税」。
+    """
+    exact_files: set[str] = set()
+    dir_prefixes: set[str] = set()
+    for marker, path_col in (("DIVERSION_LEDGER", 1), ("TAKEALONG_LEDGER", 2)):
+        ef, dp = _parse_ledger_block(marker, path_col)
+        exact_files |= ef
+        dir_prefixes |= dp
     return exact_files, dir_prefixes
 
 
@@ -664,7 +677,7 @@ def cmd_boundary(args: argparse.Namespace) -> int:
             lines.append(f"\n_（仅列前 60 条，共 {len(unregistered_tax)} 条）_")
     lines.append("")
 
-    lines.append("## 3. 已登记偏离（DIVERSION_LEDGER，不算税）\n")
+    lines.append("## 3. 已登记偏离（两账：DIVERSION + TAKEALONG，不算税）\n")
     if not registered_diversion:
         lines.append("_无。_")
     else:

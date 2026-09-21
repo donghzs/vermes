@@ -128,6 +128,20 @@ def test_explicit_dir_entry_exempts_children_only():
     assert not uw.is_registered_diversion("docs/other.md", test_ledger)
 
 
+def test_takealong_ledger_also_exempts_follow_paths():
+    """TAKEALONG（取长）账本的落点（第 3 列）也参与免税，不假阳性成税。
+
+    取长改动（如 L-004 tools/approval.py）落在 follow 区时，与 DIVERSION 等价免税——
+    否则「跟随上游」反而被 boundary 判成「未登记契约税」，自相矛盾。
+    """
+    ledger = uw.parse_diversion_ledger()
+    # L-004 落点 tools/approval.py、L-002 落点 agent/file_safety.py 都应在账本里
+    assert uw.is_registered_diversion("tools/approval.py", ledger), \
+        "TAKEALONG L-004 落点 tools/approval.py 应免税"
+    assert uw.is_registered_diversion("agent/file_safety.py", ledger), \
+        "TAKEALONG L-002 落点 agent/file_safety.py 应免税"
+
+
 def test_unregistered_path_still_taxed():
     """未登记的 follow 区路径仍算税（防「一登记全免」的误伤）。"""
     ledger = uw.parse_diversion_ledger()

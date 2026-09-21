@@ -549,9 +549,8 @@ def unregister_gateway_notify(session_key: str) -> None:
     """
     with _lock:
         _gateway_notify_cbs.pop(session_key, None)
-        entries = _gateway_queues.pop(session_key, [])
-    for entry in entries:
-        entry.event.set()
+        for entry in _gateway_queues.pop(session_key, []):
+            entry.event.set()
 
 
 def resolve_gateway_approval(session_key: str, choice: str,
@@ -576,10 +575,13 @@ def resolve_gateway_approval(session_key: str, choice: str,
             targets = [queue.pop(0)]
         if not queue:
             _gateway_queues.pop(session_key, None)
-
-    for entry in targets:
-        entry.result = choice
-        entry.event.set()
+        # Popping the entry and committing its outcome are ONE critical section: the
+        # waiter's ``_drop_entry`` reads ``entry.result`` under this same lock after its
+        # deadline check, so a choice acked to the client here can never be popped-and-lost
+        # as a timeout (upstream #112548, mirrored by Vermes).
+        for entry in targets:
+            entry.result = choice
+            entry.event.set()
     return len(targets)
 
 
@@ -1092,16 +1094,16 @@ def clear_session(session_key: str) -> None:
         _session_approved.pop(session_key, None)
         _session_yolo.discard(session_key)
         _pending.pop(session_key, None)
-        entries = _gateway_queues.pop(session_key, [])
         # TTL grants are session-scoped too: a new session must re-ask.
         _prefix = f"{session_key}|"
         for _k in [k for k in _privileged_grants if k.startswith(_prefix)]:
             _privileged_grants.pop(_k, None)
-    for entry in entries:
-        # Session-boundary cleanup should cancel any blocked approval waits
-        # immediately so the old run can unwind instead of idling until timeout.
-        entry.result = "deny"
-        entry.event.set()
+        for entry in _gateway_queues.pop(session_key, []):
+            # Session-boundary cleanup should cancel any blocked approval waits
+            # immediately so the old run can unwind instead of idling until timeout.
+            # Committed under the same lock that pops the queue (#112548).
+            entry.result = "deny"
+            entry.event.set()
 
 
 def is_session_yolo_enabled(session_key: str) -> bool:
