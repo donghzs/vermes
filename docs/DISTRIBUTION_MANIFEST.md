@@ -169,6 +169,7 @@ S5 的前置核实项已登记为待办（§8）。
 | id | 上游 commit | 落点 | 类型 | 验收 | 人时 | 状态 |
 |---|---|---|---|---|---|---|
 | L-001 | `b534f4b8c8cd` | `tools/env_passthrough.py` 等 3 文件 | 重写（Vermes 无 `_build_provider_env_blocklist`，用 `_is_env_blocklisted` casefold 等价实现） | `tests/tools/test_env_passthrough.py` 19 passed | ~0.5h | ✅ 已合入 `a48811769d` |
+| L-002 | `1c0d95badbac` | `agent/file_safety.py` | 重写（Vermes `is_write_denied`/`get_read_block_error` 各自内联目录判定，无上游 `_WRITE_DENIED_SECRET_DIRS`/`_READ_DENIED_DIRS` 元组，新增 `_WRITE_DENIED_SECRET_DIRS` 常量 + 两处目录级 deny） | `tests/agent/test_file_safety_secret_stores.py` 3 passed | ~0.5h | ✅ 已合入 |
 
 ---
 

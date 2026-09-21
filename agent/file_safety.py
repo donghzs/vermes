@@ -143,6 +143,16 @@ def is_write_denied(path: str) -> bool:
                 return True
         except Exception as e:
             logger.debug("file_safety.py: is write denied failed: %s", e)
+        # vault/ (key + ciphertext side by side) and browser-profile/ (copied
+        # cookies / Login Data) are secret stores, not control files, so they
+        # stay write-denied even though #45947 relaxed control files.
+        for secret_dir in _WRITE_DENIED_SECRET_DIRS:
+            try:
+                secret_real = os.path.realpath(os.path.join(base_real, secret_dir))
+                if resolved == secret_real or resolved.startswith(secret_real + os.sep):
+                    return True
+            except Exception as e:
+                logger.debug("file_safety.py: is write denied failed: %s", e)
 
     safe_root = get_safe_write_root()
     if safe_root and not (resolved == safe_root or resolved.startswith(safe_root + os.sep)):
@@ -163,6 +173,14 @@ _BLOCKED_PROJECT_ENV_BASENAMES: set[str] = {
     ".env.staging",
     ".envrc",
 }
+
+
+# Secret-material directories under VERMES_HOME / <root> that must be write-denied
+# (key + ciphertext side by side, or copied cookies / Login Data). Kept as its
+# own tuple — NOT derived from the read-deny list — so a future read-only
+# convenience deny cannot silently become a write deny (upstream #110464,
+# aligned with hermes `_WRITE_DENIED_SECRET_DIRS`).
+_WRITE_DENIED_SECRET_DIRS = ("vault", "browser-profile")
 
 
 def get_read_block_error(path: str) -> Optional[str]:
@@ -294,6 +312,41 @@ def get_read_block_error(path: str) -> Optional[str]:
             "and cannot be read directly. (Defense-in-depth — not a "
             "security boundary; the terminal tool can still bypass.)"
         )
+
+    # Secret-material directories: vault/ (key + ciphertext side by side)
+    # and browser-profile/ (copied cookies / Login Data). Both hold plaintext
+    # credentials, so the whole dir is denied — not just the file names.
+    secret_dir_messages = {
+        "vault": (
+            "is the Vermes credential vault directory and cannot be read "
+            "directly (secrets are filled server-side by browser_vault_fill)."
+        ),
+        "browser-profile": (
+            "is the Vermes real-profile browser snapshot directory (copied "
+            "cookies/logins) and cannot be read directly."
+        ),
+    }
+    for secret_dir, msg in secret_dir_messages.items():
+        for hd in VERMES_dirs:
+            try:
+                blocked = (hd / secret_dir).resolve()
+            except Exception:
+                continue
+            if resolved == blocked:
+                return (
+                    f"Access denied: {path} {msg} "
+                    "(Defense-in-depth — not a security boundary; the "
+                    "terminal tool can still bypass.)"
+                )
+            try:
+                resolved.relative_to(blocked)
+            except ValueError:
+                continue
+            return (
+                f"Access denied: {path} is inside {msg.rstrip('.')} "
+                "(Defense-in-depth — not a security boundary; the "
+                "terminal tool can still bypass.)"
+            )
 
     # Block common secret-bearing project-local .env files anywhere on disk.
     # The agent helping a user with their project rarely needs to read raw
