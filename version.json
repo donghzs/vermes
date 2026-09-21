@@ -6,13 +6,13 @@
     "mac": {
       "arm64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-arm64.dmg",
-        "sha256": "8a00e8225ef208f4b4a33134460aee38f22d5f3e2148b33b409a9b1b8a0f46a0",
-        "size": 279925657
+        "sha256": "22238f9458f0f38e6cf648e387beff3d44247d750e98602719d9ae5daf6e8372",
+        "size": 279836517
       },
       "x64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1.dmg",
-        "sha256": "b266e21738d3635f6446d56effb4d04247451c7e99e8d92a80ec6a2887dd4eb8",
-        "size": 284924875
+        "sha256": "6b43f525fed170c35f1ca95c82cf55a0449bf39d1896d72fcd599d2c455f76f7",
+        "size": 284743029
       }
     },
     "windows": {
@@ -24,13 +24,13 @@
   "mac": {
     "arm64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-arm64.dmg",
-      "sha256": "8a00e8225ef208f4b4a33134460aee38f22d5f3e2148b33b409a9b1b8a0f46a0",
-      "size": 279925657
+      "sha256": "22238f9458f0f38e6cf648e387beff3d44247d750e98602719d9ae5daf6e8372",
+      "size": 279836517
     },
     "x64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1.dmg",
-      "sha256": "b266e21738d3635f6446d56effb4d04247451c7e99e8d92a80ec6a2887dd4eb8",
-      "size": 284924875
+      "sha256": "6b43f525fed170c35f1ca95c82cf55a0449bf39d1896d72fcd599d2c455f76f7",
+      "size": 284743029
     }
   },
   "windows": {
