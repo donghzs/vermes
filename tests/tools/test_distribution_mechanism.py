@@ -115,19 +115,38 @@ def test_registered_file_does_not_exempt_siblings():
 
 
 def test_registered_follow_file_is_exempted():
-    """已登记的 follow 区文件确实免税（正例，含自有 bugfix 落点）。
-
-    自有 bugfix（L-007/L-008/L-010）若落点在 follow 区，同样享受路径级免税——
-    这是「已登记偏离不算税」的既有语义。但账本 §7c 已注记：免税是路径级、
-    非永久授权，后续对该文件的大改需重新评估登记。
-    """
+    """真上游取长（类型含 移植/重写/部分采纳）的 follow 落点确实免税。"""
     ledger = uw.parse_diversion_ledger()
-    # 真上游取长落点
     assert uw.is_registered_diversion("tools/approval.py", ledger)
     assert uw.is_registered_diversion("agent/file_safety.py", ledger)
-    # 自有 bugfix 落点（L-007 cron/scheduler.py、L-010 tools/kanban_tools.py）
-    assert uw.is_registered_diversion("tools/kanban_tools.py", ledger)
-    assert uw.is_registered_diversion("cron/scheduler.py", ledger)
+    assert uw.is_registered_diversion("tools/env_passthrough.py", ledger)
+
+
+def test_own_bugfix_takealong_does_not_exempt_follow_paths():
+    """T15：TAKEALONG 账本里「修复（自有缺陷）」落点不得进免税集。
+
+    自有 bugfix 若需 G1 免税，应另记 DIVERSION §7b（有意偏离）；
+    本测试只盯 TAKEALONG 类型过滤，避免与 DIVERSION 登记纠缠。
+    """
+    ta_files, ta_dirs = uw._parse_ledger_block(
+        "TAKEALONG_LEDGER", 2, type_col=3, exempt_type_re=uw.TAKEALONG_EXEMPT_TYPE_RE
+    )
+    # L-010 / L-007 自有 bugfix follow 落点 —— TAKEALONG 不免税
+    assert "tools/kanban_tools.py" not in ta_files
+    assert "cron/scheduler.py" not in ta_files
+    # L-008 core 落点同样不进 TAKEALONG 免税集
+    assert "gateway/run.py" not in ta_files
+    # 真取长仍在
+    assert "tools/approval.py" in ta_files
+    assert "agent/file_safety.py" in ta_files
+    # 合并账：DIVERSION 有意偏离（D-003/D-004）才使 follow 落点免税
+    merged = uw.parse_diversion_ledger()
+    assert uw.is_registered_diversion("tools/kanban_tools.py", merged), (
+        "D-003 应通过 DIVERSION 免税"
+    )
+    assert uw.is_registered_diversion("cron/scheduler.py", merged), (
+        "D-004 应通过 DIVERSION 免税"
+    )
 
 
 def test_registered_docs_file_does_not_exempt_other_docs():

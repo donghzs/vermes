@@ -156,6 +156,8 @@ S5 的前置核实项已登记为待办（§8）。
 |---|---|---|---|---|
 | D-001 | `tools/env_passthrough.py`, `tools/environments/local.py`, `tools/environments/docker.py` | 修复 | 2026-09-21 | T3：凭据 env 屏蔽名单大小写不敏感（对齐上游 b534f4b8c8cd） |
 | D-002 | `docs/DISTRIBUTION_MANIFEST.md` | 品牌/发行版 | 2026-09-21 | Vermes 独有发行版契约文档（上游无此文件） |
+| D-003 | `tools/kanban_tools.py` | 适配 | 2026-09-22 | L-010：session_id reader 迁 `get_session_env`（自有 P0，见 TAKEALONG L-010/T13）；有意偏离，后续同文件大改仍需再登记 |
+| D-004 | `cron/scheduler.py` | 修复 | 2026-09-22 | L-007：cron 标记改 contextvar（自有 P0，见 TAKEALONG L-007/T11）；有意偏离 |
 <!--DIVERSION_LEDGER:END-->
 
 ---
@@ -166,16 +168,14 @@ S5 的前置核实项已登记为待办（§8）。
 > 与 §7「已合入」表互补：§7 记“搬了什么”，本节记“搬的成本与验收”。
 > 字段：`id` / `上游 commit` / 落点 / 类型（移植|重写|拒绝） / 验收测试 / 人时 / 上游后续变更 / 状态。
 > 脚本 `upstream_watch.py` 同样解析本表（`<!--TAKEALONG_LEDGER:START-->` 至 `END` 之间），
-> 使 boundary 能识别「取长改动落在 follow 区」不算税（与 DIVERSION 等效）。
+> 仅「真上游取长」类型落点参与 G1 免税（见下）。
 >
-> **免税边界（重要）**：落点列是**路径级免税**（该文件此后的任意改动 G1 都看不见），
-> 非「永久授权」。分两类：
-> - **真上游取长（L-001~L-006）**：落点免税合理——我们是有意跟进上游，后续同文件改动多为同类跟进。
-> - **自有 bugfix（L-007/L-008/L-010…）**：落点若在 **follow 区**（如 `tools/kanban_tools.py`、
->   `cron/scheduler.py`），会使其永久免 G1 契约税。这类登记仅表示「本修复已入账、不因它计税」，
->   **不构成「该文件以后怎么改都不税」的授权**——后续对同一 follow 文件的大范围偏离，
->   应在 boundary 复核时重新评估登记（必要时补 DIVERSION 或拆分落点）。core/own 区落点
->   （如 `gateway/`、`agent/`）本就不走 follow 税，登记无泄漏风险。
+> **免税边界（T15，脚本强制）**：落点列按「类型」决定是否进 G1 免税集：
+> - **真上游取长**（类型含 `移植|重写|部分采纳`，L-001~L-006）：落点路径免税——有意跟进上游。
+> - **自有 bugfix / 拒绝 / 待做**（`修复（自有缺陷）`、`拒绝/暂缓`、`待做`，L-007+）：
+>   落点**只作审计、不免税**——避免 follow 区文件被永久免契约税。
+>
+> 后续若对同一 follow 文件有大范围有意偏离，另记 **DIVERSION §7b**（有意偏离才免税）。
 
 <!--TAKEALONG_LEDGER:START-->
 | id | 上游 commit | 落点 | 类型 | 验收 | 人时 | 上游后续变更 | 状态 |
@@ -213,6 +213,7 @@ S5 的前置核实项已登记为待办（§8）。
 | T12 | **进程级会话状态残留（纵深项，非阻塞）**：① 启动层 presence 剥离——`VERMES_INTERACTIVE`/`VERMES_EXEC_ASK`/`VERMES_GATEWAY_SESSION` 仍可能是进程级 env（如 `tui_gateway/server.py:713/715` 进程级设 `VERMES_INTERACTIVE=1`/`VERMES_GATEWAY_SESSION=1`），gateway 多任务场景下可能串味；② gateway 启动时一次性 `os.environ.pop("VERMES_CRON_SESSION", None)` 关闭 env 回落信任边界（本刀后无生产代码再写该 env，scheduler 已改 contextvar）；③ `cron/scheduler.py` 仍写 `os.environ["TERMINAL_CWD"]`（finally 恢复，仍进程全局）。逐个摸清 writer/reader/泄漏路径后再定改法。注：L-006 已对 cron 侧做防御（`is_cli=is_ask=False`），cron 侧暂安全；剩余风险在「用户侧是否被误判」+「TERMINAL_CWD 串味」 | ⏳ 部分完成：② 已随 L-008 落盘（`gateway/run.py` `sanitize_gateway_process_env()`，见 §7c）；①③ 待做（属 L-008 后续纵深，T14 纸面审计后再动） |
 | T13 | **P0-BUG（Vermes 自有缺陷）**：`gateway.session_context.set_current_session_id` 全仓 6 处调用（`agent/agent_init.py:997/999`、`agent/conversation_compression.py:616/618/662/663`）但 **0 处定义**——writer 想走 contextvar（`_SESSION_ID` ContextVar + `_VAR_MAP` 已建），但 setter 缺失导致 import 抛 ImportError、全部静默回落 `os.environ`，与 ACP（`acp_adapter/server.py:1454`）的进程级 save/restore 形成并发串味。reader 侧（`tools/kanban_tools.py:125/688`）也直接读 `os.environ` 而非 `get_session_env()`。修法（L-010）：① `gateway.session_context` 补 `set_current_session_id()`（写 `_SESSION_ID` ContextVar）② reader 改 `get_session_env("VERMES_SESSION_ID")` ③ ACP 改调 setter 弃用进程级 save/restore | ✅ **已完成**（= L-010，见 §7c） |
 | T14 | **进程级会话状态变量纸面审计**（VERMES_INTERACTIVE/VERMES_EXEC_ASK/VERMES_GATEWAY_SESSION/TERMINAL_CWD 的 writer/reader/泄漏路径分级） | ✅ **已完成**（`reports/vermes-t14-session-env-audit_20260921.md`，commit `c3b95ef9fd` 初版 + `b2f1d3aaa0` 三项查证闭环；输出 L-009~L-011 实施清单） |
+| T15 | **类型免税（方案 2）**：TAKEALONG 落点仅「移植\|重写\|部分采纳」进 G1 免税集；自有 bugfix/拒绝/待做只审计不免税。有意偏离另记 DIVERSION（D-003/D-004） | ✅ **已完成**（本切片；`upstream_watch.py` + 机制测试 + §7b/§7c 边界注记） |
 
 ---
 

@@ -361,11 +361,25 @@ def classify(path: str) -> str:
     return "other"
 
 
-def _parse_ledger_block(marker: str, path_col: int) -> tuple[set[str], set[str]]:
+# TAKEALONG 只有「真上游取长」类型才落点免税；自有 bugfix / 拒绝 / 待做只入审计。
+# 用前缀匹配，避免类型长描述里的「重写」字样误放行「修复（自有缺陷）」行。
+TAKEALONG_EXEMPT_TYPE_RE = re.compile(r"^(部分采纳|重写|移植)")
+
+
+def _parse_ledger_block(
+    marker: str,
+    path_col: int,
+    *,
+    type_col: int | None = None,
+    exempt_type_re: re.Pattern | None = None,
+) -> tuple[set[str], set[str]]:
     """解析一个被 `<!--MARKER:START-->`…`<!--MARKER:END-->` 包裹的账本表。
 
     path_col 是该表里「落点路径」所在列（0-based）：DIVERSION 是第 1 列（index 1），
     TAKEALONG 是第 2 列（index 2）。返回 (exact_files, dir_prefixes)。
+
+    若给出 type_col + exempt_type_re，仅当「类型」列命中正则时才把落点计入免税集
+    （T15：自有 bugfix 落点不得永久免 G1）。
     """
     exact_files: set[str] = set()
     dir_prefixes: set[str] = set()
@@ -385,6 +399,12 @@ def _parse_ledger_block(marker: str, path_col: int) -> tuple[set[str], set[str]]
         # 跳过头/分隔行（首列是 id 或 ---）
         if len(cells) <= path_col or cells[0] in ("id", "---", ":---", ""):
             continue
+        if exempt_type_re is not None and type_col is not None:
+            type_cell = cells[type_col] if len(cells) > type_col else ""
+            type_cell = type_cell.lstrip("*").strip()
+            if not exempt_type_re.match(type_cell):
+                # 仅审计、不免税（自有 bugfix / 拒绝 / 待做）
+                continue
         cell = cells[path_col]
         # 逗号/顿号分隔多个路径；剥反引号与括号注释（全角+半角）
         raw_paths = [p for p in re.split(r"[,、]", cell) if p.strip()]
@@ -410,15 +430,21 @@ def _parse_ledger_block(marker: str, path_col: int) -> tuple[set[str], set[str]]
 def parse_diversion_ledger() -> tuple[set[str], set[str]]:
     """合并解析两本账（DIVERSION + TAKEALONG），返回 (exact_files, dir_prefixes)。
 
-    两本账对 boundary 等价：取长（TAKEALONG）改动落在 follow 区同样不算税，
-    否则 L-00x 取长会假阳性成「未登记契约税」。
+    免税语义（T15）：
+    - DIVERSION：有意偏离，登记路径全部免税（产品增强/品牌/适配/修复）。
+    - TAKEALONG：仅类型命中 ``TAKEALONG_EXEMPT_TYPE_RE``（移植|重写|部分采纳）
+      的落点免税；「修复（自有缺陷）」「拒绝」「待做」只作审计，不永久免 G1。
     """
     exact_files: set[str] = set()
     dir_prefixes: set[str] = set()
-    for marker, path_col in (("DIVERSION_LEDGER", 1), ("TAKEALONG_LEDGER", 2)):
-        ef, dp = _parse_ledger_block(marker, path_col)
-        exact_files |= ef
-        dir_prefixes |= dp
+    ef, dp = _parse_ledger_block("DIVERSION_LEDGER", 1, type_col=2, exempt_type_re=None)
+    exact_files |= ef
+    dir_prefixes |= dp
+    ef, dp = _parse_ledger_block(
+        "TAKEALONG_LEDGER", 2, type_col=3, exempt_type_re=TAKEALONG_EXEMPT_TYPE_RE
+    )
+    exact_files |= ef
+    dir_prefixes |= dp
     return exact_files, dir_prefixes
 
 
