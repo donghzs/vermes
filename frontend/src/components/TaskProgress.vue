@@ -3,7 +3,9 @@
   <div class="task-progress">
     <!-- 状态徽标 -->
     <div class="flex items-center gap-2">
-      <span v-if="active" class="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+      <!-- P1-4（2026-09-22）：脉冲只在状态切换瞬间闪 ~3s，随后转静态点。
+           原实现长任务期间持续 animate-pulse，是常驻视觉噪音。 -->
+      <span v-if="active" class="w-2 h-2 rounded-full bg-blue-500" :class="{ 'animate-pulse': pulsing }" />
       <span class="text-xs font-medium" :class="statusClass">{{ statusLabel }}</span>
       <span v-if="subLabel" class="text-[11px] text-gray-400">{{ subLabel }}</span>
     </div>
@@ -95,9 +97,22 @@ function startTimer() {
   timer = setInterval(() => { nowSec.value = Math.floor(Date.now() / 1000) }, 1000)
 }
 
+// P1-4：脉冲窗口 —— 进入 active 时闪 3 秒后转静态，避免长时间闪烁干扰阅读。
+const pulsing = ref(false)
+let pulseTimer = null
+watch(active, (v) => {
+  clearTimeout(pulseTimer)
+  if (v) {
+    pulsing.value = true
+    pulseTimer = setTimeout(() => { pulsing.value = false }, 3000)
+  } else {
+    pulsing.value = false
+  }
+}, { immediate: true })
+
 // 秒针须随 active 动态启停，不能在 onMounted 里只判一次：
 // ① 挂载时非 active、随后才转 active 的任务，计时器永不启动（耗时恒为 0）；
 // ② 任务结束（active→false）后计时器仍每秒空转，直到组件销毁。
 watch(active, (v) => { v ? startTimer() : stopTimer() }, { immediate: true })
-onUnmounted(stopTimer)
+onUnmounted(() => { stopTimer(); clearTimeout(pulseTimer) })
 </script>

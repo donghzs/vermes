@@ -122,7 +122,14 @@ execute_code 沙箱内 write_file/patch
 |---|---|---|
 | P1-1 | `TodoPanel` 默认折叠为**单行摘要**（`3/7 · 正在：XXX`），点击才展开；去掉常驻整块列表 | `TodoPanel.vue:39-77` |
 | P1-2 | 修 `percent` 父子双计——只按**叶子节点**计数（或按权重）；任务名去 `truncate`，改 `title` 属性 + 浮层 | `TaskFlowCard.vue:33,36,97` |
-| P1-3 | 自动滚动 + 高亮当前 `in_progress` 节点；补每步耗时，接入已有 `harnessTimeline.js` | `TaskFlowCard.vue:74` |
+| P1-3 | 自动滚动 + 高亮当前 `in_progress` 节点；补每步耗时 | `TaskFlowCard.vue:74` |
+
+> ⚠️ **方案原文错误，实现阶段推翻**：初版写「补每步耗时，接入已有 `harnessTimeline.js`」。
+> 实读 `frontend/src/utils/harnessTimeline.js` 后确认——它是**工具调用核验分类**（harness
+> outcome: verified/unverified/fail/blocked），与任务耗时**无关**，接进去是错的。
+> 正确数据源是 todo 节点自带的 `started_at`/`finished_at`（`chat.js:1181` 已在 merge 时保留）。
+> 实现据此改为：已完成步骤显示 `finished_at - started_at`；**进行中步骤不显示秒数**
+> （否则需每秒 tick，会把整棵任务树每秒重渲染一次，违背降噪初衷）。
 | P1-4 | `animate-pulse` 改为状态变更瞬间闪烁（~3s 后转静态点），去除持续脉冲 | `TaskProgress.vue:6` |
 | P1-5 | 两条 `PrereqBanner` 合并为单条可折叠通知入口，不再顶部堆叠 | `App.vue:70-84` |
 
@@ -166,7 +173,39 @@ execute_code 沙箱内 write_file/patch
 
 ---
 
-## 7. 待复核（下一步先做）
+## 7. 落实情况（2026-09-22 全部落地，分支 `fix/frontend-ux-quiet-interruption`）
+
+| 项 | 状态 | 落地要点 |
+|---|:---:|---|
+| P0-1 自动弹出迁到 onDelivery | ✅ | `chat.js` — tool_step 静默，onDelivery 为唯一入口 |
+| P0-2 收窄交付物判定 | ✅ | 直接删除 `isRenderableDeliverable`，不再用扩展名猜 |
+| P0-3 收编双状态机 | ✅ | 删除 `useRightPanel.autoOpenOnArtifact` |
+| P0-4 autoOpen 持久化 + 可关 | ✅ | localStorage `vermes-artifact-auto-open` |
+| P0-5 后端 intermediate 标记 | ✅ | `code_execution_tool.py` 打标记 + `vermes_cli/blueprints/chat.py:_filter_delivery_artifacts` 消费（**须重打 DMG 才生效**） |
+| P1-1 TodoPanel 折叠单行 | ✅ | 默认折叠 ≈28px，摘要「3/7 · 正在：XXX」 |
+| P1-2 percent 去父子双计 + 去 truncate | ✅ | 只数叶子节点；长任务名换行 + `title` 浮层 |
+| P1-3 自动滚动 + 高亮 + 耗时 | ✅ | 见上方「方案原文错误」注 |
+| P1-4 脉冲收敛 | ✅ | 状态切换闪 3s 后转静态点 |
+| P1-5 两条 PrereqBanner 合并 | ✅ | 顶部恒占 ≤1 行，一次 dismiss 全收 |
+| P2-1 审批聚合 | ⚠️ **降级实现** | 见下方说明 |
+| P2-2 UpdateDialog 降级角标 | ✅ | 非阻塞右下角标，下载中仍强制展开 |
+| P2-3 打扰预算 | ✅ | 单轮最多自动弹 1 次，超出静默 |
+| P2-4 顶部浮层统一托管 | ⚠️ **收敛实现** | 见下方说明 |
+
+**P2-1 降级说明（重要）**：后端审批协议是**阻塞串行**的——后端发一条、等前端 `/api/approve`
+响应后才发下一条，前端无法预知队列长度，因此「一次弹窗列多条待审批」在当前协议下做不到。
+实现改为此协议下能做到的两件事：
+1. **修真 bug**：原实现 `pendingApproval.value = {...}` 无条件覆盖，两条审批连推时前一条
+   `session_key` 永久丢失 → 后端等不到响应 → 会话卡死。改为 FIFO 队列。
+2. **显式化队列**：弹窗显示「共 N 条待审批，当前第 1 条」。
+安全语义**未改**：仍逐条打断、逐条征询，不做批量放行（红线 3）。
+
+**P2-4 收敛说明**：未做「全部浮层由 NotificationCenter 托管」的重构（范围与风险过大，
+且 `NotificationCenter.vue` 当前未挂载、接线等于新建一套机制）。
+改以 P1-5（banner 合并）+ P2-2（更新改角标）达成**等效目标**：顶部恒占 ≤1 行、无多行叠加。
+完整托管列为后续项，非本次范围。
+
+## 8. 待复核（下一步先做）
 
 1. 后端 `onDelivery` 的覆盖率：是否存在「有交付产物但不发 delivery 事件」的链路？若有，P0-1 会造成产物永不自动弹 → 必须靠 `sessionPendingDeliveryArtifacts` 兜底。
 2. `window.__vermesArtifacts` 的 `openArtifactById` 在产物已被用户手动关闭后的行为（避免重复弹回）。

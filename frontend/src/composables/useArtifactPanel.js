@@ -14,6 +14,12 @@ function _readAutoOpen() {
   try { return localStorage.getItem(AUTO_OPEN_KEY) !== 'false' } catch { return true }
 }
 const autoOpen = ref(_readAutoOpen())
+
+// P2-3（2026-09-22）打扰预算：单轮会话最多自动弹 N 次，超出降级为静默通知。
+// 防止一轮里多次 onDelivery（多步交付/并行 agent）连续把面板弹到前台。
+// 预算在每轮 sendMessage 起点由 resetAutoOpenBudget() 归零。
+const AUTO_OPEN_BUDGET = 1
+const autoOpenUsed = ref(0)
 const activeTabId = ref('tasks')
 const fileTabs = ref([]) // { id: 'file:<id>', kind, title, path, icon }
 
@@ -78,9 +84,19 @@ export function useArtifactPanel() {
     try { localStorage.setItem(AUTO_OPEN_KEY, autoOpen.value ? 'true' : 'false') } catch { /* 隐私模式下忽略 */ }
   }
 
+  // 申请一次自动弹出配额：返回 true 才允许弹，用完即静默（P2-3）
+  function consumeAutoOpen() {
+    if (!autoOpen.value) return false
+    if (autoOpenUsed.value >= AUTO_OPEN_BUDGET) return false
+    autoOpenUsed.value += 1
+    return true
+  }
+  function resetAutoOpenBudget() { autoOpenUsed.value = 0 }
+
   return {
-    open, width, autoOpen, activeTabId, fileTabs,
+    open, width, autoOpen, activeTabId, fileTabs, autoOpenUsed,
     openPanel, closePanel, togglePanel,
     setView, setTab, openFileTab, closeFileTab, openArtifactFile, setWidth, setAutoOpen,
+    consumeAutoOpen, resetAutoOpenBudget,
   }
 }

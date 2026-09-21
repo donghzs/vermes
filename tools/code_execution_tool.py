@@ -1406,6 +1406,21 @@ def execute_code(
                 if _p not in _produced:
                     _produced.append(_p)
 
+        # P0-5（2026-09-22）：标记沙箱产物是否为「中间产物」。
+        # execute_code 里的 write_file/patch 绝大多数是脚本本身及其临时输出，不是用户
+        # 要的交付物。后端 delivery 过滤（vermes_cli/blueprints/chat.py:
+        # _filter_delivery_artifacts）据此排除，避免过程脚本被当成成果推给前端弹出。
+        # 例外：写到用户工作区（非系统临时目录）的文件不打标记 —— 那是用户可见产出，
+        # 若一并排除会误杀「脚本生成的报告/数据」这类真实交付物。
+        _tmp_root = os.path.realpath(tempfile.gettempdir())
+
+        def _is_intermediate(_p: str) -> bool:
+            try:
+                _rp = os.path.realpath(_p)
+            except Exception:
+                _rp = _p
+            return _rp.startswith(_tmp_root + os.sep) or "VERMES_exec_" in _p
+
         # Build response
         result: Dict[str, Any] = {
             "status": status,
@@ -1413,7 +1428,8 @@ def execute_code(
             "tool_calls_made": tool_call_counter[0],
             "duration_seconds": duration,
             "artifacts": [
-                {"path": _p, "title": os.path.basename(_p), "source": "execute_code"}
+                {"path": _p, "title": os.path.basename(_p), "source": "execute_code",
+                 "intermediate": _is_intermediate(_p)}
                 for _p in _produced
             ],
         }

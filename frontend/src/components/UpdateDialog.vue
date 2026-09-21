@@ -1,4 +1,16 @@
 <template>
+  <!-- P2-2：非阻塞角标（有更新但未展开时显示；点击才拉开弹窗） -->
+  <Transition name="update-fade">
+    <button
+      v-if="update.hasUpdate && !sessionDismissed && !visible"
+      class="fixed bottom-4 right-4 z-[60] flex items-center gap-2 px-3 py-2 rounded-full shadow-lg bg-green-500 hover:bg-green-600 text-white text-xs font-medium transition"
+      title="有新版可用，点击查看详情"
+      @click="userOpened = true"
+    >
+      <span>🚀</span>
+      <span>新版本 v{{ update.latestVersion }} 可用</span>
+    </button>
+  </Transition>
   <Transition name="update-fade">
     <div v-if="visible" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm" @click.self="later">
       <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-gray-600">
@@ -89,10 +101,17 @@ const canNativeUpdater = isDesktop && !isMacDesktop
 // 本会话内「稍后」隐藏标记（不写持久化，下次启动仍会再提示）
 const sessionDismissed = ref(false)
 
+// P2-2（2026-09-22）：更新提示降级为非阻塞角标 —— 原实现 hasUpdate 即全屏 modal，
+// 用户一启动就被打断。改为默认只出右下角角标，点击才展开。
+// 例外：下载/安装进行中（update.updating）必须展开，进度需要被看见。
+const userOpened = ref(false)
+
 // Electron(Win)：下载完成（status=done）后需用户点「安装并重启」才 quitAndInstall
 const justDownloaded = computed(() => update.updateStatus === 'done')
 
-const visible = computed(() => update.hasUpdate && !sessionDismissed.value)
+const visible = computed(() =>
+  update.hasUpdate && !sessionDismissed.value && (update.updating || userOpened.value)
+)
 
 function startUpdate() {
   update.startUpdate()
