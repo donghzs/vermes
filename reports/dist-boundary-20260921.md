@@ -1,6 +1,6 @@
 # 发行版边界闸门（2026-09-21）
 
-> 区间 `888bf8a344..main`（Vermes 侧 27 commits）。
+> 区间 `888bf8a344..main`（Vermes 侧 28 commits）。
 > 冻结锚 `888bf8a344`（非发版 tag）。
 > 判据：改动落在**上游跟随区**（`plugins/ tools/ harness/ cron/ .github/ docs/ scripts/`）
 > 且 **两账都未登记** = 契约税。已登记（DIVERSION_LEDGER）= 有意偏离，单列不税。
@@ -10,7 +10,7 @@
 | 分区 | 文件改动数 | 判定 |
 |---|---|---|
 | `own` | 88 | ✅ 发行版自有，正常 |
-| `other` | 36 | — |
+| `other` | 37 | — |
 | `follow` | 19 | ⚠️ 契约税（未登记） |
 | `core` | 1 | 🔍 核心 diverge，个案评估 |
 

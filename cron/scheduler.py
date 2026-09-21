@@ -1475,13 +1475,19 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
     agent = None
 
     # Mark this as a cron session so the approval system can apply cron_mode.
-    # This env var is process-wide and persists for the lifetime of the
-    # scheduler process — every job this process runs is a cron job.
-    os.environ["VERMES_CRON_SESSION"] = "1"
-
-    # Use ContextVars for per-job session/delivery state so parallel jobs
-    # don't clobber each other's targets (os.environ is process-global).
-    from gateway.session_context import set_session_vars, clear_session_vars, _VAR_MAP
+    # This is task-local (contextvar), NOT os.environ: the gateway runs the
+    # cron ticker in-process, so a process-global flag would leak into every
+    # subsequent real user message and misroute their dangerous-command
+    # approvals to the cron deny path (P0). Pair with the finally-block
+    # leave_cron_session below.
+    from gateway.session_context import (
+        set_session_vars,
+        clear_session_vars,
+        _VAR_MAP,
+        enter_cron_session,
+        leave_cron_session,
+    )
+    _cron_token = enter_cron_session()
 
     # Cron execution is an internal scheduler context, not a live inbound
     # gateway message. Do not seed VERMES_SESSION_* contextvars from the
@@ -1938,6 +1944,7 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
                 os.environ["TERMINAL_CWD"] = _prior_terminal_cwd
         # Clean up ContextVar session/delivery state for this job.
         clear_session_vars(_ctx_tokens)
+        leave_cron_session(_cron_token)
         for _var_name in _cron_delivery_vars:
             _VAR_MAP[_var_name].set("")
         if _session_db:

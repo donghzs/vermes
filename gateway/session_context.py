@@ -67,6 +67,14 @@ _CRON_AUTO_DELIVER_PLATFORM: ContextVar = ContextVar("VERMES_CRON_AUTO_DELIVER_P
 _CRON_AUTO_DELIVER_CHAT_ID: ContextVar = ContextVar("VERMES_CRON_AUTO_DELIVER_CHAT_ID", default=_UNSET)
 _CRON_AUTO_DELIVER_THREAD_ID: ContextVar = ContextVar("VERMES_CRON_AUTO_DELIVER_THREAD_ID", default=_UNSET)
 
+# Cron-session marker — task-local so the in-process gateway ticker can mark a
+# job as cron WITHOUT mutating process-global os.environ. Historically
+# ``os.environ["VERMES_CRON_SESSION"]="1"`` was set inside the gateway process
+# and never cleared, so after the first cron job every real user message was
+# misclassified as cron (P0: dangerous-command approval silently switched from
+# "prompt the user" to "BLOCKED, cron has no user").
+_CRON_SESSION: ContextVar = ContextVar("VERMES_CRON_SESSION", default=_UNSET)
+
 _VAR_MAP = {
     "VERMES_SESSION_PLATFORM": _SESSION_PLATFORM,
     "VERMES_SESSION_CHAT_ID": _SESSION_CHAT_ID,
@@ -80,6 +88,7 @@ _VAR_MAP = {
     "VERMES_CRON_AUTO_DELIVER_PLATFORM": _CRON_AUTO_DELIVER_PLATFORM,
     "VERMES_CRON_AUTO_DELIVER_CHAT_ID": _CRON_AUTO_DELIVER_CHAT_ID,
     "VERMES_CRON_AUTO_DELIVER_THREAD_ID": _CRON_AUTO_DELIVER_THREAD_ID,
+    "VERMES_CRON_SESSION": _CRON_SESSION,
 }
 
 
@@ -162,3 +171,39 @@ def get_session_env(name: str, default: str = "") -> str:
             return value
     # Fall back to os.environ for CLI, cron, and test compatibility
     return os.getenv(name, default)
+
+
+def is_cron_session() -> bool:
+    """True when the current task/thread is a cron job.
+
+    Task-local first (the gateway's in-process ticker marks each job via the
+    ``_CRON_SESSION`` contextvar), falling back to ``os.environ`` for the
+    standalone ``vermes cron`` daemon and test/CLI processes that never use
+    ``set_session_vars``.
+
+    Reading this instead of ``os.environ["VERMES_CRON_SESSION"]`` is what
+    prevents a cron job inside the gateway process from leaking its marker
+    into every subsequent real user message (see the ``_CRON_SESSION``
+    declaration above).
+    """
+    value = _CRON_SESSION.get()
+    if value is not _UNSET:
+        return value == "1"
+    import os
+
+    return os.getenv("VERMES_CRON_SESSION", "") == "1"
+
+
+def enter_cron_session() -> "object":
+    """Mark the current context as a cron session; return a reset token.
+
+    Pair with ``leave_cron_session(token)`` in a ``finally`` block. Unlike
+    ``os.environ["VERMES_CRON_SESSION"]="1"`` this is task-local, so parallel
+    cron jobs and concurrent user messages never contaminate each other.
+    """
+    return _CRON_SESSION.set("1")
+
+
+def leave_cron_session(token: "object") -> None:
+    """Restore the cron marker to its pre-``enter_cron_session`` state."""
+    _CRON_SESSION.reset(token)
