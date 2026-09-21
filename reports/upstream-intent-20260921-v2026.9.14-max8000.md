@@ -12,13 +12,15 @@
 | 显式 GHSA | 1 |
 | fix(security) 标签 | 6 |
 | 安全语义候选 | 220 |
-| 有 Vermes 对应物 | 21 |
+| 有 Vermes 对应物（入队） | 21 |
+| 红线（own 区，只读） | 7 |
+| 无对应物（人工判） | 192 |
 
 ## 1. 候选清单
 
 | 信号 | hash | 日期 | 主题 | Vermes 对应物 | 建议 |
 |---|---|---|---|---|---|
-| GHSA | `9345c67854f6` | 2026-09-18 | fix(webhook): per-route toolsets bind to the authenticated route, not  | 红线区 | 红线只读 |
+| GHSA | `9345c67854f6` | 2026-09-18 | fix(webhook): per-route toolsets bind to the authenticated route, not  | 红线区: gateway/platforms/webhook.py | 红线只读 |
 | fix(security) | `d966b34cc36f` | 2026-08-24 | fix(security): gateway lifecycle guard recognises Windows command spel | — | 人工判 |
 | fix(security) | `1c0d95badbac` | 2026-09-14 | fix(security): write-deny HERMES_HOME secret stores, keep control file | agent/file_safety.py | 移植/评估 |
 | fix(security) | `e7cd1848c9bb` | 2026-09-14 | fix(security): deny writes to read-blocked Hermes credential stores | agent/file_safety.py | 移植/评估 |
@@ -130,7 +132,7 @@
 | 安全语义 | `428056e7b98a` | 2026-09-16 | fix(auth): Claude Code dead refresh token is reported once; CLAUDE_CON | — | 人工判 |
 | 安全语义 | `d6add1605953` | 2026-09-16 | fix(auth): dead OAuth logins are reported once and leave rotation; hin | — | 人工判 |
 | 安全语义 | `ba2bcfa6e790` | 2026-09-16 | fix(gateway): auth-fallback test stub accepts the target_model kwarg t | — | 人工判 |
-| 安全语义 | `931b5ff9e7b1` | 2026-09-16 | fix(opencode): every credential-resolution surface keys off the model  | 红线区 | 红线只读 |
+| 安全语义 | `931b5ff9e7b1` | 2026-09-16 | fix(opencode): every credential-resolution surface keys off the model  | 红线区: gateway/platforms/api_server.py | 红线只读 |
 | 安全语义 | `3fe9e8ff0fe9` | 2026-09-16 | fix(aux): cached auxiliary client follows the pooled credential after  | — | 人工判 |
 | 安全语义 | `bec892459453` | 2026-09-16 | fix(update): hand-off carries sibling snapshots + Windows pause token  | — | 人工判 |
 | 安全语义 | `140d12545a1e` | 2026-09-16 | fix(desktop): settle approval and tool-row layout together | — | 人工判 |
@@ -148,9 +150,9 @@
 | 安全语义 | `c358a6fba0a5` | 2026-09-16 | fix(cli): resolve runtime credentials for the model the CLI will send | — | 人工判 |
 | 安全语义 | `713a9377ccd3` | 2026-09-16 | fix: only call an auth DB backup "locked" when it made no progress | — | 人工判 |
 | 安全语义 | `864e9dccfc8e` | 2026-09-16 | fix(browser): real-profile snapshot names the locked auth databases an | — | 人工判 |
-| 安全语义 | `97066a0eb5c7` | 2026-09-16 | fix(gateway): Weixin media sends honour iLink ret and re-send without  | 红线区 | 红线只读 |
-| 安全语义 | `2995063bcdc8` | 2026-09-16 | fix(gateway): Weixin tokenless re-send no longer consumes the retry bu | 红线区 | 红线只读 |
-| 安全语义 | `46ab37ce3512` | 2026-09-16 | fix(gateway): retry Weixin prepare failures without token | 红线区 | 红线只读 |
+| 安全语义 | `97066a0eb5c7` | 2026-09-16 | fix(gateway): Weixin media sends honour iLink ret and re-send without  | 红线区: gateway/platforms/weixin.py | 红线只读 |
+| 安全语义 | `2995063bcdc8` | 2026-09-16 | fix(gateway): Weixin tokenless re-send no longer consumes the retry bu | 红线区: gateway/platforms/weixin.py | 红线只读 |
+| 安全语义 | `46ab37ce3512` | 2026-09-16 | fix(gateway): retry Weixin prepare failures without token | 红线区: gateway/platforms/weixin.py | 红线只读 |
 | 安全语义 | `e166791f9ffb` | 2026-09-16 | fix(mcp): treat a non-object client.json as corrupt instead of crashin | — | 人工判 |
 | 安全语义 | `f8f89b20d273` | 2026-09-16 | fix(mcp): skip malformed cached OAuth redirect_uris instead of crashin | — | 人工判 |
 | 安全语义 | `1b722403b971` | 2026-09-16 | fix(desktop): fold accented Latin, keep NFC tokens and cut CJK profile | — | 人工判 |
@@ -224,8 +226,8 @@
 | 安全语义 | `b0cd35e25953` | 2026-09-18 | fix(mcp): dashboard/Desktop Authorize honours a pre-registered client' | — | 人工判 |
 | 安全语义 | `c553df915c19` | 2026-09-18 | fix(mcp): Asana catalog installs a working V2 pre-registered OAuth cli | — | 人工判 |
 | 安全语义 | `7b4e052bda91` | 2026-09-18 | chore(contributors): map Sasni, fotedev, whyyagswhy author emails | — | 人工判 |
-| 安全语义 | `edd9fd66a4be` | 2026-09-18 | fix(telegram): slash-confirm card budgets the MarkdownV2 rendering; ap | 红线区 | 红线只读 |
-| 安全语义 | `b502504b744d` | 2026-09-18 | fix(telegram): approval button card fits the 4096-char cap after HTML  | 红线区 | 红线只读 |
+| 安全语义 | `edd9fd66a4be` | 2026-09-18 | fix(telegram): slash-confirm card budgets the MarkdownV2 rendering; ap | 红线区: gateway/platforms/base.py | 红线只读 |
+| 安全语义 | `b502504b744d` | 2026-09-18 | fix(telegram): approval button card fits the 4096-char cap after HTML  | 红线区: gateway/platforms/base.py | 红线只读 |
 | 安全语义 | `c1eb1592e8fa` | 2026-09-18 | fix(discord): keep the exec-approval reason bounded after dropping the | — | 人工判 |
 | 安全语义 | `5e0a1852f505` | 2026-09-18 | fix(discord): avoid duplicate exec approval details | — | 人工判 |
 | 安全语义 | `4a15e049fd7a` | 2026-09-18 | fix(cli): re-resolve reasoning after every startup model move, not jus | — | 人工判 |

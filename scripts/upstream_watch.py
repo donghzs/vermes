@@ -236,7 +236,7 @@ def cmd_intake(args: argparse.Namespace) -> int:
 
     # 逐条判定
     rows: list[dict] = []
-    n_ghsa = n_fixsec = n_security_semantic = n_counterpart = 0
+    n_ghsa = n_fixsec = n_security_semantic = n_counterpart = n_redline = n_none = 0
     for c in commits:
         subject = c["subject"]
         if INTENT_SKIP_RE.search(subject):
@@ -259,6 +259,10 @@ def cmd_intake(args: argparse.Namespace) -> int:
                 break
         if verdict == "有对应物":
             n_counterpart += 1
+        elif verdict == "红线":
+            n_redline += 1
+        else:
+            n_none += 1
         rows.append({
             "hash": c["hash"],
             "date": c["date"],
@@ -295,7 +299,9 @@ def cmd_intake(args: argparse.Namespace) -> int:
         f"| 显式 GHSA | {n_ghsa} |",
         f"| fix(security) 标签 | {n_fixsec} |",
         f"| 安全语义候选 | {n_security_semantic} |",
-        f"| 有 Vermes 对应物 | {n_counterpart} |",
+        f"| 有 Vermes 对应物（入队） | {n_counterpart} |",
+        f"| 红线（own 区，只读） | {n_redline} |",
+        f"| 无对应物（人工判） | {n_none} |",
         "",
         "## 1. 候选清单\n",
         "| 信号 | hash | 日期 | 主题 | Vermes 对应物 | 建议 |",
@@ -303,7 +309,13 @@ def cmd_intake(args: argparse.Namespace) -> int:
     ]
     for r in rows:
         sug = {"有对应物": "移植/评估", "红线": "红线只读", "无": "人工判"}[r["verdict"]]
-        vm_disp = r["vermes"] if r["verdict"] == "有对应物" else ("—" if r["verdict"] == "无" else "红线区")
+        if r["verdict"] == "有对应物":
+            vm_disp = r["vermes"]
+        elif r["verdict"] == "红线":
+            # 显示具体 own 资产，便于人工评审直接定位
+            vm_disp = f"红线区: {r['vermes']}"
+        else:
+            vm_disp = "—"
         lines.append(
             f"| {r['signal']} | `{r['hash']}` | {r['date']} | {r['subject'][:70]} | "
             f"{vm_disp} | {sug} |"
