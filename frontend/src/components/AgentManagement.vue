@@ -1,7 +1,8 @@
 /**
  * Agent 管理 — 全宽页面（路由 /agents）
- * 融合：自造神 · 封神榜 · 技能(已装) · 工具 · MCP(已装+监控+安全) · 专家 · 记忆 · 知识库
+ * 融合：技能(已装) · 工具 · MCP(已装+监控+安全) · 专家 · 记忆 · 知识库
  * 取代旧 ToolSkillDrawer 半边抽屉 + MCPCommandCenter 独立页。
+ * 注：神魔架（请神/造神）归属神魔堂（/shenmotang），此处不再重复承载。
  */
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
@@ -16,7 +17,6 @@ import MemoryBrowser from './MemoryBrowser.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 import ExpertCatalog from './ExpertCatalog.vue'
 import StateBlock from './StateBlock.vue'
-import AgentsPage from './AgentsPage.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -24,7 +24,6 @@ const chat = useChatStore()
 
 // ── tab 管理（支持 URL query ?tab=xxx） ──
 const tabs = [
-  { id: 'agents', label: '神魔架', icon: '⛩️' },
   { id: 'skills', label: '技能', icon: '🧩' },
   { id: 'tools', label: '工具', icon: '🛠️' },
   { id: 'mcp', label: 'MCP', icon: '🔌' },
@@ -33,11 +32,13 @@ const tabs = [
   { id: 'knowledge', label: '知识库', icon: '📚' },
 ]
 
-const activeTab = ref(route.query.tab || 'agents')
+const activeTab = ref(route.query.tab || 'skills')
 
 watch(activeTab, (t) => {
-  router.replace({ path: '/agents', query: t !== 'agents' ? { tab: t } : {} })
+  router.replace({ path: '/agents', query: t !== 'skills' ? { tab: t } : {} })
 })
+
+function back() { router.push('/') }
 
 // 进入页面收起左栏，离开恢复（与神魔堂一致逻辑）
 const wasSidebarOpen = ref(true)
@@ -117,6 +118,9 @@ watch(activeTab, (t) => { if (t === 'mcp') loadSecurity() })
     <header class="shrink-0 px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
       <div class="flex items-center justify-between gap-4 flex-wrap">
         <div class="flex items-center gap-3">
+          <button @click="back" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-gray-500 flex-shrink-0" title="返回单聊主界面">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          </button>
           <h1 class="text-xl font-bold">🤖 Agent 管理</h1>
           <span class="text-sm text-gray-400">已安装 · 已接入 · 配置管理</span>
         </div>
@@ -138,13 +142,8 @@ watch(activeTab, (t) => { if (t === 'mcp') loadSecurity() })
     <!-- 内容区：全宽，独立滚动 -->
     <div class="flex-1 overflow-y-auto">
       <div class="max-w-6xl mx-auto px-6 py-6">
-        <!-- 神魔架：自造神 + 封神榜 + 本机发现 -->
-        <div v-if="activeTab === 'agents'">
-          <AgentsPage class="!bg-transparent" />
-        </div>
-
         <!-- 技能：已装管理 + 发现市场（复用 SkillManager 全量组件） -->
-        <SkillManager v-else-if="activeTab === 'skills'" />
+        <SkillManager v-if="activeTab === 'skills'" />
 
         <!-- 工具：工具集总览与启停 -->
         <div v-else-if="activeTab === 'tools'" class="space-y-3">
