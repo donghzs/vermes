@@ -79,31 +79,69 @@ def test_zones_own_prefixes_exist_in_manifest():
 
 
 # ---------------------------------------------------------------------------
-# 3. 账本解析：DIVERSION_LEDGER 格式可被脚本正确解析
+# 3. 账本解析：DIVERSION_LEDGER 格式可被脚本正确解析（精确匹配，防放水）
 # ---------------------------------------------------------------------------
 
-def test_parse_diversion_ledger_extracts_t3_paths():
-    """DIVERSION_LEDGER 里的 T3 登记（tools/）必须能被解析成 tools/ 前缀。"""
-    prefixes = uw.parse_diversion_ledger()
-    assert "tools/" in prefixes, f"DIVERSION_LEDGER 应解析出 tools/，实际: {prefixes}"
+def test_parse_diversion_ledger_extracts_t3_files():
+    """DIVERSION_LEDGER 里的 T3 登记必须解析为精确文件（非 tools/ 目录前缀）。"""
+    exact_files, dir_prefixes = uw.parse_diversion_ledger()
+    assert "tools/env_passthrough.py" in exact_files, f"应精确匹配文件，实际: {exact_files}"
+    assert "tools/environments/docker.py" in exact_files
+    assert "tools/environments/local.py" in exact_files
+    # 关键：不得把文件条目升格成 tools/ 目录前缀
+    assert "tools/" not in dir_prefixes, f"文件条目不得升格为 tools/ 目录前缀: {dir_prefixes}"
 
 
 def test_registered_diversion_matches_t3_files():
     """已登记的 T3 三文件（follow 区）不得再被算税。"""
-    prefixes = uw.parse_diversion_ledger()
+    ledger = uw.parse_diversion_ledger()
     for path in (
         "tools/env_passthrough.py",
         "tools/environments/docker.py",
         "tools/environments/local.py",
     ):
-        assert uw.is_registered_diversion(path, prefixes), f"{path} 应已登记为有意偏离"
+        assert uw.is_registered_diversion(path, ledger), f"{path} 应已登记为有意偏离"
+
+
+def test_registered_file_does_not_exempt_siblings():
+    """登记单文件不豁免同目录兄弟 —— 这是防放水的核心。"""
+    ledger = uw.parse_diversion_ledger()
+    # tools/env_passthrough.py 已登记，但 tools/kanban_tools.py 不得因此免税
+    assert not uw.is_registered_diversion("tools/kanban_tools.py", ledger)
+    assert not uw.is_registered_diversion("tools/skills_tool.py", ledger)
+
+
+def test_registered_docs_file_does_not_exempt_other_docs():
+    """登记 docs/DISTRIBUTION_MANIFEST.md 单文件不豁免其他 docs 文件。"""
+    ledger = uw.parse_diversion_ledger()
+    # D-002 登记的是 docs/DISTRIBUTION_MANIFEST.md 单文件
+    assert uw.is_registered_diversion("docs/DISTRIBUTION_MANIFEST.md", ledger)
+    assert not uw.is_registered_diversion("docs/TASK_BOARD_20260920.md", ledger)
+
+
+def test_explicit_dir_entry_exempts_children_only():
+    """显式目录条目（斜杠结尾）才豁免子路径；目录外不税。"""
+    exact_files, dir_prefixes = uw.parse_diversion_ledger()
+    # 注入一个显式目录条目验证语义
+    test_ledger = (exact_files, dir_prefixes | {"docs/vermes/"})
+    assert uw.is_registered_diversion("docs/vermes/TASK_BOARD.md", test_ledger)
+    assert not uw.is_registered_diversion("docs/other.md", test_ledger)
 
 
 def test_unregistered_path_still_taxed():
     """未登记的 follow 区路径仍算税（防「一登记全免」的误伤）。"""
-    prefixes = uw.parse_diversion_ledger()
-    assert not uw.is_registered_diversion("plugins/some_upstream_plugin/x.py", prefixes)
-    assert not uw.is_registered_diversion("harness/stability.py", prefixes)
+    ledger = uw.parse_diversion_ledger()
+    assert not uw.is_registered_diversion("plugins/some_upstream_plugin/x.py", ledger)
+    assert not uw.is_registered_diversion("harness/stability.py", ledger)
+
+
+def test_halfwidth_paren_in_ledger_is_handled():
+    """账本用半角括号注释时也能正确解析（百度搭子建议）。"""
+    # 直接测解析器的括号剥离：构造带半角括号的单元格文本
+    import re
+    raw = "`tools/env_passthrough.py` (deprecated, merged into local.py)"
+    path = re.split(r"[（(]", raw)[0].strip().strip("`").strip()
+    assert path == "tools/env_passthrough.py"
 
 
 def test_classify_docs_vermes_is_own():

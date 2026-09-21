@@ -154,7 +154,7 @@ S5 的前置核实项已登记为待办（§8）。
 <!--DIVERSION_LEDGER:START-->
 | id | 路径 | 类型 | 登记日期 | 理由 |
 |---|---|---|---|---|
-| D-001 | `tools/env_passthrough.py`（+ local.py/docker.py） | 修复 | 2026-09-21 | T3：凭据 env 屏蔽名单大小写不敏感（对齐上游 b534f4b8c8cd） |
+| D-001 | `tools/env_passthrough.py`, `tools/environments/local.py`, `tools/environments/docker.py` | 修复 | 2026-09-21 | T3：凭据 env 屏蔽名单大小写不敏感（对齐上游 b534f4b8c8cd） |
 | D-002 | `docs/DISTRIBUTION_MANIFEST.md` | 品牌/发行版 | 2026-09-21 | Vermes 独有发行版契约文档（上游无此文件） |
 <!--DIVERSION_LEDGER:END-->
 

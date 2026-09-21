@@ -29,7 +29,8 @@ Vermes 与上游 `upstream = NousResearch/hermes-agent` 的 **git 历史完全�
     python3 scripts/upstream_watch.py watch              # 默认自上次基线
     python3 scripts/upstream_watch.py watch --since v2026.9.14 --max 400
     python3 scripts/upstream_watch.py watch --fetch      # 先 git fetch upstream
-    python3 scripts/upstream_watch.py boundary --since v2.5.1
+    python3 scripts/upstream_watch.py boundary              # 默认读冻结锚 FREEZE_REF
+    python3 scripts/upstream_watch.py boundary --since 888bf8a344
 
 分区定义见 docs/DISTRIBUTION_MANIFEST.md（本文件内置同一份默认值，二者需同步）。
 """
@@ -131,21 +132,25 @@ def classify(path: str) -> str:
     return "other"
 
 
-def parse_diversion_ledger() -> set[str]:
-    """从 DISTRIBUTION_MANIFEST.md 解析 DIVERSION_LEDGER 里已登记路径的目录前缀集合。
+def parse_diversion_ledger() -> tuple[set[str], set[str]]:
+    """从 DISTRIBUTION_MANIFEST.md 解析 DIVERSION_LEDGER，返回 (exact_files, dir_prefixes)。
 
     账本用固定 HTML 注释包裹（<!--DIVERSION_LEDGER:START--> 至 END），
-    每行是 markdown 表格行，第二列是登记路径。取路径的目录前缀（如
-    `tools/env_passthrough.py` → `tools/`），这样 follow 区改动只要落在
-    已登记目录下，就不算“未登记税”。
+    每行是 markdown 表格行，第二列是登记路径（逗号分隔可列多个）。
+
+    语义（精确匹配，禁止放水）：
+    - 文件条目（带扩展名，如 tools/env_passthrough.py）→ 进 exact_files，仅精确匹配该文件
+    - 目录条目（以 / 结尾，如 docs/vermes/）→ 进 dir_prefixes，才豁免其子路径
+    - 文件条目**不**升格为父目录免税（防整个 tools/ docs/ 被放水）
     """
-    prefixes: set[str] = set()
+    exact_files: set[str] = set()
+    dir_prefixes: set[str] = set()
     if not os.path.exists(MANIFEST_PATH):
-        return prefixes
+        return exact_files, dir_prefixes
     text = open(MANIFEST_PATH, encoding="utf-8").read()
     m = re.search(r"<!--DIVERSION_LEDGER:START-->\s*(.*?)<!--DIVERSION_LEDGER:END-->", text, re.S)
     if not m:
-        return prefixes
+        return exact_files, dir_prefixes
     for line in m.group(1).splitlines():
         line = line.strip()
         if not line.startswith("|"):
@@ -153,25 +158,36 @@ def parse_diversion_ledger() -> set[str]:
         cells = [c.strip() for c in line.strip("|").split("|")]
         if len(cells) < 2 or cells[0] in ("id", "---", "---"):
             continue
-        path = cells[1]
-        # 去掉 markdown 反引号与括号注释（如 `tools/env_passthrough.py`（+ local.py/docker.py））
-        path = path.strip().strip("`").strip()
-        if "（" in path:
-            path = path.split("（")[0].strip()
-        if not path:
-            continue
-        # 登记的是“目录前缀”或“文件路径”，都归一成前缀匹配用
-        if path.endswith(".py") or "." in os.path.basename(path):
-            # 文件 → 取其所在目录
-            prefixes.add(os.path.dirname(path) + "/")
-        else:
-            prefixes.add(path.rstrip("/") + "/")
-    return prefixes
+        cell = cells[1]
+        # 逗号/顿号分隔多个路径；剥反引号与括号注释（全角+半角）
+        raw_paths = [p for p in re.split(r"[,、]", cell) if p.strip()]
+        for raw in raw_paths:
+            path = raw.strip().strip("`").strip()
+            # 去掉括号注释，如 `tools/env_passthrough.py`（+ ...）或 (deprecated)
+            path = re.split(r"[（(]", path)[0].strip()
+            if not path:
+                continue
+            if path.endswith("/"):
+                # 显式目录条目 → 前缀豁免
+                dir_prefixes.add(path)
+            elif os.path.basename(path) and "." in os.path.basename(path):
+                # 文件条目 → 精确匹配
+                exact_files.add(path)
+            else:
+                # 无扩展名且无斜杠结尾 → 按目录前缀处理（如 "docs/vermes"）
+                dir_prefixes.add(path.rstrip("/") + "/")
+    return exact_files, dir_prefixes
 
 
-def is_registered_diversion(path: str, ledger_prefixes: set[str]) -> bool:
-    """判断一条 follow 区路径是否已被 DIVERSION_LEDGER 登记（算作有意偏离，不税）。"""
-    for p in ledger_prefixes:
+def is_registered_diversion(path: str, ledger: tuple[set[str], set[str]]) -> bool:
+    """判断一条 follow 区路径是否已被 DIVERSION_LEDGER 登记（算作有意偏离，不税）。
+
+    ledger = (exact_files, dir_prefixes)。精确文件匹配，目录前缀才豁免子路径。
+    """
+    exact_files, dir_prefixes = ledger
+    if path in exact_files:
+        return True
+    for p in dir_prefixes:
         if path.startswith(p):
             return True
     return False
@@ -365,7 +381,7 @@ def cmd_boundary(args: argparse.Namespace) -> int:
         print(f"[boundary] {since}..main 无提交")
         return 0
 
-    ledger_prefixes = parse_diversion_ledger()
+    ledger = parse_diversion_ledger()
     unregistered_tax: list[tuple[dict, str]] = []
     registered_diversion: list[tuple[dict, str]] = []
     zone_counter: Counter[str] = Counter()
@@ -374,7 +390,7 @@ def cmd_boundary(args: argparse.Namespace) -> int:
             z = classify(p)
             zone_counter[z] += 1
             if z == "follow":
-                if is_registered_diversion(p, ledger_prefixes):
+                if is_registered_diversion(p, ledger):
                     registered_diversion.append((c, p))
                 else:
                     unregistered_tax.append((c, p))
