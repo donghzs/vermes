@@ -171,11 +171,23 @@ def test_vermes_counterpart_dir_prefix_resolves_file():
 
 
 def test_vermes_counterpart_redline():
-    """gateway/platforms/ 与 agent/ 是红线，返回红线只读。"""
-    _, verdict = uw._vermes_counterpart("gateway/platforms/webhook.py")
+    """红线仅限 ZONES.own 具体点名资产，不是 agent/、gateway/ 一刀切。"""
+    # gateway/platforms/ 是红线（中文平台 17 个，ZONES.own 点名）
+    _, verdict = uw._vermes_counterpart("gateway/platforms/wechat/adapter.py")
     assert verdict == "红线"
+    # agent 具体领先文件是红线
     _, verdict2 = uw._vermes_counterpart("agent/memory_fabric.py")
     assert verdict2 == "红线"
+    # 但 agent 其他文件（如 file_safety.py）是 core 区，标「移植/评估」非红线
+    _, verdict3 = uw._vermes_counterpart("agent/file_safety.py")
+    assert verdict3 == "有对应物"
+
+
+def test_vermes_counterpart_specific_overrides_dir_redline():
+    """精确文件匹配覆盖目录红线：gateway/platforms/webhook.py 有映射，非红线。"""
+    vm, verdict = uw._vermes_counterpart("gateway/platforms/webhook.py")
+    assert vm == "gateway/platforms/webhook.py"
+    assert verdict == "有对应物"
 
 
 def test_vermes_counterpart_missing():

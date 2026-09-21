@@ -119,16 +119,38 @@ VALUE_PATTERNS = [
 
 # 上游路径 → Vermes 对应物。值 None = 红线（只参考思路，默认不建议直接搬）。
 # 值 str = Vermes 侧存在的对应路径（有则输出"有对应物"，无则输出"无"）。
+#
+# 红线 = ZONES.own 里被点名的具体资产（不是 agent/、gateway/ 一刀切）：
+#   - gateway/platforms/（中文平台 17 个）
+#   - scholarforge/、frontend/、electron/、acp_registry/ 等
+#   - agent/memory_fabric.py、agent/capability_evolver.py 等具体领先文件
+#
+# 其余 agent/*、gateway/*（非 platforms）属 core 区 = 同源已 diverge，个案评估，
+# 默认标「移植/评估」而非红线，交给人工判定。
 UPSTREAM_VERMES_MAP: dict[str, str | None] = {
-    "gateway/platforms/": None,            # 红线：gateway 平台层
-    "agent/": None,                        # 红线：agent 核心
+    # 红线（ZONES.own 具体点名）
+    "gateway/platforms/": None,
+    "scholarforge/": None,
+    "frontend/": None,
+    "electron/": None,
+    "acp_registry/": None,
+    "locales/": None,
+    "installer/": None,
+    "agent/memory_fabric.py": None,
+    "agent/capability_evolver.py": None,
+    "agent/workflow_runtime.py": None,
+    "agent/compression_scheduler.py": None,
+    # follow/core 区同域对应物（默认「移植/评估」）
     "tools/env_passthrough.py": "tools/env_passthrough.py",
     "tools/environments/": "tools/environments/",
     "tools/approval.py": "tools/approval.py",
     "tools/skills_hub.py": "tools/skills_hub.py",
     "cron/scheduler.py": "cron/scheduler.py",
-    "cron/lifecycle_guard.py": "cron/lifecycle_guard.py",
+    "cron/": "cron/",
+    "gateway/platforms/webhook.py": "gateway/platforms/webhook.py",
+    "gateway/webhook.py": "gateway/webhook.py",
     "plugins/memory/": "plugins/memory/",
+    "agent/file_safety.py": "agent/file_safety.py",
 }
 
 # 安全信号：主题/正文命中这些词 = 意图级候选（并集，不只看 fix(security)）
@@ -147,9 +169,18 @@ INTENT_SKIP_RE = re.compile(
 def _vermes_counterpart(upstream_path: str) -> tuple[str, str]:
     """返回 (vermes_path, 判定)。判定 ∈ {"有对应物", "无", "红线"}。
 
-    目录前缀映射（如 tools/environments/）判定：把上游相对路径拼到 Vermes 根，
-    检查对应文件是否存在（而非只判目录存在）。
+    查找优先级：先精确文件匹配（具体文件可覆盖目录红线，如
+    gateway/platforms/webhook.py 覆盖 gateway/platforms/ 红线），再目录前缀。
     """
+    # 先精确文件匹配（非斜杠结尾的键）
+    for up_prefix, vm in UPSTREAM_VERMES_MAP.items():
+        if up_prefix.endswith("/"):
+            continue
+        if upstream_path == up_prefix:
+            if vm is None:
+                return upstream_path, "红线"
+            return vm, ("有对应物" if os.path.exists(os.path.join(ROOT, vm)) else "无")
+    # 再目录前缀匹配（含红线目录）
     for up_prefix, vm in UPSTREAM_VERMES_MAP.items():
         if not upstream_path.startswith(up_prefix):
             continue
@@ -160,7 +191,7 @@ def _vermes_counterpart(upstream_path: str) -> tuple[str, str]:
             rel = upstream_path[len(up_prefix):]
             vm_full = vm + rel
             return vm_full, ("有对应物" if os.path.exists(os.path.join(ROOT, vm_full)) else "无")
-        # 文件级映射
+        # 文件级映射（非斜杠结尾，但上游路径是它的子路径，不可能命中精确）
         return vm, ("有对应物" if os.path.exists(os.path.join(ROOT, vm)) else "无")
     return upstream_path, "无"
 
@@ -227,12 +258,22 @@ def cmd_intake(args: argparse.Namespace) -> int:
     rank = {"GHSA": 0, "fix(security)": 1, "安全语义": 2}
     rows.sort(key=lambda r: (rank[r["signal"]], r["date"]), reverse=False)
 
+    # 文件名含参数，防同日重跑覆盖：upstream-intent-<date>-<since>-<max>.md
+    since_tag = re.sub(r"[^0-9A-Za-z._-]", "-", since)
     date_tag = datetime.now().strftime("%Y%m%d")
-    out_path = os.path.join(REPORTS_DIR, f"upstream-intent-{date_tag}.md")
+    out_path = os.path.join(
+        REPORTS_DIR, f"upstream-intent-{date_tag}-{since_tag}-max{args.max}.md"
+    )
+    cmdline = (
+        f"python3 scripts/upstream_watch.py intake"
+        f" --since {since} --max {args.max} --upstream-repo {args.upstream_repo}"
+    )
     lines: list[str] = [
         f"# 上游意图级巡检 · 安全/正确性修复候选（{datetime.now():%Y-%m-%d}）\n",
-        f"> 上游 `{since}` → `{head}`，扫描 {len(commits)} commits，命中候选 {len(rows)} 条。",
-        "> 只出清单不自动改代码；人月更，采纳→改代码+契约测试+TAKEALONG §7c，拒绝也记一行。\n",
+        f"> 上游 `{since}` → `{head}`，扫描 {len(commits)} commits（上限 --max {args.max}），命中候选 {len(rows)} 条。",
+        f"> 命令行：`{cmdline}`",
+        "> 只出清单不自动改代码；人月更，采纳→改代码+契约测试+TAKEALONG §7c，拒绝也记一行。",
+        "> **「建议」列是脚本预判，最终以人工 ledger 为准。**\n",
         "## 0. 校准摘要\n",
         "| 口径 | 数量 |",
         "|---|---|",
@@ -246,16 +287,18 @@ def cmd_intake(args: argparse.Namespace) -> int:
         "|---|---|---|---|---|---|",
     ]
     for r in rows:
-        sug = {"有对应物": "移植/评估", "红线": "红线只读", "无": "拒绝/无需"}[r["verdict"]]
+        sug = {"有对应物": "移植/评估", "红线": "红线只读", "无": "人工判"}[r["verdict"]]
+        vm_disp = r["vermes"] if r["verdict"] == "有对应物" else ("—" if r["verdict"] == "无" else "红线区")
         lines.append(
             f"| {r['signal']} | `{r['hash']}` | {r['date']} | {r['subject'][:70]} | "
-            f"{r['vermes'] or '—'} | {sug} |"
+            f"{vm_disp} | {sug} |"
         )
     lines.append("")
     lines.append("## 2. 处置纪律\n")
     lines.append("1. 采纳：改代码 + 契约测试 + TAKEALONG_LEDGER §7c 登记（含来源 commit/落点/验收/人时）。")
     lines.append("2. 拒绝：也在 §7c 记一行（防重复考古）。")
     lines.append("3. 红线：只输出思路参考，默认不直接搬。")
+    lines.append("4. 「无对应物」≠「无需」：可能是同域不同文件名（分叉太深），需人工对照 upstream diff 判定。")
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
@@ -641,7 +684,7 @@ def main() -> int:
 
     i = sub.add_parser("intake", help="意图级巡检：上游安全/正确性修复 → Vermes 对应物清单")
     i.add_argument("--since", default=None, help="上游基线 ref（默认上游最新 tag）")
-    i.add_argument("--max", type=int, default=2000)
+    i.add_argument("--max", type=int, default=8000, help="扫描 commit 上限（默认 8000，覆盖数月；上次巡检以来的全量建议用 --since）")
     i.add_argument("--upstream-repo", default="~/.hermes/hermes-agent", help="上游仓库路径（默认 ~/.hermes/hermes-agent）")
     i.set_defaults(func=cmd_intake)
 
