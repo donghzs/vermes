@@ -1194,7 +1194,7 @@ def resolve_runtime_provider(
             "api_key": _azure_key,
             "source": "azure-explicit",
             "requested_provider": requested_provider,
-        })
+        }, _active_preset, _preset_name)
 
     # Azure Foundry: user-configured endpoint with selectable API mode
     # (OpenAI-style chat_completions or Anthropic-style anthropic_messages).
@@ -1313,7 +1313,7 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "portal"),
                 "expires_at": creds.get("expires_at"),
                 "requested_provider": requested_provider,
-            })
+            }, _active_preset, _preset_name)
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1333,7 +1333,7 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "vermes-auth-store"),
                 "last_refresh": creds.get("last_refresh"),
                 "requested_provider": requested_provider,
-            })
+            }, _active_preset, _preset_name)
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1353,7 +1353,7 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "vermes-auth-store"),
                 "last_refresh": creds.get("last_refresh"),
                 "requested_provider": requested_provider,
-            })
+            }, _active_preset, _preset_name)
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1371,7 +1371,7 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "qwen-cli"),
                 "expires_at_ms": creds.get("expires_at_ms"),
                 "requested_provider": requested_provider,
-            })
+            }, _active_preset, _preset_name)
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1390,7 +1390,7 @@ def resolve_runtime_provider(
                 "api_key": creds["api_key"],
                 "source": creds.get("source", "oauth"),
                 "requested_provider": requested_provider,
-            })
+            }, _active_preset, _preset_name)
 
     if provider == "google-gemini-cli":
         try:
@@ -1405,7 +1405,7 @@ def resolve_runtime_provider(
                 "email": creds.get("email", ""),
                 "project_id": creds.get("project_id", ""),
                 "requested_provider": requested_provider,
-            })
+            }, _active_preset, _preset_name)
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1423,7 +1423,7 @@ def resolve_runtime_provider(
             "args": list(creds.get("args") or []),
             "source": creds.get("source", "process"),
             "requested_provider": requested_provider,
-        })
+        }, _active_preset, _preset_name)
 
     # Anthropic (native Messages API)
     if provider == "anthropic":
@@ -1490,7 +1490,7 @@ def resolve_runtime_provider(
             "api_key": token,
             "source": "env",
             "requested_provider": requested_provider,
-        })
+        }, _active_preset, _preset_name)
 
     # AWS Bedrock (native Converse API via boto3)
     if provider == "bedrock":

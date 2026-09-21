@@ -119,3 +119,29 @@ def test_resolve_unknown_preset_falls_back():
         out = resolve_runtime_provider(requested="openai", preset="nope-unknown")
     assert "preset" not in out
     assert out["api_mode"] == "chat_completions"
+
+
+def test_resolve_non_explicit_path_stamps_preset():
+    """护栏：非 explicit 推导路径（copilot-acp 外部进程凭证）也须 stamp preset。
+
+    回归背景（2026-09-21）：d88b05e009 给 _stamp_preset 后两参数加默认 None
+    消除了 TypeError，但 9 处非 explicit 单参调用点静默丢失 preset stamp——
+    A3 一接线（垂直域/调度器传 preset）即咬人。本测试锁死其中一条路径。
+    """
+    fake_creds = {
+        "base_url": "http://127.0.0.1:9999",
+        "api_key": "acp-key",
+        "command": "copilot",
+        "args": [],
+        "source": "process",
+    }
+    with patch("vermes_cli.runtime_provider.resolve_requested_provider", return_value="copilot-acp"), \
+         patch("vermes_cli.runtime_provider.resolve_provider", return_value="copilot-acp"), \
+         patch("vermes_cli.runtime_provider._get_model_config", return_value={}), \
+         patch("vermes_cli.runtime_provider.resolve_external_process_provider_credentials", return_value=fake_creds):
+        out = resolve_runtime_provider(requested="copilot-acp", preset="scholarforge")
+    assert out["provider"] == "copilot-acp"
+    assert out["preset"] == "scholarforge"
+    assert out["toolset"] == "scholarforge"
+    assert out["context_budget"] == "large"
+    assert out["source"].startswith("preset:scholarforge|")
