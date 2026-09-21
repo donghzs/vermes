@@ -335,6 +335,9 @@ _CORE_PKGS = [
     'pymupdf', 'fitz', 'docx', 'lxml',
     # Windows 进程树扫描（main.py 依赖，pyproject 核心依赖）
     'psutil',
+    # PTY 桥接（dashboard Chat tab，pty_bridge.py 用 try/except 延迟 import，
+    # 静态分析收不到 → 打包产物会报 PtyUnavailableError）
+    'ptyprocess',
 ]
 
 # 渠道包（可选依赖残缺不阻断，on_error='warn once'）：第三方渠道 SDK 可能带

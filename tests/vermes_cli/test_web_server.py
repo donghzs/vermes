@@ -127,7 +127,7 @@ class TestWebServerEndpoints:
 
     def test_get_status_filters_unconfigured_gateway_platforms(self, monkeypatch):
         import gateway.config as gateway_config
-        import vermes_cli.web_server as web_server
+        import vermes_cli.blueprints.status as web_server
 
         class _Platform:
             def __init__(self, value):
@@ -137,10 +137,10 @@ class TestWebServerEndpoints:
             def get_connected_platforms(self):
                 return [_Platform("telegram")]
 
-        monkeypatch.setattr(web_server, "get_running_pid", lambda: 1234)
+        monkeypatch.setattr(web_server, "_get_gateway_pid", lambda: 1234)
         monkeypatch.setattr(
             web_server,
-            "read_runtime_status",
+            "_read_gateway_status",
             lambda: {
                 "gateway_state": "running",
                 "updated_at": "2026-04-12T00:00:00+00:00",
@@ -163,16 +163,16 @@ class TestWebServerEndpoints:
 
     def test_get_status_hides_stale_platforms_when_gateway_not_running(self, monkeypatch):
         import gateway.config as gateway_config
-        import vermes_cli.web_server as web_server
+        import vermes_cli.blueprints.status as web_server
 
         class _GatewayConfig:
             def get_connected_platforms(self):
                 return []
 
-        monkeypatch.setattr(web_server, "get_running_pid", lambda: None)
+        monkeypatch.setattr(web_server, "_get_gateway_pid", lambda: None)
         monkeypatch.setattr(
             web_server,
-            "read_runtime_status",
+            "_read_gateway_status",
             lambda: {
                 "gateway_state": "startup_failed",
                 "updated_at": "2026-04-12T00:00:00+00:00",
@@ -322,7 +322,7 @@ class TestWebServerEndpoints:
         unauth_client = TestClient(app)
         resp = unauth_client.get("/api/env")
         assert resp.status_code == 401
-        resp = unauth_client.get("/api/config")
+        resp = unauth_client.get("/api/logs")
         assert resp.status_code == 401
         # Public endpoints should still work
         resp = unauth_client.get("/api/status")
@@ -405,11 +405,19 @@ class TestBuildSchemaFromConfig:
         assert "context" not in categories  # merged into agent
 
     def test_no_single_field_categories(self):
-        """After merging, no category should have just 1 field."""
+        """After merging, no category should have just 1 field.
+
+        ``bot_mode`` and ``grounded_citation`` are intentional single-switch
+        config sections (each exposes exactly one boolean toggle), so they are
+        exempt from the merge rule.
+        """
         from vermes_cli.web_server import CONFIG_SCHEMA
         from collections import Counter
+        _EXEMPT = {"bot_mode", "grounded_citation"}
         cats = Counter(e["category"] for e in CONFIG_SCHEMA.values())
         for cat, count in cats.items():
+            if cat in _EXEMPT:
+                continue
             assert count >= 2, f"Category '{cat}' has only {count} field(s) — should be merged"
 
 
@@ -741,7 +749,7 @@ class TestNewEndpoints:
 
     def test_profile_open_terminal_uses_macos_terminal(self, monkeypatch):
         from vermes_constants import get_vermes_home
-        import vermes_cli.web_server as web_server
+        import vermes_cli.blueprints.profiles as web_server
 
         (get_vermes_home() / "profiles" / "coder").mkdir(parents=True)
         calls = []
@@ -757,7 +765,7 @@ class TestNewEndpoints:
 
     def test_profile_open_terminal_uses_windows_cmd(self, monkeypatch):
         from vermes_constants import get_vermes_home
-        import vermes_cli.web_server as web_server
+        import vermes_cli.blueprints.profiles as web_server
 
         (get_vermes_home() / "profiles" / "coder").mkdir(parents=True)
         calls = []
@@ -822,17 +830,14 @@ class TestNewEndpoints:
         import vermes_cli.web_server as web_server
 
         def _fake_find_all_skills(*, skip_disabled=False):
-            if skip_disabled:
-                return [
-                    {"name": "active-skill", "description": "active", "category": "demo"},
-                    {"name": "disabled-skill", "description": "disabled", "category": "demo"},
-                ]
             return [
                 {"name": "active-skill", "description": "active", "category": "demo"},
+                {"name": "disabled-skill", "description": "disabled", "category": "demo"},
             ]
 
         monkeypatch.setattr(skills_tool, "_find_all_skills", _fake_find_all_skills)
         monkeypatch.setattr(skills_config, "get_disabled_skills", lambda config: {"disabled-skill"})
+        monkeypatch.setattr(skills_config, "is_recommended_skill", lambda name: False)
         monkeypatch.setattr(web_server, "load_config", lambda: {"skills": {"disabled": ["disabled-skill"]}})
 
         resp = self.client.get("/api/skills")
@@ -844,12 +849,14 @@ class TestNewEndpoints:
                 "description": "active",
                 "category": "demo",
                 "enabled": True,
+                "recommended": False,
             },
             {
                 "name": "disabled-skill",
                 "description": "disabled",
                 "category": "demo",
                 "enabled": False,
+                "recommended": False,
             },
         ]
 
@@ -866,7 +873,7 @@ class TestNewEndpoints:
     def test_toolsets_list_matches_cli_enabled_state(self, monkeypatch):
         import vermes_cli.tools_config as tools_config
         import toolsets as toolsets_module
-        import vermes_cli.web_server as web_server
+        import vermes_cli.config as vermes_cli_config
 
         monkeypatch.setattr(
             tools_config,
@@ -896,7 +903,7 @@ class TestNewEndpoints:
                 "memory": ["memory_read"],
             }[name],
         )
-        monkeypatch.setattr(web_server, "load_config", lambda: {"platform_toolsets": {"cli": ["web", "skills"]}})
+        monkeypatch.setattr(vermes_cli_config, "load_config", lambda: {"platform_toolsets": {"web": ["web", "skills"]}})
 
         resp = self.client.get("/api/tools/toolsets")
 
@@ -1329,7 +1336,7 @@ class TestProbeGatewayHealth:
 
     def test_returns_false_when_no_url_configured(self, monkeypatch):
         """When GATEWAY_HEALTH_URL is unset, the probe returns (False, None)."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", None)
         alive, body = ws._probe_gateway_health()
         assert alive is False
@@ -1337,7 +1344,7 @@ class TestProbeGatewayHealth:
 
     def test_normalizes_url_with_health_suffix(self, monkeypatch):
         """If the user sets the URL to include /health, it's stripped to base."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", "http://gw:8642/health")
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_TIMEOUT", 1)
         # Both paths should fail (no server), but we verify they were constructed
@@ -1357,7 +1364,7 @@ class TestProbeGatewayHealth:
 
     def test_normalizes_url_with_health_detailed_suffix(self, monkeypatch):
         """If the user sets the URL to include /health/detailed, it's stripped to base."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", "http://gw:8642/health/detailed")
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_TIMEOUT", 1)
         calls = []
@@ -1373,7 +1380,7 @@ class TestProbeGatewayHealth:
 
     def test_successful_detailed_probe(self, monkeypatch):
         """Successful /health/detailed probe returns (True, body_dict)."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", "http://gw:8642")
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_TIMEOUT", 1)
 
@@ -1397,7 +1404,7 @@ class TestProbeGatewayHealth:
 
     def test_detailed_fails_falls_back_to_simple_health(self, monkeypatch):
         """If /health/detailed fails, falls back to /health."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", "http://gw:8642")
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_TIMEOUT", 1)
 
@@ -1437,10 +1444,10 @@ class TestStatusRemoteGateway:
 
     def test_status_falls_back_to_remote_probe(self, monkeypatch):
         """When local PID check fails and remote probe succeeds, gateway shows running."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
 
-        monkeypatch.setattr(ws, "get_running_pid", lambda: None)
-        monkeypatch.setattr(ws, "read_runtime_status", lambda: None)
+        monkeypatch.setattr(ws, "_get_gateway_pid", lambda: None)
+        monkeypatch.setattr(ws, "_read_gateway_status", lambda: None)
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", "http://gw:8642")
         monkeypatch.setattr(ws, "_probe_gateway_health", lambda: (True, {
             "status": "ok",
@@ -1459,10 +1466,10 @@ class TestStatusRemoteGateway:
 
     def test_status_remote_probe_not_attempted_when_local_pid_found(self, monkeypatch):
         """When local PID check succeeds, the remote probe is never called."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
 
-        monkeypatch.setattr(ws, "get_running_pid", lambda: 1234)
-        monkeypatch.setattr(ws, "read_runtime_status", lambda: {
+        monkeypatch.setattr(ws, "_get_gateway_pid", lambda: 1234)
+        monkeypatch.setattr(ws, "_read_gateway_status", lambda: {
             "gateway_state": "running",
             "platforms": {},
         })
@@ -1482,10 +1489,10 @@ class TestStatusRemoteGateway:
 
     def test_status_remote_probe_not_attempted_when_no_url(self, monkeypatch):
         """When GATEWAY_HEALTH_URL is unset, no probe is attempted."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
 
-        monkeypatch.setattr(ws, "get_running_pid", lambda: None)
-        monkeypatch.setattr(ws, "read_runtime_status", lambda: None)
+        monkeypatch.setattr(ws, "_get_gateway_pid", lambda: None)
+        monkeypatch.setattr(ws, "_read_gateway_status", lambda: None)
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", None)
 
         resp = self.client.get("/api/status")
@@ -1496,10 +1503,10 @@ class TestStatusRemoteGateway:
 
     def test_status_remote_running_null_pid(self, monkeypatch):
         """Remote gateway running but PID not in response — pid should be None."""
-        import vermes_cli.web_server as ws
+        import vermes_cli.blueprints.status as ws
 
-        monkeypatch.setattr(ws, "get_running_pid", lambda: None)
-        monkeypatch.setattr(ws, "read_runtime_status", lambda: None)
+        monkeypatch.setattr(ws, "_get_gateway_pid", lambda: None)
+        monkeypatch.setattr(ws, "_read_gateway_status", lambda: None)
         monkeypatch.setattr(ws, "_GATEWAY_HEALTH_URL", "http://gw:8642")
         monkeypatch.setattr(ws, "_probe_gateway_health", lambda: (True, {
             "status": "ok",
