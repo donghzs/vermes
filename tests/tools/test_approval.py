@@ -153,7 +153,7 @@ class TestSessionKeyContext:
             approval_module.reset_current_session_key(token)
 
     def test_gateway_runner_binds_session_key_to_context_before_agent_run(self):
-        run_py = Path(__file__).resolve().parents[2] / "gateway" / "run.py"
+        run_py = Path(__file__).resolve().parents[2] / "gateway" / "agent_runner_mixin.py"
         module = ast.parse(run_py.read_text(encoding="utf-8"))
 
         run_sync = None
@@ -162,7 +162,7 @@ class TestSessionKeyContext:
                 run_sync = node
                 break
 
-        assert run_sync is not None, "gateway.run.run_sync not found"
+        assert run_sync is not None, "gateway.agent_runner_mixin.run_sync not found"
 
         called_names = set()
         for node in ast.walk(run_sync):
