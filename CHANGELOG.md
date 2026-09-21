@@ -2,6 +2,69 @@
 
 All notable changes to Vermes will be documented in this file.
 
+## [2.5.1] - 2026-09-21
+
+> 范围：`10c780d2a2`（2.5.0 发布点）→ `350a25d8cc`，共 **68 个提交**。
+> 性质：**安全收口 + 正确性修复 + 测试债清零**，无新功能开关。
+
+### 安全 · Provider 凭据明文收口（P1）
+
+- `add_provider` 不再把 `api_key` 明文落进 `config.yaml`，改记 `key_env` 指针
+- 解析面回读 `.env`：`runtime_provider` 新增 `_resolve_env_key()`、`auxiliary_client` custom 分支、`studio._resolve_key_entry`、`model_switch` `/models` 发现 —— 四路统一走 `get_env_value`（`os.environ` OR `.env` 文件），修掉「桌面 dev 直启（uvicorn 不注入 dotenv）解析不到 key」
+- 迁移脚本 `scripts/migrate_plaintext_provider_keys.py`：扫 `providers` + `custom_providers[]` + `auxiliary.*`，按 `base_url` 反查 `key_env`，round-trip 保注释；`'none'` 当占位符处理
+- 存量实测：`~/.vermes/config.yaml` **26 个 provider / 0 条明文**；`scnet` 真凭证已落 `.env`（备份 `config.yaml.bak-20260920_200135`）
+
+### 运行时正确性
+
+- `_stamp_preset` 签名不匹配（A3 `e7b3aa9e7ba` 遗留）：17 个 `TypeError` 清零；并补传 9 处非 explicit 出口的 preset 变量，修复「加默认值后 preset 静默不生效」
+- `_resolve_named_custom_runtime` 死代码 `os.getenv(key_env)` → `_resolve_env_key`
+- 新增契约测试锁死 copilot-acp 非 explicit 路径的 preset stamp（原先零覆盖）
+
+### 配置写入卫生
+
+- 6 处 yaml 写路径改就地 round-trip，**消除注释抹除 + 默认值膨胀**（`config.yaml` / 凭据写路径 / `backup.py` 对齐上游后 38 failures → 0）
+
+### 技能索引与路由
+
+- skill-routing：纯渠道门 auto + `SkillRouter` prefetch + heat tie-breaker
+- A′ 渠道硬门：messaging 渠道 auto 永不降级
+- 技能索引 deny-list 细校 + GUI 开关；M7 token 阈值上线（`web_dist` 同步）
+
+### Gateway / 渠道
+
+- A7 first-DM 自动 home channel；元宝 comment-safe 写入
+- W3 email 自过滤 / W4 持久通知去重
+
+### 测试债
+
+- 既有失败清零：backup 对齐（38→0）、telegram mock + profiles 品牌迁移（9）、gateway 启动分类/索引/resume/toolset（7）、`_stamp_preset`（17）
+
+### 已知问题（带病发布，如实登记）
+
+| # | 缺陷 | 状态 |
+|---|---|---|
+| 1 | Windows 包未构建，`version.json` 的 `windows.sha256` 为空 | 待远端构建回填 |
+| 2 | gateway 全量 **13 failed**（环境缺依赖 3 / 品牌重命名遗留 2 / 中文化遗留 1 / 工具集漂移 1 / reconnect·email·runner 7） | 2026-09-20 台账定性为 pre-existing；**本次未复跑全量** |
+| 3 | SQLite 3.50.4 WAL-reset 损坏 bug（内嵌运行时） | 未修 |
+| 4 | M7 auto 死开关（阈值 20 KB vs 实测索引快照 131,834 字节） | 见决策 D3，未纳入本次 |
+
+### 验证
+
+| 套件 | 结果 |
+|---|---|
+| `test_runtime_provider_resolution` + `test_api_key_providers` | 292 passed |
+| `test_runtime_presets_contract` | 9 passed |
+| `test_provider_add_no_wipe` + `test_custom_provider_model_switch` + `test_auth_qwen_provider` | 45 passed |
+| 4 文件广回归（含本次全部改动面） | 308 passed / 0 failed |
+
+## [2.5.0] - 2026-09-19
+
+> 补记：2.5.0 当时只更新了 `version.json`，**CHANGELOG 漏记**。以下摘要以 `version.json` 发布说明为准。
+
+- 可信显形（U-P0）：聊天 Harness 状态灯 / Auto 路由头 / 交付摘要卡 / 失败可行动横幅 / 时间线 harness 核验徽标与筛选 / 全站空态 StateBlock + PrereqBanner / 通知中心 / 场景轻量状态条
+- 工程门禁：tool_step 契约 harness 双路径、harness_status SSE+HTTP 账本、route_ledger + `GET /api/route/ledger`、cron monitor-mode、verify_fn 写回扩容、TrustGate 严格模式 fail-closed、stability 探针可配置
+- 文案纠偏（E-P0-4）：技能 / TrustGate / 微信体验宣称对齐真源
+
 ## [2.4.9] - 2026-09-18
 
 > 基于 tag `v2.4.8` 之后的本地/已合入改动。**本机先构建 + 冒烟通过后才对外发布**；tag / vbit.top 投放以冒烟结果为准。
