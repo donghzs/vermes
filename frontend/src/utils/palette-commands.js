@@ -5,8 +5,8 @@ export function buildPalettePageCommands(router) {
   return [
     { key: 'page:chat', icon: '💬', label: '对话', hint: '回到聊天', kind: '页面', action: go('/') },
     { key: 'page:shenmotang', icon: '⛩️', label: '神魔堂', hint: '多 Agent 群聊 + 请神登堂', kind: '页面', action: go('/shenmotang') },
-    // ⑤ C4：MCP 指挥中心统一入口
-    { key: 'page:mcp', icon: '🎛️', label: 'MCP 指挥中心', hint: 'server 管理 / 目录安装 / 调用监控', kind: '页面', action: go('/mcp') },
+    // MCP 指挥中心已并入 Agent 管理
+    { key: 'page:agents', icon: '🤖', label: 'Agent 管理', hint: '自造神/封神榜/已装技能/工具/MCP/记忆/知识库', kind: '页面', action: go('/agents') },
     { key: 'page:settings-mcp', icon: '🔌', label: '设置 · MCP', hint: '设置页 MCP 标签', kind: '页面', action: go('/settings') },
     { key: 'page:studio', icon: '🎨', label: '创作工作室', kind: '页面', action: go('/studio') },
     { key: 'page:scholarforge', icon: '📝', label: '论文写作', kind: '页面', action: go('/scholarforge') },
@@ -23,7 +23,7 @@ export function buildPaletteActionCommands(router, chat) {
   return [
     { key: 'act:new-chat', icon: '💬', label: '新建对话', kind: '动作', action: () => chat.createSession('新会话') },
     { key: 'act:toggle-theme', icon: '🌙', label: '切换深色/浅色主题', kind: '动作', action: () => chat.toggleTheme() },
-    { key: 'act:mcp-center', icon: '🎛️', label: '打开 MCP 指挥中心', hint: '调用监控 / server 管理', kind: '动作', action: () => router.push('/mcp') },
+    { key: 'act:agents', icon: '🤖', label: '打开 Agent 管理', hint: '已装技能/工具/MCP/记忆/知识库', kind: '动作', action: () => router.push('/agents') },
   ]
 }
 
