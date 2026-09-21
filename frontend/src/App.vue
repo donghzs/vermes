@@ -5,7 +5,7 @@ import Sidebar from './components/Sidebar.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import ApprovalDialog from './components/ApprovalDialog.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
-import ToolSkillDrawer from './components/ToolSkillDrawer.vue'
+// ToolSkillDrawer 已由全宽 AgentManagement.vue 取代
 import ArtifactPanel from './components/ArtifactPanel.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
 import CommandPalette from './components/CommandPalette.vue'
@@ -97,7 +97,7 @@ onMounted(async () => {
       <ApprovalDialog />
       <ConfirmDialog />
       <UpdateDialog />
-      <ToolSkillDrawer />
+      <!-- ToolSkillDrawer 已由 /agents 路由取代 -->
       <CommandPalette />
     </ErrorBoundary>
   </div>

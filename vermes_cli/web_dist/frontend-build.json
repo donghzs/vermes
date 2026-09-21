@@ -1,7 +1,7 @@
 {
-  "version": "2.5.0",
-  "gitHash": "ad58268ead76-dirty",
-  "gitBranch": "feat/skill-routing",
-  "buildTime": "2026-09-20T11:31:13.324Z",
+  "version": "2.5.1",
+  "gitHash": "a1d12954aef9-dirty",
+  "gitBranch": "main",
+  "buildTime": "2026-09-21T01:25:21.851Z",
   "nodeVersion": "v22.22.3"
 }

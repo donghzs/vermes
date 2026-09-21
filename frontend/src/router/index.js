@@ -15,8 +15,8 @@ import ChatView from '../components/ChatView.vue'
 const routes = [
   { path: '/', component: ChatView },
   { path: '/settings', component: () => import('../components/Settings.vue') },
-  // ⑤ C4：MCP 指挥中心统一页（server 管理 + 目录安装 + 安全 + 调用监控 + 专家目录）
-  { path: '/mcp', component: () => import('../components/MCPCommandCenter.vue') },
+  // MCP 指挥中心已并入 Agent 管理（全宽页面）
+  { path: '/mcp', redirect: '/agents' },
   { path: '/studio', component: () => import('../components/StudioChat.vue') },
   { path: '/scholarforge', component: () => import('../components/ScholarForgePanel.vue') },
   { path: '/3d-studio', component: () => import('../components/ThreeDStudio.vue') },
@@ -37,9 +37,12 @@ const routes = [
   { path: '/growth', component: () => import('../components/GrowthPage.vue') },
   // ⛩️ 神魔堂：融合入口（诸神会晤 + 神魔架）
   { path: '/shenmotang', component: () => import('../components/Shenmotang.vue') },
+  // Agent 管理：全宽页面（已装技能/工具/MCP/记忆/知识库/自造神/封神榜）
+  { path: '/agents', component: () => import('../components/AgentManagement.vue') },
   // 旧入口重定向到神魔堂（避免旧外链/书签 404）
   { path: '/bot-rooms', redirect: '/shenmotang' },
-  { path: '/agents', redirect: '/shenmotang' },
+  // 神魔架（请神/造神）已并入 Agent 管理 /agents
+  { path: '/roster', redirect: '/agents' },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/

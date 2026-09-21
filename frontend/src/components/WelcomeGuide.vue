@@ -2,7 +2,6 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useRouter } from 'vue-router'
-import { useRightPanel } from '../composables/useRightPanel'
 import { toast } from '../utils/toast'
 import api from '../services/api.js'
 
@@ -104,7 +103,7 @@ function migrateFromOther() {
 const experts = ref([])
 const expertBusy = ref('')
 const recommendations = ref([])   // 你可能想用（按使用频次个性化）
-const { openPanel } = useRightPanel()
+function openAgentTab(tab) { router.push({ path: '/agents', query: { tab } }) }
 
 function zh(obj, fallback = '') {
   if (!obj) return fallback
@@ -158,7 +157,7 @@ async function toggleRecommendedSkill(skill) {
   }
 }
 function openSkillsPanel() {
-  openPanel('skills')
+  openAgentTab('skills')
 }
 
 async function useExpert(expert, promptText) {
@@ -185,7 +184,7 @@ async function useExpert(expert, promptText) {
 }
 
 function openExpertsPanel() {
-  openPanel('experts')
+  openAgentTab('experts')
 }
 
 // C1 能力显形（2026-09-14）：WelcomeGuide 原本只引导「配模型 + 挑专家 + 开技能」，

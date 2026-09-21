@@ -210,6 +210,7 @@ const TYPE_FILTERS = [
   { key: 'skill', label: '🧩 技能' },
   { key: 'module', label: '📦 模块' },
   { key: 'software', label: '🖥 软件' },
+  { key: 'mcp', label: '🔌 MCP' },
 ]
 
 // ── 技能市场渠道 ──
@@ -240,6 +241,11 @@ const skillMarketItems = ref([])
 const moduleItems = ref([])
 const softwareItems = ref([])
 
+// ── MCP 目录（一键安装未装的 MCP server）──
+const mcpCatalogItems = ref([])
+const mcpCatalogLoading = ref(false)
+const mcpInstalling = ref('')
+
 const activeList = computed(() => {
   const q = query.value.trim().toLowerCase()
   const filterFn = (item) => {
@@ -249,13 +255,15 @@ const activeList = computed(() => {
   if (typeFilter.value === 'skill') return skillMarketItems.value.filter(filterFn)
   if (typeFilter.value === 'module') return moduleItems.value.filter(filterFn)
   if (typeFilter.value === 'software') return softwareItems.value.filter(filterFn)
-  return [...skillMarketItems.value, ...moduleItems.value, ...softwareItems.value].filter(filterFn)
+  if (typeFilter.value === 'mcp') return mcpCatalogItems.value.filter(filterFn)
+  return [...skillMarketItems.value, ...moduleItems.value, ...softwareItems.value, ...mcpCatalogItems.value].filter(filterFn)
 })
 
 async function loadAll(refresh = false) {
   loadSkills(refresh)
   loadModules()
   loadSoftware()
+  loadMcpCatalog()
 }
 
 async function loadSkills(refresh = false) {
@@ -360,6 +368,31 @@ async function loadSoftware() {
   }
 }
 
+// ── MCP 目录加载 + 一键安装 ──
+async function loadMcpCatalog() {
+  mcpCatalogLoading.value = true
+  try {
+    const data = await api.mcpCatalog()
+    const items = (data?.catalog || []).map(m => ({
+      _key: `mcp:${m.name}`,
+      _type: 'mcp',
+      name: m.name,
+      id: m.name,
+      description: m.description || m.summary || '',
+      version: m.version || '',
+      source: m.source || 'catalog',
+      install_state: m.installed ? 'installed' : 'available',
+      raw: m,
+    }))
+    mcpCatalogItems.value = items
+  } catch (e) {
+    console.error('MCP 目录加载失败', e)
+    mcpCatalogItems.value = []
+  } finally {
+    mcpCatalogLoading.value = false
+  }
+}
+
 async function onInstall(item) {
   busyId.value = item._key
   try {
@@ -383,6 +416,8 @@ async function onInstall(item) {
       }
       busyId.value = ''
       return
+    } else if (item._type === 'mcp') {
+      r = await api.mcpInstallFromCatalog(item.id, item.raw?.env_values || {})
     }
     if (r?.ok !== false) {
       toast.success(r?.message || `已安装 ${item.name}`)
@@ -409,6 +444,8 @@ async function onUninstall(item) {
       toast.info('软件适配器卸载请通过 Agent 管理 → 软件 tab 操作')
       busyId.value = ''
       return
+    } else if (item._type === 'mcp') {
+      r = await api.mcpRemoveServer(item.id)
     }
     if (r?.ok !== false) {
       toast.success(r?.message || `已卸载 ${item.name}`)

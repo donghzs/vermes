@@ -12,13 +12,13 @@ import KnowledgeBase from './KnowledgeBase.vue'
 import StateBlock from './StateBlock.vue'
 
 // ExpertCatalog 已迁至 ToolSkillDrawer 专家 tab
-import { useRightPanel } from '../composables/useRightPanel'
+// useRightPanel 仅供产物面板使用，Agent 管理已独立为 /agents 路由
 // 生态模块前端动态加载已弃用，改为 Agent 工具集模式
 
 const chat = useChatStore()
 const router = useRouter()
 const route = useRoute()
-const { openPanel } = useRightPanel()
+// openPanel 已退役，Agent 入口改为 goAgentManagement()
 
 function goSettings() { router.push('/settings') }
 function goMobileConnect() { router.push('/settings?tab=channels') }
@@ -30,7 +30,7 @@ function goBricks() { router.push('/bricks') }
 function goWorkflows() { router.push('/workflows') }
 function goGrowth() { router.push('/growth') }
 
-function goMcpCenter() { router.push('/mcp') }
+function goAgentManagement() { router.push('/agents') }
 // 📊 Benchmark 大盘
 function goBenchmark() { router.push('/benchmark') }
 // ⛩️ 神魔堂：单一融合入口（诸神会晤群聊 + 神魔架请神/造神 + 蜂群看板）
@@ -724,11 +724,7 @@ async function handleImportFile(e) {
           <span class="text-[15px] leading-none">🌱</span><span>成长</span>
           <span class="sidebar-tooltip group-hover:opacity-100">我的成长：成长轨迹 / 能力自检 / 我眼里的你</span>
         </button>
-        <!-- ⑤ C4：MCP 指挥中心统一页 -->
-        <button @click="goMcpCenter()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/mcp' ? 'bg-teal-600 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'">
-          <span class="text-[15px] leading-none">🎛️</span><span>MCP</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">MCP 指挥中心：server / 目录 / 安全 / 调用监控</span>
-        </button>
+        <!-- MCP 指挥中心已并入 Agent 管理 -->
         <button @click="goBricks()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/bricks' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'">
           <span class="text-[15px] leading-none">🧱</span><span>积木</span>
           <span class="sidebar-tooltip group-hover:opacity-100">积木市场 + 热门榜（技能/工具/模块/软件）</span>
@@ -741,9 +737,9 @@ async function handleImportFile(e) {
           <span class="text-[15px] leading-none">📱</span><span>移动接入</span>
           <span class="sidebar-tooltip group-hover:opacity-100">移动设备接入（渠道 / App）</span>
         </button>
-        <button @click="openPanel('skills')" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">
+        <button @click="goAgentManagement()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] transition" :class="$route.path === '/agents' ? 'bg-emerald-600 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'">
           <span class="text-[15px] leading-none">🤖</span><span>Agent</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">Agent 管理：技能/工具/软件/专家/MCP/记忆/知识库</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">Agent 管理：自造神/封神榜/已装技能/工具/MCP/记忆/知识库</span>
         </button>
         <button @click="chat.toggleTheme()" class="group relative flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
           <span class="text-[15px] leading-none">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span><span>{{ chat.theme === 'dark' ? '浅色' : '深色' }}</span>
