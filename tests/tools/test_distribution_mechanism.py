@@ -142,6 +142,15 @@ def test_takealong_ledger_also_exempts_follow_paths():
         "TAKEALONG L-002 落点 agent/file_safety.py 应免税"
 
 
+def test_placeholder_landing_not_parsed_as_path():
+    """拒绝/暂缓条目的落点占位符（—）不得被解析成目录前缀。"""
+    exact_files, dir_prefixes = uw.parse_diversion_ledger()
+    # L-003 拒绝项落点是 —，不得进 dir_prefixes（否则会误免掉 "—/xxx" 之类假路径）
+    assert "—/" not in dir_prefixes, f"占位符 — 不得被解析成目录前缀: {dir_prefixes}"
+    # agent/file_safety.py 仍免税是来自 L-002（采纳项），非 L-003（拒绝项）
+    assert "agent/file_safety.py" in exact_files
+
+
 def test_unregistered_path_still_taxed():
     """未登记的 follow 区路径仍算税（防「一登记全免」的误伤）。"""
     ledger = uw.parse_diversion_ledger()

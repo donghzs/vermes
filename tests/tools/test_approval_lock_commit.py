@@ -61,8 +61,12 @@ def test_resolve_commits_choice_inside_the_same_lock_section(monkeypatch):
     assert entry.result == "once"
 
 
-def test_unregister_commits_event_inside_lock(monkeypatch):
-    """unregister_gateway_notify 释放锁时，被 pop 的 entry.event 必须已 set（不悬挂）。"""
+def test_unregister_commits_deny_inside_lock(monkeypatch):
+    """unregister_gateway_notify 释放锁时，被 pop 的 entry 必须已 result="deny" 且 event 已 set。
+
+    与 clear_session 对齐：会话边界清理提交确定的 deny 结果，而非 choice=None，
+    让 waiter 醒来时得到确定性 outcome（而非被归一成 timeout）。
+    """
     session_key = "unregister-lock"
     entry = _enqueue(session_key)
     mod._gateway_notify_cbs[session_key] = lambda data: None
@@ -74,12 +78,13 @@ def test_unregister_commits_event_inside_lock(monkeypatch):
             return real_lock.__enter__()
 
         def __exit__(self, *exc):
+            seen["result_at_release"] = entry.result
             seen["event_at_release"] = entry.event.is_set()
             return real_lock.__exit__(*exc)
 
     monkeypatch.setattr(mod, "_lock", _Instrumented())
     mod.unregister_gateway_notify(session_key)
-    assert seen == {"event_at_release": True}
+    assert seen == {"result_at_release": "deny", "event_at_release": True}
     assert session_key not in mod._gateway_queues
 
 

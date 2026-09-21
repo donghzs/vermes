@@ -545,11 +545,15 @@ def unregister_gateway_notify(session_key: str) -> None:
     """Unregister the per-session gateway approval callback.
 
     Signals ALL blocked threads for this session so they don't hang forever
-    (e.g. when the agent run finishes or is interrupted).
+    (e.g. when the agent run finishes or is interrupted). Commits ``result="deny"``
+    under the same lock that pops the queue (#112548) so the waiter wakes with a
+    deterministic outcome (deny) instead of ``choice=None`` — matching
+    ``clear_session``'s session-boundary semantics.
     """
     with _lock:
         _gateway_notify_cbs.pop(session_key, None)
         for entry in _gateway_queues.pop(session_key, []):
+            entry.result = "deny"
             entry.event.set()
 
 

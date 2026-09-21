@@ -1,6 +1,6 @@
 # DISTRIBUTION_MANIFEST.md — Vermes 作为 Hermes 上游发行版的契约
 
-> 建立日期：2026-09-21 · 基线：`v2.5.1`（`888bf8a344`）
+> 建立日期：2026-09-21 · 冻结锚：`888bf8a344`（非发版 tag；发版 tag `v2.5.1` 可移动，当前指向 `5142343cbd`）
 > 定位：**Vermes = Hermes Agent 的中文发行版（distribution）**，不是平行分叉。
 > 目标：**保持 Vermes 独特开发，同时让取长上游从「偶发人工考古」变成「常态化、可度量、低风险」。**
 
@@ -173,7 +173,7 @@ S5 的前置核实项已登记为待办（§8）。
 |---|---|---|---|---|---|---|---|
 | L-001 | `b534f4b8c8cd` | `tools/env_passthrough.py`, `tools/environments/local.py`, `tools/environments/docker.py` | 重写（Vermes 无 `_build_provider_env_blocklist`，用 `_is_env_blocklisted` casefold 等价实现） | `tests/tools/test_env_passthrough.py` 19 passed | ~0.5h | 0 | ✅ 已合入 `a48811769d` |
 | L-002 | `1c0d95badbac` | `agent/file_safety.py` | 重写（Vermes `is_write_denied`/`get_read_block_error` 各自内联目录判定，无上游 `_WRITE_DENIED_SECRET_DIRS`/`_READ_DENIED_DIRS` 元组，新增 `_WRITE_DENIED_SECRET_DIRS` 常量 + 两处目录级 deny） | `tests/agent/test_file_safety_secret_stores.py` 3 passed | ~0.5h | 4（高 churn，见 T8 复查点） | ✅ 已合入 |
-| L-003 | `1c0d95badbac` 部分 | `agent/file_safety.py` | **拒绝/暂缓**（有意分叉，非遗漏）：上游同 commit 把 `auth/google_oauth.json`、`cache/bws_cache.json` 也纳入 write-deny，且早前 #45947 已放松 control files（`auth.json`/`config.yaml`/`webhook_subscriptions.json` stay writable）。Vermes 未跟进这两层——control-file 语义是否放松是产品决策，google_oauth/bws_cache 是 read-denied 但未 write-denied，单独立项（见 T9） | —（无契约测试，未采纳） | — | — | ⏸ 暂缓 |
+| L-003 | `1c0d95badbac` 部分 | — | **拒绝/暂缓**（有意分叉，非遗漏）：上游同 commit 把 `auth/google_oauth.json`、`cache/bws_cache.json` 也纳入 write-deny，且早前 #45947 已放松 control files（`auth.json`/`config.yaml`/`webhook_subscriptions.json` stay writable）。Vermes 未跟进这两层——control-file 语义是否放松是产品决策，google_oauth/bws_cache 是 read-denied 但未 write-denied，单独立项（见 T9） | —（无契约测试，未采纳） | — | — | ⏸ 暂缓 |
 | L-004 | `2afb405337c3` | `tools/approval.py` | 部分采纳/重写（三层取一层）：上游修 approval 队列「pop 与 outcome 提交分裂」竞态（resolve/clear_session/unregister 在锁内 pop、锁外提交 `entry.result`+`event.set()`，waiter `_drop_entry` 锁内读 result 可能 pop-and-lose 用户已 acked 的选择成 timeout）。Vermes `tools/approval.py:581-582/1095-1104/552-554` 完全同构，已把三处提交移进同一临界区。第 1 层（on_result(None)→withdraw）依赖 server→client 往返协议（`server_requests`），Vermes 单向 `register_gateway_notify`+`_emit` 无等价面；第 3 层（settle 状态映射）依赖 request.cancel 通知机制，Vermes 无 settle——此两层拒绝 | `tests/tools/test_approval_lock_commit.py` 4 passed | ~0.6h | 0 | ✅ 已合入 |
 <!--TAKEALONG_LEDGER:END-->
 
@@ -204,6 +204,6 @@ S5 的前置核实项已登记为待办（§8）。
 | 契约税 48 处 | `reports/dist-boundary-20260921.md`（`v2.4.9..main`，100 commits） |
 | 上游候选 300 commits / 810 文件 / 36 红线 | `reports/upstream-watch-20260921.md` |
 | 分区定义真源 | `scripts/upstream_watch.py` 的 `ZONES` |
-| 冻结基线 | tag `v2.5.1` @ `888bf8a344` · `CHANGELOG.md [2.5.1]` · `version.json` |
+| 冻结基线 | 冻结锚 `888bf8a344`（非 tag）· 发版 tag `v2.5.1` @ `5142343cbd` · `CHANGELOG.md [2.5.1]` · `version.json` |
 | 前序路线 | `reports/vermes-distribution-ROLLOUT-PLAN_20260920.md`（P0–P5） |
 | 同步策略（旧） | `UPSTREAM_SYNC.md`（本文档为其工程化落地） |

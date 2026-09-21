@@ -392,7 +392,8 @@ def _parse_ledger_block(marker: str, path_col: int) -> tuple[set[str], set[str]]
             path = raw.strip().strip("`").strip()
             # 去掉括号注释，如 `tools/env_passthrough.py`（+ ...）或 (deprecated)
             path = re.split(r"[（(]", path)[0].strip()
-            if not path:
+            # 占位符（拒绝/暂缓条目落点）不参与解析，避免 `—` 被误当目录前缀
+            if not path or path in ("—", "-", "N/A", "n/a", "无"):
                 continue
             if path.endswith("/"):
                 # 显式目录条目 → 前缀豁免
