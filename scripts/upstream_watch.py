@@ -48,6 +48,10 @@ from datetime import datetime
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPORTS_DIR = os.path.join(ROOT, "reports")
 BASELINE_PATH = os.path.join(REPORTS_DIR, ".upstream-baseline.json")
+MANIFEST_PATH = os.path.join(ROOT, "docs", "DISTRIBUTION_MANIFEST.md")
+
+# 冻结锚：Vermes 侧“从这里开始算契约税”的不可移动 ref。发版 tag 可以动，这个不能动。
+FREEZE_REF = "888bf8a344"
 
 UPSTREAM_REF = "upstream/main"
 
@@ -72,6 +76,10 @@ ZONES: dict[str, list[str]] = {
         "installer/",
         "locales/",
         "scripts/build-",         # 打包链（PyInstaller / NSIS / DMG）
+        "scripts/upstream_watch.py",  # 发行版雷达/闸门（Vermes 独有工具）
+        "scripts/trigger-win-build.py",  # Windows 远程构建触发（Vermes 独有工具）
+        "docs/vermes/",            # 外置的 Vermes 独有文档（外置迁移后进 own）
+        "scripts/vermes/",         # 外置的 Vermes 独有脚本（外置迁移后进 own）
     ],
     "follow": [
         "plugins/",               # 上游插件生态：Vermes 应尽量零改动
@@ -121,6 +129,52 @@ def classify(path: str) -> str:
             if path.startswith(prefix):
                 return name
     return "other"
+
+
+def parse_diversion_ledger() -> set[str]:
+    """从 DISTRIBUTION_MANIFEST.md 解析 DIVERSION_LEDGER 里已登记路径的目录前缀集合。
+
+    账本用固定 HTML 注释包裹（<!--DIVERSION_LEDGER:START--> 至 END），
+    每行是 markdown 表格行，第二列是登记路径。取路径的目录前缀（如
+    `tools/env_passthrough.py` → `tools/`），这样 follow 区改动只要落在
+    已登记目录下，就不算“未登记税”。
+    """
+    prefixes: set[str] = set()
+    if not os.path.exists(MANIFEST_PATH):
+        return prefixes
+    text = open(MANIFEST_PATH, encoding="utf-8").read()
+    m = re.search(r"<!--DIVERSION_LEDGER:START-->\s*(.*?)<!--DIVERSION_LEDGER:END-->", text, re.S)
+    if not m:
+        return prefixes
+    for line in m.group(1).splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 2 or cells[0] in ("id", "---", "---"):
+            continue
+        path = cells[1]
+        # 去掉 markdown 反引号与括号注释（如 `tools/env_passthrough.py`（+ local.py/docker.py））
+        path = path.strip().strip("`").strip()
+        if "（" in path:
+            path = path.split("（")[0].strip()
+        if not path:
+            continue
+        # 登记的是“目录前缀”或“文件路径”，都归一成前缀匹配用
+        if path.endswith(".py") or "." in os.path.basename(path):
+            # 文件 → 取其所在目录
+            prefixes.add(os.path.dirname(path) + "/")
+        else:
+            prefixes.add(path.rstrip("/") + "/")
+    return prefixes
+
+
+def is_registered_diversion(path: str, ledger_prefixes: set[str]) -> bool:
+    """判断一条 follow 区路径是否已被 DIVERSION_LEDGER 登记（算作有意偏离，不税）。"""
+    for p in ledger_prefixes:
+        if path.startswith(p):
+            return True
+    return False
 
 
 def value_of(subject: str) -> tuple[str, int]:
@@ -303,70 +357,89 @@ def cmd_watch(args: argparse.Namespace) -> int:
 
 
 def cmd_boundary(args: argparse.Namespace) -> int:
-    """边界闸门：Vermes 自身改动落在「上游跟随区」= 契约税。"""
-    since = args.since or "v2.5.1"
+    """边界闸门：Vermes 自身改动落在「上游跟随区」= 契约税（未登记才算）。"""
+    # 冻结锚：默认读 FREEZE_REF（不可移动），不跟发版 tag（tag 会前移导致窗口塌缩）
+    since = args.since or FREEZE_REF
     commits = collect_commits(f"{since}..main", args.max)
     if not commits:
         print(f"[boundary] {since}..main 无提交")
         return 0
 
-    tax: list[tuple[dict, str]] = []
+    ledger_prefixes = parse_diversion_ledger()
+    unregistered_tax: list[tuple[dict, str]] = []
+    registered_diversion: list[tuple[dict, str]] = []
     zone_counter: Counter[str] = Counter()
     for c in commits:
         for p in c["paths"]:
             z = classify(p)
             zone_counter[z] += 1
             if z == "follow":
-                tax.append((c, p))
+                if is_registered_diversion(p, ledger_prefixes):
+                    registered_diversion.append((c, p))
+                else:
+                    unregistered_tax.append((c, p))
 
     date_tag = datetime.now().strftime("%Y%m%d")
     out_path = os.path.join(REPORTS_DIR, f"dist-boundary-{date_tag}.md")
     lines = [
         f"# 发行版边界闸门（{datetime.now():%Y-%m-%d}）\n",
         f"> 区间 `{since}..main`（Vermes 侧 {len(commits)} commits）。",
-        "> 判据：改动落在**上游跟随区**（`plugins/ tools/ harness/ cron/ .github/ docs/ scripts/`）"
-        "= 契约税 —— 下次跟随上游时会冲突。要么登记（有意偏离），要么外置为插件。\n",
+        f"> 冻结锚 `{FREEZE_REF}`（非发版 tag）。",
+        "> 判据：改动落在**上游跟随区**（`plugins/ tools/ harness/ cron/ .github/ docs/ scripts/`）",
+        "> 且 **两账都未登记** = 契约税。已登记（DIVERSION_LEDGER）= 有意偏离，单列不税。\n",
         "## 1. 分区分布\n",
         "| 分区 | 文件改动数 | 判定 |",
         "|---|---|---|",
     ]
     verdict = {
         "own": "✅ 发行版自有，正常",
-        "follow": "⚠️ 契约税（需登记或外置）",
+        "follow": "⚠️ 契约税（未登记）",
         "core": "🔍 核心 diverge，个案评估",
         "other": "—",
     }
     for z, n in zone_counter.most_common():
         lines.append(f"| `{z}` | {n} | {verdict.get(z, '')} |")
     lines.append("")
-    lines.append("## 2. 契约税明细（跟随区改动）\n")
-    if not tax:
-        lines.append("_无。当前 Vermes 在跟随区零改动 —— 边界干净。_")
+
+    lines.append("## 2. 未登记契约税明细（follow 区改动 && 两账未登记）\n")
+    if not unregistered_tax:
+        lines.append("_无。当前 Vermes 在跟随区零未登记改动 —— 边界干净。_")
     else:
         lines.append("| hash | 主题 | 跟随区路径 |")
         lines.append("|---|---|---|")
-        for c, p in tax[:60]:
+        for c, p in unregistered_tax[:60]:
             lines.append(f"| `{c['hash']}` | {c['subject'][:60]} | `{p}` |")
-        if len(tax) > 60:
-            lines.append(f"\n_（仅列前 60 条，共 {len(tax)} 条）_")
+        if len(unregistered_tax) > 60:
+            lines.append(f"\n_（仅列前 60 条，共 {len(unregistered_tax)} 条）_")
     lines.append("")
-    lines.append("## 3. 闸门结论\n")
-    if len(tax) == 0:
-        lines.append("**PASS** —— 跟随区零改动，跟随上游无结构性摩擦。")
-    elif len(tax) <= 10:
-        lines.append(f"**WARN** —— {len(tax)} 处契约税，逐条登记到 DISTRIBUTION_MANIFEST ledger 即可。")
+
+    lines.append("## 3. 已登记偏离（DIVERSION_LEDGER，不算税）\n")
+    if not registered_diversion:
+        lines.append("_无。_")
+    else:
+        lines.append("| hash | 主题 | 路径 |")
+        lines.append("|---|---|---|")
+        for c, p in registered_diversion[:60]:
+            lines.append(f"| `{c['hash']}` | {c['subject'][:60]} | `{p}` |")
+    lines.append("")
+
+    lines.append("## 4. 闸门结论\n")
+    if len(unregistered_tax) == 0:
+        lines.append("**PASS** —— 零未登记契约税。已登记偏离单列，不阻碍跟随。")
     else:
         lines.append(
-            f"**FAIL** —— {len(tax)} 处契约税，需优先外置为插件，否则跟随上游的成本将持续累积。"
+            f"**WARN/FAIL** —— {len(unregistered_tax)} 处未登记契约税。"
+            "逐条登记到 DISTRIBUTION_MANIFEST.md §7b（DIVERSION_LEDGER）或 §7c（TAKEALONG_LEDGER），"
+            "或外置为插件。"
         )
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
 
-    print(f"[boundary] commits={len(commits)} 契约税={len(tax)}")
+    print(f"[boundary] commits={len(commits)} 未登记税={len(unregistered_tax)} 已登记偏离={len(registered_diversion)}")
     print(f"[boundary] 报告 → {out_path}")
-    return 0 if len(tax) == 0 else 1
+    return 0 if len(unregistered_tax) == 0 else 1
 
 
 def main() -> int:
@@ -381,7 +454,7 @@ def main() -> int:
     w.set_defaults(func=cmd_watch)
 
     b = sub.add_parser("boundary", help="边界闸门：Vermes 跟随区契约税")
-    b.add_argument("--since", default=None, help="基线 ref（默认 v2.5.1）")
+    b.add_argument("--since", default=None, help=f"基线 ref（默认冻结锚 {FREEZE_REF}，不跟发版 tag）")
     b.add_argument("--max", type=int, default=2000)
     b.set_defaults(func=cmd_boundary)
 

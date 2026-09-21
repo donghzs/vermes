@@ -8,6 +8,8 @@
 
 ## 0. 一句话结论
 
+- **冻结锚（freeze_ref）**：`888bf8a344` —— Vermes 侧“从这里开始算契约税”的不可移动锚点。**发版 tag `v2.5.1` 可以继续移动，但 freeze_ref 永久固定**，`upstream_watch.py boundary` 默认读它，不跟发版 tag。
+
 发行版化的核心不是"改成能 merge 上游"（做不到，见 §1 硬约束），而是
 **把「哪些是 Vermes 的、哪些是上游的」用机器可检查的方式固定下来**，
 然后让每次取长都走同一条：雷达 → 闸门 → 登记 → 验收 → 回退。
@@ -40,7 +42,7 @@
 
 | 分区 | 路径 | 判定规则 |
 |---|---|---|
-| **own**（发行版自有·红线） | `vermes_cli/`、`agent/memory_fabric.py`、`agent/capability_evolver.py`、`agent/workflow_runtime.py`、`agent/compression_scheduler.py`、`gateway/platforms/`、`scholarforge/`、`acp_registry/`、`frontend/`、`electron/`、`installer/`、`locales/`、`scripts/build-*` | 上游同名改动**禁止直接搬运**，只参考思路；Vermes 侧在此区改动是**正常开发** |
+| **own**（发行版自有·红线） | `vermes_cli/`、`agent/memory_fabric.py`、`agent/capability_evolver.py`、`agent/workflow_runtime.py`、`agent/compression_scheduler.py`、`gateway/platforms/`、`scholarforge/`、`acp_registry/`、`frontend/`、`electron/`、`installer/`、`locales/`、`scripts/build-*`、`docs/vermes/`、`scripts/vermes/` | 上游同名改动**禁止直接搬运**，只参考思路；Vermes 侧在此区改动是**正常开发** |
 | **follow**（上游跟随区） | `plugins/`、`tools/`、`harness/`、`cron/`、`.github/`、`docs/`、`scripts/` | 优先跟随上游；Vermes 侧在此区改动 = **契约税**，需登记或外置为插件 |
 | **core**（同源核心·已 diverge） | `agent/`、`gateway/`、`acp_adapter/`、`memory/`、`runner/`、`cli/` | 个案评估，需对照 `diverge_metrics` 度量 |
 
@@ -138,6 +140,35 @@ S5 的前置核实项已登记为待办（§8）。
 | 日期 | 来源 | 内容 |
 |---|---|---|
 | 2026-09（在途分支） | 上游 `3ead2bdd0` | per-platform prompt-hint overrides（`chore/upstream-sync` → `a8cb8ebc7a`） |
+| 2026-09-21 | 上游 `b534f4b8c8cd` | **T3**：凭据 env 屏蔽名单大小写不敏感匹配（`_is_env_blocklisted` casefold）。落点 `tools/env_passthrough.py` + `tools/environments/local.py` + `tools/environments/docker.py`，验收 `tests/tools/test_env_passthrough.py`（19 passed），commit `a48811769d` |
+
+---
+
+## 7b. DIVERSION_LEDGER（有意偏离登记）
+
+> 语义：**follow 区的 Vermes 改动，若已在本表登记 = 有意偏离，不算契约税**。
+> 字段：`id` / `路径` / `偏离类型`（产品增强|品牌|适配|修复） / `登记日期` / `理由`。
+> 脚本 `upstream_watch.py` 用固定格式解析本表（`<!--DIVERSION_LEDGER:START-->` 至 `END` 之间），
+> 只把「follow 区改动 && 两账都未登记」算税。
+
+<!--DIVERSION_LEDGER:START-->
+| id | 路径 | 类型 | 登记日期 | 理由 |
+|---|---|---|---|---|
+| D-001 | `tools/env_passthrough.py`（+ local.py/docker.py） | 修复 | 2026-09-21 | T3：凭据 env 屏蔽名单大小写不敏感（对齐上游 b534f4b8c8cd） |
+| D-002 | `docs/DISTRIBUTION_MANIFEST.md` | 品牌/发行版 | 2026-09-21 | Vermes 独有发行版契约文档（上游无此文件） |
+<!--DIVERSION_LEDGER:END-->
+
+---
+
+## 7c. TAKEALONG_LEDGER（上游取长登记）
+
+> 语义：从上游搬进来的能力/修复，逐条登记（价值、来源、落点、验收、人时）。
+> 与 §7「已合入」表互补：§7 记“搬了什么”，本节记“搬的成本与验收”。
+> 字段：`id` / `上游 commit` / 落点 / 类型（移植|重写|拒绝） / 验收测试 / 人时 / 状态。
+
+| id | 上游 commit | 落点 | 类型 | 验收 | 人时 | 状态 |
+|---|---|---|---|---|---|---|
+| L-001 | `b534f4b8c8cd` | `tools/env_passthrough.py` 等 3 文件 | 重写（Vermes 无 `_build_provider_env_blocklist`，用 `_is_env_blocklisted` casefold 等价实现） | `tests/tools/test_env_passthrough.py` 19 passed | ~0.5h | ✅ 已合入 `a48811769d` |
 
 ---
 
@@ -147,7 +178,7 @@ S5 的前置核实项已登记为待办（§8）。
 |---|---|---|
 | T1 | G1 契约税 48 处逐条判定（登记 vs 外置） | 待做（S1） |
 | T2 | 上游 canary CI lane（周跑：fetch → 雷达 → 契约测试） | 待做（S1） |
-| T3 | 核实 Vermes 的凭据 env 屏蔽名单（`tools/env_passthrough.py` / `tools/environments/docker.py`）是否大小写敏感 —— 若是即与上游 `b534f4b8c8cd` 同类漏洞 | 待做（高优先） |
+| T3 | 核实 Vermes 的凭据 env 屏蔽名单（`tools/env_passthrough.py` / `tools/environments/docker.py`）是否大小写敏感 —— 若是即与上游 `b534f4b8c8cd` 同类漏洞 | ✅ **已完成** `a48811769d`（`_is_env_blocklisted` casefold，已登记 DIVERSION_LEDGER D-001 + TAKEALONG_LEDGER L-001） |
 | T4 | 形态 B（引擎作依赖）前置核实 | **已核实 2026-09-21**：`hermes-agent` **确实在 PyPI**（`https://pypi.org/pypi/hermes-agent`，作者 Nous Research，MIT，requires Python ≥3.11 <3.14，extras 覆盖 wecom/feishu/dingtalk/acp/mcp 等 40 项）。**但 PyPI 最新版 0.19.0 落后于 GitHub v0.21.3**（tag `v2026.9.14`）→ 形态 B 有路径，代价是**跟随版本落后上游 2 个小版本**，且需重做打包链 |
 | T5 | `scripts/sync-version.sh` 在本机 shell shim 下静默失败（EXIT=1 无输出），v2.5.1 改用 jq/sed 同步 | 待修 |
 
