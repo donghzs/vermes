@@ -19,7 +19,7 @@ def _cleanup_env():
 
 
 def test_session_id_env_set_on_init():
-    """AIAgent.__init__ sets VERMES_SESSION_ID in the environment."""
+    """AIAgent.__init__ sets VERMES_SESSION_ID task-locally (L-010)."""
     agent = AIAgent(
         api_key="test-key",
         base_url="https://openrouter.ai/api/v1",
@@ -27,12 +27,14 @@ def test_session_id_env_set_on_init():
         skip_context_files=True,
         skip_memory=True,
     )
-    assert os.environ.get("VERMES_SESSION_ID") == agent.session_id
+    from gateway.session_context import get_session_env
+
+    assert get_session_env("VERMES_SESSION_ID") == agent.session_id
     assert len(agent.session_id) > 0
 
 
 def test_session_id_env_uses_provided_id():
-    """When session_id is passed explicitly, VERMES_SESSION_ID reflects it."""
+    """When session_id is passed explicitly, VERMES_SESSION_ID reflects it (contextvar)."""
     custom_id = "20260511_120000_abc12345"
     agent = AIAgent(
         api_key="test-key",
@@ -42,7 +44,9 @@ def test_session_id_env_uses_provided_id():
         skip_context_files=True,
         skip_memory=True,
     )
-    assert os.environ["VERMES_SESSION_ID"] == custom_id
+    from gateway.session_context import get_session_env
+
+    assert get_session_env("VERMES_SESSION_ID") == custom_id
     assert agent.session_id == custom_id
 
 

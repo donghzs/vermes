@@ -207,3 +207,31 @@ def enter_cron_session() -> "object":
 def leave_cron_session(token: "object") -> None:
     """Restore the cron marker to its pre-``enter_cron_session`` state."""
     _CRON_SESSION.reset(token)
+
+
+def set_current_session_id(session_id: str) -> "object":
+    """Set the task-local ``VERMES_SESSION_ID``; return a reset token.
+
+    Pair with ``_reset_current_session_id(token)`` in a ``finally`` block
+    (same style as :func:`enter_cron_session` / :func:`leave_cron_session`).
+
+    Unlike ``os.environ["VERMES_SESSION_ID"] = ...`` this is task-local, so
+    concurrent sessions (e.g. re-used executor threads in the ACP adapter)
+    never leak one session's id into another's tools. The setter deliberately
+    does **not** write ``os.environ`` — callers that also need the process-global
+    value for legacy subprocess paths must set it explicitly.
+    """
+    return _SESSION_ID.set(session_id or "")
+
+
+def reset_current_session_id(token: "object") -> None:
+    """Restore ``VERMES_SESSION_ID`` to its pre-``set_current_session_id`` state."""
+    _SESSION_ID.reset(token)
+
+
+def get_current_session_id() -> str:
+    """Read the current session id (contextvar first, then ``os.environ``).
+
+    Convenience wrapper so callers don't hand-spell ``VERMES_SESSION_ID``.
+    """
+    return get_session_env("VERMES_SESSION_ID")

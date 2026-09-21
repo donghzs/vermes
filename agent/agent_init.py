@@ -991,13 +991,19 @@ def init_agent(
 
     # Expose session ID to tools (terminal, execute_code) so agents can
     # reference their own session for --resume commands, cross-session
-    # coordination, and logging. Keep the ContextVar and os.environ
-    # fallback synchronized because different tool paths still read both.
+    # coordination, and logging. Task-local contextvar only (L-010): the
+    # setter deliberately does NOT write os.environ, so concurrent sessions
+    # never leak one id into another's tools. Subprocess paths that still
+    # need the process-global value must set it explicitly.
     try:
         from gateway.session_context import set_current_session_id
 
         set_current_session_id(agent.session_id)
     except Exception:
+        # Only a defensive fallback if the gateway module is unavailable in
+        # a bare CLI bootstrap; the contextvar setter itself never throws
+        # for ordinary use.
+        logger.debug("Could not set task-local session id; falling back to env", exc_info=True)
         os.environ["VERMES_SESSION_ID"] = agent.session_id
 
     # Session logs go into ~/.vermes/sessions/ alongside gateway sessions

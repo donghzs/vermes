@@ -612,11 +612,16 @@ def compress_context(
                 agent.session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
                 # Ordering contract: the agent thread updates the contextvar here;
                 # the gateway propagates to SessionEntry after run_in_executor returns.
+                # Task-local only (L-010) — no os.environ write, so concurrent
+                # sessions never leak ids. The token is intentionally discarded:
+                # rotation is a PERMANENT advance of the live id (all subsequent
+                # turns in this context use the new id), not a borrow-and-restore.
                 try:
                     from gateway.session_context import set_current_session_id
 
                     set_current_session_id(agent.session_id)
                 except Exception:
+                    logger.debug("Could not set task-local session id; falling back to env", exc_info=True)
                     os.environ["VERMES_SESSION_ID"] = agent.session_id
                 # The gateway/tools session context (ContextVar + env) and the
                 # logging session context are SEPARATE mechanisms. The call above
@@ -662,6 +667,7 @@ def compress_context(
                         from gateway.session_context import set_current_session_id
                         set_current_session_id(agent.session_id)
                     except Exception:
+                        logger.debug("Could not roll back task-local session id; falling back to env", exc_info=True)
                         os.environ["VERMES_SESSION_ID"] = agent.session_id
                     try:
                         from vermes_logging import set_session_context

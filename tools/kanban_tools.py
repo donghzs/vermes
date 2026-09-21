@@ -47,6 +47,25 @@ KANBAN_LIST_DEFAULT_LIMIT = 50
 KANBAN_LIST_MAX_LIMIT = 200
 
 
+def _get_session_id() -> Optional[str]:
+    """Read the originating session id (contextvar first, then os.environ).
+
+    L-010: readers use ``get_session_env("VERMES_SESSION_ID")`` so tools that
+    stamp side-effects (``kanban_create``) work under task-local context (e.g.
+    ACP) without depending on the process-global ``os.environ``.
+
+    Returns ``None`` when unset (matching the old ``os.environ.get`` semantics
+    so an absent id stays NULL in the DB, never ``""``).
+    """
+    try:
+        from gateway.session_context import get_session_env
+
+        sid = get_session_env("VERMES_SESSION_ID")
+    except Exception:
+        sid = os.environ.get("VERMES_SESSION_ID")
+    return sid or None
+
+
 def _profile_has_kanban_toolset() -> bool:
     # Uses load_config() which has mtime-based caching, so this adds
     # negligible overhead. The check_fn results are further TTL-cached
@@ -122,7 +141,7 @@ def _stamp_worker_session_metadata(
     """Add trusted worker session id metadata for this worker's own task."""
     if os.environ.get("VERMES_KANBAN_TASK") != task_id:
         return metadata
-    session_id = os.environ.get("VERMES_SESSION_ID")
+    session_id = _get_session_id()
     if not session_id:
         return metadata
     stamped = dict(metadata or {})
@@ -685,7 +704,7 @@ def _handle_create(args: dict, **kw) -> str:
     # Stamp the originating session id when the agent loop runs under
     # ACP (which sets VERMES_SESSION_ID before invoking tools). NULL on
     # CLI / dashboard paths and on legacy hosts that don't set the env.
-    session_id = args.get("session_id") or os.environ.get("VERMES_SESSION_ID")
+    session_id = args.get("session_id") or _get_session_id()
     priority = args.get("priority")
     workspace_kind = args.get("workspace_kind") or "scratch"
     workspace_path = args.get("workspace_path")

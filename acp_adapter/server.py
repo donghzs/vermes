@@ -1443,15 +1443,30 @@ class VermesACPAgent(acp.Agent):
                     logger.debug("Could not set ACP edit approval requester", exc_info=True)
             # Signal to tools.approval that we have an interactive callback
             # and the non-interactive auto-approve path must not fire.
+            # TODO(L-009/后续)：VERMES_INTERACTIVE 仍是进程级 env（并发串味候选），
+            # 本刀不改，留待 L-009 EXEC_ASK / presence 整体 contextvar 化时一并处理。
             previous_interactive = os.environ.get("VERMES_INTERACTIVE")
             os.environ["VERMES_INTERACTIVE"] = "1"
             # Propagate the originating ACP session id to tools that want to
             # tag side-effects with it (e.g. ``kanban_create`` stamps it on
-            # the new task so clients can render a per-session board). Save
-            # and restore around the agent call so a re-used executor thread
-            # never leaks one session's id into the next session's tools.
-            previous_session_id = os.environ.get("VERMES_SESSION_ID")
-            os.environ["VERMES_SESSION_ID"] = session_id
+            # the new task so clients can render a per-session board).
+            # Task-local contextvar (L-010) — no os.environ save/restore, so a
+            # re-used executor thread can never leak one session's id into the
+            # next session's tools (the old save/restore was racy under concurrency).
+            try:
+                from gateway.session_context import (
+                    reset_current_session_id,
+                    set_current_session_id,
+                )
+
+                session_id_token = set_current_session_id(session_id)
+                _has_session_id_token = True
+            except Exception:
+                # Bare bootstrap without the gateway module: keep legacy env path.
+                logger.debug("Could not set task-local session id; falling back to env", exc_info=True)
+                os.environ["VERMES_SESSION_ID"] = session_id
+                session_id_token = None
+                _has_session_id_token = False
             try:
                 result = agent.run_conversation(
                     user_message=user_content,
@@ -1469,11 +1484,12 @@ class VermesACPAgent(acp.Agent):
                     os.environ.pop("VERMES_INTERACTIVE", None)
                 else:
                     os.environ["VERMES_INTERACTIVE"] = previous_interactive
-                # Restore VERMES_SESSION_ID symmetrically.
-                if previous_session_id is None:
-                    os.environ.pop("VERMES_SESSION_ID", None)
+                # Restore VERMES_SESSION_ID (contextvar token reset; env only if
+                # we fell back to the legacy path).
+                if _has_session_id_token:
+                    reset_current_session_id(session_id_token)
                 else:
-                    os.environ["VERMES_SESSION_ID"] = previous_session_id
+                    os.environ.pop("VERMES_SESSION_ID", None)
                 if approval_cb:
                     try:
                         from tools import terminal_tool as _terminal_tool
