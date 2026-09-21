@@ -1,18 +1,18 @@
 {
   "version": "2.5.1",
   "releaseDate": "2026-09-21",
-  "notes": "Vermes 2.5.1（安全收口 + 正确性修复 + 测试债清零，68 commits）：① 安全 — provider 凭据明文全部收口，config.yaml 改记 key_env 指针，四路解析统一回读 .env（修掉 dev 直启不注入 dotenv 解析不到 key），存量由迁移脚本零丢失迁移（备份 config.yaml.bak-20260920_200135）；凭据 env 大小写绕过修复（T3，对齐上游 b534f4b8c8）。② 正确性 — _stamp_preset 签名不匹配 17 个 TypeError 清零，并补传 9 处非 explicit 出口的 preset 变量，custom runtime 死代码改 _resolve_env_key。③ 写入卫生 — 6 处 yaml 写路径改就地 round-trip，消除注释抹除与默认值膨胀。④ 技能路由 — 纯渠道门 auto + SkillRouter prefetch + heat tie-breaker + A′ messaging 渠道永不降级 + deny-list GUI 开关。⑤ 渠道 — A7 first-DM 自动 home channel、元宝 comment-safe 写入、W3 email 自过滤 / W4 通知去重。⑥ 测试债清零（backup 38→0 / telegram 9 / gateway 7 / preset 17）。Mac 包为本机构建产物；Windows 包待远端构建回填。",
+  "notes": "Vermes 2.5.1（安全收口 + 正确性修复 + 测试债清零，68 commits）：① 安全 — provider 凭据明文全部收口，config.yaml 改记 key_env 指针，四路解析统一回读 .env（修掉 dev 直启不注入 dotenv 解析不到 key），存量由迁移脚本零丢失迁移；凭据 env 大小写绕过修复（T3，对齐上游 b534f4b8c8）。② 正确性 — _stamp_preset 签名不匹配 17 个 TypeError 清零，并补传 9 处非 explicit 出口的 preset 变量，custom runtime 死代码改 _resolve_env_key。③ 写入卫生 — 6 处 yaml 写路径改就地 round-trip，消除注释抹除与默认值膨胀。④ 技能路由 — 纯渠道门 auto + SkillRouter prefetch + heat tie-breaker + A′ messaging 渠道永不降级 + deny-list GUI 开关。⑤ 渠道 — A7 first-DM 自动 home channel、元宝 comment-safe 写入、W3 email 自过滤 / W4 通知去重。⑥ 测试债清零（backup 38→0 / telegram 9 / gateway 7 / preset 17 / web_server 25）。⑦ UI — MCP 指挥中心并入 Agent 管理 + 全宽页面 + 积木市场 MCP 目录 + HelpGuide 重写。⑧ 打包 — 补 ptyprocess 修复桌面 Chat tab PTY 桥接。Mac 包为本机构建产物；Windows 包待远端构建回填。",
   "downloads": {
     "mac": {
       "arm64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-arm64.dmg",
-        "sha256": "22238f9458f0f38e6cf648e387beff3d44247d750e98602719d9ae5daf6e8372",
-        "size": 279836517
+        "sha256": "578e77a5f8b683ceb4fe433c6b5835117fccd14b064154f56d1ed7eeb22a1e83",
+        "size": 279965368
       },
       "x64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1.dmg",
-        "sha256": "6b43f525fed170c35f1ca95c82cf55a0449bf39d1896d72fcd599d2c455f76f7",
-        "size": 284743029
+        "sha256": "40dd75f63145c2623b84067578dc28fd74ef2199d3434aa60b4e240d82a953aa",
+        "size": 284923404
       }
     },
     "windows": {
@@ -24,13 +24,13 @@
   "mac": {
     "arm64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-arm64.dmg",
-      "sha256": "22238f9458f0f38e6cf648e387beff3d44247d750e98602719d9ae5daf6e8372",
-      "size": 279836517
+      "sha256": "578e77a5f8b683ceb4fe433c6b5835117fccd14b064154f56d1ed7eeb22a1e83",
+      "size": 279965368
     },
     "x64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1.dmg",
-      "sha256": "6b43f525fed170c35f1ca95c82cf55a0449bf39d1896d72fcd599d2c455f76f7",
-      "size": 284743029
+      "sha256": "40dd75f63145c2623b84067578dc28fd74ef2199d3434aa60b4e240d82a953aa",
+      "size": 284923404
     }
   },
   "windows": {
