@@ -99,20 +99,47 @@
 
 ## 四、待查（本报告未闭环，需下轮实证）
 
-1. **TUI gateway 是否内嵌 cron ticker？** 若 TUI gateway 进程内也跑 cron 线程，则 `_enable_gateway_prompts` 的进程级置位会直接影响 cron 线程（当前 L-006 只防御了 gateway/run.py 的 cron，TUI 侧 cron 若有则未覆盖）。
-2. **cron/scheduler 的 workdir job 是否串行化？** 确认 TERMINAL_CWD 的 finally restore 在并发下是否安全。
-3. **`VERMES_SESSION_ID`（acp_adapter）** 的完整 writer/reader 清单——它也是「会话语义」变量，与 INTERACTIVE 同批处理。
+> **【2026-09-21 20:08 查证完毕，三项全部闭环，结论如下】**
+
+### 查证 1：TUI gateway 是否内嵌 cron ticker？—— **否**
+- `tui_gateway/server.py` 里对 cron 的引用仅是 `cron.manage` RPC（:6502）→ `tools.cronjob_tools.cronjob` 的增删改查，**不启动 cron ticker**。
+- cron ticker 的唯一启动点：`gateway/run.py:4115`（`target=_start_cron_ticker`），`_start_cron_ticker` 定义在 `gateway/run.py:3569`，内部 `from cron.scheduler import tick`（:3583）。
+- `vermes_cli/cron.py:132 cron_tick()` 是独立 CLI `vermes cron` 命令的入口（`main.py:11240` 注册 `tick` 子命令），非 TUI。
+- **结论**：`_enable_gateway_prompts()` 的进程级置位**不会**影响 cron 线程（TUI 内无 cron 线程），串味风险只存在于「TUI gateway 自身多 session 并发」——但 TUI 内所有 session 都是 gateway 会话（无 user/cron 区分），语义自洽。**TUI 侧无新增风险。**
+
+### 查证 2：cron workdir job 是否串行化（TERMINAL_CWD 并发安全）？—— **是，严格串行**
+- `cron/scheduler.py tick()`（:2095-2113）把 due jobs 分区：
+  - `sequential_jobs` = 有 `workdir` 或 `profile` 的 job（它们 mutate 进程全局状态）→ **串行跑**（`for job in sequential_jobs: _ctx.run(_process_job, job)`）
+  - `parallel_jobs` = 无 workdir 无 profile 的 job（不改 TERMINAL_CWD）→ 并行跑
+- **且 sequential 与 parallel 是先后两批**（sequential 全部跑完才跑 parallel），所以并行 job 永远不会与「正在改 TERMINAL_CWD 的 workdir job」并发。
+- `TERMINAL_CWD` 的 set（:1548）+ finally restore（:1937-1944）在串行化保障下**安全**，无实际串味。
+- **结论**：`TERMINAL_CWD` 当前实现**安全**，无急迫改造必要；唯一残留是「进程全局」的**理论**缺陷（若未来有人绕过 tick() 分区直接并发调 _run_job_impl 才会暴露），可降级为「可选加固」。
+
+### 查证 3：VERMES_SESSION_ID 全景？—— **contextvar 基建已建但未贯通**
+- `gateway/session_context.py:58` 已有 `_SESSION_ID: ContextVar`，`:86` 已进 `_VAR_MAP`，`get_session_env()`（:150）三级解析（contextvar→os.environ→default）能读它。
+- **但 `set_session_vars()`（:200-227）不含 `_SESSION_ID`**，也没有独立的 `set_session_id()` 入口。
+- 所以 ACP（`acp_adapter/server.py:1453-1474`）只能用进程级 `os.environ["VERMES_SESSION_ID"]=session_id` + save/restore，这正是并发串味风险。
+- reader 侧（`tools/kanban_tools.py:125/688`）也直接读 `os.environ.get("VERMES_SESSION_ID")`，**没走 `get_session_env()`**——contextvar 基建与 session_id 消费未贯通。
+- **结论**：`VERMES_SESSION_ID` 是**最该改 contextvar 的场景**，且基建已就绪（只需 ①`set_session_vars` 加 `session_id` 参数 / 或新增 `set_session_id()`，②reader 改 `get_session_env()`，③ACP 改调 setter）。
 
 ---
 
-## 五、L-009+ 实施清单（本报告输出，不改代码）
+（以下为原始待查，已全部由上面三项闭环取代）
 
-| ID | 项 | 依赖 | 优先级 |
+1. ~~**TUI gateway 是否内嵌 cron ticker？**~~ → **已查证：否**（tui_gateway 仅 cron.manage RPC，ticker 只在 gateway/run.py:4115）
+2. ~~**cron/scheduler 的 workdir job 是否串行化？**~~ → **已查证：是**（tick 分区，workdir/profile job 严格串行，TERMINAL_CWD 安全）
+3. ~~**`VERMES_SESSION_ID` 完整 writer/reader 清单**~~ → **已查证：contextvar 基建已建未贯通**（_SESSION_ID ContextVar + _VAR_MAP 有，但 set_session_vars 无 session_id 入口，ACP/kanban_tools 仍用进程级 env）
+
+---
+
+## 五、L-009+ 实施清单（已据三项查证修订）
+
+| ID | 项 | 依赖 | 优先级（已修订） |
 |---|---|---|---|
-| L-009 | `gateway/run.py:770` module-level `VERMES_EXEC_ASK` 源头治理（确认 L-006 覆盖后，评估是否保留 module-level 或改为 start_gateway 内受控设置） | 待查 1 | 中 |
-| L-010 | `acp_adapter/server.py` 的 INTERACTIVE/VERMES_SESSION_ID 改 contextvar（复用 `set_edit_approval_requester` 同款基建） | 无 | 中 |
-| L-011 | `TERMINAL_CWD` cron 串行化边界确认，必要时改 contextvar | 待查 2 | 低 |
-| T14-查证 | 待查 1/2/3 三项实证（TUI 是否内嵌 cron、workdir 串行化、VERMES_SESSION_ID 全景） | 无 | 高（先做） |
+| L-009 | `gateway/run.py:770` module-level `VERMES_EXEC_ASK` 源头治理（确认 L-006 覆盖后，评估是否保留 module-level 或改为 start_gateway 内受控设置） | 查证 1（TUI 无 cron，风险仅 gateway 主进程） | 中 |
+| L-010 | **`VERMES_SESSION_ID` 改 contextvar 贯通**：①`set_session_vars` 加 `session_id` 参数（或新增 `set_session_id()`）②`tools/kanban_tools.py` reader 改 `get_session_env()` ③`acp_adapter/server.py` 改调 setter（弃用进程级 save+restore）。**基建已就绪，成本最低收益最实** | 查证 3（已确认基建存在但未贯通） | **高（首选）** |
+| L-011 | `TERMINAL_CWD` cron 串行化边界确认，必要时改 contextvar | 查证 2（已确认串行化安全） | **降级为可选加固**（当前安全，无急迫性） |
+| T14-查证 | ~~三项实证~~ | **已完成**（见 §四查证 1/2/3） | ✅ 完成 |
 
 ---
 
