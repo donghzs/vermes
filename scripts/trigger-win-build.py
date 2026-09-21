@@ -228,28 +228,28 @@ def main():
                 mb = line.split('=', 1)[1].strip()
         log(f"构建产物 SHA256={sha}  MB={mb}")
 
-        # 4. 回传 exe 到 Mac
+        # 4. 回传 exe 到 Mac（用 curl.exe 流式 PUT，避免 PowerShell HttpWebRequest 大文件静默失败）
         log("回传 exe 到 Mac /tmp/winupload/ ...")
         os.makedirs('/tmp/winupload', exist_ok=True)
         local_exe = '/tmp/winupload/Vermes-Setup-2.5.1.exe'
-        # 先找 Windows 上的 exe 名
         ps3 = f"""
-        $exe = Get-ChildItem (Join-Path $Root 'dist-electron\\Vermes Setup*.exe') | Sort-Object LastWriteTime | Select-Object -First 1
-        $bytes = [System.IO.File]::ReadAllBytes($exe.FullName)
-        $req = [System.Net.HttpWebRequest]::Create('http://{args.mac_ip}:{args.port+10}/')
-        $req.Method='POST'; $req.ContentType='application/octet-stream'; $req.ContentLength=$bytes.Length; $req.Proxy=$null
-        $s=$req.GetRequestStream(); $s.Write($bytes,0,$bytes.Length); $s.Close()
-        $resp=$req.GetResponse(); $sr=New-Object System.IO.StreamReader($resp.GetResponseStream()); Write-Host ('UPLOAD '+($sr.ReadToEnd())+' bytes='+$bytes.Length)
+        Set-Location (Join-Path $Root 'dist-electron')
+        $exe = Get-ChildItem 'Vermes Setup*.exe' | Sort-Object LastWriteTime | Select-Object -First 1
+        if (-not $exe) {{ Write-Host 'UPLOAD_FAIL_NO_EXE'; exit 1 }}
+        Write-Host ('UPLOADING ' + $exe.Name + ' (' + $exe.Length + ' bytes)')
+        $name = $exe.Name
+        curl.exe --noproxy * -s -X PUT --data-binary "@$name" http://{args.mac_ip}:{args.port+10}/up -w "UPLOAD_HTTP=%{{http_code}}"
+        Write-Host ''
         """
-        # 启动 Mac 接收服务（端口+10）
+        # 启动 Mac 接收服务（端口+10，支持 PUT 大文件流式写盘）
         recv, actual_recv_port = start_recv_server(args.port + 10)
         rt = threading.Thread(target=recv.serve_forever, daemon=True)
         rt.start()
         time.sleep(1)
-        out, err = winrm_run(args.win_host, args.win_user, args.win_pass, ps3, timeout=300)
+        out, err = winrm_run(args.win_host, args.win_user, args.win_pass, ps3, timeout=600)
         print(out.strip()[-300:])
         recv.shutdown()
-        if os.path.exists(local_exe):
+        if os.path.exists(local_exe) and os.path.getsize(local_exe) > 0:
             real_sha = subprocess.check_output(['shasum', '-a', '256', local_exe]).decode().split()[0]
             log(f"✅ 已回传: {local_exe}")
             log(f"   Mac 侧 sha256: {real_sha}")
@@ -257,7 +257,7 @@ def main():
                 log("⚠️  Windows 报告 sha 与 Mac 接收 sha 不一致，可能传输损坏")
             log("下一步：更新 version.json 的 windows sha256，然后 scp 到 vbit.top")
         else:
-            log("❌ 回传失败")
+            log("❌ 回传失败（文件为空或未生成）")
 
     finally:
         httpd.shutdown()
@@ -267,7 +267,7 @@ class _RecvHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def do_POST(self):
+    def do_PUT(self):
         length = int(self.headers.get('Content-Length', 0))
         data = self.rfile.read(length)
         with open('/tmp/winupload/Vermes-Setup-2.5.1.exe', 'wb') as f:
@@ -275,6 +275,13 @@ class _RecvHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'OK')
+
+    def do_POST(self):
+        self.do_PUT()
+
+    def do_GET(self):
+        # 兼容旧版本触发（HttpWebRequest POST）
+        self.do_PUT()
 
 
 if __name__ == '__main__':
