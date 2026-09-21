@@ -122,9 +122,32 @@
 - reader 侧（`tools/kanban_tools.py:125/688`）也直接读 `os.environ.get("VERMES_SESSION_ID")`，**没走 `get_session_env()`**——contextvar 基建与 session_id 消费未贯通。
 - **结论**：`VERMES_SESSION_ID` 是**最该改 contextvar 的场景**，且基建已就绪（只需 ①`set_session_vars` 加 `session_id` 参数 / 或新增 `set_session_id()`，②reader 改 `get_session_env()`，③ACP 改调 setter）。
 
+### 【补充查证 2026-09-21 20:15，MiMo 反馈后】
+
+#### 查证 A：cronjob() 是否就地 run_job/tick？—— **否**
+- `tools/cronjob_tools.py:337 cronjob()` 的 action 分支含 `run`/`run_now`/`trigger`（:511），调 `trigger_job(job_id)`（来自 `cron.jobs`）。
+- `cron/jobs.py:855 trigger_job()` 只把 job 状态改 `scheduled` + `next_run_at=now`，**不在调用方进程就地跑 job**。
+- **结论**：TUI/ACP/gateway 任意线程通过 `cron.manage` RPC 触发 cron 时**不会**吃到进程级 presence（job 只是被排进下次 tick）。「TUI presence + 内嵌 cron」串味面彻底排除。
+
+#### 查证 B：VERMES_SESSION_ID reader 全表（比查证 3 更强——挖出 setter 缺失真 bug）
+- **`set_current_session_id` 全仓 6 处调用、0 处定义**：
+  - `agent/agent_init.py:997/999`、`agent/conversation_compression.py:616/618/662/663` 均 `from gateway.session_context import set_current_session_id` + `set_current_session_id(agent.session_id)`。
+  - 但 `gateway.session_context` **没有 `set_current_session_id` 定义**（grep 确认 0 处）。
+- **后果**：writer 想走 contextvar，但 setter 缺失 → import 抛 ImportError → 全部静默回落 `os.environ["VERMES_SESSION_ID"]`。这是「想改 contextvar 但半途而废」的 pre-existing 缺陷，也是 L-010 的核心。
+- writer 全景（3 处）：`acp_adapter/server.py:1454`（进程级 save/restore）、`agent/agent_init.py:999`（想走 contextvar 但回落 os.environ）、`agent/conversation_compression.py:618/663`（同上）。
+- reader 全景：`tools/kanban_tools.py:125/688`（直读 os.environ）、skill 模板 `${VERMES_SESSION_ID}`（`agent/skill_preprocessing.py:10` 替换 token）、`get_session_env()` 有 env 回落。
+- **结论**：L-010 不是「只改 ACP」，而是「补 setter 入口 + 3 处 writer 统一走 contextvar + reader 改 get_session_env」——否则「改一处、漏两处」。
+
+#### 查证 C：TERMINAL_CWD 用户路径 reader（cron↔用户线程串味面）
+- 用户路径 reader 三处：`tools/file_tools.py:84-91`（`_resolve_path_for_task` 相对路径解析）、`gateway/message_handler_mixin.py:1716`（`os.environ.get("TERMINAL_CWD", ...)`）、`gateway/runtime_footer.py:116`（`_home_relative_cwd`）。
+- 这三处都直读 `os.environ.get("TERMINAL_CWD")`，**无 cron-aware 判断、无 contextvar**。
+- **串味窗口**：cron workdir job 线程在 tick 内 `os.environ["TERMINAL_CWD"]=_job_workdir`（:1548）→ 若同一时刻用户消息线程跑 `file_tools._resolve_path_for_task` 或 `message_handler_mixin` 的 `@` 上下文解析，会读到 cron job 的 workdir 而非用户会话 cwd。
+- 注：tick 已把 workdir job 串行化（不与其它 workdir/parallel job 并发），但**没隔离「cron 线程 vs gateway 用户消息线程」**（这是 gateway 进程内的两个独立线程）。
+- **结论**：L-011 的真实风险是「cron 线程 vs 用户消息线程」的 cwd 串味，不是「workdir 与 parallel job 并发」（后者已由 tick 分区解决）。
+
 ---
 
-（以下为原始待查，已全部由上面三项闭环取代）
+（以下为原始待查，已全部由上面查证闭环取代）
 
 1. ~~**TUI gateway 是否内嵌 cron ticker？**~~ → **已查证：否**（tui_gateway 仅 cron.manage RPC，ticker 只在 gateway/run.py:4115）
 2. ~~**cron/scheduler 的 workdir job 是否串行化？**~~ → **已查证：是**（tick 分区，workdir/profile job 严格串行，TERMINAL_CWD 安全）
