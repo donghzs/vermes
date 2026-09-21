@@ -47,6 +47,12 @@ tmp/
 temp_vision_images/
 .release_notes.md
 
+# ── External app workspace (DuMate) ──
+.dumate/
+
+# ── 前端构建产物（每次 build 变，gitHash 仅调试用） ──
+vermes_cli/web_dist/frontend-build.json
+
 # ── Test data ──
 tests/quick_test_dataset.jsonl
 tests/sample_dataset.jsonl

@@ -193,6 +193,7 @@ S5 的前置核实项已登记为待办（§8）。
 | T5 | `scripts/sync-version.sh` 在本机 shell shim 下静默失败（EXIT=1 无输出），v2.5.1 改用 jq/sed 同步 | 待修 |
 | T8 | `agent/file_safety.py` 后续取长需对上游 HEAD 新表结构（`1c0d95badbac` 之后又改 3 次：`b98ff81978`/`df72fdaa2b` 把 vault/browser-profile 折叠进 protected-subpath 表、`c9956192a3` 抽坐标 helper、`e342248e1a` 去 no-op suppress）——已取长文件设「复查点」 | 待做（下次取长 file_safety 前） |
 | T9 | #45947 control-file 语义分叉（Vermes 未放松 control files stay writable）+ `auth/google_oauth.json`/`cache/bws_cache.json` 读拒写未拒 → 是否跟进？ | 待拍板（产品决策，见 L-003） |
+| T10 | L-005 profile 门控隔离三处残留（MiMo 提出，非阻塞，下轮可修）：① `profile == "default"` 特殊豁免——若 CLI 跑在 profile A 却为 `default` 拉起子进程，仍继承 A 门控；建议改为「仅当目标 home == 当前 home 时保留门控」，去掉 default 豁免。② fail-open——`resolve_profile_env` 抛 FileNotFoundError/ValueError 时不 strip 回落旧行为（继承父门控），安全上「解析失败→不隔离」。③ 形状匹配偏宽——凡含 `_ALLOWED_` 的 env 名都剥（如自造 `MY_ALLOWED_x`），对门控是宁可多剥可接受；将来若出现非门控同名形状变量需白名单 | 待做（下轮，见 L-005） |
 
 ---
 
