@@ -641,12 +641,28 @@ def launch_detached_profile_gateway_restart(profile: str, old_pid: int) -> bool:
     ).strip()
 
     try:
+        # Profile-gate isolation (#113270): the respawned gateway for profile B
+        # must not inherit this CLI process's platform authorization gates if
+        # the CLI is running under a different profile (A).  The watcher copies
+        # the parent env verbatim otherwise, so a post-update per-profile
+        # restart would relaunch B's gateway with A's channel/user allow-lists.
+        _relaunch_env = None
+        if profile != "default":
+            from vermes_cli.profiles import resolve_profile_env
+            from tools.env_passthrough import strip_profile_gate_env
+            try:
+                _cur_home = os.environ.get("VERMES_HOME")
+                if _cur_home and resolve_profile_env(profile) != _cur_home:
+                    _relaunch_env = strip_profile_gate_env(dict(os.environ))
+            except (FileNotFoundError, ValueError):
+                pass
         # Same platform-aware detach for the watcher process itself — so
         # closing the user's terminal doesn't kill the watcher.
         subprocess.Popen(
             [sys.executable, "-c", watcher, str(old_pid), *_gateway_run_args_for_profile(profile)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=_relaunch_env,
             **windows_detach_popen_kwargs(),
         )
     except OSError:

@@ -85,6 +85,43 @@ def _is_env_blocklisted(name: str, blocklist: frozenset[str]) -> bool:
     return any(folded == n.casefold() for n in blocklist)
 
 
+# Authorization gates: the env names platform adapters read to decide WHO may
+# talk to the agent (allow/deny lists, allow-all opt-ins, bot policy, channel
+# scoping). They are NOT credentials — the secret scrub blocklist only names a
+# handful of them (SLACK_ALLOWED_USERS, GATEWAY_ALLOWED_USERS ...) — and a
+# child spawned FOR profile B from a process that loaded profile A's gates
+# (a gateway, the kanban dispatcher, the post-update per-profile gateway
+# restart) would enforce A's channel/user/role list as its own. Matched by
+# shape so a gate added to any adapter is covered without a second edit;
+# ``VERMES_*`` never counts (``VERMES_ALLOW_PRIVATE_URLS`` is a process
+# setting, not an adapter gate). Mirrors upstream #113270.
+_PROFILE_GATE_ENV_MARKERS = (
+    "_ALLOWED_", "_ALLOW_ALL_", "_ALLOW_FROM", "_ALLOW_BOTS", "_ALLOW_PUBLIC_",
+    "_IGNORED_CHANNELS", "_NO_THREAD_CHANNELS", "_FREE_RESPONSE_CHANNELS",
+    "_BACKFILL_CHANNELS", "_GROUP_ALLOWED",
+)
+
+
+def is_profile_gate_env(name: str) -> bool:
+    """True for a platform authorization gate (``DISCORD_ALLOWED_CHANNELS``,
+    ``TELEGRAM_ALLOW_ALL_USERS``, ``GATEWAY_ALLOWED_USERS``,
+    ``WHATSAPP_GROUP_ALLOW_FROM`` ...) — profile-scoped policy a child acting
+    for ANOTHER profile must never inherit."""
+    upper = name.upper()
+    if upper.startswith("VERMES_") or upper.startswith("_"):
+        return False
+    return any(marker in upper for marker in _PROFILE_GATE_ENV_MARKERS)
+
+
+def strip_profile_gate_env(env: dict) -> dict:
+    """Drop every authorization gate from *env* in place (see
+    :func:`is_profile_gate_env`). Returns *env* for chaining."""
+    for key in [k for k in env if is_profile_gate_env(k)]:
+        del env[key]
+    return env
+
+
+
 def register_env_passthrough(var_names: Iterable[str]) -> None:
     """Register environment variable names as allowed in sandboxed environments.
 

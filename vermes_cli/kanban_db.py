@@ -5211,6 +5211,21 @@ def _default_spawn(
     prompt = f"work kanban task {task.id}"
     env = dict(os.environ)
 
+    # Profile-gate isolation (#113270): a worker spawned for a DIFFERENT
+    # profile must not inherit this process's platform authorization gates
+    # (DISCORD_ALLOWED_CHANNELS, TELEGRAM_ALLOW_ALL_USERS, ...).  The
+    # dispatcher may itself be running under profile A's gateway; without
+    # this strip the profile-B worker would enforce A's channel/user list.
+    from vermes_cli.profiles import resolve_profile_env
+    try:
+        _target_home = resolve_profile_env(profile_arg)
+        _cur_home = os.environ.get("VERMES_HOME")
+        if profile_arg != "default" and _cur_home and _target_home != _cur_home:
+            from tools.env_passthrough import strip_profile_gate_env
+            strip_profile_gate_env(env)
+    except (FileNotFoundError, ValueError):
+        pass  # profile missing — defer to CLI _apply_profile_override
+
     # Inject VERMES_HOME so the worker reads the profile-scoped config.yaml
     # (fallback_providers, toolsets, agent settings, etc.) instead of the root
     # config.  Without this, `env = dict(os.environ)` copies only the parent's
