@@ -34,6 +34,22 @@
 
 ---
 
+## 2.5 硬约束：两仓**无共同祖先**（实测 2026-09-21，新增）
+
+| 实测 | 命令 | 结果 |
+|---|---|---|
+| 共同祖先 | `git merge-base --all main upstream/main` | **空**（`git rev-parse --is-shallow-repository` = `false`，**不是 shallow 导致**） |
+| 上游领先 | `git rev-list --count main..upstream/main` | **39,490** |
+| Vermes 自有 | `git rev-list --count upstream/main..main` | **1,758**（自 v1.0.3 独立演化） |
+| 上游速度 | `git describe --tags upstream/main` | `v2026.9.14-4787-g3b7eda0887` |
+
+→ **这是比"Jaccard ≤0.15"更硬的约束**：不是"分歧大所以不合"，而是
+**git 层面根本没有共同基线**。`git merge upstream/main` 不可用；
+`git cherry-pick` 仅适用于单文件/单特性的能力级搬运（`chore/upstream-sync`
+的 `a8cb8ebc7a` = 取上游 `3ead2bdd0` 是先例），不要指望整段历史搬运。
+
+工程化落地：`scripts/upstream_watch.py`（雷达 + 边界闸门）+ `docs/DISTRIBUTION_MANIFEST.md`。
+
 ## 3. 同步原则（不变）
 
 1. **不自动全量合并** — 同源文件 Jaccard ≤0.15，属深度分歧；全量 merge 风险不可控。
@@ -72,11 +88,18 @@
 ## 6. 同步操作清单（可执行）
 
 ```bash
+# 1) 上游雷达：基线以来的改动 → 分区分类 → 取长候选 + 红线告警
+.venv/bin/python scripts/upstream_watch.py watch --fetch      # 或 --since v2026.9.14
+# 2) 边界闸门：Vermes 自己在"上游跟随区"改了多少（契约税）
+.venv/bin/python scripts/upstream_watch.py boundary --since v2.5.1
+# 3) 人工逐条评估：安全修复 → 搬运；新特性 → 对照路线图 P2 矩阵
 git fetch upstream
 git --no-pager log upstream/main --oneline -30
-# 逐条评估：安全修复 → cherry-pick；新特性 → 对照路线图 P2 矩阵
 # 禁止：git merge upstream/main
 ```
+
+> 报告落在 `reports/upstream-watch-<date>.md` / `reports/dist-boundary-<date>.md`；
+> 每次取长需在 `docs/DISTRIBUTION_MANIFEST.md` §7 ledger 登记（价值/冲突面/验收/回退）。
 
 评估模板：价值 / 冲突文件是否命中红线 / 是否与 2.5 在途抢 `vermes_state.py` / 验收用例。
 
@@ -96,6 +119,8 @@ ls .github/workflows | wc -l
 
 ## 8. 关联文档（真源）
 
+- **发行版契约（工程化落地，2026-09-21 新增）**：`docs/DISTRIBUTION_MANIFEST.md`
+- 上游雷达 / 边界闸门脚本：`scripts/upstream_watch.py`（报告在 `reports/upstream-watch-*.md`、`reports/dist-boundary-*.md`）
 - 路线图：`reports/vermes-upstream-catchup-roadmap_FINAL_20260920.md`
 - 度量基线：`reports/diverge-baseline-20260920.md`
 - 并行工单：`docs/TASK_BOARD_20260920.md`
