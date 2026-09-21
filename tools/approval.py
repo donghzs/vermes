@@ -1525,6 +1525,14 @@ def check_dangerous_command(command: str, env_type: str,
 
     is_cli = env_var_enabled("VERMES_INTERACTIVE")
     is_gateway = _is_gateway_approval_context()
+    is_ask = env_var_enabled("VERMES_EXEC_ASK")
+    if env_var_enabled("VERMES_CRON_SESSION"):
+        # Cron workers are unattended: presence vars (VERMES_INTERACTIVE /
+        # VERMES_EXEC_ASK) can leak in from the launching gateway and make a
+        # cron job resolve as an interactive CLI, blocking on an approval card
+        # nobody can answer (#110932 mirror). is_gateway is already cron-
+        # excluded inside _is_gateway_approval_context().
+        is_cli = is_ask = False
 
     if not is_cli and not is_gateway:
         # Cron sessions: respect cron_mode config
@@ -1542,7 +1550,7 @@ def check_dangerous_command(command: str, env_type: str,
                 }
         return {"approved": True, "message": None}
 
-    if is_gateway or env_var_enabled("VERMES_EXEC_ASK"):
+    if is_gateway or is_ask:
         submit_pending(session_key, {
             "command": command,
             "pattern_key": pattern_key,
@@ -1772,6 +1780,14 @@ def check_all_command_guards(command: str, env_type: str,
     is_cli = env_var_enabled("VERMES_INTERACTIVE")
     is_gateway = _is_gateway_approval_context()
     is_ask = env_var_enabled("VERMES_EXEC_ASK")
+    if env_var_enabled("VERMES_CRON_SESSION"):
+        # Cron workers are unattended: nobody can answer an approval card.
+        # Presence vars (VERMES_INTERACTIVE / VERMES_EXEC_ASK) can leak in
+        # via any env-passing launch path — treat them as advisory so the
+        # gate consults approvals.cron_mode instead of hanging on a pending
+        # card nobody can answer (#110932 mirror). is_gateway is already
+        # cron-excluded inside _is_gateway_approval_context().
+        is_cli = is_ask = False
 
     # Preserve the existing non-interactive behavior: outside CLI/gateway/ask
     # flows, we do not block on approvals and we skip external guard work.
@@ -1780,8 +1796,8 @@ def check_all_command_guards(command: str, env_type: str,
         if env_var_enabled("VERMES_CRON_SESSION"):
             if _get_cron_approval_mode() == "deny":
                 # Run detection to get a description for the block message
-                is_dangerous, _pk, description = detect_dangerous_command(command)
-                if is_dangerous:
+                is_dangerous, pattern_key, description = detect_dangerous_command(command)
+                if is_dangerous and not is_approved(get_current_session_key(), pattern_key):
                     return {
                         "approved": False,
                         "message": (
