@@ -42,23 +42,15 @@ const MESSAGES_KEY_PREFIX = 'vermes-messages-'
 const DEFAULT_MODEL_ID = localStorage.getItem('vermes-default-model') || ''
 const DEFAULT_PROVIDER_ID = localStorage.getItem('vermes-default-provider') || ''
 
-// ── 最终交付物判定:只有这些类型的新产物才自动展开右侧详情面板 ──
-// 避免 .txt 日志、临时文件、中间产物一产生就弹面板打扰用户。
-function isRenderableDeliverable(path) {
-  if (!path) return false
-  const ext = path.split('.').pop()?.toLowerCase()
-  // 可渲染的交付物格式:文档 + 图片 + 代码/文本
-  return [
-    // 文档
-    'md', 'html', 'htm', 'docx', 'xlsx', 'xls', 'csv', 'pdf',
-    // 图片
-    'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg',
-    // 代码/文本(常见 agent 产物)
-    'py', 'js', 'ts', 'sh', 'json', 'yaml', 'yml', 'toml', 'ini', 'cfg',
-    'txt', 'log', 'xml', 'sql', 'java', 'go', 'rs', 'c', 'cpp', 'h',
-    'rb', 'php', 'vue', 'css', 'scss', 'less',
-  ].includes(ext)
-}
+// ── 交付物判定已迁移（2026-09-22, P0-1）────────────────────────────
+// 原 isRenderableDeliverable(path) 已移除。它按扩展名猜「是不是交付物」，
+// 白名单里含 py/js/txt/log/json/yaml 等过程产物，于是 execute_code 每在沙箱
+// 里 write_file 一次就自动弹出右栏（后端把 write_file/patch 全部上报为
+// artifact，见 tools/code_execution_tool.py:1415）——属强打扰。
+//
+// 现在「是否自动展开右栏」只认一个信号：后端 onDelivery 事件（后端已过滤为
+// 最终交付物）。扩展名不再参与判定，也就不存在白名单过宽的问题。
+// 过程产物仍然会进 ArtifactPanel「产物」列表，只是不再自动弹面板。
 
 // 取某会话最后一条「有非空文本」的 assistant 消息作为结论摘要(前 200 字)。
 // 反向查找:跳过末尾的纯 tool_calls 消息(content 为 null)或多模态数组 content。
@@ -258,7 +250,12 @@ export const useChatStore = defineStore('chat', () => {
   const sessionHarnessStatus = ref({}) // sessionId → harness_status payload
 
   // ── 全局 UI 状态(跨会话共享,不需要分片)──
-  const pendingApproval = ref(null)  // 工具审批请求
+  // 审批队列（P2-1, 2026-09-22）：原实现用单个 ref 存审批，后到的审批会【无条件覆盖】
+  // 前一条 —— 两条审批快速连推时，前一条的 session_key 永久丢失，后端等不到它的
+  // /api/approve 响应，会话卡在等待审批。改队列后逐条处理：pendingApproval 恒为队首，
+  // ApprovalDialog 可显示「第 k/N 条」。安全语义不变：仍逐条打断、逐条征询。
+  const approvalQueue = ref([])  // 待处理的工具审批请求（FIFO）
+  const pendingApproval = computed(() => approvalQueue.value[0] || null)
 
   // ── 当前会话的 computed 视图(自动跟随 currentSessionId)──
   const todoItems = computed(() => sessionTodoItems.value[currentSessionId.value] || [])
@@ -950,6 +947,11 @@ export const useChatStore = defineStore('chat', () => {
     const modelId = _model_ || currentModel.value
     const providerId = _provider_ || currentProvider.value
 
+    // P2-3: 新一轮会话开始 → 重置「交付物自动弹出」预算（单轮最多自动弹 1 次）。
+    // 放在此处而非 onDelivery 里计数，是因为一轮可能触发多次 delivery（多步交付/并行 agent），
+    // 若不设上限，右栏会被连续弹到前台，正是用户反馈的「强打扰」。
+    useArtifactPanel().resetAutoOpenBudget()
+
     if ((!content || !content.trim()) && (!attachments || attachments.length === 0)) return
     // CLI 体验: 如果 agent 正在工作,先停止再发新消息(等效 CLI 中直接输入)
     if (currentSessionId.value && sessionLoading.value[currentSessionId.value]) {
@@ -1169,12 +1171,12 @@ export const useChatStore = defineStore('chat', () => {
           } catch (e) { /* fail-open: 不阻断对话流 */ }
         },
         onApprovalRequest: (approvalData) => {
-          // 工具审批请求:弹出审批对话框
-          pendingApproval.value = {
+          // 工具审批请求:入队（不再覆盖未处理的前一条，见 approvalQueue 注释）
+          approvalQueue.value = [...approvalQueue.value, {
             ...approvalData,
             session_key: approvalData.session_key || ('gui-' + (sendSessionId || 'default')),
             timestamp: Date.now(),
-          }
+          }]
         },
         onTodoUpdate: (data) => {
           // P0-2: merge 而非 replace,避免 plan 与 todo 竞态覆盖
@@ -1249,11 +1251,13 @@ export const useChatStore = defineStore('chat', () => {
             }
             if (idx >= 0) list[idx] = done
             else list.push(done)
-            // 阶段 3: 自动提取产物到 ArtifactPanel;只有"最终交付物"才自动展开右栏
+            // 阶段 3: 提取产物到 ArtifactPanel（静默 —— 绝不自动展开右栏）
+            // P0-1: 这里的 artifacts 是 tool_step 的【过程产物】。execute_code 会把沙箱内
+            // 每次 write_file/patch 的路径都上报为 artifact（tools/code_execution_tool.py:1415），
+            // 其中绝大多数是中间脚本与临时文件。对它们自动展开右栏属强打扰，已移除。
+            // 自动展开统一收敛到 onDelivery（后端已过滤的最终交付物）。
             if (data.artifacts && data.artifacts.length > 0) {
               const va = window.__vermesArtifacts
-              const { autoOpen, openPanel, setTab } = useArtifactPanel()
-              const addedIds = []
               if (va && typeof va.addArtifact === 'function') {
                 data.artifacts.forEach(a => {
                   const id = va.addArtifact({
@@ -1263,24 +1267,12 @@ export const useChatStore = defineStore('chat', () => {
                     source: a.source || data.name || 'tool',
                   }, sendSessionId)
                   if (id) {
-                    addedIds.push(id)
                     // P0: 记录本回合新产物，供 onDone 无任务规划时聚合为 delivery 消息
                     const pending = sessionPendingDeliveryArtifacts.value[sendSessionId] || new Set()
                     pending.add(id)
                     sessionPendingDeliveryArtifacts.value = { ...sessionPendingDeliveryArtifacts.value, [sendSessionId]: pending }
                   }
                 })
-              }
-              // 仅当产物含可渲染交付物(md/html/docx/xlsx/csv/pdf/图片)时才自动展开面板并直接渲染内容,
-              // 避免 .txt 日志、临时文件、中间产物频繁打扰。
-              if (autoOpen.value && data.artifacts.some(a => isRenderableDeliverable(a.path))) {
-                // 直接打开首个可渲染交付物的文件标签渲染,而不是只跳到产物列表
-                const firstIdx = data.artifacts.findIndex(a => isRenderableDeliverable(a.path))
-                const firstId = addedIds[firstIdx]
-                const opened = firstId && va && typeof va.openArtifactById === 'function'
-                  ? va.openArtifactById(firstId)
-                  : false
-                if (!opened) { openPanel('artifacts'); setTab('artifacts') }
               }
             }
             // P1: 文件变更审计 - write_file/patch 推送到变更 tab
@@ -1353,6 +1345,19 @@ export const useChatStore = defineStore('chat', () => {
           // 后端已接管 delivery，清空 pending，避免 onDone 兜底再重复聚合
           if (sendSessionId) {
             sessionPendingDeliveryArtifacts.value = { ...sessionPendingDeliveryArtifacts.value, [sendSessionId]: new Set() }
+          }
+          // P0-1: 最终交付物到达 → 自动展开右栏。这是全局【唯一】的自动弹出入口。
+          // 与 tool_step 不同，onDelivery 的 artifacts 已由后端过滤为交付物，
+          // 因此无需（也不应）再用扩展名猜测。用户可在设置里关掉 autoOpen。
+          const { consumeAutoOpen, openPanel, setTab } = useArtifactPanel()
+          // 先申请配额再弹：预算用完（单轮第 2 次及以后）自动降级为静默，
+          // 交付物仍以 delivery 卡片形式出现在聊天流里，不会丢（红线 1）。
+          if (consumeAutoOpen() && deliveryArtifacts.length) {
+            const firstId = deliveryArtifacts[0].id
+            const opened = firstId && _va && typeof _va.openArtifactById === 'function'
+              ? _va.openArtifactById(firstId)
+              : false
+            if (!opened) { openPanel('artifacts'); setTab('artifacts') }
           }
         },
         onTaskComplete: (data) => {
@@ -1735,8 +1740,10 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── 工具审批 ──
   async function resolveApproval(choice) {
-    if (!pendingApproval.value) return
-    const { session_key } = pendingApproval.value
+    // 只处理队首，处理后出队，下一条自动顶上（ApprovalDialog 显示 k/N）
+    const cur = approvalQueue.value[0]
+    if (!cur) return
+    const { session_key } = cur
     try {
       await fetch('/api/approve', {
         method: 'POST',
@@ -1744,7 +1751,9 @@ export const useChatStore = defineStore('chat', () => {
         body: JSON.stringify({ session_key, choice }),
       })
     } catch (e) { console.error('[Approval] Failed:', e) }
-    pendingApproval.value = null
+    // 无论请求成功与否都出队：留在队首会让用户被同一条无限追问；
+    // 请求失败时该条审批的后果由后端超时/拒绝策略承担，前端不重复打扰。
+    approvalQueue.value = approvalQueue.value.slice(1)
   }
 
   // 3.4:统一设置当前模型(响应式 + 持久化),替代 Settings 的 localStorage + window 事件中转
@@ -1781,7 +1790,7 @@ export const useChatStore = defineStore('chat', () => {
     currentTodoStepId, todoInProgressCount, toggleTaskDrawer,
     sessionTodoItems, sessionTodoAllDone,
     taskVerbosity, setTaskVerbosity,
-    pendingApproval, resolveApproval,
+    pendingApproval, approvalQueue, resolveApproval,
     pendingModel, appendModelChange,
     init, initOnce,
     createSession, switchSession, deleteSession, deleteSessionsBatch, renameSession, pinSession,

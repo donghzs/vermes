@@ -1098,6 +1098,12 @@ def _filter_delivery_artifacts(artifacts: list) -> list:
     for a in artifacts:
         if not isinstance(a, dict):
             continue
+        # P0-5（2026-09-22）：上游已声明为「中间产物」的直接排除。
+        # 扩展名白名单拦不住过程脚本（py/js/css 本身就在白名单里），只有显式
+        # intermediate 标记才能区分「脚本随手写的中间文件」与「用户要的交付物」。
+        # 标记由 tools/code_execution_tool.py 在 execute_code 上报产物时打。
+        if a.get("intermediate"):
+            continue
         p = a.get("path", "")
         if not _is_deliverable_artifact(p):
             continue

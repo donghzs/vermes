@@ -6,7 +6,9 @@
         <span class="text-2xl">⚠️</span>
         <div>
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">工具审批请求</h3>
-          <p class="text-xs text-gray-500 dark:text-gray-400">Agent 想执行以下命令</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            Agent 想执行以下命令<span v-if="pendingCount > 1">（共 {{ pendingCount }} 条待审批，当前第 1 条）</span>
+          </p>
           <span v-if="chat.pendingApproval.category === 'self_modify_rollback'"
             class="ml-auto px-2 py-0.5 text-xs rounded-full bg-red-500/15 text-red-600 dark:text-red-400 font-medium">撤销确认</span>
         </div>
@@ -67,6 +69,10 @@ import { computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { personaApprovalReason } from '../utils/persona-copy'
 const chat = useChatStore()
+
+// P2-1：审批队列长度。>1 时提示用户后面还有几条，避免「批完一条又弹一条」的意外感。
+// 安全语义不变：仍逐条打断征询，只是把队列情况显式化（不做批量放行）。
+const pendingCount = computed(() => (chat.approvalQueue?.length || 0))
 
 // G7: 为什么问你——底线理由
 const approvalReason = computed(() => {

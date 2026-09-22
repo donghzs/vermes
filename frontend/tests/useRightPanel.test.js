@@ -4,11 +4,10 @@ import { useRightPanel } from '../src/composables/useRightPanel'
 describe('useRightPanel composable', () => {
   beforeEach(() => {
     // 重置模块级状态
-    const { open, tab, artifactTab, autoOpenOnArtifact, panelWidth } = useRightPanel()
+    const { open, tab, artifactTab, panelWidth } = useRightPanel()
     open.value = false
     tab.value = 'skills'
     artifactTab.value = 'artifacts'
-    autoOpenOnArtifact.value = true
     panelWidth.value = 420
   })
 
@@ -47,11 +46,12 @@ describe('useRightPanel composable', () => {
     expect(panelWidth.value).toBe(600)
   })
 
-  it('autoOpenOnArtifact 默认 true', () => {
-    const { autoOpenOnArtifact } = useRightPanel()
-    expect(autoOpenOnArtifact.value).toBe(true)
-    autoOpenOnArtifact.value = false
-    expect(autoOpenOnArtifact.value).toBe(false)
+  it('不再导出 autoOpenOnArtifact（自动弹出统一由 useArtifactPanel 负责）', () => {
+    // P0-3(2026-09-22): 第二套「产物到达自动开面板」开关已移除，避免与
+    // useArtifactPanel.autoOpen 形成双状态机漂移。此用例守卫该契约，
+    // 防止有人把开关加回来。
+    const panel = useRightPanel()
+    expect(panel).not.toHaveProperty('autoOpenOnArtifact')
   })
 
   it('tab 有效值包括 artifacts/files/changes/preview', () => {
