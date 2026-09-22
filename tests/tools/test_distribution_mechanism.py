@@ -282,3 +282,27 @@ def test_intent_security_re_matches_ghsa():
     assert uw.INTENT_SECURITY_RE.search("fix(security): ... GHSA-2fmg-cjqm-hhrj")
     assert uw.INTENT_SECURITY_RE.search("fix: CVE-2026-xxxx")
     assert uw.INTENT_SECURITY_RE.search("fix(approval): honor allowlists")
+
+def test_ledger_ids_present_in_manifest_blocks():
+    """两本账 ID 必须在 HTML 注释块内（单一真源=manifest §7b/§7c）。
+
+    QClaw 交叉审计曾检索不到 D-001/L-001（并发改写竞态）。本测钉住：
+    ID 行在 DIVERSION/TAKEALONG 包裹区内；删行/改块不改测试会红。
+    """
+    import re
+
+    text = _manifest_text()
+    div = re.search(
+        r"<!--DIVERSION_LEDGER:START-->\s*(.*?)<!--DIVERSION_LEDGER:END-->",
+        text,
+        re.S,
+    )
+    ta = re.search(
+        r"<!--TAKEALONG_LEDGER:START-->\s*(.*?)<!--TAKEALONG_LEDGER:END-->",
+        text,
+        re.S,
+    )
+    assert div and ta, "manifest 必须含 DIVERSION/TAKEALONG HTML 包裹块"
+    assert re.search(r"^\|\s*D-001\s*\|", div.group(1), re.M), "DIVERSION 缺 D-001"
+    assert re.search(r"^\|\s*L-001\s*\|", ta.group(1), re.M), "TAKEALONG 缺 L-001"
+
