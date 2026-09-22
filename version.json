@@ -1,41 +1,41 @@
 {
-  "version": "2.5.2",
-  "releaseDate": "2026-09-22",
-  "notes": "Vermes 2.5.2（正确性收口，4 commits）：① 文件读取 — read_file 单行/长行文件被静默截断却报 truncated=False（静默丢 96% 数据），且 wc -l 少算无尾换行末行；改为 awk 正确数行 + 行内截断并入 truncated 标志，并区分「offset 续读」vs「read_file_raw 读全文」提示。② 代码执行 — execute_code 打包态解释器 ABI 只查 >=3.8，候选系统 Python 版本不匹配（如 3.14 vs 打包 3.11）会 import 原生扩展崩溃；frozen 模式改为 major.minor 精确匹配。③ UX 打扰治理 — onDelivery 唯一弹产物、审批队列 FIFO 修复（多会话卡死）、任务区/审批/更新角标降噪、P0-5 intermediate 标记隔离中间产物。",
-  "downloads": {
+    "version": "2.5.2",
+    "releaseDate": "2026-09-22",
+    "notes": "Vermes 2.5.2（正确性收口，4 commits）：① 文件读取 — read_file 单行/长行文件被静默截断却报 truncated=False（静默丢 96% 数据），且 wc -l 少算无尾换行末行；改为 awk 正确数行 + 行内截断并入 truncated 标志，并区分「offset 续读」vs「read_file_raw 读全文」提示。② 代码执行 — execute_code 打包态解释器 ABI 只查 >=3.8，候选系统 Python 版本不匹配（如 3.14 vs 打包 3.11）会 import 原生扩展崩溃；frozen 模式改为 major.minor 精确匹配。③ UX 打扰治理 — onDelivery 唯一弹产物、审批队列 FIFO 修复（多会话卡死）、任务区/审批/更新角标降噪、P0-5 intermediate 标记隔离中间产物。",
+    "downloads": {
+        "mac": {
+            "arm64": {
+                "url": "https://vbit.top/vermes/downloads/Vermes-2.5.2-arm64.dmg",
+                "sha256": "ed5721e6e8c104b1541143545fd4f3fe81941d24d66ad71d69b399a924ccea46",
+                "size": 252773347
+            },
+            "x64": {
+                "url": "https://vbit.top/vermes/downloads/Vermes-2.5.2.dmg",
+                "sha256": "b5029e357ee6c192490b9ee5addec338a21e6a19cf956866313dc5e1a293bf0b",
+                "size": 257687911
+            }
+        },
+        "windows": {
+            "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-win-x64.exe",
+            "sha256": "02feebf6d40108c9da84f9082d4359b03acbfe4b5c3d4f413bba0b6a7d194b47",
+            "size": 267925241
+        }
+    },
     "mac": {
-      "arm64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-arm64.dmg",
-        "sha256": "578e77a5f8b683ceb4fe433c6b5835117fccd14b064154f56d1ed7eeb22a1e83",
-        "size": 279965368
-      },
-      "x64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1.dmg",
-        "sha256": "40dd75f63145c2623b84067578dc28fd74ef2199d3434aa60b4e240d82a953aa",
-        "size": 284923404
-      }
+        "arm64": {
+            "url": "https://vbit.top/vermes/downloads/Vermes-2.5.2-arm64.dmg",
+            "sha256": "ed5721e6e8c104b1541143545fd4f3fe81941d24d66ad71d69b399a924ccea46",
+            "size": 252773347
+        },
+        "x64": {
+            "url": "https://vbit.top/vermes/downloads/Vermes-2.5.2.dmg",
+            "sha256": "b5029e357ee6c192490b9ee5addec338a21e6a19cf956866313dc5e1a293bf0b",
+            "size": 257687911
+        }
     },
     "windows": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-win-x64.exe",
-      "sha256": "02feebf6d40108c9da84f9082d4359b03acbfe4b5c3d4f413bba0b6a7d194b47",
-      "size": 267925241
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-win-x64.exe",
+        "sha256": "02feebf6d40108c9da84f9082d4359b03acbfe4b5c3d4f413bba0b6a7d194b47",
+        "size": 267925241
     }
-  },
-  "mac": {
-    "arm64": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.2-arm64.dmg",
-      "sha256": "7772479a91078d0592fb6155acb21e284d86cf7945c82fe8570592be19af79bf",
-      "size": 280033969
-    },
-    "x64": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.2.dmg",
-      "sha256": "6f19fc33b3e0c5e57f0953f1dbbce08db0a493faea5235cfe27644c09095e562",
-      "size": 284970286
-    }
-  },
-  "windows": {
-    "url": "https://vbit.top/vermes/downloads/Vermes-2.5.1-win-x64.exe",
-    "sha256": "02feebf6d40108c9da84f9082d4359b03acbfe4b5c3d4f413bba0b6a7d194b47",
-    "size": 267925241
-  }
 }
