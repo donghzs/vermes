@@ -134,6 +134,8 @@ cmd /c "$Python -m pip install --upgrade pip --quiet 2>NUL"
 Write-Host "  安装依赖（读 pyproject.toml 单一事实源）..."
 # A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑）。必须清空代理环境变量 + 阿里云镜像，否则 pip/uv 全量超时。
 $env:HTTP_PROXY = ""; $env:HTTPS_PROXY = ""; $env:http_proxy = ""; $env:https_proxy = ""
+# uv 在 Windows 会读系统 IE 代理注册表（残留 127.0.0.1:7897 失效），需强制绕过
+$env:UV_NO_PROXY = "*"; $env:no_proxy = "*"; $env:NO_PROXY = "*"
 $Uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
 $IndexUrl = 'https://mirrors.cloud.tencent.com/pypi/simple/'
 # ── 5a. 核心：读 pyproject 全量依赖 + [all] extra（必成功）──
