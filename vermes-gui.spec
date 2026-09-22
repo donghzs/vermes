@@ -212,6 +212,42 @@ hiddenimports = [
     'toolset_distributions',
     # Vector backend (A-1): sqlite-vec
     'sqlite_vec',
+
+    # ── 平台渠道依赖（防御性对齐 vermes-backend.spec，即配即用）──
+    # 注：vermes-gui.spec 不在发布链路（build.sh 用 vermes-backend.spec），
+    # 但保持两 spec 渠道依赖一致，避免未来切 gui spec 时飞书/TG 等适配器 ImportError。
+    # 飞书/Lark
+    'lark_oapi', 'lark_oapi.api', 'lark_oapi.api.application', 'lark_oapi.api.application.v6',
+    'lark_oapi.api.im', 'lark_oapi.api.im.v1', 'lark_oapi.core', 'lark_oapi.core.const',
+    'lark_oapi.core.model', 'lark_oapi.event', 'lark_oapi.event.callback',
+    'lark_oapi.event.callback.model', 'lark_oapi.event.dispatcher_handler',
+    'lark_oapi.ws',
+    'qrcode',
+    # Telegram
+    'telegram', 'telegram.ext', 'telegram.request', 'telegram._utils',
+    'telegram.error', 'telegram.constants', 'telegram.helpers',
+    # Discord
+    'discord', 'discord.ext', 'discord.utils', 'discord.app_commands',
+    # Slack
+    'slack_bolt', 'slack_bolt.adapter', 'slack_bolt.adapter.asgi', 'slack_sdk',
+    # DingTalk
+    'dingtalk_stream', 'alibabacloud_dingtalk',
+    # WeCom (企业微信)
+    'cryptography', 'cryptography.hazmat', 'cryptography.hazmat.backends',
+    'cryptography.hazmat.primitives', 'cryptography.hazmat.primitives.ciphers',
+    # Matrix
+    'mautrix', 'mautrix.client', 'mautrix.types', 'mautrix.crypto',
+    'mautrix.crypto.attachments', 'mautrix.util',
+    # Nostr
+    'coincurve',
+    # Common HTTP
+    'httpx', 'aiohttp', 'aiohttp_socks', 'websockets',
+    # 音频处理
+    'mutagen', 'mutagen.oggopus',
+    # 其他
+    'pilk', 'nacl', 'nacl.secret', 'markdown', 'brotlicffi',
+    # Office preview (pptx) — 对齐 vermes-backend.spec
+    'pptx',
 ]
 
 # Platform specific

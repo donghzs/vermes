@@ -326,7 +326,17 @@ def _run_gateway():
         finally:
             _sys.argv = _orig_argv
     except SystemExit as e:
-        logger.info(f"[Vermes] Gateway 进程退出: code={e.code}")
+        # 缺陷 1 修复：gateway 启动失败（run_gateway 里 sys.exit(非0)）时，
+        # 退出码必须透传，不能吞掉。否则打包版 backend 进程会以 rc=0 静默退出，
+        # Electron 的 `code !== 0` 重启分支永远不触发（且 launchd 会反复拉起一个
+        # rc=0 的空转进程、端口永不监听，是最难 debug 的假死形态）。
+        # 正常退出（code 0/None）仍保持 rc=0，不触发重启。
+        code = getattr(e, "code", 0)
+        if code in (0, None):
+            logger.info(f"[Vermes] Gateway 进程正常退出: code={code}")
+        else:
+            logger.error(f"[Vermes] Gateway 启动失败: code={code}")
+            raise  # 透传非 0 退出码，让父进程能观测到失败并重启
     except Exception as e:
         logger.error(f"[Vermes] Gateway 启动失败: {e}", exc_info=True)
         sys.exit(1)
