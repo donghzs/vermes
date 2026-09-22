@@ -233,6 +233,7 @@ def main():
         os.makedirs('/tmp/winupload', exist_ok=True)
         local_exe = '/tmp/winupload/Vermes-Setup-2.5.2.exe'
         ps3 = f"""
+        $Root = Join-Path 'C:\\Projects' 'vermes-electron'
         Set-Location (Join-Path $Root 'dist-electron')
         $exe = Get-ChildItem 'Vermes Setup*.exe' | Sort-Object LastWriteTime | Select-Object -First 1
         if (-not $exe) {{ Write-Host 'UPLOAD_FAIL_NO_EXE'; exit 1 }}
