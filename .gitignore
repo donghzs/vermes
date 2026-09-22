@@ -112,3 +112,6 @@ vermes_cli/mfgcad/**/__pycache__/
 # 每次 npm run build 都可能新增一个。此前 .gitignore 没覆盖 → 以 untracked 形式留在工作树，
 # 极易被 `git add -A` 误提交。此处显式忽略。
 frontend/vite.config.js.timestamp-*.mjs
+
+# agent workbench traces (not product)
+.workbuddy/
