@@ -38,6 +38,7 @@ from tools.code_execution_tool import (
     _is_usable_python,
     _resolve_child_cwd,
     _resolve_child_python,
+    _usable_python_cache,
     build_execute_code_schema,
     execute_code,
 )
@@ -145,7 +146,7 @@ class TestResolveChildPython(unittest.TestCase):
             (fake_venv / "bin" / "python").symlink_to(sys.executable)
             with patch.dict(os.environ, {"VIRTUAL_ENV": str(fake_venv)}):
                 # Clear cache — _is_usable_python memoizes on path
-                _is_usable_python.cache_clear()
+                _usable_python_cache.clear()
                 result = _resolve_child_python("project")
                 self.assertEqual(result, str(fake_venv / "bin" / "python"))
 
@@ -155,7 +156,7 @@ class TestResolveChildPython(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             # No bin/python inside — broken venv
             with patch.dict(os.environ, {"VIRTUAL_ENV": td}):
-                _is_usable_python.cache_clear()
+                _usable_python_cache.clear()
                 self.assertEqual(_resolve_child_python("project"), sys.executable)
 
     def test_project_prefers_virtualenv_over_conda(self):
@@ -177,16 +178,16 @@ class TestResolveChildPython(unittest.TestCase):
             (conda / "bin" / "python").symlink_to(sys.executable)
 
             with patch.dict(os.environ, {"VIRTUAL_ENV": str(ve), "CONDA_PREFIX": str(conda)}):
-                _is_usable_python.cache_clear()
+                _usable_python_cache.clear()
                 result = _resolve_child_python("project")
                 self.assertEqual(result, str(ve / "bin" / "python"))
 
     def test_is_usable_python_rejects_nonexistent(self):
-        _is_usable_python.cache_clear()
+        _usable_python_cache.clear()
         self.assertFalse(_is_usable_python("/does/not/exist/python"))
 
     def test_is_usable_python_accepts_real_python(self):
-        _is_usable_python.cache_clear()
+        _usable_python_cache.clear()
         self.assertTrue(_is_usable_python(sys.executable))
 
 

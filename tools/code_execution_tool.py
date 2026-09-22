@@ -29,7 +29,7 @@ Remote execution additionally requires Python 3 in the terminal backend.
 """
 
 import base64
-import functools
+
 import json
 import logging
 import os
@@ -1241,7 +1241,12 @@ def execute_code(
         #              project deps like pandas and user files resolve.
         # Env scrubbing and tool whitelist apply identically in both modes.
         _mode = _get_execution_mode()
-        _child_python = _resolve_child_python(_mode)
+        try:
+            _child_python = _resolve_child_python(_mode)
+        except _NoChildPython as exc:
+            # Fail fast with a readable error — never spawn the GUI exe as
+            # `python -c` / script runner (that hung the RPC channel for 300s).
+            return tool_error(str(exc))
         _child_cwd = _resolve_child_cwd(_mode, tmpdir)
         _script_path = os.path.join(tmpdir, "script.py")
 
@@ -1601,21 +1606,35 @@ def _get_execution_mode() -> str:
     return DEFAULT_EXECUTION_MODE
 
 
-@functools.lru_cache(maxsize=32)
+# Probe cache: success-only (official code_execution_env pattern). A transient
+# failure (fork pressure / 5s timeout) must not permanently poison a path.
+_usable_python_cache: dict = {}
+_PROBE_CACHE_MAX = 32
+
+
+def _cache_usable_python(python_path: str, usable: bool) -> None:
+    if usable:
+        if len(_usable_python_cache) >= _PROBE_CACHE_MAX:
+            _usable_python_cache.pop(next(iter(_usable_python_cache)))
+        _usable_python_cache[python_path] = True
+
+
 def _is_usable_python(python_path: str) -> bool:
     """Check whether a candidate Python interpreter is usable for execute_code.
 
     Requires Python 3.8+ (f-strings and stdlib modules the RPC stubs need).
-    Cached so we don't fork a subprocess on every execute_code call.
+    Success is cached; failures are retried (transient spawn errors must not
+    stick — official Hermes ``code_execution_env`` pattern).
 
     When running as a PyInstaller bundle (``sys.frozen``), the candidate
     interpreter must ALSO match the bundled runtime's ``major.minor``.  The
     bundle ships native extensions compiled for a specific CPython ABI
     (e.g. ``cpython-311``); picking a system Python of a different minor
-    version (say 3.14) would make any ``import`` of those ``.so`` modules
-    crash with ``ImportError: _PyModule_AddObjectRef``.  A `>=3.8` gate
-    alone lets that mismatch through silently.
+    version (say 3.9) would make any ``import`` of those ``.so`` modules
+    crash with ``ImportError: _PyModule_AddObjectRef``.
     """
+    if _usable_python_cache.get(python_path):
+        return True
     try:
         # Build a version predicate.  In frozen mode we require an exact
         # major.minor match with the running interpreter; otherwise we only
@@ -1634,69 +1653,222 @@ def _is_usable_python(python_path: str) -> bool:
              f"import sys; sys.exit(0 if ({_predicate}) else 1)"],
             timeout=5,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0,
         )
-        return result.returncode == 0
+        usable = result.returncode == 0
+        _cache_usable_python(python_path, usable)
+        return usable
     except (OSError, subprocess.TimeoutExpired, subprocess.SubprocessError):
         return False
+
+
+class _NoChildPython(RuntimeError):
+    """frozen 且找不到 ABI 匹配的真解释器 — 禁止把 GUI exe 当 python -c 子进程。"""
+
+
+def _python_exe_names() -> tuple:
+    """Candidate interpreter filenames, versioned first (python3.11 before python3)."""
+    major, minor = sys.version_info[0], sys.version_info[1]
+    if _IS_WINDOWS:
+        return (f"python{major}{minor}.exe", f"python{major}.{minor}.exe",
+                "python3.exe", "python.exe")
+    return (f"python{major}.{minor}", f"python{major}{minor}", "python3", "python")
+
+
+def _bundled_python_candidates() -> list:
+    """Real interpreter binaries that ship near/inside a PyInstaller app.
+
+    Layout notes (Vermes Mac Electron + onedir backend):
+    - ``Contents/Resources/backend/vermes`` is the bootloader (NOT an interpreter).
+    - ``_internal/Python.framework/Versions/<x.y>/Python`` is libpython, not CLI.
+    - A real CLI (if present) lives at e.g. ``.../bin/python3`` or a standalone
+      tree beside the bootloader. We probe several well-known slots so packaging
+      can add one without another code change.
+    """
+    names = _python_exe_names()
+    bases = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        bases.append(meipass)
+    exe = os.path.realpath(sys.executable)
+    exe_dir = os.path.dirname(exe)
+    bases.append(exe_dir)
+    # backend/vermes -> backend/ ; .app/Contents/MacOS/X -> Resources/backend
+    parent = os.path.dirname(exe_dir)
+    bases.extend([
+        parent,
+        os.path.join(parent, "bin"),
+        os.path.join(parent, "backend", "bin"),
+        os.path.join(parent, "_internal"),
+        os.path.join(parent, "_internal", "bin"),
+    ])
+    # .app bundle: Contents/Resources/backend/...
+    if parent.endswith("MacOS"):
+        res = os.path.join(os.path.dirname(parent), "Resources", "backend")
+        bases.extend([
+            res,
+            os.path.join(res, "bin"),
+            os.path.join(res, "_internal", "bin"),
+            os.path.join(res, "_internal", "Python.framework", "Versions",
+                         f"{sys.version_info[0]}.{sys.version_info[1]}", "bin"),
+        ])
+    # Framework bin (if packaging ever ships a full framework with CLI)
+    fw_bin = os.path.join(
+        parent, "_internal", "Python.framework", "Versions",
+        f"{sys.version_info[0]}.{sys.version_info[1]}", "bin",
+    )
+    bases.append(fw_bin)
+
+    out, seen = [], set()
+    for base in bases:
+        if not base:
+            continue
+        for name in names:
+            cand = os.path.normpath(os.path.join(base, name))
+            if cand in seen:
+                continue
+            seen.add(cand)
+            out.append(cand)
+    return out
+
+
+def _is_exec_named(base: str, name: str) -> bool:
+    """True if *base/name* is an executable with an exact (case-sensitive) name.
+
+    macOS default APFS is case-insensitive: joining ``python`` can resolve to
+    ``Python.framework/.../Python`` (libpython) which must never be spawned as
+    an interpreter. Require the directory entry to match *name* exactly.
+    """
+    cand = os.path.normpath(os.path.join(base, name))
+    if not (os.path.isfile(cand) and os.access(cand, os.X_OK)):
+        return False
+    try:
+        return name in os.listdir(base)
+    except OSError:
+        return False
+
+
+def _path_python_candidates() -> list:
+    """Every PATH slot × versioned exe names (shutil.which only returns the first)."""
+    out, seen = [], set()
+    path = os.environ.get("PATH") or os.defpath
+    names = _python_exe_names()
+    for entry in path.split(os.pathsep):
+        if not entry:
+            continue
+        for name in names:
+            cand = os.path.normpath(os.path.join(entry, name))
+            if cand in seen:
+                continue
+            seen.add(cand)
+            if _is_exec_named(entry, name):
+                out.append(cand)
+    # Common absolute locations (Finder GUI PATH is /usr/bin:/bin:... only)
+    major, minor = sys.version_info[0], sys.version_info[1]
+    tag = f"{major}.{minor}"
+    extras = []
+    if _IS_WINDOWS:
+        extras = []
+    else:
+        for root in ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"):
+            for name in (f"python{tag}", f"python{major}{minor}", "python3", "python"):
+                extras.append((root, name))
+    for root, name in extras:
+        cand = os.path.normpath(os.path.join(root, name))
+        if cand in seen:
+            continue
+        seen.add(cand)
+        if _is_exec_named(root, name):
+            out.append(cand)
+    return out
 
 
 def _resolve_child_python(mode: str) -> str:
     """Pick the Python interpreter for the execute_code subprocess.
 
-    In ``strict`` mode, always ``sys.executable`` — guaranteed to work and
-    keeps behavior fully reproducible across sessions.
-
-    In ``project`` mode, prefer the user's active virtualenv/conda env's
-    python so ``import pandas`` etc. work. Falls back to ``sys.executable``
-    if no venv is detected, the candidate binary is missing/not executable,
-    or it fails a Python 3.8+ version check.
+    In ``strict`` mode on a source/venv runtime, always ``sys.executable``.
+    In ``project`` mode, prefer the active VIRTUAL_ENV/CONDA_PREFIX python.
 
     When running as a PyInstaller bundle (``sys.frozen``), ``sys.executable``
-    is the bundled exe (e.g. ``Vermes.exe``), not Python.  In that case we
-    always search for a real system Python.
+    is the bundled app/bootloader (e.g. ``Vermes`` / ``Vermes.exe``), **not**
+    a Python CLI — spawning it with ``-c`` hangs the RPC channel until the
+    300s tool timeout. Frozen mode therefore NEVER falls back to
+    ``sys.executable``: we resolve a real interpreter (bundled CLI first,
+    then venv/conda, then PATH + well-known locations with ABI match) or
+    raise ``_NoChildPython`` with a readable error (fail fast, not fail slow).
     """
-    _is_frozen = getattr(sys, "frozen", False)
+    _is_frozen = bool(getattr(sys, "frozen", False))
 
     if mode != "project" and not _is_frozen:
         return sys.executable
 
+    tried = []
+
+    def _accept(cand: str, src: str) -> str | None:
+        if not cand:
+            return None
+        base, name = os.path.dirname(cand) or ".", os.path.basename(cand)
+        if not _is_exec_named(base, name):
+            return None
+        tried.append(cand)
+        if _is_usable_python(cand):
+            logger.info("execute_code: using child interpreter %s (%s)", cand, src)
+            return cand
+        return None
+
+    # 1) Bundle-adjacent / embedded CLI (frozen only; never the GUI exe itself)
+    #    Only skip the exact running executable path. A symlink/alias to a real
+    #    CPython CLI is a valid child (and must not be treated as "the bootloader").
+    def _skip_boot(cand: str) -> bool:
+        return os.path.normpath(cand) == os.path.normpath(sys.executable)
+
+    if _is_frozen:
+        for cand in _bundled_python_candidates():
+            if _skip_boot(cand):
+                continue
+            hit = _accept(cand, "bundled")
+            if hit:
+                return hit
+
+    # 2) Active venv / conda (project deps). On frozen keep searching on ABI fail
+    #    (do NOT bounce to sys.executable — that is the GUI exe).
     if _IS_WINDOWS:
-        exe_names = ("python.exe", "python3.exe")
         subdirs = ("Scripts",)
     else:
-        exe_names = ("python", "python3")
         subdirs = ("bin",)
-
     for var in ("VIRTUAL_ENV", "CONDA_PREFIX"):
         root = os.environ.get(var, "").strip()
         if not root:
             continue
         for subdir in subdirs:
-            for exe in exe_names:
-                candidate = os.path.join(root, subdir, exe)
-                if not (os.path.isfile(candidate) and os.access(candidate, os.X_OK)):
-                    continue
-                if _is_usable_python(candidate):
-                    return candidate
-                # Found the interpreter but it failed the version check —
-                # log once and fall through to sys.executable.
-                logger.info(
-                    "execute_code: skipping %s=%s (Python version < 3.8 or broken). "
-                    "Using sys.executable instead.", var, candidate,
-                )
-                return sys.executable
+            for exe in _python_exe_names():
+                hit = _accept(os.path.join(root, subdir, exe), var)
+                if hit:
+                    return hit
+            # legacy name `python` without version tag
+            hit = _accept(os.path.join(root, subdir, "python" + (".exe" if _IS_WINDOWS else "")), var)
+            if hit:
+                return hit
 
-    # Frozen bundle fallback: search PATH for a real Python
+    # 3) PATH full walk + well-known roots (frozen only)
     if _is_frozen:
-        for exe in exe_names:
-            import shutil
-            found = shutil.which(exe)
-            if found and _is_usable_python(found):
-                logger.info("execute_code: frozen bundle — using system Python %s", found)
-                return found
-        logger.warning("execute_code: frozen bundle — no system Python found on PATH")
+        for cand in _path_python_candidates():
+            if _skip_boot(cand):
+                continue
+            hit = _accept(cand, "path")
+            if hit:
+                return hit
+        tried_s = ", ".join(dict.fromkeys(tried)) or "(none)"
+        raise _NoChildPython(
+            "execute_code: no usable Python interpreter found "
+            f"(need {sys.version_info[0]}.{sys.version_info[1]} to match "
+            "bundled native extensions). Tried: "
+            f"{tried_s}. Install a matching CPython and ensure it is on PATH."
+        )
 
+    # Non-frozen: sys.executable is a real Python (source/venv/CLI). Official
+    # Hermes also falls back here for project mode when no venv is set.
     return sys.executable
 
 

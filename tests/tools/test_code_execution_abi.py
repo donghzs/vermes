@@ -13,7 +13,9 @@ interpreter; in non-frozen (source/venv) mode keep the relaxed `>=3.8` gate.
 
 import sys
 
-from tools.code_execution_tool import _is_usable_python
+import pytest
+
+from tools.code_execution_tool import _is_usable_python, _usable_python_cache
 
 
 def _with_frozen(monkeypatch, value):
@@ -24,17 +26,22 @@ def _with_frozen(monkeypatch, value):
         monkeypatch.setattr(sys, "frozen", value, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _clear_probe_cache():
+    _usable_python_cache.clear()
+    yield
+    _usable_python_cache.clear()
+
+
 def test_non_frozen_relaxed_gate(monkeypatch):
     """Source/venv mode: only requires 3.8+, current python must pass."""
     _with_frozen(monkeypatch, False)
-    _is_usable_python.cache_clear()
     assert _is_usable_python(sys.executable) is True
 
 
 def test_frozen_accepts_same_minor(monkeypatch):
     """Frozen mode: the running interpreter itself must pass (same ABI)."""
     _with_frozen(monkeypatch, True)
-    _is_usable_python.cache_clear()
     assert _is_usable_python(sys.executable) is True
 
 
@@ -46,7 +53,6 @@ def test_frozen_rejects_different_minor(monkeypatch):
     compare major AND minor against the running interpreter when frozen.
     """
     _with_frozen(monkeypatch, True)
-    _is_usable_python.cache_clear()
     # A fake path fails at subprocess level (can't spawn), which returns
     # False — but that doesn't prove the ABI predicate.  Instead we verify
     # the version predicate construction is exact by checking that a
@@ -59,7 +65,6 @@ def test_frozen_rejects_different_minor(monkeypatch):
 def test_frozen_predicate_is_exact_minor(monkeypatch, capsys):
     """The injected predicate must pin major.minor, not just >=3.8."""
     _with_frozen(monkeypatch, True)
-    _is_usable_python.cache_clear()
 
     # Build the predicate exactly as _is_usable_python does and confirm it
     # references version_info[1] (minor), which is what makes it exact.
