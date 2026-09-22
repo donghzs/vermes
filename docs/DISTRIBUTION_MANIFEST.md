@@ -158,6 +158,8 @@ S5 的前置核实项已登记为待办（§8）。
 | D-002 | `docs/DISTRIBUTION_MANIFEST.md` | 品牌/发行版 | 2026-09-21 | Vermes 独有发行版契约文档（上游无此文件） |
 | D-003 | `tools/kanban_tools.py` | 适配 | 2026-09-22 | L-010：session_id reader 迁 `get_session_env`（自有 P0，见 TAKEALONG L-010/T13）；有意偏离，后续同文件大改仍需再登记 |
 | D-004 | `cron/scheduler.py` | 修复 | 2026-09-22 | L-007：cron 标记改 contextvar（自有 P0，见 TAKEALONG L-007/T11）；有意偏离 |
+| D-005 | `docs/plans/` | 品牌/发行版 | 2026-09-22 | Vermes 产品路线/报告（前端打扰治理等），上游无此树；目录级有意偏离 |
+| D-006 | `tools/code_execution_tool.py` | 产品增强 | 2026-09-22 | UX 打扰治理 P0-5：沙箱产物 `intermediate` 标记 + delivery 过滤消费；有意偏离（须重打 DMG 对打包用户生效） |
 <!--DIVERSION_LEDGER:END-->
 
 ---
