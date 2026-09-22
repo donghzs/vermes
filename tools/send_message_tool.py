@@ -33,6 +33,11 @@ _SLACK_TARGET_RE = re.compile(r"^\s*([CGDU][A-Z0-9]{8,})\s*$")
 _SLACK_THREAD_TARGET_RE = re.compile(r"^\s*([CGD][A-Z0-9]{8,}):([^\s:]+)\s*$")
 _WEIXIN_TARGET_RE = re.compile(r"^\s*((?:wxid|gh|v\d+|wm|wb)_[A-Za-z0-9_-]+|[A-Za-z0-9._-]+@chatroom|filehelper)\s*$")
 _YUANBAO_TARGET_RE = re.compile(r"^\s*((?:group|direct):[^:]+)\s*$")
+# QQBot targets: 32-char uppercase openids (C2C/private) or plain digit
+# guild/group IDs.  Without this, _parse_target_ref returns (None,None,False)
+# for an openid, so the directory's exact-ID hit is thrown away and send
+# fails with "No home channel set".
+_QQBOT_TARGET_RE = re.compile(r"^\s*([0-9A-F]{32}|[0-9]{5,})\s*$")
 # Discord snowflake IDs are numeric, same regex pattern as Telegram topic targets.
 _NUMERIC_TOPIC_RE = _TELEGRAM_TOPIC_TARGET_RE
 # Platforms that address recipients by phone number and accept E.164 format
@@ -389,6 +394,15 @@ def _parse_target_ref(platform_name: str, target_ref: str):
         match = _WEIXIN_TARGET_RE.fullmatch(target_ref)
         if match:
             return match.group(1), None, True
+    if platform_name == "qqbot":
+        # QQ openids are 32-char uppercase hex; guild/group IDs are plain
+        # digits.  Distinguish "this IS the target ID" from "this is a
+        # human-friendly name to resolve" so that the exact-ID path in
+        # resolve_channel_name can't hand back an ID we then discard by
+        # parsing it to None.
+        trimmed = target_ref.strip()
+        if _QQBOT_TARGET_RE.fullmatch(trimmed):
+            return trimmed, None, True
     if platform_name == "yuanbao":
         match = _YUANBAO_TARGET_RE.fullmatch(target_ref)
         if match:

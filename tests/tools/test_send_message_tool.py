@@ -1057,6 +1057,37 @@ class TestParseTargetRefE164:
         assert _parse_target_ref("matrix", "+15551234567")[2] is False
 
 
+class TestParseTargetRefQQBot:
+    """_parse_target_ref recognizes QQBot openids and guild/group IDs as explicit."""
+
+    def test_qqbot_32char_openid_is_explicit(self):
+        """32-char uppercase hex openid is an explicit target ID."""
+        openid = "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6"
+        chat_id, thread_id, is_explicit = _parse_target_ref("qqbot", openid)
+        assert chat_id == openid
+        assert thread_id is None
+        assert is_explicit is True
+
+    def test_qqbot_numeric_group_id_is_explicit(self):
+        """Plain digit guild/group ID is an explicit target ID."""
+        chat_id, thread_id, is_explicit = _parse_target_ref("qqbot", "123456789")
+        assert chat_id == "123456789"
+        assert thread_id is None
+        assert is_explicit is True
+
+    def test_qqbot_trims_whitespace(self):
+        """Whitespace around the target is stripped."""
+        chat_id, _, is_explicit = _parse_target_ref("qqbot", "  A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6  ")
+        assert chat_id == "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6"
+        assert is_explicit is True
+
+    def test_qqbot_non_id_name_is_not_explicit(self):
+        """A human-friendly name (non-hex/non-digit) is NOT explicit — needs resolution."""
+        chat_id, _, is_explicit = _parse_target_ref("qqbot", "my-group-name")
+        assert chat_id is None
+        assert is_explicit is False
+
+
 class TestParseTargetRefSlack:
     """_parse_target_ref recognizes Slack channel/user IDs as explicit."""
 
