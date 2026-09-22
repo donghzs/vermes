@@ -216,6 +216,7 @@ S5 的前置核实项已登记为待办（§8）。
 | T13 | **P0-BUG（Vermes 自有缺陷）**：`gateway.session_context.set_current_session_id` 全仓 6 处调用（`agent/agent_init.py:997/999`、`agent/conversation_compression.py:616/618/662/663`）但 **0 处定义**——writer 想走 contextvar（`_SESSION_ID` ContextVar + `_VAR_MAP` 已建），但 setter 缺失导致 import 抛 ImportError、全部静默回落 `os.environ`，与 ACP（`acp_adapter/server.py:1454`）的进程级 save/restore 形成并发串味。reader 侧（`tools/kanban_tools.py:125/688`）也直接读 `os.environ` 而非 `get_session_env()`。修法（L-010）：① `gateway.session_context` 补 `set_current_session_id()`（写 `_SESSION_ID` ContextVar）② reader 改 `get_session_env("VERMES_SESSION_ID")` ③ ACP 改调 setter 弃用进程级 save/restore | ✅ **已完成**（= L-010，见 §7c） |
 | T14 | **进程级会话状态变量纸面审计**（VERMES_INTERACTIVE/VERMES_EXEC_ASK/VERMES_GATEWAY_SESSION/TERMINAL_CWD 的 writer/reader/泄漏路径分级） | ✅ **已完成**（`reports/vermes-t14-session-env-audit_20260921.md`，commit `c3b95ef9fd` 初版 + `b2f1d3aaa0` 三项查证闭环；输出 L-009~L-011 实施清单） |
 | T15 | **类型免税（方案 2）**：TAKEALONG 落点仅「移植\|重写\|部分采纳」进 G1 免税集；自有 bugfix/拒绝/待做只审计不免税。有意偏离另记 DIVERSION（D-003/D-004） | ✅ **已完成**（本切片；`upstream_watch.py` + 机制测试 + §7b/§7c 边界注记） |
+| T16 | UX 遗留（已合入 `aac578109b`，不挡 merge）：① `approvalQueue` 全局 FIFO 非 per-session（多会话「共 N 条」偏全局，`session_key` 不串）② P0-5 **须重打 DMG** 才对打包用户生效 ③ `intermediate` 的 `"VERMES_exec_" in path` 宜改路径段匹配 ④ `mcp-command-center` 测试断言「MCP 指挥中心」过时（产品已并入 Agent 管理） | 待做 |
 
 ---
 
