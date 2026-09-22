@@ -196,53 +196,45 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Request logging middleware — capture all incoming requests for API discovery.
+# Request logging middleware — optional verbose HTTP debug log.
+#
+# 默认关闭：每个请求的完整 header/body 打印是 2.2GB 日志膨胀的主因（前端
+# 轮询 /api/sessions|evolution|memory|health 每请求 ~10 行）。仅在
+# VERMES_HTTP_DEBUG=1 或 config.logging.http_debug=true 时开启；开启时也只
+# 记一行（method + path + status），轮询路径一律跳过。
 # ---------------------------------------------------------------------------
+_HTTP_DEBUG_POLL_PATHS = (
+    "/api/sessions", "/api/evolution", "/api/memory", "/api/health",
+    "/api/status", "/api/config", "/api/channel_sync",
+)
+_SENSITIVE_HEADERS = {
+    "authorization", "x-vermes-session-token", "x-api-key",
+    "cookie", "set-cookie", "x-auth-token", "x-access-token",
+}
+_SENSITIVE_BODY_KEYS = {"api_key", "apikey", "password", "passwd", "token",
+                        "secret", "access_token", "refresh_token", "client_secret"}
+
+
+def _http_debug_enabled() -> bool:
+    """请求日志开关：环境变量 VERMES_HTTP_DEBUG=1 或 config.logging.http_debug。"""
+    if os.environ.get("VERMES_HTTP_DEBUG") in ("1", "true", "yes", "on"):
+        return True
+    try:
+        return bool(cfg_get(load_config(), "logging", "http_debug"))
+    except Exception:
+        return False
+
+
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
-    """Log all incoming requests for debugging / API discovery."""
-    import datetime
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    logger.info(f"\n{'='*80}")
-    logger.info(f"[{ts}] REQUEST: {request.method} {request.url.path}")
-    logger.info(f"  Query: {dict(request.query_params)}")
-    logger.info(f"  Client: {request.client.host if request.client else 'unknown'}")
-    # Log headers (redact sensitive ones)
-    headers = dict(request.headers)
-    if "authorization" in headers:
-        headers["authorization"] = "***"
-    if "x-Vermes-session-token" in headers:
-        headers["x-Vermes-session-token"] = "***"
-    logger.info(f"  Headers: {headers}")
-    # Read and log body for POST/PUT/PATCH
-    body = None
-    if request.method in ("POST", "PUT", "PATCH"):
-        try:
-            body = await request.json()
-            # Redact sensitive fields
-            if isinstance(body, dict):
-                body_log = body.copy()
-                for key in ("api_key", "password", "token", "secret", "key", "value"):
-                    if key in body_log and isinstance(body_log[key], str) and len(body_log[key]) > 4:
-                        body_log[key] = body_log[key][:2] + "***" + body_log[key][-2:]
-                    elif key in body_log:
-                        body_log[key] = "***"
-                # Skip large base64 attachments in logs — show summary only
-                if "attachments" in body_log and isinstance(body_log["attachments"], list):
-                    att_summary = []
-                    for att in body_log["attachments"]:
-                        if isinstance(att, dict):
-                            att_copy = {k: v for k, v in att.items() if k != "data"}
-                            att_copy["data"] = f"<{len(att.get('data', ''))} chars base64>"
-                            att_summary.append(att_copy)
-                    body_log["attachments"] = att_summary
-                body_json = json.dumps(body_log, ensure_ascii=False)
-                logger.info(f"  Body: {body_json[:500]}{'... (truncated)' if len(body_json) > 500 else ''}")
-        except Exception:
-            logger.info(f"  Body: <could not parse JSON>")
+    """默认关闭的 HTTP 请求日志；开启时只记一行。"""
     response = await call_next(request)
-    logger.info(f"  Response status: {response.status_code}")
-    logger.info(f"{'='*80}\n")
+    if not _http_debug_enabled():
+        return response
+    path = request.url.path
+    if path.startswith(_HTTP_DEBUG_POLL_PATHS):
+        return response
+    logger.info(f"[{request.method}] {path} -> {response.status_code}")
     return response
 
 

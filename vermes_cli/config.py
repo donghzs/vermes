@@ -1844,6 +1844,10 @@ DEFAULT_CONFIG = {
         "level": "INFO",       # Minimum level for agent.log: DEBUG, INFO, WARNING
         "max_size_mb": 5,      # Max size per log file before rotation
         "backup_count": 3,     # Number of rotated backup files to keep
+        "http_debug": False,   # When True, request_logging_middleware logs one line per request
+                               # (method+path+status), skipping polling paths. Off by default
+                               # because per-request header/body logging was the main cause of
+                               # multi-GB ~/.vermes/logs growth.
         # Periodic process memory usage logging (gateway only). Emits a
         # grep-friendly "[MEMORY] rss=...MB ..." line at the configured
         # interval so slow leaks in the long-lived gateway are visible
