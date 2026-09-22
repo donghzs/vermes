@@ -135,7 +135,7 @@ Write-Host "  安装依赖（读 pyproject.toml 单一事实源）..."
 # A13 系统级代理 127.0.0.1:7897 已失效（代理进程未跑）。必须清空代理环境变量 + 阿里云镜像，否则 pip/uv 全量超时。
 $env:HTTP_PROXY = ""; $env:HTTPS_PROXY = ""; $env:http_proxy = ""; $env:https_proxy = ""
 $Uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
-$IndexUrl = 'https://mirrors.aliyun.com/pypi/simple/'
+$IndexUrl = 'https://mirrors.cloud.tencent.com/pypi/simple/'
 # ── 5a. 核心：读 pyproject 全量依赖 + [all] extra（必成功）──
 Write-Host "  [5a] pyproject 全量依赖（必成功）..."
 $projArg = "-e `"$Root`""
@@ -143,7 +143,7 @@ if ($Uv) {
     cmd /c "`"$Uv`" pip install $projArg[all] --python `"$Python`" --index-url $IndexUrl > $Root\pip_core.log 2>&1"
     $coreExit = $LASTEXITCODE
 } else {
-    cmd /c "$Python -m pip install $projArg[all] --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com > $Root\pip_core.log 2>&1"
+    cmd /c "$Python -m pip install $projArg[all] --proxy=`"`" -i $IndexUrl --trusted-host mirrors.cloud.tencent.com > $Root\pip_core.log 2>&1"
     $coreExit = $LASTEXITCODE
 }
 if ($coreExit -ne 0) { Get-Content "$Root\pip_core.log" -Tail 30; throw "核心依赖安装失败 (exit $coreExit)，见 $Root\pip_core.log" }
@@ -155,7 +155,7 @@ foreach ($ex in $extras) {
     if ($Uv) {
         cmd /c "`"$Uv`" pip install $projArg[$ex] --python `"$Python`" --index-url $IndexUrl > $Root\pip_extra.log 2>&1"
     } else {
-        cmd /c "$Python -m pip install $projArg[$ex] --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com --quiet > $Root\pip_extra.log 2>&1"
+        cmd /c "$Python -m pip install $projArg[$ex] --proxy=`"`" -i $IndexUrl --trusted-host mirrors.cloud.tencent.com --quiet > $Root\pip_extra.log 2>&1"
     }
     if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] extra '$ex' 安装跳过（非致命）" } else { Write-Host "      [ok] extra '$ex'" }
 }
@@ -165,7 +165,7 @@ $extraMods = 'pymupdf python-docx lxml psutil pilk'
 if ($Uv) {
     cmd /c "`"$Uv`" pip install $extraMods --python `"$Python`" --index-url $IndexUrl > $Root\pip_extra2.log 2>&1"
 } else {
-    cmd /c "$Python -m pip install $extraMods --proxy=`"`" -i $IndexUrl --trusted-host mirrors.aliyun.com --quiet > $Root\pip_extra2.log 2>&1"
+    cmd /c "$Python -m pip install $extraMods --proxy=`"`" -i $IndexUrl --trusted-host mirrors.cloud.tencent.com --quiet > $Root\pip_extra2.log 2>&1"
 }
 if ($LASTEXITCODE -ne 0) { Write-Host "      [warn] 部分可选包安装跳过（pilk 需 Rust，非致命）" }
 # import 硬断言：主链路硬依赖缺一即构建失败
