@@ -231,7 +231,7 @@ def main():
         # 4. 回传 exe 到 Mac（用 curl.exe 流式 PUT，避免 PowerShell HttpWebRequest 大文件静默失败）
         log("回传 exe 到 Mac /tmp/winupload/ ...")
         os.makedirs('/tmp/winupload', exist_ok=True)
-        local_exe = '/tmp/winupload/Vermes-Setup-2.5.1.exe'
+        local_exe = '/tmp/winupload/Vermes-Setup-2.5.2.exe'
         ps3 = f"""
         Set-Location (Join-Path $Root 'dist-electron')
         $exe = Get-ChildItem 'Vermes Setup*.exe' | Sort-Object LastWriteTime | Select-Object -First 1
@@ -270,7 +270,7 @@ class _RecvHandler(http.server.BaseHTTPRequestHandler):
     def do_PUT(self):
         length = int(self.headers.get('Content-Length', 0))
         data = self.rfile.read(length)
-        with open('/tmp/winupload/Vermes-Setup-2.5.1.exe', 'wb') as f:
+        with open('/tmp/winupload/Vermes-Setup-2.5.2.exe', 'wb') as f:
             f.write(data)
         self.send_response(200)
         self.end_headers()
