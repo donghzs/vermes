@@ -2,6 +2,28 @@
 
 All notable changes to Vermes will be documented in this file.
 
+## [2.5.2] - 2026-09-22
+
+> 范围：`26416408b4`（2.5.1 发布点）→ `018b4e761a`。
+> 性质：**正确性修复**，无新功能开关。
+
+### 文件读取 · 单行截断不说谎（P0）
+
+- `read_file` 对单行/长行文件会在 `_add_line_numbers` 阶段行内截断到 `max_line_length`，但 `truncated` 标志只看 `wc -l`（行数截断）→ **静默丢 ~96% 内容且报 `truncated=False`**
+- `wc -l` 数的是换行符个数，无尾换行的文件末行被漏算（单行文件报 `total_lines=0`）
+- 修：数行改 `awk 'END{print NR+0}'`；新增 `_has_oversized_lines` 把行内截断并入 `truncated`；hint 区分「offset 续读」vs「read_file_raw 读全文」
+- 契约测试 `tests/tools/test_file_read_truncation.py`（5 条）
+
+### 代码执行 · 解释器 ABI 精确匹配（P1）
+
+- `_is_usable_python` 仅 `>=3.8` 闸门；frozen 打包态下候选系统 Python 版本不匹配（如 3.14 vs 打包的 3.11）会 import 原生 `.so` 崩溃（`ImportError: _PyModule_AddObjectRef`）
+- 修：frozen 模式改为 `major.minor` 精确匹配；非 frozen（源码/venv）保持 `>=3.8` 宽松闸门
+- 契约测试 `tests/tools/test_code_execution_abi.py`（4 条）
+
+### UX 打扰治理（并行轨，已审计）
+
+- onDelivery 唯一弹产物（tool_step 静默）；审批队列 FIFO 修复（多会话卡死真 bug）；任务区/审批/更新角标降噪；P0-5 intermediate 标记隔离中间产物
+
 ## [2.5.1] - 2026-09-21
 
 > 范围：`10c780d2a2`（2.5.0 发布点）→ `350a25d8cc`，共 **68 个提交**。
