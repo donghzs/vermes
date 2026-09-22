@@ -766,8 +766,12 @@ class ShellFileOperations(FileOperations):
             return ReadResult(error=f"Failed to read file: {read_result.stdout}")
         read_output = _strip_terminal_fence_leaks(read_result.stdout)
         
-        # Get total line count
-        wc_cmd = f"wc -l < {self._escape_shell_arg(path)}"
+        # Get total line count.
+        # Use awk instead of wc -l: POSIX wc -l counts newline characters,
+        # so a file with no trailing newline under-counts by one line.  awk's
+        # NR counts records (lines) correctly regardless of the trailing
+        # newline, and returns 0 for an empty file without erroring.
+        wc_cmd = f"awk 'END{{print NR+0}}' {self._escape_shell_arg(path)}"
         wc_result = self._exec(wc_cmd)
         wc_output = _strip_terminal_fence_leaks(wc_result.stdout)
         try:
@@ -775,11 +779,23 @@ class ShellFileOperations(FileOperations):
         except ValueError:
             total_lines = 0
         
-        # Check if truncated
-        truncated = total_lines > end_line
+        # Check if truncated.  Two independent truncation sources must both
+        # be considered, or we silently drop data while reporting
+        # ``truncated=False``:
+        #   1. line-range truncation: total_lines exceeds the read window
+        #   2. in-line truncation: any single line longer than
+        #      max_line_length gets clipped inside _add_line_numbers
+        truncated = total_lines > end_line or self._has_oversized_lines(read_output)
         hint = None
         if truncated:
-            hint = f"Use offset={end_line + 1} to continue reading (showing {offset}-{end_line} of {total_lines} lines)"
+            if total_lines > end_line:
+                hint = f"Use offset={end_line + 1} to continue reading (showing {offset}-{end_line} of {total_lines} lines)"
+            else:
+                hint = (
+                    f"One or more lines exceed the max line length and were truncated in-place. "
+                    f"Use read_file_raw to read the full untruncated content, or a line-aware "
+                    f"tool (search/patch) to target specific content."
+                )
         
         return ReadResult(
             content=self._add_line_numbers(read_output, offset),
@@ -788,6 +804,23 @@ class ShellFileOperations(FileOperations):
             truncated=truncated,
             hint=hint
         )
+    
+    def _has_oversized_lines(self, content: str) -> bool:
+        """Return True if any line in ``content`` exceeds max_line_length.
+
+        ``_add_line_numbers`` clips over-long lines in-place, so this is the
+        signal that in-line truncation has occurred.  Without folding this
+        into the ``truncated`` flag, a single-line file (or any file whose
+        lines are long but whose line count fits the read window) would be
+        silently truncated while reporting ``truncated=False``.
+        """
+        from tools.tool_output_limits import get_max_line_length
+        max_line_length = get_max_line_length()
+        # Fast path: if the whole content fits well under the cap, no
+        # per-line scan is needed.
+        if len(content) <= max_line_length:
+            return False
+        return any(len(line) > max_line_length for line in content.split('\n'))
     
     def _suggest_similar_files(self, path: str) -> ReadResult:
         """Suggest similar files when the requested file is not found."""

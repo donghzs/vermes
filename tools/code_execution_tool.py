@@ -1607,11 +1607,31 @@ def _is_usable_python(python_path: str) -> bool:
 
     Requires Python 3.8+ (f-strings and stdlib modules the RPC stubs need).
     Cached so we don't fork a subprocess on every execute_code call.
+
+    When running as a PyInstaller bundle (``sys.frozen``), the candidate
+    interpreter must ALSO match the bundled runtime's ``major.minor``.  The
+    bundle ships native extensions compiled for a specific CPython ABI
+    (e.g. ``cpython-311``); picking a system Python of a different minor
+    version (say 3.14) would make any ``import`` of those ``.so`` modules
+    crash with ``ImportError: _PyModule_AddObjectRef``.  A `>=3.8` gate
+    alone lets that mismatch through silently.
     """
     try:
+        # Build a version predicate.  In frozen mode we require an exact
+        # major.minor match with the running interpreter; otherwise we only
+        # require 3.8+.
+        _frozen = bool(getattr(sys, "frozen", False))
+        if _frozen:
+            _need_major, _need_minor = sys.version_info[0], sys.version_info[1]
+            _predicate = (
+                f"sys.version_info[0] == {_need_major} and "
+                f"sys.version_info[1] == {_need_minor}"
+            )
+        else:
+            _predicate = "sys.version_info >= (3, 8)"
         result = subprocess.run(
             [python_path, "-c",
-             "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)"],
+             f"import sys; sys.exit(0 if ({_predicate}) else 1)"],
             timeout=5,
             capture_output=True,
             creationflags=subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0,
