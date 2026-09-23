@@ -11,12 +11,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "docs" / "DISTRIBUTION_MANIFEST.md"
 
-# 自冻结锚 888bf8a344 起 core 区已改文件（Hermes 点名 7 个 + acp_adapter/server.py = 8）
+# 自冻结锚 888bf8a344 起 core 区已改文件（Hermes 点名 7 个 + acp_adapter/server.py + prompt_builder.py）
 FREEZE_REF = "888bf8a344"
 EXPECTED_CORE_FILES = {
     "agent/agent_init.py",
     "agent/conversation_compression.py",
     "agent/file_safety.py",
+    "agent/prompt_builder.py",
     "agent/prompt_processor_loader.py",
     "agent/system_prompt.py",
     "gateway/run.py",

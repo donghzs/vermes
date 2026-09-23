@@ -84,6 +84,9 @@ ZONES: dict[str, list[str]] = {
         "scripts/upstream_canary.py",  # 上游哨兵 pinned canary（Vermes 独有，roadmap §8.4）
         "scripts/s2_snapshot.py",  # S2 注入等价 gold 快照（Vermes 独有，工单 §4.3）
         "scripts/trigger-win-build.py",  # Windows 远程构建触发（Vermes 独有工具）
+        "scripts/prebuild-check.sh",  # 构建前完整性检查（Vermes 独有，上游无同名）
+        "scripts/verify-build.sh",  # 构建产物自检（Vermes 独有，上游无同名）
+        "tools/feedback_tool.py",  # H4.4 显式用户反馈工具（Vermes 独有，上游无同名）
         ".github/workflows/upstream-canary.yml",  # 哨兵周跑 lane（Vermes 独有，只告警）
         "docs/vermes/",            # 外置的 Vermes 独有文档（外置迁移后进 own）
         "scripts/vermes/",         # 外置的 Vermes 独有脚本（外置迁移后进 own）
@@ -502,6 +505,19 @@ def save_baseline(head: str, since: str, n_commits: int) -> None:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
 
 
+def _added_files_in_range(ref_range: str) -> set[str]:
+    """窗口内新增（A）文件集合 —— 用于 boundary 给「归 own / 登记」首选处置。"""
+    try:
+        out = subprocess.check_output(
+            ["git", "diff", "--name-only", "--diff-filter=A", ref_range],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return set()
+    return {ln.strip() for ln in out.splitlines() if ln.strip()}
+
+
 def collect_commits(ref_range: str, max_commits: int) -> list[dict]:
     """解析 `git log --name-only`，返回 commit 列表（含改动路径）。"""
     return collect_commits_from(ROOT, ref_range, max_commits)
@@ -676,6 +692,9 @@ def cmd_boundary(args: argparse.Namespace) -> int:
     registered_diversion: list[tuple[dict, str]] = []
     zone_counter: Counter[str] = Counter()
     core_paths: set[str] = set()
+    # 新增文件（A）与「修改既有文件」可区分 —— Hermes 2026-09-23：
+    # 「交付即欠税」多半是 Vermes 独有新文件被 follow 前缀误伤，首选归 own。
+    added_paths = _added_files_in_range(f"{since}..main")
     for c in commits:
         for p in c["paths"]:
             z = classify(p)
@@ -729,10 +748,18 @@ def cmd_boundary(args: argparse.Namespace) -> int:
     if not unregistered_tax:
         lines.append("_无。当前 Vermes 在跟随区零未登记改动 —— follow 边界干净。_")
     else:
-        lines.append("| hash | 主题 | 跟随区路径 |")
-        lines.append("|---|---|---|")
+        n_new = sum(1 for _c, p in unregistered_tax if p in added_paths)
+        if n_new:
+            lines.append(
+                f"> **新增文件 {n_new} 条（首选处置）**：先查上游有无同名 —— "
+                "无 ⇒ Vermes 独有，**归 `ZONES.own`**；有 ⇒ 跟随区新文件，登记 DIVERSION_LEDGER 或外置插件。"
+            )
+        lines.append("| hash | 主题 | 跟随区路径 | 类型 |")
+        lines.append("|---|---|---|---|")
         for c, p in unregistered_tax[:60]:
-            lines.append(f"| `{c['hash']}` | {c['subject'][:60]} | `{p}` |")
+            kind = "新增" if p in added_paths else "改既有"
+            hint = f" 疑似自有→归 own" if p in added_paths else ""
+            lines.append(f"| `{c['hash']}` | {c['subject'][:60]} | `{p}` | {kind}{hint} |")
         if len(unregistered_tax) > 60:
             lines.append(f"\n_（仅列前 60 条，共 {len(unregistered_tax)} 条）_")
     lines.append("")

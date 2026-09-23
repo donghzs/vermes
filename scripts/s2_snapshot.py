@@ -28,12 +28,21 @@ S2 要把静态块迁到注册 API，验收是「注入文本逐字等价」。`
 
 from __future__ import annotations
 
+import sys
+
+if sys.version_info < (3, 10):
+    sys.stderr.write(
+        "s2_snapshot.py 需要 Python ≥3.10（`X | Y` 注解）。\n"
+        "请用仓库 venv：PYTHONPATH=. .venv/bin/python scripts/s2_snapshot.py …\n"
+        f"当前: {sys.version.split()[0]} ({sys.executable})\n"
+    )
+    raise SystemExit(2)
+
 import argparse
 import hashlib
 import json
 import os
 import re
-import sys
 import tempfile
 from pathlib import Path
 from typing import Optional

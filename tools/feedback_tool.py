@@ -79,7 +79,7 @@ def _resolve_thumbs_kind(raw: str) -> str:
     """Normalize the thumbs direction argument.
 
     Accepts the documented ``"up"``/``"down"`` values plus legacy/UI
-    aliases (``like``/``dislike``, ``like``/``dislike``, numeric 1/0)
+    aliases (``thumbs_up``/``thumbs_down``, ``like``/``dislike``, numeric 1/0)
     so caller-side schema drift degrades gracefully instead of
     silently recording a meaningless thumbs_down with an empty target.
     """

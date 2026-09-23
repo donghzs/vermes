@@ -192,6 +192,7 @@ S5 的前置核实项已登记为待办（§8）。
 | C-006 | `gateway/run.py` | L-008：gateway 启动 purge 残留 `VERMES_CRON_SESSION`，关 env 回落信任边界 | 无直接对应；自有安全修复（Electron spawn 边界） | 2026-09-23 |
 | C-007 | `gateway/session_context.py` | L-007/L-010：`VERMES_CRON_SESSION`/`VERMES_SESSION_ID` 改 contextvar，修 gateway 内嵌 cron 污染真实用户审批 | 无直接对应；自有 P0 | 2026-09-23 |
 | C-008 | `acp_adapter/server.py` | L-010：session_id 弃进程级 save/restore 改 setter + token reset（修并发串味）；同 C-003 族 | 无直接对应；自有安全修复 | 2026-09-23 |
+| C-009 | `agent/prompt_builder.py` | 常量面：S2.4 四键以 YAML 为准回写 + `COMPUTER_USE_GUIDANCE` 惰性源；skill-routing 渠道门 + SkillRouter；W-L4/L5/M7 阈值相关常量。**不能走插件形态**——这些常量被 `system_prompt`/`codex_responses_adapter` 等 core 路径直引，插件只能注册段、不能替换常量真源 | 上游无等价常量面（Vermes 反向领先）；分叉点=内容与调度，不是文件存在性 | 2026-09-23 |
 <!--CORE_DIVERGE_LEDGER:END-->
 
 ---
