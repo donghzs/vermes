@@ -325,6 +325,21 @@ class LoadedPlugin:
     error: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class PluginRegistration:
+    """Handle returned by ``PluginContext.register_*``（S2.1 起）。
+
+    API 同形上游 ``PluginRegistration``；Vermes 此前 register_* 返回 None，
+    本类型只覆盖新增的 system_prompt_section，旧 API 保持返回 None 不破坏调用方。
+    """
+
+    kind: str
+    id: str
+    plugin: str
+    layer: str = "stable"
+    is_callable: bool = False
+
+
 # ---------------------------------------------------------------------------
 # PluginContext  – handed to each plugin's ``register()`` function
 # ---------------------------------------------------------------------------
@@ -798,6 +813,123 @@ class PluginContext:
             )
         self._manager._hooks.setdefault(hook_name, []).append(callback)
         logger.debug("Plugin %s registered hook: %s", self.manifest.name, hook_name)
+
+    # -- system prompt section registration (S2.1 adapter) ------------------
+    def register_system_prompt_section(
+        self,
+        id: str,
+        content: Union[str, Callable[[Dict[str, Any]], str]],
+        *,
+        layer: str = "stable",
+        position: Optional[str] = None,
+        max_chars: int = 8000,
+        conditions: Optional[Dict[str, Any]] = None,
+        stable_reason: str = "",
+        priority: Optional[int] = None,
+    ) -> "PluginRegistration":
+        """Register a bounded system-prompt section（API 同形上游，实现落既有 processor 注册表）。
+
+        与上游差异（工单 §2/§3，有意为之）：
+        - ``content`` 为 **Callable** 时默认强制 ``layer="volatile"``——防止随轮变化的
+          文本落进 stable 层打穿 provider prompt cache（无报错、无日志、签名不变的
+          典型「制度全绿但体感变差」）。要放 stable 必须给 ``stable_reason``
+          （可接受理由：内容只依赖 session 级常量）。
+        - 同名优先级 plugin < builtin < user（A4）。
+        - L-014 三护栏：``max_chars`` 上限、id 格式校验、重复注册拒绝。
+
+        Raises:
+            ValueError: id 非法 / 超长 / 重复注册 / Callable+stable 未给理由。
+        """
+        from agent.prompt_processor_loader import (
+            DEFAULT_SYSTEM_PROMPT_SECTION_MAX_CHARS,
+            PromptProcessor,
+            is_valid_system_prompt_section_id,
+            register_plugin_processor,
+        )
+
+        if not is_valid_system_prompt_section_id(id):
+            raise ValueError(
+                f"Invalid system prompt section id '{id}'. "
+                "Must be 1-128 chars, start with [a-z0-9], then [a-z0-9._-]."
+            )
+        if layer not in ("stable", "context", "volatile"):
+            raise ValueError(f"Invalid layer '{layer}'. Must be stable|context|volatile.")
+
+        is_callable = callable(content)
+
+        # 工单 §3 约束 1：Callable 默认进 volatile，保 cache 前缀
+        if is_callable and layer == "stable" and not stable_reason:
+            raise ValueError(
+                f"Callable content for '{id}' defaults to layer=volatile "
+                "(prompt-cache prefix protection). Pass stable_reason=... "
+                "if the content is session-constant and truly belongs in stable."
+            )
+        if is_callable and layer != "stable" and not stable_reason:
+            # 显式非 stable 时也接受（已经远离 cache 危险区）
+            pass
+
+        # L-014：max_chars 上限（对已渲染的字符串生效；Callable 注册时先用占位）
+        if isinstance(content, str) and max_chars and len(content) > max_chars:
+            raise ValueError(
+                f"system prompt section '{id}' content is {len(content)} chars, "
+                f"exceeds max_chars={max_chars}"
+            )
+
+        # position → layer 映射（上游兼容取值）；已显式给 layer 时 layer 优先
+        if position is not None and layer == "stable":
+            _POS_TO_LAYER = {
+                "after_memory": "volatile",
+                "before_memory": "volatile",
+                "after_identity": "stable",
+                "before_tools": "stable",
+                "end": "context",
+            }
+            if position in _POS_TO_LAYER:
+                layer = _POS_TO_LAYER[position]
+
+        if is_callable:
+            # Callable：content 先存可调用对象，由 processor 渲染路径消费；
+            # 这里用空串占位 + metadata 记录 callable，避免 PromptProcessor 类型面扩大。
+            stored = ""
+            render_input = {"engine": "plugin_callable", "on_missing": "keep", "inputs": {}}
+        else:
+            stored = content
+            render_input = {"engine": "none", "on_missing": "keep", "inputs": {}}
+
+        owner = self.manifest.key or self.manifest.name
+        proc = PromptProcessor(
+            name=id,
+            content=stored,
+            id=id,
+            layer=layer,
+            priority=priority if priority is not None else 100,  # 插件默认靠后
+            conditions=dict(conditions or {}),
+            replaceable=True,
+            description=f"plugin section from {owner}",
+            metadata={
+                "author": owner,
+                "source": "plugin",
+                "plugin_callable": is_callable,
+                "stable_reason": stable_reason or "",
+                "max_chars": max_chars or DEFAULT_SYSTEM_PROMPT_SECTION_MAX_CHARS,
+                "position": position,
+            },
+            render=render_input,
+        )
+        if is_callable:
+            # 把 callable 挂在实例上，供后续 render/注入路径按需求值（S2.2+ 才接入）。
+            # S2.1 只建 API 与登记面，**不改现有注入点**——gold 必须逐字不变。
+            proc._plugin_callable = content  # type: ignore[attr-defined]
+            proc._plugin_max_chars = max_chars or DEFAULT_SYSTEM_PROMPT_SECTION_MAX_CHARS  # type: ignore[attr-defined]
+
+        register_plugin_processor(proc, owner=owner)
+        return PluginRegistration(
+            kind="system_prompt_section",
+            id=id,
+            plugin=self.manifest.name,
+            layer=layer,
+            is_callable=is_callable,
+        )
 
     # -- skill registration -------------------------------------------------
 

@@ -1,0 +1,425 @@
+{
+  "schema": "vermes.s2-gold/v1",
+  "version": "gold",
+  "scenario_count": 16,
+  "dimensions": {
+    "model": [
+      "qwen-max",
+      "gpt-4o",
+      "claude-sonnet",
+      "local-qwen"
+    ],
+    "platform": [
+      "cli",
+      "gateway",
+      "feishu",
+      "telegram"
+    ],
+    "toolset": [
+      "minimal",
+      "standard",
+      "full"
+    ]
+  },
+  "volatile_normalizers": [
+    "^Conversation started: .+$",
+    "^Session ID: .+$"
+  ],
+  "scenarios": [
+    {
+      "id": "S01",
+      "model": "qwen-max",
+      "platform": "cli",
+      "toolset": "minimal",
+      "tools": [
+        "web_search"
+      ],
+      "sha256": {
+        "stable": "e2ffcc0222c11b19ae62fdb6027f003dd231c8c1be436f8796a3441cdf724187",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "c9274c564a3163fdc27cfeda1a56d225c9f7b0da23d36880b969fb1654f6dcbf"
+      },
+      "bytes": {
+        "stable": 6077,
+        "context": 0,
+        "volatile": 568
+      }
+    },
+    {
+      "id": "S02",
+      "model": "qwen-max",
+      "platform": "gateway",
+      "toolset": "standard",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage"
+      ],
+      "sha256": {
+        "stable": "e1ea7f8eec570497582b8c5d808fb2e43916183e82929d759ad45a836606ad4b",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "c9274c564a3163fdc27cfeda1a56d225c9f7b0da23d36880b969fb1654f6dcbf"
+      },
+      "bytes": {
+        "stable": 7420,
+        "context": 0,
+        "volatile": 568
+      }
+    },
+    {
+      "id": "S03",
+      "model": "qwen-max",
+      "platform": "feishu",
+      "toolset": "full",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage",
+        "session_search",
+        "image_generate",
+        "kanban_show",
+        "computer_use",
+        "scholarforge_write",
+        "scholarforge_search"
+      ],
+      "sha256": {
+        "stable": "592aa5b5a6379b41a8ed57890377cd3edb2f11f9070271ba60c9aec6fb834e29",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "c9274c564a3163fdc27cfeda1a56d225c9f7b0da23d36880b969fb1654f6dcbf"
+      },
+      "bytes": {
+        "stable": 18869,
+        "context": 0,
+        "volatile": 568
+      }
+    },
+    {
+      "id": "S04",
+      "model": "qwen-max",
+      "platform": "telegram",
+      "toolset": "full",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage",
+        "session_search",
+        "image_generate",
+        "kanban_show",
+        "computer_use",
+        "scholarforge_write",
+        "scholarforge_search"
+      ],
+      "sha256": {
+        "stable": "453f439a9d29625ce6aad42c8eb68aebee3cd6b57a3af5a7c5b51bcfcb6ce7d8",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "c9274c564a3163fdc27cfeda1a56d225c9f7b0da23d36880b969fb1654f6dcbf"
+      },
+      "bytes": {
+        "stable": 19303,
+        "context": 0,
+        "volatile": 568
+      }
+    },
+    {
+      "id": "S05",
+      "model": "gpt-4o",
+      "platform": "cli",
+      "toolset": "standard",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage"
+      ],
+      "sha256": {
+        "stable": "a09b8c3af4d68b156ae2b10bd5b26bb32ae24ba9268176c5038408ba9c903fcb",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "f1e2df2cbc55c60f94fd772597d93df816802410350f1741a2996f68ec293dbb"
+      },
+      "bytes": {
+        "stable": 10624,
+        "context": 0,
+        "volatile": 566
+      }
+    },
+    {
+      "id": "S06",
+      "model": "gpt-4o",
+      "platform": "gateway",
+      "toolset": "full",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage",
+        "session_search",
+        "image_generate",
+        "kanban_show",
+        "computer_use",
+        "scholarforge_write",
+        "scholarforge_search"
+      ],
+      "sha256": {
+        "stable": "4159dbf7d2717b6f0ab6a5ae7822638d839ee752daeaca90b8e5c9039b1010e4",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "f1e2df2cbc55c60f94fd772597d93df816802410350f1741a2996f68ec293dbb"
+      },
+      "bytes": {
+        "stable": 20891,
+        "context": 0,
+        "volatile": 566
+      }
+    },
+    {
+      "id": "S07",
+      "model": "gpt-4o",
+      "platform": "feishu",
+      "toolset": "minimal",
+      "tools": [
+        "web_search"
+      ],
+      "sha256": {
+        "stable": "bc21d9a69803dc5deb8d45cd5ceddcf793e6d4db8354d1de08467032e587ff98",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "f1e2df2cbc55c60f94fd772597d93df816802410350f1741a2996f68ec293dbb"
+      },
+      "bytes": {
+        "stable": 9005,
+        "context": 0,
+        "volatile": 566
+      }
+    },
+    {
+      "id": "S08",
+      "model": "gpt-4o",
+      "platform": "telegram",
+      "toolset": "standard",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage"
+      ],
+      "sha256": {
+        "stable": "69813f792611a45dacbb2e586b2ef6496d7cfe6e9a526af42ec18a6c6a3d5a3c",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "f1e2df2cbc55c60f94fd772597d93df816802410350f1741a2996f68ec293dbb"
+      },
+      "bytes": {
+        "stable": 11268,
+        "context": 0,
+        "volatile": 566
+      }
+    },
+    {
+      "id": "S09",
+      "model": "claude-sonnet",
+      "platform": "cli",
+      "toolset": "full",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage",
+        "session_search",
+        "image_generate",
+        "kanban_show",
+        "computer_use",
+        "scholarforge_write",
+        "scholarforge_search"
+      ],
+      "sha256": {
+        "stable": "a080e61bd3b6293d7083ddb9cccd77b0a7d8f5dcc88b6b2f6f134db53c5d088c",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
+      },
+      "bytes": {
+        "stable": 18659,
+        "context": 0,
+        "volatile": 573
+      }
+    },
+    {
+      "id": "S10",
+      "model": "claude-sonnet",
+      "platform": "gateway",
+      "toolset": "minimal",
+      "tools": [
+        "web_search"
+      ],
+      "sha256": {
+        "stable": "188784b126cba12265c8f6513272f30598b5d4261bfa44b119a70866d6bba567",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
+      },
+      "bytes": {
+        "stable": 5591,
+        "context": 0,
+        "volatile": 573
+      }
+    },
+    {
+      "id": "S11",
+      "model": "claude-sonnet",
+      "platform": "feishu",
+      "toolset": "standard",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage"
+      ],
+      "sha256": {
+        "stable": "014fab589bee4e78737639bf5cfe2a2c0fcfabe2714cf336d8536c7f2198232c",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
+      },
+      "bytes": {
+        "stable": 8116,
+        "context": 0,
+        "volatile": 573
+      }
+    },
+    {
+      "id": "S12",
+      "model": "claude-sonnet",
+      "platform": "telegram",
+      "toolset": "minimal",
+      "tools": [
+        "web_search"
+      ],
+      "sha256": {
+        "stable": "4e9fc4c69e3c86401861776f78cb0da2881ea5b146f5b624ad10853116253a7b",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
+      },
+      "bytes": {
+        "stable": 6721,
+        "context": 0,
+        "volatile": 573
+      }
+    },
+    {
+      "id": "S13",
+      "model": "local-qwen",
+      "platform": "cli",
+      "toolset": "full",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage",
+        "session_search",
+        "image_generate",
+        "kanban_show",
+        "computer_use",
+        "scholarforge_write",
+        "scholarforge_search"
+      ],
+      "sha256": {
+        "stable": "a080e61bd3b6293d7083ddb9cccd77b0a7d8f5dcc88b6b2f6f134db53c5d088c",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "5b149d9c930a4af5cd927e6117d46101b92ed68dc4b3d4d534d8f9b548264b3d"
+      },
+      "bytes": {
+        "stable": 18659,
+        "context": 0,
+        "volatile": 570
+      }
+    },
+    {
+      "id": "S14",
+      "model": "local-qwen",
+      "platform": "gateway",
+      "toolset": "standard",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage"
+      ],
+      "sha256": {
+        "stable": "e1ea7f8eec570497582b8c5d808fb2e43916183e82929d759ad45a836606ad4b",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "5b149d9c930a4af5cd927e6117d46101b92ed68dc4b3d4d534d8f9b548264b3d"
+      },
+      "bytes": {
+        "stable": 7420,
+        "context": 0,
+        "volatile": 570
+      }
+    },
+    {
+      "id": "S15",
+      "model": "local-qwen",
+      "platform": "feishu",
+      "toolset": "minimal",
+      "tools": [
+        "web_search"
+      ],
+      "sha256": {
+        "stable": "ba9342d4ef89150e5d7e7e685abea4bae25b3c14549e0178ab9b8bb9e584d030",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "5b149d9c930a4af5cd927e6117d46101b92ed68dc4b3d4d534d8f9b548264b3d"
+      },
+      "bytes": {
+        "stable": 6287,
+        "context": 0,
+        "volatile": 570
+      }
+    },
+    {
+      "id": "S16",
+      "model": "local-qwen",
+      "platform": "telegram",
+      "toolset": "full",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage",
+        "session_search",
+        "image_generate",
+        "kanban_show",
+        "computer_use",
+        "scholarforge_write",
+        "scholarforge_search"
+      ],
+      "sha256": {
+        "stable": "453f439a9d29625ce6aad42c8eb68aebee3cd6b57a3af5a7c5b51bcfcb6ce7d8",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "5b149d9c930a4af5cd927e6117d46101b92ed68dc4b3d4d534d8f9b548264b3d"
+      },
+      "bytes": {
+        "stable": 19303,
+        "context": 0,
+        "volatile": 570
+      }
+    }
+  ]
+}

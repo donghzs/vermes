@@ -1,0 +1,16 @@
+<capability_status>
+  ⬜ vector_retrieval: not_installed
+  🔧 skill_extraction: built_in
+  🔧 graph_sync: built_in
+</capability_status>
+
+<capability_self_check>
+在接受任务前，先自检：
+1. 当前有哪些已安装的技能/工具/模块可能匹配这个任务？
+2. 是否有 pending 技能可以激活来提升完成质量？
+3. 如果缺少能力，先说明缺口再尝试，不要裸跑失败。
+4. 优先复用已有能力（技能/工具/模块），而不是从零开始。
+</capability_self_check>
+
+Conversation started: {{DATE}}
+Model: gpt-4o

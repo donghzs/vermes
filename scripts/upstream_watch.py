@@ -81,7 +81,10 @@ ZONES: dict[str, list[str]] = {
         "locales/",
         "scripts/build-",         # 打包链（PyInstaller / NSIS / DMG）
         "scripts/upstream_watch.py",  # 发行版雷达/闸门（Vermes 独有工具）
+        "scripts/upstream_canary.py",  # 上游哨兵 pinned canary（Vermes 独有，roadmap §8.4）
+        "scripts/s2_snapshot.py",  # S2 注入等价 gold 快照（Vermes 独有，工单 §4.3）
         "scripts/trigger-win-build.py",  # Windows 远程构建触发（Vermes 独有工具）
+        ".github/workflows/upstream-canary.yml",  # 哨兵周跑 lane（Vermes 独有，只告警）
         "docs/vermes/",            # 外置的 Vermes 独有文档（外置迁移后进 own）
         "scripts/vermes/",         # 外置的 Vermes 独有脚本（外置迁移后进 own）
     ],
@@ -684,7 +687,9 @@ def cmd_boundary(args: argparse.Namespace) -> int:
     ]
     verdict = {
         "own": "✅ 发行版自有，正常",
-        "follow": "⚠️ 契约税（未登记）",
+        # 曾写「⚠️ 契约税（未登记）」：读表的人会把 follow 行的 N 理解成 N 条未登记，
+        # 但 N 是跟随区改动总数，未登记明细只在 §2。措辞按 QClaw A2 更正。
+        "follow": "跟随区改动（未登记明细见 §2）",
         "core": "🔍 核心 diverge，个案评估",
         "other": "—",
     }

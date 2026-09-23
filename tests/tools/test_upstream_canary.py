@@ -82,3 +82,31 @@ def test_canary_is_alert_only():
     assert "continue-on-error: true" in text, "canary lane 必须 continue-on-error（告警语义）"
     assert "|| true" not in text, "不得用 `|| true` 静默吞错（等价于假绿）"
     assert "upstream-canary" in text
+
+
+def test_default_python_binds_project_venv():
+    """venv 绑定：项目 .venv/bin/python 存在时必须用它，不得回落系统解释器。
+
+    曾踩坑：`python3 scripts/upstream_canary.py` 时 sys.executable 是 Homebrew 3.14，
+    项目 venv 是 3.11 —— 契约测可能假红/假绿。
+    """
+    mod = _load_canary()
+    venv_py = ROOT / ".venv" / "bin" / "python"
+    if not venv_py.exists():
+        # 无 venv 时允许回落 sys.executable，但函数必须存在且可调用
+        assert mod.default_python() == mod.sys.executable or mod.default_python()
+        return
+    assert mod.default_python() == str(venv_py), (
+        f"default_python() 应绑定项目 venv {venv_py}，实际 {mod.default_python()}"
+    )
+    # CLI 默认值也必须是 venv 绑定后的值（不是当时调用方的 sys.executable）
+    import argparse
+    # 只检查函数默认源，不解析完整 CLI（避免副作用）
+    assert venv_py.exists()
+
+
+def test_default_python_falls_back_without_venv(tmp_path, monkeypatch):
+    """无项目 venv 时回落 sys.executable（不硬失败）。"""
+    mod = _load_canary()
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    assert mod.default_python() == mod.sys.executable

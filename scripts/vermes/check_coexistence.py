@@ -152,11 +152,36 @@ def listening_ports() -> list[dict]:
     return rows
 
 
-def open_paths(pids: list[int], timeout: int = 25) -> list[str]:
+def open_paths(pids: list[int], timeout: int = 25) -> list[tuple[str, str]]:
+    """返回 (path, mode) 列表；mode ∈ {r, w, u, ?}（lsof FD 字段末位）。
+
+    只取路径不取 mode 时无法区分「只读窥探」与「写入污染」——后者才算真隔离被破坏。
+    """
     if not pids:
         return []
-    out = run(["lsof", "-p", ",".join(str(p) for p in pids), "-Fn"], timeout=timeout)
-    return [ln[1:] for ln in out.splitlines() if ln.startswith("n") and ln[1:].startswith("/")]
+    # -Ffn：f=FD（含 r/w/u 访问模式），n=文件名；按 p/f/n 记录块解析。
+    out = run(["lsof", "-p", ",".join(str(p) for p in pids), "-Ffn"], timeout=timeout)
+    results: list[tuple[str, str]] = []
+    mode = "?"
+    for ln in out.splitlines():
+        if ln.startswith("f"):
+            fd = ln[1:]
+            # FD 末位是访问模式：r=读, w=写, u=读写；cwd/txt/mem 等特殊 fd 无模式位。
+            if fd and fd[-1] in "rwu":
+                mode = fd[-1]
+            else:
+                mode = "?"
+        elif ln.startswith("n"):
+            path = ln[1:]
+            if path.startswith("/"):
+                results.append((path, mode))
+            mode = "?"
+    return results
+
+
+def handle_severity(mode: str) -> str:
+    """跨安装句柄分级：只读=WARN，写/读写=FAIL。"""
+    return "FAIL" if mode in ("w", "u") else "WARN"
 
 
 def launchd_labels() -> list[dict]:
@@ -392,8 +417,11 @@ def check_code_roots() -> None:
 
 
 def check_cross_handles(grouped: dict[str, dict]) -> None:
-    """核心检查：A 安装的进程不得持有 B 安装目录下的文件句柄。"""
-    cross, ev = [], []
+    """核心检查：A 安装的进程不得持有 B 安装目录下的文件句柄。
+
+    分级：**写/读写句柄 = FAIL**（真隔离被写破坏）；**只读句柄 = WARN**（窥探/误读，不写坏对方）。
+    """
+    cross_fail, cross_warn, ev = [], [], []
     for i in INSTALLS:
         if not i["config_root"].exists():
             continue
@@ -409,11 +437,23 @@ def check_cross_handles(grouped: dict[str, dict]) -> None:
             if other["key"] == i["key"]:
                 continue
             needle = str(other["config_root"])
-            hits = [p for p in paths if p.startswith(needle)]
-            for hit in hits[:5]:
-                cross.append(f"{i['label']} 持有 {other['label']} 的文件: {hit}")
-    add("★ 跨安装文件句柄", "FAIL" if cross else "PASS",
-        "无跨安装文件句柄（真隔离）" if not cross else f"{len(cross)} 处跨安装写入/读取", ev + cross)
+            hits = [(p, m) for p, m in paths if p.startswith(needle)]
+            for hit_path, mode in hits[:5]:
+                line = f"{i['label']} 持有 {other['label']} ({mode}): {hit_path}"
+                if handle_severity(mode) == "FAIL":
+                    cross_fail.append(line)
+                else:
+                    cross_warn.append(line)
+    if cross_fail:
+        status = "FAIL"
+        detail = f"{len(cross_fail)} 处跨安装写入/读写 + {len(cross_warn)} 处只读"
+    elif cross_warn:
+        status = "WARN"
+        detail = f"{len(cross_warn)} 处跨安装只读（无写入）"
+    else:
+        status = "PASS"
+        detail = "无跨安装文件句柄（真隔离）"
+    add("★ 跨安装文件句柄", status, detail, ev + cross_fail + cross_warn)
 
 
 def check_deep(grouped: dict[str, dict], port_rows: list[dict]) -> None:

@@ -58,6 +58,19 @@ CANARY_DIR = REPORTS_DIR / "canary"
 PIN_PATH = REPORTS_DIR / ".upstream-canary-pin.json"
 STATE_PATH = REPORTS_DIR / ".canary-state.json"
 
+
+def default_python() -> str:
+    """契约测/子命令的默认解释器：**venv 绑定**，不跟调用方的 sys.executable。
+
+    曾踩坑：用 `python3 scripts/upstream_canary.py` 时 sys.executable 是系统 Python
+    （本机 Homebrew 3.14），而项目 venv 是 3.11——契约测可能假红/假绿。
+    项目标准解释器是 `.venv/bin/python`（见 docs/HANDOFF_TO_MIMO 等），存在即优先。
+    """
+    venv_py = ROOT / ".venv" / "bin" / "python"
+    if venv_py.exists():
+        return str(venv_py)
+    return sys.executable
+
 # §8.4：默认钉 `v2026.9.14`（roadmap §8.4 原文）。季度升钉 = 改 PIN_PATH 文件。
 DEFAULT_PIN_TAG = "v2026.9.14"
 DEFAULT_UPSTREAM_REPO = "~/.hermes/hermes-agent"
@@ -371,7 +384,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="上游哨兵 pinned canary（roadmap §8.4）")
     ap.add_argument("--pin", default=None, help=f"覆盖钉点 tag（默认读 {PIN_PATH.name}，再回落 {DEFAULT_PIN_TAG}）")
     ap.add_argument("--upstream-repo", default=DEFAULT_UPSTREAM_REPO, help="本地上游仓路径")
-    ap.add_argument("--python", default=sys.executable, help="跑子命令的解释器")
+    ap.add_argument(
+        "--python",
+        default=default_python(),
+        help="跑子命令的解释器（默认：项目 .venv/bin/python，否则 sys.executable）",
+    )
     ap.add_argument("--max-intake", type=int, default=2000, help="intake 扫描上限")
     ap.add_argument("--max-boundary", type=int, default=2000, help="boundary 扫描上限")
     ap.add_argument("--boundary-since", default=None, help="boundary 基线（默认脚本内置冻结锚）")

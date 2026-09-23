@@ -222,3 +222,13 @@ S2 注入载体 / S3 记忆后端 / S4 渠道迁移都是「接口不变、行�
 2. S2 walking skeleton **工单**（仍：caller/等价验收方案过关再迁码）+ 指标 5 语料 ≥30 冻结  
 3. 12 目录 AGENTS.md 与 S2 并行  
 4. 引用数字一律「当场命令 + HEAD hash」  
+
+### 8.8 交叉审计正式回应（2026-09-23）
+
+两份 QClaw 审计的逐条处置见 `reports/qclaw/response-to-cross-audits-20260923.md`：
+
+- 方案审计三条（指标 5 / 停止条件 / canary pinned）**采纳**，已在 §8.2–8.4。  
+- 两本账「无真源」**不成立**（假阴性已自证），真源仍为 manifest §7b/§7c。  
+- T2/S2 审计 A1–A7：补登记 D-007/D-008、boundary 措辞、adapter 形态、plugin<builtin<user、  
+  排期按真缺口、L-014 三护栏、回退开关先不做。  
+- **制度补丁**：boundary / canary 非绿 = 月度复查点**必处置项**（登记流程此前无强制力）。  

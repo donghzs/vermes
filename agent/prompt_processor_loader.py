@@ -36,6 +36,14 @@ _cache_lock = threading.Lock()
 # Used by watcher to invalidate cache — bumped on file change
 _processors_generation: int = 0
 
+# ── Plugin-registered sections (S2.1 adapter, 工单 §3)──────────────────
+# 同名优先级：plugin < builtin < user（A4 拍板）。插件先占位，builtin/user 覆盖。
+# 插件侧「重复注册拒绝」（L-014）：同一 id 只许注册一次。
+_plugin_processors: Dict[str, "PromptProcessor"] = {}
+_plugin_register_lock = threading.Lock()
+# 记录插件注册源，便于「被谁占了」排障（L-014 报错要指名）。
+_plugin_processor_owners: Dict[str, str] = {}
+
 # ── Layer ordering (prefix-cache protection) ───────────────────────────
 # The system prompt is concatenated layer-first so that the *stable* prefix
 # stays byte-identical across turns.  If a volatile fragment could sort ahead
@@ -480,9 +488,9 @@ def _parse_yaml(path: Path) -> Optional[PromptProcessor]:
 
 
 def load_all_processors() -> List[PromptProcessor]:
-    """Load all prompt processors, user overrides built-in.
+    """Load all prompt processors: plugin < builtin < user (A4 同名优先级)。
 
-    Returns a list sorted by ``order`` ascending.
+    Returns a list sorted by ``layer → priority → id``.
     Cached; call :func:`invalidate_cache` to force reload.
     """
     global _processors_cache, _processors_generation
@@ -496,7 +504,13 @@ def load_all_processors() -> List[PromptProcessor]:
 
         by_name: Dict[str, PromptProcessor] = {}
 
+        # 0. Plugin-registered sections（最低优先级 — A4: plugin < builtin < user）
+        with _plugin_register_lock:
+            for key, proc in _plugin_processors.items():
+                by_name[key] = proc
+
         # 1. Load built-in processors (flat dir: vermes_cli/processors/*.yaml)
+        #    — 覆盖同名 plugin 段
         builtin_dir = _get_builtin_dir()
         if builtin_dir.exists():
             for yaml_file in sorted(builtin_dir.glob("*.yaml")):
@@ -504,6 +518,11 @@ def load_all_processors() -> List[PromptProcessor]:
                 if proc:
                     proc.builtin = True
                     key = proc.effective_id
+                    if key in by_name and key in _plugin_processors:
+                        logger.info(
+                            "Builtin processor '%s' overrides plugin-registered section "
+                            "(owner=%s)", key, _plugin_processor_owners.get(key, "?"),
+                        )
                     by_name[key] = proc
                     logger.debug("Loaded built-in processor: %s (id=%s)", proc.name, key)
 
@@ -554,6 +573,50 @@ def invalidate_cache() -> None:
         _processors_cache = None
         _processors_generation += 1
         logger.info("Prompt processor cache invalidated (generation=%d)", _processors_generation)
+
+
+# ── Plugin registration (S2.1 adapter) ─────────────────────────────────
+# id 格式（L-014，对齐上游 is_valid_system_prompt_section_id）：1–128 位，
+# 小写字母/数字开头，允许 . _ -
+_SECTION_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+DEFAULT_SYSTEM_PROMPT_SECTION_MAX_CHARS = 8000
+
+
+def is_valid_system_prompt_section_id(section_id: str) -> bool:
+    return bool(section_id) and bool(_SECTION_ID_RE.match(section_id))
+
+
+def register_plugin_processor(
+    proc: "PromptProcessor",
+    *,
+    owner: str = "plugin",
+) -> None:
+    """Register a plugin-registered prompt section（S2.1）。
+
+    - 同 id **拒绝重复注册**（L-014，报错要指名已占用方）。
+    - 注册后 ``invalidate_cache()``，下次 `load_all_processors` 合并；
+      同名优先级 plugin < builtin < user（A4）。
+    """
+    key = proc.effective_id
+    with _plugin_register_lock:
+        if key in _plugin_processors:
+            raise ValueError(
+                f"system prompt section id '{key}' already registered by "
+                f"'{_plugin_processor_owners.get(key, 'plugin')}'"
+            )
+        proc.builtin = False
+        _plugin_processors[key] = proc
+        _plugin_processor_owners[key] = owner
+    invalidate_cache()
+    logger.debug("Plugin-registered section: %s (owner=%s, layer=%s)", key, owner, proc.layer)
+
+
+def clear_plugin_processors() -> None:
+    """测试隔离用：清空插件注册段并失效缓存。"""
+    with _plugin_register_lock:
+        _plugin_processors.clear()
+        _plugin_processor_owners.clear()
+    invalidate_cache()
 
 
 def get_generation() -> int:
