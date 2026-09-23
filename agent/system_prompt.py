@@ -72,7 +72,8 @@ def _resolve_section(name: str) -> tuple[str, str, str]:
                     source = "builtin"
                 else:
                     source = "user"
-                return p.content, source, p.content_hash
+                # render_content 负责 plugin_callable / mustache，并强制 max_chars（L-014）
+                return p.render_content(), source, p.content_hash
     except Exception as e:
         logger.debug("processor load failed for %s: %s", name, e)
     # §9b.1 哨兵坑：computer_use 的 map 值曾是 None（惰性导入哨兵，不是「无兜底」）。
@@ -176,7 +177,7 @@ def _get_processor(name: str) -> Optional[str]:
         procs = load_all_processors()
         for p in procs:
             if p.name == name:
-                return p.content
+                return p.render_content()
     except Exception as e:
         logger.debug("processor load failed for %s: %s", name, e)
     return None
@@ -191,7 +192,7 @@ def _get_injectable_processors(agent: Any) -> List[str]:
     """
     try:
         procs = load_all_processors()
-        return [p.content for p in procs if p.should_inject(agent)]
+        return [p.render_content() for p in procs if p.should_inject(agent)]
     except Exception:
         return []
 

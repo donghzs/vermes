@@ -128,6 +128,27 @@ class PromptProcessor:
         """
         return self.governance.get("hash", "auto")
 
+    @property
+    def effective_max_chars(self) -> int:
+        """L-014：本段长度上限。插件显式 > metadata/YAML `max_chars` > 默认 8000。"""
+        cap = getattr(self, "_plugin_max_chars", None) or self.metadata.get("max_chars")
+        try:
+            cap = int(cap)
+        except (TypeError, ValueError):
+            cap = 0
+        return cap if cap > 0 else DEFAULT_SYSTEM_PROMPT_SECTION_MAX_CHARS
+
+    def enforce_max_chars(self, text: str) -> str:
+        """L-014 出口护栏：超限截断 + WARNING（可见，不静默；也不整段丢弃）。"""
+        cap = self.effective_max_chars
+        if len(text) <= cap:
+            return text
+        logger.warning(
+            "Prompt section '%s' rendered %d chars > max_chars=%d — truncating (L-014)",
+            self.effective_id, len(text), cap,
+        )
+        return text[:cap]
+
     def should_inject(self, agent: Any) -> bool:
         """Evaluate whether this processor should be injected into the prompt.
 
@@ -249,21 +270,44 @@ class PromptProcessor:
             logger.warning("Unknown trigger type: %s (processor=%s)", trig_type, self.name)
             return False
 
-    def render_content(self, context: Dict[str, Any]) -> str:
-        """Render content with mustache-like {{var}} substitution.
+    def render_content(self, context: Optional[Dict[str, Any]] = None) -> str:
+        """Render content（mustache / plugin_callable），出口强制 max_chars（L-014）。
 
-        Only active when render.engine == 'mustache'.
-        Default engine='none' returns content as-is.
+        - ``none``：原样返回（仍过 max_chars）
+        - ``mustache``：{{var}} 替换后过 max_chars（防渲染膨胀撑爆 prompt）
+        - ``plugin_callable``：调 ``_plugin_callable(context)``，按 ``_plugin_max_chars`` 截断
         """
+        context = context or {}
         engine = self.render.get("engine", "none")
         if engine == "none":
-            return self.content
+            return self.enforce_max_chars(self.content)
 
         if engine == "mustache":
-            return _mustache_render(self.content, self.render.get("inputs", {}), context, self.render.get("on_missing", "keep"))
+            text = _mustache_render(
+                self.content,
+                self.render.get("inputs", {}),
+                context,
+                self.render.get("on_missing", "keep"),
+            )
+            return self.enforce_max_chars(text)
+
+        if engine == "plugin_callable":
+            fn = getattr(self, "_plugin_callable", None)
+            if not callable(fn):
+                logger.warning(
+                    "plugin_callable engine but no callable on %s — returning empty",
+                    self.effective_id,
+                )
+                return ""
+            try:
+                text = fn(context)
+            except Exception as exc:
+                logger.warning("plugin_callable failed for %s: %s", self.effective_id, exc)
+                return ""
+            return self.enforce_max_chars(str(text))
 
         logger.warning("Unknown render engine: %s (processor=%s)", engine, self.name)
-        return self.content
+        return self.enforce_max_chars(self.content)
 
 
 # ── Canonical manifest hash ────────────────────────────────────────────
@@ -387,6 +431,17 @@ def _parse_yaml(path: Path) -> Optional[PromptProcessor]:
     if not content:
         return None
 
+    # L-014：单片段长度上限（YAML 可用 `max_chars` 覆盖默认 8000）。
+    # 超限跳过 + WARNING（对齐 RESERVED kind；不静默、不整包崩溃）。
+    # 插件注册面已在 register_system_prompt_section 拒绝超限（fail-closed）。
+    max_chars = data.get("max_chars") or DEFAULT_SYSTEM_PROMPT_SECTION_MAX_CHARS
+    if isinstance(max_chars, int) and max_chars > 0 and len(content) > max_chars:
+        logger.warning(
+            "Processor %s content is %d chars, exceeds max_chars=%d, skipping %s",
+            name, len(content), max_chars, path,
+        )
+        return None
+
     # v0 fields (still read for compat)
     order = data.get("order", 999)
     triggers = data.get("triggers", {"type": "always"})
@@ -462,6 +517,10 @@ def _parse_yaml(path: Path) -> Optional[PromptProcessor]:
         lifecycle["hooks"] = valid_hooks
 
     metadata = data.get("metadata", {"author": "unknown", "source": "builtin"})
+    if not isinstance(metadata, dict):
+        metadata = {"author": "unknown", "source": "builtin"}
+    # L-014：把上限记进 metadata，供 effective_max_chars / 出口截断用
+    metadata.setdefault("max_chars", max_chars)
 
     return PromptProcessor(
         name=name,
