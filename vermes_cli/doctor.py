@@ -2049,6 +2049,27 @@ def run_doctor(args):
         except Exception as _e:
             check_warn(f"{_active_memory_provider} check failed", str(_e))
 
+    # Prompt 段清单（A7 可发现性 · Hermes 2026-09-23 补点 / roadmap §8.7）
+    # 禁用名单 VERMES_DISABLE_PROMPT_SECTIONS 若没有「能禁什么」的输出，对桌面用户
+    # 等于不存在——list_prompt_sections() 此前只有库函数 + 单测，零产品出口。
+    # 纯增量：不改任何既有行；import 失败只 debug，doctor 须在半装配环境仍可跑完。
+    try:
+        from agent.prompt_processor_loader import list_prompt_sections
+
+        _rows = list_prompt_sections()
+        if _rows:
+            _section("Prompt Sections")
+            check_info(
+                f"{len(_rows)} section(s) loaded"
+                " — 禁用名单 VERMES_DISABLE_PROMPT_SECTIONS 计划于 S2.2 生效（工单 P3）"
+            )
+            for _r in _rows[:12]:
+                check_info(f"{_r['id']}  layer={_r['layer']}  source={_r['source']}")
+            if len(_rows) > 12:
+                check_info(f"... 其余 {len(_rows) - 12} 段省略")
+    except Exception as _e:
+        logger.debug(f"prompt sections listing unavailable: {_e}")
+
     try:
         from vermes_cli.profiles import list_profiles, _get_wrapper_dir, profile_exists
         import re as _re

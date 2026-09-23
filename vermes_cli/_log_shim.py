@@ -35,3 +35,32 @@ if not getattr(_logging.Logger.info, _SENTINEL, False):
 
     setattr(_safe_log_info, _SENTINEL, True)
     _logging.Logger.info = _safe_log_info
+
+
+# ── print-style kwargs 兼容层（2026-09-23 补）────────────────────────────
+# print() → logger.info() 的迁移没做干净：有 5 处把 print 专属 kwargs 原样留下
+#   vermes_cli/doctor.py:1852  logger.info(..., end="")
+#   vermes_cli/kanban.py:2097/2254/2302/2333  logger.info(..., flush=True)
+# logging 从不接受这三个参数 → 走到 stdlib 的 Logger._log 直接抛
+#   TypeError: Logger._log() got an unexpected keyword argument 'end'
+# 后果不止 CLI 崩：既有的 tests/vermes_cli/ 里有 49 个用例因为这个全红。
+#
+# 这里只吞 print 三件套（end/flush/sep），其余 kwargs 照常抛出 —— 不掩盖
+# 真正的 logging API 误用（如把位置参数写错），只是让「换行/刷缓冲」这类
+# 已无意义的遗留参数不再炸。**logging 语义里 end/flush 本就不存在**，
+# 吞掉不改变任何输出行为（handler 自己管理 flush）。
+#
+# 同为 stopgap：那 5 处的根修是把 kwargs 删掉，届时本段连同 info shim 一并删除。
+_SEP_SENTINEL = "_vermes_tolerant_log_shim"
+_PRINT_ONLY_KWARGS = ("end", "flush", "sep")
+
+if not getattr(_logging.Logger._log, _SEP_SENTINEL, False):
+    _orig_log = _logging.Logger._log
+
+    def _tolerant_log(self, level, msg, args, **kwargs):
+        for _k in _PRINT_ONLY_KWARGS:
+            kwargs.pop(_k, None)
+        return _orig_log(self, level, msg, args, **kwargs)
+
+    setattr(_tolerant_log, _SEP_SENTINEL, True)
+    _logging.Logger._log = _tolerant_log
