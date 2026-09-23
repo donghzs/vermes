@@ -273,6 +273,10 @@ def _check_cross_profile_path(filepath: str, task_id: str = "default") -> str | 
 _SENSITIVE_PATH_PREFIXES = (
     "/etc/", "/boot/", "/usr/lib/systemd/",
     "/private/etc/",
+    # macOS /var 是 /private/var 的符号链接；两侧都要挡（issue #8734 同类：
+    # 只写注释不加前缀 = /private/var/db 旁路）。
+    "/var/",
+    "/private/var/",
 )
 # macOS temp dirs live under /private/var/folders/ — allow them for file ops
 # while still blocking /private/var/db/, /private/var/log/ etc.
