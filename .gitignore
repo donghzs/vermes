@@ -115,3 +115,13 @@ frontend/vite.config.js.timestamp-*.mjs
 
 # agent workbench traces (not product)
 .workbuddy/
+
+# ── 巡检/闸门脚本的机器产物（每次跑都变，不入库）──
+# 原则：脚本产物不入库，只有「需要人工裁決的结论」才写进仓库。
+# 例外（必须入库，勿忽略）：reports/s2/gold/** —— S2 注入等价的 gold 基线，
+# 丢了就没有比对基准；reports/.upstream-canary-pin.json —— 钉点唯一真源。
+reports/canary/*.md
+reports/dist-boundary-*.md
+reports/upstream-intent-*.md
+reports/upstream-watch-*.md
+reports/.canary-state.json
