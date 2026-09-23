@@ -165,8 +165,8 @@ def register_system_prompt_section(
 | **S2.0** | **生成 gold 快照**（v2.5.2，任何改动之前） | `reports/s2/gold/` 入库，manifest 完整 | ✅ `32cc1d9826` |
 | S2.1 | 新增 `register_system_prompt_section` API（**不改现有注入点**） | 所有场景三段文本与 gold **逐字相同**（行为零变化） | ✅ `32cc1d9826` |
 | **S2.2** | 迁 **1 个**静态块试点（**`identity`**，always 注入、无条件依赖）→ 统一注入入口 `_resolve_section` | gold 逐字相同 + stable 层 `content_hash` 有 canonical 值且可解释 | ✅ 本切片 |
-| S2.3 | 迁剩余 14 键；`editing_guardrails` 补 YAML | 每个键单独一次比对 | ⏳ |
-| S2.4 | 最后才删 `_PROCESSOR_FALLBACK` 硬编码回退 | 全场景绿 + cache 哨兵绿 | ⏳（先读 §9b.1 computer_use 哨兵坑） |
+| S2.3 | 迁剩余 14 键；`editing_guardrails` 补 YAML | 每个键单独一次比对 | ✅ 本切片（4 键 YAML/常量漂移已钉扎，见 S2.3 报告） |
+| S2.4 | 最后才删 `_PROCESSOR_FALLBACK` 硬编码回退 | 全场景绿 + cache 哨兵绿 | ⏳（先读 §9b.1 computer_use 哨兵坑；并处理 `KNOWN_YAML_CONSTANT_DRIFT` 四键） |
 
 任一步不过 → 停，登记 DIVERSION，**不放宽标准**（roadmap §4 否决条款）。
 

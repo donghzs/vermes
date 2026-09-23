@@ -232,6 +232,12 @@ S2 注入载体 / S3 记忆后端 / S4 渠道迁移都是「接口不变、行�
 - 双探针变异：改 identity 内容 → 仅相关 stable 红；fallback 优先 → source 字段可抓。
 - 交付报告：`reports/qclaw/s22-identity-walking-skeleton_20260923.md`。
 
+- S2.3：`editing_guardrails` 补 YAML（与常量字节等价）；15 注入点全部 `_resolve_section`；
+  `_resolve_section` 单次查找；逐键契约测 15 条。gold 仍 17×3 逐字相同。
+- **情报**：4 键 YAML 已领先常量（task_completion / scholarforge_workflow / tool_use_enforcement /
+  openai_model），已钉 `KNOWN_YAML_CONSTANT_DRIFT`——S2.4 退役常量前必须对齐。
+- 交付报告：`reports/qclaw/s23-migrate-sections_20260923.md`。
+
 两份 QClaw 审计的逐条处置见 `reports/qclaw/response-to-cross-audits-20260923.md`：
 
 - 方案审计三条（指标 5 / 停止条件 / canary pinned）**采纳**，已在 §8.2–8.4。  

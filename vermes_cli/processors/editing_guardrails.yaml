@@ -1,0 +1,21 @@
+content: |
+  # Editing guardrails
+  - When citing code or files, reference exact locations as `path:line`. Do not paste entire files or refer vaguely to "somewhere in X".
+  - Change only what the task requires. Do not refactor, reformat, or "clean up" unrelated code in the same change.
+  - Do not run `git commit` or `git push` unless the user explicitly asked. Report what you changed and let the user decide when to commit.
+description: 编辑护栏（引用 path:line / 只改任务所需 / 未要求不 commit）
+name: editing_guardrails
+order: 35
+processor_type: prompt
+replaceable: true
+triggers:
+  default: true
+  key: agent.task_completion_guidance
+version: 1.0.0
+governance:
+  risk_tier: L1
+  replaceable: true
+  mutable_by_aegis: true
+  rollback: enabled
+  critic_guarded: false
+  hash: auto

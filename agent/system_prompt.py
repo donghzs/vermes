@@ -52,7 +52,6 @@ from agent.prompt_builder import (
 
 # Phase 1: Prompt Processor loader (YAML-based, hot-reloadable)
 from agent.prompt_processor_loader import (
-    compute_manifest_hash,
     load_all_processors,
     get_generation as _processor_generation,
 )
@@ -85,28 +84,29 @@ def _resolve_section(name: str) -> tuple[str, str, str]:
     来源优先级（A4）：user processor > builtin YAML > plugin 段 > `_PROCESSOR_FALLBACK` 常量。
     注意：`load_all_processors()` 已把 plugin/builtin/user 合并且 **user 覆盖 plugin、
     builtin 覆盖 plugin**（`prompt_processor_loader.load_all_processors` 的 0/1/2 步），
-    所以这里只需走一次 `_get_processor`，再回落 fallback。
+    所以这里单次遍历即可，不重复实现优先级。
 
-    `content_hash`：processor 在场时用 `compute_manifest_hash` 的 canonical 值；
-    fallback 常量用 sha256(content)。source 用于诊断（doctor / 排障），不进 prompt。
+    `content_hash`：processor 在场时用 `governance.hash`（parse 时已算好
+    `compute_manifest_hash` canonical 值）；fallback 常量用 sha256(content)。
+    source 用于诊断（doctor / 排障），不进 prompt。
 
-    这是 S2 walking skeleton 的唯一注入入口（工单 §5 S2.2）。S2.2 起 identity 走这里；
-    其余键仍走 `_proc_or_default`，待逐个迁。
+    这是 S2 walking skeleton 的唯一注入入口（工单 §5 S2.2/S2.3）。
     """
-    proc = _get_processor(name)
-    if proc is not None:
-        # 复用 processor 实例拿 canonical hash（与 load_all_processors 同源）
+    try:
         for p in load_all_processors():
-            if p.effective_id == name:
-                source = "plugin" if p.metadata.get("source") == "plugin" else (
-                    "builtin" if p.builtin else "user"
-                )
-                return proc, source, p.content_hash
-        return proc, "processor", "auto"
+            if p.effective_id == name or p.name == name:
+                if p.metadata.get("source") == "plugin":
+                    source = "plugin"
+                elif p.builtin:
+                    source = "builtin"
+                else:
+                    source = "user"
+                return p.content, source, p.content_hash
+    except Exception as e:
+        logger.debug("processor load failed for %s: %s", name, e)
     fallback = _PROCESSOR_FALLBACK.get(name)
     if fallback is not None:
-        h = _sha256_of(fallback)
-        return fallback, "fallback", h
+        return fallback, "fallback", _sha256_of(fallback)
     if name == "computer_use":
         from agent.prompt_builder import COMPUTER_USE_GUIDANCE
         return COMPUTER_USE_GUIDANCE, "fallback-lazy", _sha256_of(COMPUTER_USE_GUIDANCE)
@@ -259,8 +259,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if not _soul_loaded:
         # S2.2 walking skeleton：identity 走统一注入入口（processor 优先 + 常量兜底）。
         # 与 `_proc_or_default("identity")` 字节等价；额外暴露 source/content_hash 供诊断。
-        _id_content, _id_source, _id_hash = _resolve_section("identity")
-        stable_parts.append(_id_content)
+        stable_parts.append(_resolve_section("identity")[0])
 
     # ── Phase 1: Processor-driven guidance injection ──────────────
     # Load YAML-based prompt processors. Each processor has a declarative
@@ -272,26 +271,26 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     _procs = _get_injectable_processors(agent)
 
     # help_guidance (always inject)
-    stable_parts.append(_proc_or_default("help_guidance"))
+    stable_parts.append(_resolve_section("help_guidance")[0])
 
     # task_completion (config_flag)
     if getattr(agent, "_task_completion_guidance", True) and agent.valid_tool_names:
-        stable_parts.append(_proc_or_default("task_completion"))
+        stable_parts.append(_resolve_section("task_completion")[0])
         # W-L4：编辑护栏与完成纪律同注入条件（提示层；硬闸后置）
-        stable_parts.append(_proc_or_default("editing_guardrails"))
+        stable_parts.append(_resolve_section("editing_guardrails")[0])
 
     # Tool-aware behavioral guidance: only inject when the tools are loaded
     tool_guidance = []
     if "memory" in agent.valid_tool_names:
-        tool_guidance.append(_proc_or_default("memory_guidance"))
+        tool_guidance.append(_resolve_section("memory_guidance")[0])
     if "session_search" in agent.valid_tool_names:
-        tool_guidance.append(_proc_or_default("session_search"))
+        tool_guidance.append(_resolve_section("session_search")[0])
     if "skill_manage" in agent.valid_tool_names:
-        tool_guidance.append(_proc_or_default("skills_guidance"))
+        tool_guidance.append(_resolve_section("skills_guidance")[0])
     if "image_generate" in agent.valid_tool_names:
-        tool_guidance.append(_proc_or_default("image_generate"))
+        tool_guidance.append(_resolve_section("image_generate")[0])
     if "web_search" in agent.valid_tool_names:
-        tool_guidance.append(_proc_or_default("academic_search"))
+        tool_guidance.append(_resolve_section("academic_search")[0])
     # Kanban worker/orchestrator lifecycle — only present when the
     # dispatcher spawned this process (kanban_show check_fn gates on
     # VERMES_KANBAN_TASK env var). Normal chat sessions never see
@@ -301,7 +300,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         tool_guidance.append(_kanban_guidance)
     elif _kanban_guidance is None and "kanban_show" in agent.valid_tool_names:
         # Fallback for code paths that bypass agent_init (rare).
-        tool_guidance.append(_proc_or_default("kanban"))
+        tool_guidance.append(_resolve_section("kanban")[0])
     if tool_guidance:
         stable_parts.append(" ".join(tool_guidance))
 
@@ -314,14 +313,14 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         "scholarforge_write" in agent.valid_tool_names
         or "scholarforge_search" in agent.valid_tool_names
     ):
-        _sf_guidance = _proc_or_default("scholarforge_workflow")
+        _sf_guidance = _resolve_section("scholarforge_workflow")[0]
         if _sf_guidance:
             stable_parts.append(_sf_guidance)
 
     # Computer-use (macOS) — goes in as its own block rather than being
     # merged into tool_guidance because the content is multi-paragraph.
     if "computer_use" in agent.valid_tool_names:
-        stable_parts.append(_proc_or_default("computer_use"))
+        stable_parts.append(_resolve_section("computer_use")[0])
 
     nous_subscription_prompt = _r.build_nous_subscription_prompt(agent.valid_tool_names)
     if nous_subscription_prompt:
@@ -352,19 +351,19 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
                 for p in TOOL_USE_ENFORCEMENT_EXCLUDED_MODELS
             )
         if _inject:
-            stable_parts.append(_proc_or_default("tool_use_enforcement"))
+            stable_parts.append(_resolve_section("tool_use_enforcement")[0])
             _model_lower = (agent.model or "").lower()
             # Google model operational guidance (conciseness, absolute
             # paths, parallel tool calls, verify-before-edit, etc.)
             if "gemini" in _model_lower or "gemma" in _model_lower:
-                stable_parts.append(_proc_or_default("google_model"))
+                stable_parts.append(_resolve_section("google_model")[0])
             # OpenAI GPT/Codex execution discipline (tool persistence,
             # prerequisite checks, verification, anti-hallucination).
             # Also applied to xAI Grok — same failure modes (claims completion
             # without tool calls, suggests workarounds instead of using
             # existing tools, replies with plans instead of executing).
             if "gpt" in _model_lower or "codex" in _model_lower or "grok" in _model_lower:
-                stable_parts.append(_proc_or_default("openai_model"))
+                stable_parts.append(_resolve_section("openai_model")[0])
 
     has_skills_tools = any(name in agent.valid_tool_names for name in ['skills_list', 'skill_view', 'skill_manage'])
     if has_skills_tools:

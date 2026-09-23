@@ -41,8 +41,8 @@ def _sha256_of(text: str) -> str:
 
 
 def _hide_processors(monkeypatch):
-    """让 `_get_processor` 恒空 —— 走 fallback / fallback-lazy / missing 路径。"""
-    monkeypatch.setattr(sp, "_get_processor", lambda name: None)
+    """让 processor 查找恒空 —— 走 fallback / fallback-lazy / missing 路径。"""
+    monkeypatch.setattr(sp, "load_all_processors", lambda: [])
 
 
 def test_resolve_section_identity_triple_shape():
@@ -85,15 +85,15 @@ def test_fallback_path_hash_is_sha256_of_content(monkeypatch):
     """对照组判别力：hide YAML 后 fallback 的 hash == sha256(content)。"""
     from agent.prompt_builder import EDITING_GUARDRAILS_GUIDANCE
 
-    # editing_guardrails 本就无 YAML（S2.3 才补）—— 天然 fallback 路径
+    # hide 后 editing_guardrails 回落常量（S2.3 补了 YAML，平时 source=builtin）
+    _hide_processors(monkeypatch)
     content, source, content_hash = sp._resolve_section("editing_guardrails")
     assert source == "fallback"
     assert content == EDITING_GUARDRAILS_GUIDANCE
     assert content_hash == _sha256_of(content)
     assert _HEX64.match(content_hash)
 
-    # 再对「有 YAML」的键做 hide，证明 fallback 路径对 identity 也成立
-    _hide_processors(monkeypatch)
+    # identity 同样走 fallback 路径
     content2, source2, hash2 = sp._resolve_section("identity")
     assert source2 == "fallback"
     assert content2 == sp._PROCESSOR_FALLBACK["identity"]
