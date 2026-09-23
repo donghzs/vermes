@@ -51,7 +51,11 @@ from agent.prompt_builder import (
 )
 
 # Phase 1: Prompt Processor loader (YAML-based, hot-reloadable)
-from agent.prompt_processor_loader import load_all_processors, get_generation as _processor_generation
+from agent.prompt_processor_loader import (
+    compute_manifest_hash,
+    load_all_processors,
+    get_generation as _processor_generation,
+)
 
 # Fallback map: when processors are available, these constants are used
 # only as fallback if a processor is missing or fails to load. This ensures
@@ -75,6 +79,47 @@ _PROCESSOR_FALLBACK = {
 }
 
 
+def _resolve_section(name: str) -> tuple[str, str, str]:
+    """S2.2 注入统一入口：按 name 解析一块 prompt 段，返回 (content, source, content_hash)。
+
+    来源优先级（A4）：user processor > builtin YAML > plugin 段 > `_PROCESSOR_FALLBACK` 常量。
+    注意：`load_all_processors()` 已把 plugin/builtin/user 合并且 **user 覆盖 plugin、
+    builtin 覆盖 plugin**（`prompt_processor_loader.load_all_processors` 的 0/1/2 步），
+    所以这里只需走一次 `_get_processor`，再回落 fallback。
+
+    `content_hash`：processor 在场时用 `compute_manifest_hash` 的 canonical 值；
+    fallback 常量用 sha256(content)。source 用于诊断（doctor / 排障），不进 prompt。
+
+    这是 S2 walking skeleton 的唯一注入入口（工单 §5 S2.2）。S2.2 起 identity 走这里；
+    其余键仍走 `_proc_or_default`，待逐个迁。
+    """
+    proc = _get_processor(name)
+    if proc is not None:
+        # 复用 processor 实例拿 canonical hash（与 load_all_processors 同源）
+        for p in load_all_processors():
+            if p.effective_id == name:
+                source = "plugin" if p.metadata.get("source") == "plugin" else (
+                    "builtin" if p.builtin else "user"
+                )
+                return proc, source, p.content_hash
+        return proc, "processor", "auto"
+    fallback = _PROCESSOR_FALLBACK.get(name)
+    if fallback is not None:
+        h = _sha256_of(fallback)
+        return fallback, "fallback", h
+    if name == "computer_use":
+        from agent.prompt_builder import COMPUTER_USE_GUIDANCE
+        return COMPUTER_USE_GUIDANCE, "fallback-lazy", _sha256_of(COMPUTER_USE_GUIDANCE)
+    logger.warning("No processor or fallback for: %s", name)
+    return "", "missing", ""
+
+
+def _sha256_of(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def _proc_or_default(name: str) -> str:
     """Get processor content by name, with hardcoded constant fallback.
 
@@ -83,18 +128,8 @@ def _proc_or_default(name: str) -> str:
     guidance silently disappears from the system prompt. This function
     guarantees the constant is always present.
     """
-    proc = _get_processor(name)
-    if proc is not None:
-        return proc
-    fallback = _PROCESSOR_FALLBACK.get(name)
-    if fallback is not None:
-        return fallback
-    # computer_use is imported lazily
-    if name == "computer_use":
-        from agent.prompt_builder import COMPUTER_USE_GUIDANCE
-        return COMPUTER_USE_GUIDANCE
-    logger.warning("No processor or fallback for: %s", name)
-    return ""
+    content, _source, _h = _resolve_section(name)
+    return content
 
 
 def _ra():
@@ -222,8 +257,10 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _soul_loaded = True
 
     if not _soul_loaded:
-        # Fallback: use processor or hardcoded identity
-        stable_parts.append(_proc_or_default("identity"))
+        # S2.2 walking skeleton：identity 走统一注入入口（processor 优先 + 常量兜底）。
+        # 与 `_proc_or_default("identity")` 字节等价；额外暴露 source/content_hash 供诊断。
+        _id_content, _id_source, _id_hash = _resolve_section("identity")
+        stable_parts.append(_id_content)
 
     # ── Phase 1: Processor-driven guidance injection ──────────────
     # Load YAML-based prompt processors. Each processor has a declarative

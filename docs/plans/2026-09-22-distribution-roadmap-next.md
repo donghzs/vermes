@@ -225,6 +225,13 @@ S2 注入载体 / S3 记忆后端 / S4 渠道迁移都是「接口不变、行�
 
 ### 8.8 交叉审计正式回应（2026-09-23）
 
+- 统一注入入口 `system_prompt._resolve_section(name) → (content, source, content_hash)`；
+  `_proc_or_default` 改为薄包装（**13 个调用点零改动**，字节等价）。
+- `identity` 第一个迁入该入口（source=processor|fallback|fallback-lazy；hash=canonical/`sha256`）。
+- gold 门闩：`s2_snapshot.py --check` 17 场景 × 3 段**逐字相同**（S2.2 不改注入文本）。
+- 双探针变异：改 identity 内容 → 仅相关 stable 红；fallback 优先 → source 字段可抓。
+- 交付报告：`reports/qclaw/s22-identity-walking-skeleton_20260923.md`。
+
 两份 QClaw 审计的逐条处置见 `reports/qclaw/response-to-cross-audits-20260923.md`：
 
 - 方案审计三条（指标 5 / 停止条件 / canary pinned）**采纳**，已在 §8.2–8.4。  
