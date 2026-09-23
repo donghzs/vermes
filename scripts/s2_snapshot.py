@@ -53,9 +53,25 @@ _VOLATILE_NORMALIZERS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^Session ID: .+$", re.M), "Session ID: {{SESSION_ID}}"),
 ]
 
+# ── 机器指纹行归一（Hermes 2026-09-23：gold 不得钉调用者 cwd/机器路径）──
+# build_environment_hints 把 Host / $HOME / os.getcwd() 写进 stable。
+# 不归一时 gold 指纹 = 生成机绝对路径 → 换 worktree/CI 即假红。
+# 归一成占位符后：任何 cwd、任何机器都能跑 --check。
+_MACHINE_NORMALIZERS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"^Host: .+$", re.M), "Host: {{HOST}}"),
+    (re.compile(r"^User home directory: .+$", re.M), "User home directory: {{HOME}}"),
+    (re.compile(r"^Current working directory: .+$", re.M), "Current working directory: {{CWD}}"),
+]
+
 
 def normalize_volatile(text: str) -> str:
     for pat, repl in _VOLATILE_NORMALIZERS:
+        text = pat.sub(repl, text)
+    return text
+
+
+def normalize_machine(text: str) -> str:
+    for pat, repl in _MACHINE_NORMALIZERS:
         text = pat.sub(repl, text)
     return text
 
@@ -163,9 +179,9 @@ def build_one(
         )
         parts = build_system_prompt_parts(agent, system_message=system_message)
     return {
-        "stable": parts.get("stable", ""),
-        "context": parts.get("context", ""),
-        "volatile": normalize_volatile(parts.get("volatile", "")),
+        "stable": normalize_machine(parts.get("stable", "")),
+        "context": normalize_machine(parts.get("context", "")),
+        "volatile": normalize_volatile(normalize_machine(parts.get("volatile", ""))),
     }
 
 
@@ -220,6 +236,7 @@ def snapshot_all(home: Path) -> dict:
             "toolset": list(TOOLSETS),
         },
         "volatile_normalizers": [p.pattern for p, _ in _VOLATILE_NORMALIZERS],
+        "machine_normalizers": [p.pattern for p, _ in _MACHINE_NORMALIZERS],
         "scenarios": scenarios,
     }
 

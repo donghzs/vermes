@@ -2054,15 +2054,27 @@ def run_doctor(args):
     # 等于不存在——list_prompt_sections() 此前只有库函数 + 单测，零产品出口。
     # 纯增量：不改任何既有行；import 失败只 debug，doctor 须在半装配环境仍可跑完。
     try:
-        from agent.prompt_processor_loader import list_prompt_sections
+        from agent.prompt_processor_loader import list_prompt_sections, missing_core_sections
 
         _rows = list_prompt_sections()
         if _rows:
             _section("Prompt Sections")
+            _missing = missing_core_sections()
+            _loaded_n = sum(1 for r in _rows if r.get("source") != "missing")
             check_info(
-                f"{len(_rows)} section(s) loaded"
+                f"{_loaded_n} section(s) loaded"
                 " — 禁用名单 VERMES_DISABLE_PROMPT_SECTIONS 尚未实现（工单 P3 计划项，过滤逻辑未落地）"
             )
+            if _missing:
+                check_warn(
+                    f"{len(_missing)} core section(s) MISSING",
+                    ", ".join(_missing),
+                )
+                check_info(
+                    "S2.4 起无常量兜底：缺段会在 system prompt 露出 "
+                    "[prompt-section missing: …] 占位；请恢复对应 "
+                    "vermes_cli/processors/<id>.yaml 或重装 Vermes"
+                )
             for _r in _rows[:12]:
                 check_info(f"{_r['id']}  layer={_r['layer']}  source={_r['source']}")
             if len(_rows) > 12:

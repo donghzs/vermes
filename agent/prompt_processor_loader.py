@@ -629,13 +629,84 @@ def clear_plugin_processors() -> None:
     invalidate_cache()
 
 
+# 15 个注入点核心段（S2.x 迁移面；缺任一段 = 行为/安全退化，必须可见）。
+CORE_PROMPT_SECTION_IDS: tuple[str, ...] = (
+    "identity",
+    "help_guidance",
+    "task_completion",
+    "editing_guardrails",
+    "memory_guidance",
+    "session_search",
+    "skills_guidance",
+    "image_generate",
+    "academic_search",
+    "scholarforge_workflow",
+    "kanban",
+    "computer_use",
+    "tool_use_enforcement",
+    "google_model",
+    "openai_model",
+)
+
+# 打包完整性金名单（Hermes 2026-09-23：防打包漏拷）。新增 YAML 同步加进来。
+EXPECTED_PROCESSOR_YAMLS: frozenset[str] = frozenset({
+    "academic_search.yaml",
+    "computer_use.yaml",
+    "editing_guardrails.yaml",
+    "google_model.yaml",
+    "help_guidance.yaml",
+    "identity.yaml",
+    "image_generate.yaml",
+    "kanban.yaml",
+    "memory_guidance.yaml",
+    "openai_model.yaml",
+    "platform_api_server.yaml",
+    "platform_bluebubbles.yaml",
+    "platform_cli.yaml",
+    "platform_cron.yaml",
+    "platform_discord.yaml",
+    "platform_email.yaml",
+    "platform_feishu.yaml",
+    "platform_matrix.yaml",
+    "platform_mattermost.yaml",
+    "platform_qqbot.yaml",
+    "platform_signal.yaml",
+    "platform_slack.yaml",
+    "platform_sms.yaml",
+    "platform_telegram.yaml",
+    "platform_webui.yaml",
+    "platform_wecom.yaml",
+    "platform_weixin.yaml",
+    "platform_whatsapp.yaml",
+    "platform_yuanbao.yaml",
+    "read_file.yaml",
+    "scholarforge_workflow.yaml",
+    "session_search.yaml",
+    "skills_guidance.yaml",
+    "task_completion.yaml",
+    "tool_use_enforcement.yaml",
+    "web_get.yaml",
+    "write_file.yaml",
+})
+
+
+def missing_core_sections() -> List[str]:
+    """返回缺失的核心注入段 id（S2.4 后 YAML 是唯一真源，缺了不再有常量兜底）。"""
+    present = {p.effective_id for p in load_all_processors()}
+    present.update(p.name for p in load_all_processors())
+    return [sid for sid in CORE_PROMPT_SECTION_IDS if sid not in present]
+
+
 def list_prompt_sections() -> List[Dict[str, Any]]:
     """列出当前全部 prompt 段（A7 可发现性，Hermes 2026-09-23 补点）。
 
     禁用名单（`VERMES_DISABLE_PROMPT_SECTIONS`，工单 P3 计划项，**过滤逻辑尚未实现**）
     若没有「能禁什么」的清单，
     对桌面小白等于不存在。返回按 layer→priority→id 排序的描述行：
-    id / layer / source(plugin|builtin|user) / path / enabled。
+    id / layer / source(plugin|builtin|user|missing) / path / enabled。
+
+    缺失的核心注入段（`CORE_PROMPT_SECTION_IDS`）也会以 source=missing 列出，
+    避免「doctor 只看见存在的段」导致缺段静默（Hermes 2026-09-23）。
     """
     rows: List[Dict[str, Any]] = []
     for p in load_all_processors():
@@ -657,6 +728,20 @@ def list_prompt_sections() -> List[Dict[str, Any]]:
                 "plugin_callable": bool(p.metadata.get("plugin_callable")),
             }
         )
+    present_ids = {r["id"] for r in rows}
+    for sid in missing_core_sections():
+        if sid not in present_ids:
+            rows.append(
+                {
+                    "id": sid,
+                    "name": sid,
+                    "layer": "stable",
+                    "source": "missing",
+                    "path": "-",
+                    "enabled": False,
+                    "plugin_callable": False,
+                }
+            )
     return rows
 
 

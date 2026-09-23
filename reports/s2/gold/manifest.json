@@ -29,6 +29,11 @@
     "^Conversation started: .+$",
     "^Session ID: .+$"
   ],
+  "machine_normalizers": [
+    "^Host: .+$",
+    "^User home directory: .+$",
+    "^Current working directory: .+$"
+  ],
   "scenarios": [
     {
       "id": "S01",
@@ -40,12 +45,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "e2ffcc0222c11b19ae62fdb6027f003dd231c8c1be436f8796a3441cdf724187",
+        "stable": "6a2b0d1724ef6ac82e82917d1d0d51e6a4955e0da592d094afc44323f9e7ec98",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "c9274c564a3163fdc27cfeda1a56d225c9f7b0da23d36880b969fb1654f6dcbf"
       },
       "bytes": {
-        "stable": 6077,
+        "stable": 6025,
         "context": 0,
         "volatile": 568
       }
@@ -65,12 +70,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "e1ea7f8eec570497582b8c5d808fb2e43916183e82929d759ad45a836606ad4b",
+        "stable": "d417c6f172f0317a05e1f86651a3af356c28e19b87a799987f815a3b4854e342",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "c9274c564a3163fdc27cfeda1a56d225c9f7b0da23d36880b969fb1654f6dcbf"
       },
       "bytes": {
-        "stable": 7420,
+        "stable": 7368,
         "context": 0,
         "volatile": 568
       }
@@ -96,12 +101,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "592aa5b5a6379b41a8ed57890377cd3edb2f11f9070271ba60c9aec6fb834e29",
+        "stable": "ed5e0b903a2c2b3d8f4a9f6880613100d40ad8a48cc3ead67c016fb44775afc8",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "c9274c564a3163fdc27cfeda1a56d225c9f7b0da23d36880b969fb1654f6dcbf"
       },
       "bytes": {
-        "stable": 18869,
+        "stable": 18817,
         "context": 0,
         "volatile": 568
       }
@@ -127,12 +132,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "453f439a9d29625ce6aad42c8eb68aebee3cd6b57a3af5a7c5b51bcfcb6ce7d8",
+        "stable": "bec4a7ad0b56a8e1520fa7ee87b893216bc5f03fa794068acc95f4d676919ded",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "c9274c564a3163fdc27cfeda1a56d225c9f7b0da23d36880b969fb1654f6dcbf"
       },
       "bytes": {
-        "stable": 19303,
+        "stable": 19251,
         "context": 0,
         "volatile": 568
       }
@@ -152,12 +157,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "a09b8c3af4d68b156ae2b10bd5b26bb32ae24ba9268176c5038408ba9c903fcb",
+        "stable": "241f569e8baa80dd58e28a4d11d0be72f6a0e29dfa04e8f010028cb80a3640d0",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "f1e2df2cbc55c60f94fd772597d93df816802410350f1741a2996f68ec293dbb"
       },
       "bytes": {
-        "stable": 10624,
+        "stable": 10572,
         "context": 0,
         "volatile": 566
       }
@@ -183,12 +188,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "4159dbf7d2717b6f0ab6a5ae7822638d839ee752daeaca90b8e5c9039b1010e4",
+        "stable": "57a92ff740c7b18534a050859b5ea80d83026223277f72f59b05ab1dd935dc37",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "f1e2df2cbc55c60f94fd772597d93df816802410350f1741a2996f68ec293dbb"
       },
       "bytes": {
-        "stable": 20891,
+        "stable": 20839,
         "context": 0,
         "volatile": 566
       }
@@ -203,12 +208,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "bc21d9a69803dc5deb8d45cd5ceddcf793e6d4db8354d1de08467032e587ff98",
+        "stable": "10e5f843d09dbd889a5b055a8374ed9811eb808577607cb0a4e5b90d6daada82",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "f1e2df2cbc55c60f94fd772597d93df816802410350f1741a2996f68ec293dbb"
       },
       "bytes": {
-        "stable": 9005,
+        "stable": 8953,
         "context": 0,
         "volatile": 566
       }
@@ -228,12 +233,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "69813f792611a45dacbb2e586b2ef6496d7cfe6e9a526af42ec18a6c6a3d5a3c",
+        "stable": "91e6f2fdf997eb2fdee7136c139ece44132c9da3b572dd9bbad9d5c378d11764",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "f1e2df2cbc55c60f94fd772597d93df816802410350f1741a2996f68ec293dbb"
       },
       "bytes": {
-        "stable": 11268,
+        "stable": 11216,
         "context": 0,
         "volatile": 566
       }
@@ -259,12 +264,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "a080e61bd3b6293d7083ddb9cccd77b0a7d8f5dcc88b6b2f6f134db53c5d088c",
+        "stable": "0e69f6a3140f77b0b5f38385cde7e5938cecaf7ba216a986e9ff221b3380d839",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
       },
       "bytes": {
-        "stable": 18659,
+        "stable": 18607,
         "context": 0,
         "volatile": 573
       }
@@ -279,12 +284,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "188784b126cba12265c8f6513272f30598b5d4261bfa44b119a70866d6bba567",
+        "stable": "4f3b22eb06853fecb9d1f142b805129a450df1a9ea0040a8d34fd37ca0f6e5cb",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
       },
       "bytes": {
-        "stable": 5591,
+        "stable": 5539,
         "context": 0,
         "volatile": 573
       }
@@ -304,12 +309,12 @@
       ],
       "system_message": "S2 context-layer probe: caller-supplied system_message must land in context.",
       "sha256": {
-        "stable": "014fab589bee4e78737639bf5cfe2a2c0fcfabe2714cf336d8536c7f2198232c",
+        "stable": "dcb6354f66177aaf62018a613166f7228ce67a9666a57af25cfde036ca2c20d3",
         "context": "cf7ad51bc89a0dc0d262d861385809d5899b2eeec8fd5d1c32528cc2ab107fb0",
         "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
       },
       "bytes": {
-        "stable": 8116,
+        "stable": 8064,
         "context": 76,
         "volatile": 573
       }
@@ -324,12 +329,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "4e9fc4c69e3c86401861776f78cb0da2881ea5b146f5b624ad10853116253a7b",
+        "stable": "bc62db6047aa134f0aed197f477a027b65673f2e39dd79ac5005b642116b493e",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
       },
       "bytes": {
-        "stable": 6721,
+        "stable": 6669,
         "context": 0,
         "volatile": 573
       }
@@ -355,12 +360,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "a080e61bd3b6293d7083ddb9cccd77b0a7d8f5dcc88b6b2f6f134db53c5d088c",
+        "stable": "0e69f6a3140f77b0b5f38385cde7e5938cecaf7ba216a986e9ff221b3380d839",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "5b149d9c930a4af5cd927e6117d46101b92ed68dc4b3d4d534d8f9b548264b3d"
       },
       "bytes": {
-        "stable": 18659,
+        "stable": 18607,
         "context": 0,
         "volatile": 570
       }
@@ -380,12 +385,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "e1ea7f8eec570497582b8c5d808fb2e43916183e82929d759ad45a836606ad4b",
+        "stable": "d417c6f172f0317a05e1f86651a3af356c28e19b87a799987f815a3b4854e342",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "5b149d9c930a4af5cd927e6117d46101b92ed68dc4b3d4d534d8f9b548264b3d"
       },
       "bytes": {
-        "stable": 7420,
+        "stable": 7368,
         "context": 0,
         "volatile": 570
       }
@@ -400,12 +405,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "ba9342d4ef89150e5d7e7e685abea4bae25b3c14549e0178ab9b8bb9e584d030",
+        "stable": "c0cd820e5b5db2df139743d917486bddd03aaf721052a1f44d52fadaaad26980",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "5b149d9c930a4af5cd927e6117d46101b92ed68dc4b3d4d534d8f9b548264b3d"
       },
       "bytes": {
-        "stable": 6287,
+        "stable": 6235,
         "context": 0,
         "volatile": 570
       }
@@ -431,12 +436,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "453f439a9d29625ce6aad42c8eb68aebee3cd6b57a3af5a7c5b51bcfcb6ce7d8",
+        "stable": "bec4a7ad0b56a8e1520fa7ee87b893216bc5f03fa794068acc95f4d676919ded",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "5b149d9c930a4af5cd927e6117d46101b92ed68dc4b3d4d534d8f9b548264b3d"
       },
       "bytes": {
-        "stable": 19303,
+        "stable": 19251,
         "context": 0,
         "volatile": 570
       }
@@ -456,12 +461,12 @@
       ],
       "system_message": null,
       "sha256": {
-        "stable": "28e7a7b47231520578b0e9d4034419caa721e7f46d1d9115272cda93da839934",
+        "stable": "d61574bc2400321de98283d305809933249a34629d18e6656f17e693ec0c336d",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "volatile": "7f82d024c7f0a5f8e9ceeff60ec4ff5195161bd575f0fddfe680bbb50c35fca1"
       },
       "bytes": {
-        "stable": 8470,
+        "stable": 8418,
         "context": 0,
         "volatile": 574
       }

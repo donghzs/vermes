@@ -77,7 +77,15 @@ def _resolve_section(name: str) -> tuple[str, str, str]:
         from agent.prompt_builder import COMPUTER_USE_GUIDANCE
         return COMPUTER_USE_GUIDANCE, "fallback-lazy", _sha256_of(COMPUTER_USE_GUIDANCE)
     logger.warning("No processor or fallback for: %s", name)
-    return "", "missing", ""
+    # 极小可见兜底（Hermes 2026-09-23）：空串会让 editing_guardrails 等安全段静默消失。
+    # 不必是原常量全文——但异常必须在 prompt 里露出来，而不是空。
+    missing = (
+        f"# [prompt-section missing: {name}]\n"
+        f"# Expected guidance failed to load. Restore "
+        f"vermes_cli/processors/{name}.yaml or reinstall Vermes. "
+        f"This placeholder is intentionally visible."
+    )
+    return missing, "missing", _sha256_of(missing)
 
 
 def _sha256_of(text: str) -> str:

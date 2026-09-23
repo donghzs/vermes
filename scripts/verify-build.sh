@@ -99,6 +99,36 @@ else
   fail "harness/ 目录未找到（spec datas 缺失？）"
 fi
 
+# ── 4.6 prompt processors（Hermes 2026-09-23：37 YAML 完整性，防打包漏拷）──
+# S2.4 后无常量兜底，缺 YAML = 缺段静默退化（含 editing_guardrails 安全段）。
+PROC_DIR=""
+for cand in \
+  "$INTERNAL/vermes_cli/processors" \
+  "$APP_PATH/Contents/Resources/vermes_cli/processors" \
+  "$INTERNAL/agent/../vermes_cli/processors"
+do
+  if [ -d "$cand" ]; then PROC_DIR="$cand"; break; fi
+done
+if [ -z "$PROC_DIR" ]; then
+  # PyInstaller onedir 有时把 datas 提到 Resources 根下
+  PROC_DIR=$(find "$APP_PATH/Contents/Resources" -type d -name processors -path '*/vermes_cli/*' 2>/dev/null | head -1 || true)
+fi
+if [ -n "$PROC_DIR" ] && [ -d "$PROC_DIR" ]; then
+  YAML_N=$(find "$PROC_DIR" -maxdepth 1 -name '*.yaml' -type f | wc -l | tr -d ' ')
+  if [ "$YAML_N" -ge 37 ]; then
+    ok "prompt processors: $YAML_N 个 YAML（≥37）"
+  else
+    fail "prompt processors 只有 $YAML_N 个 YAML（期望 ≥37）— 打包漏拷，缺段会静默退化"
+  fi
+  for core in identity editing_guardrails computer_use task_completion tool_use_enforcement; do
+    if [ ! -s "$PROC_DIR/$core.yaml" ]; then
+      fail "核心段缺失: $core.yaml"
+    fi
+  done
+else
+  fail "vermes_cli/processors/ 未找到（spec datas 缺 ('vermes_cli/processors', ...)?）"
+fi
+
 # ── 3. ScholarForge 工具 ──
 echo ""
 echo "=== 3. ScholarForge ==="

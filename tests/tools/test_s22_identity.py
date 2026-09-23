@@ -88,21 +88,28 @@ def test_missing_path_after_fallback_retired(monkeypatch, caplog):
     _hide_processors(monkeypatch)
     with caplog.at_level("WARNING", logger="agent.system_prompt"):
         content, source, content_hash = sp._resolve_section("editing_guardrails")
-    assert (content, source, content_hash) == ("", "missing", "")
+    assert source == "missing"
     assert content != EDITING_GUARDRAILS_GUIDANCE
+    assert "[prompt-section missing: editing_guardrails]" in content
+    assert content_hash == _sha256_of(content)
 
     with caplog.at_level("WARNING", logger="agent.system_prompt"):
         content2, source2, hash2 = sp._resolve_section("identity")
-    assert (content2, source2, hash2) == ("", "missing", "")
+    assert source2 == "missing"
     assert content2 != DEFAULT_AGENT_IDENTITY
+    assert "[prompt-section missing: identity]" in content2
+    assert hash2 == _sha256_of(content2)
 
 
-def test_missing_key_returns_empty_and_warns(monkeypatch, caplog):
-    """缺失键 → ("", "missing", "") 且有 warning，不静默。"""
+def test_missing_key_returns_visible_placeholder_and_warns(monkeypatch, caplog):
+    """缺失键 → 可见占位文本（非空串）+ source=missing + warning，不静默。"""
     _hide_processors(monkeypatch)
     with caplog.at_level("WARNING", logger="agent.system_prompt"):
         content, source, content_hash = sp._resolve_section("no_such_section_xyz")
-    assert (content, source, content_hash) == ("", "missing", "")
+    assert source == "missing"
+    assert content, "missing 不得返回空串（Hermes：异常必须可见）"
+    assert "[prompt-section missing: no_such_section_xyz]" in content
+    assert content_hash == _sha256_of(content)
     assert any("no_such_section_xyz" in r.message for r in caplog.records) or any(
         "no_such_section_xyz" in (r.getMessage() or "") for r in caplog.records
     )

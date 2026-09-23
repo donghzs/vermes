@@ -104,7 +104,7 @@ def test_each_key_content_matches_source_of_truth(name):
     """逐键一次比对（工单 §5 S2.3 通过门）：content 等于其生效源，且与薄包装字节等价。
 
     生效源 = processor 在场用 processor（gold 也走这条）。
-    S2.4 退役 `_PROCESSOR_FALLBACK` 后：YAML 缺失 → missing；仅 computer_use 有 fallback-lazy。
+    S2.4 退役 `_PROCESSOR_FALLBACK` 后：YAML 缺失 → missing 可见占位；仅 computer_use 有 fallback-lazy。
     YAML 与常量的双源漂移单独钉住（KNOWN_YAML_CONSTANT_DRIFT）。
     """
     expected_const = CONSTANTS[name]
@@ -147,6 +147,7 @@ def test_all_15_keys_have_processor():
         content, source, _h = sp._resolve_section(name)
         assert content, f"{name} content 为空"
         assert source != "missing", f"{name} 解析为 missing"
+        assert "[prompt-section missing:" not in content
         assert source != "fallback", f"{name} 不应再走 map fallback"
 
 

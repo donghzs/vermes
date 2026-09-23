@@ -143,6 +143,24 @@ if [[ -f "$ELEC_PKG" ]]; then
   fi
 fi
 
+# ── 4b. Prompt processors 完整性（Hermes 2026-09-23：防漏拷/防缺安全段）──
+PROC_DIR="$ROOT_DIR/vermes_cli/processors"
+if [[ -d "$PROC_DIR" ]]; then
+  YAML_COUNT=$(find "$PROC_DIR" -maxdepth 1 -name '*.yaml' -type f | wc -l | tr -d ' ')
+  if [[ "$YAML_COUNT" -lt 37 ]]; then
+    err "vermes_cli/processors/*.yaml 只有 $YAML_COUNT 个（期望 ≥37）— 可能漏拷，缺段会静默退化"
+  else
+    ok "prompt processors: $YAML_COUNT 个 YAML（≥37）"
+  fi
+  for core in identity editing_guardrails computer_use task_completion tool_use_enforcement; do
+    if [[ ! -s "$PROC_DIR/$core.yaml" ]]; then
+      err "核心段缺失: vermes_cli/processors/$core.yaml（安全/纪律相关，打包必带）"
+    fi
+  done
+else
+  err "vermes_cli/processors/ 不存在 — PyInstaller datas 会丢掉全部 prompt 段！"
+fi
+
 # ── 5. 自动修复 ──
 echo ""
 if [[ "$ERRORS" -gt 0 ]] && $FIX_MODE; then

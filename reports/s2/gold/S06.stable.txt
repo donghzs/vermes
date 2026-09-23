@@ -184,8 +184,8 @@ Before finalizing your response:
 - If you must proceed with incomplete information, label assumptions explicitly.
 </missing_context>
 
-Host: macOS (26.5.2)
-User home directory: /Users/dongzusheng
-Current working directory: /Users/dongzusheng/Projects/vermes-electron
+Host: {{HOST}}
+User home directory: {{HOME}}
+Current working directory: {{CWD}}
 
 Active Vermes profile: default. Other profiles (if any) live under ~/.vermes/profiles/<name>/. Each profile has its own skills/, plugins/, cron/, and memories/ that affect a different session than this one. Do not modify another profile's skills/plugins/cron/memories unless the user explicitly directs you to.
