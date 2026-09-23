@@ -352,6 +352,99 @@ def step_coexistence(py: str, deep: bool) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Step 6: A/B 哨兵（roadmap §8.2 指标 5 的最短落地 — Hermes 2026-09-23）
+# 语料哨兵 → 可执行断言；变差即红。未映射 = WARN（禁止静默当成 PASS）。
+# --------------------------------------------------------------------------
+AB_SENTINEL_TESTS: dict[str, list[str]] = {
+    # cache 前缀：两轮 stable sha 必须一致
+    "A08": ["tests/tools/test_s2_gold.py::test_stable_sha_stable_across_two_builds"],
+    "B07": ["tests/tools/test_s2_gold.py::test_stable_sha_stable_across_two_builds"],
+    # 审批：危险命令进审批而非直接执行
+    "C02": [
+        "tests/tools/test_approval.py::TestDetectDangerousRm::test_rm_rf_detected",
+        "tests/tools/test_approval.py::TestDetectDangerousRm::test_rm_recursive_long_flag",
+    ],
+    # write-deny：~/.vermes/auth.json / 密钥库写入被拒（语料 C03 原文）
+    "C03": [
+        "tests/agent/test_file_safety_secret_stores.py",
+        "tests/tools/test_file_write_safety.py::TestStaticDenyList::test_ssh_key_is_denied",
+        "tests/tools/test_file_write_safety.py::TestStaticDenyList::test_etc_shadow_is_denied",
+    ],
+    # session 不串味（L-007/L-010）
+    "C04": [
+        "tests/tools/test_cron_session_contextvar.py::test_concurrent_threads_do_not_contaminate",
+        "tests/tools/test_approval.py::TestSessionKeyContext::test_context_session_key_overrides_process_env",
+    ],
+    # cron 不被误判为交互挂起（unattended）
+    "C05": ["tests/tools/test_cron_session_contextvar.py"],
+    # 渠道目标 / 断线重连 — 暂无确定性单测，先显式 WARN
+    "D02": [],
+    "D03": [],
+}
+
+
+def step_ab_sentinels(py: str, tmpdir: Path | None) -> dict:
+    """A/B 语料哨兵 → 可执行断言（指标 5 停止条件）。
+
+    **按哨兵分跑**，保证红因归因正确（不连坐）。
+    """
+    rows = []
+    failed_ids: list[str] = []
+    unmapped: list[str] = []
+    total_passed = total_failed = 0
+    for sid in sorted(AB_SENTINEL_TESTS):
+        nodes = AB_SENTINEL_TESTS[sid]
+        if not nodes:
+            unmapped.append(sid)
+            rows.append((sid, "WARN", "未映射确定性断言"))
+            continue
+        missing = [n for n in nodes if not (ROOT / n.split("::")[0]).exists()]
+        if missing:
+            rows.append((sid, "WARN", f"测试文件缺失: {missing}"))
+            unmapped.append(sid)
+            continue
+        label = "+".join(n.split("::")[-1] for n in nodes)
+        cmd = [py, "-m", "pytest", *nodes, "-p", "no:xdist", "-o", "addopts=", "-q"]
+        if tmpdir:
+            cmd += ["--basetemp", str(tmpdir)]
+        rc, out, err = _run(cmd, timeout=600)
+        text = out + err
+        m = re.search(r"(\d+) passed", text)
+        passed = int(m.group(1)) if m else 0
+        m2 = re.search(r"(\d+) failed", text)
+        failed = int(m2.group(1)) if m2 else 0
+        total_passed += passed
+        total_failed += failed
+        if rc != 0 or failed:
+            rows.append((sid, "FAIL", f"{label} → {passed} passed / {failed} failed"))
+            failed_ids.append(sid)
+        else:
+            rows.append((sid, "PASS", f"{label} ({passed} passed)"))
+
+    n_fail = sum(1 for _s, st, _d in rows if st == "FAIL")
+    n_warn = sum(1 for _s, st, _d in rows if st == "WARN")
+    n_pass = sum(1 for _s, st, _d in rows if st == "PASS")
+    if n_fail:
+        status, detail = "FAIL", f"{n_fail} 哨兵红 / {n_pass} 绿 / {n_warn} 未映射"
+    elif n_warn:
+        status, detail = "WARN", f"{n_pass} 绿 / {n_warn} 未映射（D02/D03 等）"
+    else:
+        status, detail = "PASS", f"{n_pass} 哨兵全绿"
+    return {
+        "name": "ab-sentinels",
+        "status": status,
+        "detail": detail,
+        "evidence": {
+            "rows": [{"id": s, "status": st, "detail": d} for s, st, d in rows],
+            "passed": total_passed,
+            "failed": total_failed,
+            "unmapped": unmapped,
+            "failed_ids": failed_ids,
+        },
+    }
+
+
+# --------------------------------------------------------------------------
 # 报告
 # --------------------------------------------------------------------------
 def render_report(steps: list[dict], meta: dict) -> str:
@@ -396,6 +489,7 @@ def main() -> int:
     ap.add_argument("--test", action="append", default=None, help="追加/覆盖契约测文件（可多次）")
     ap.add_argument("--no-deep", action="store_true", help="check_coexistence 不加 --deep")
     ap.add_argument("--skip-tests", action="store_true", help="跳过契约测")
+    ap.add_argument("--skip-ab", action="store_true", help="跳过 A/B 哨兵（step 6）")
     ap.add_argument("--skip-intake", action="store_true", help="跳过 intake")
     ap.add_argument("--skip-boundary", action="store_true", help="跳过 boundary")
     ap.add_argument("--strict", action="store_true", help="WARN 也判 FAIL")
@@ -416,11 +510,13 @@ def main() -> int:
         steps.append(step_intake(pin["upstream_tag"], repo, args.python, args.max_intake, args.strict))
     if not args.skip_boundary:
         steps.append(step_boundary(args.python, args.boundary_since, args.tax_threshold, args.max_boundary))
+    tmpdir = Path(args.basetemp) if args.basetemp else None
     if not args.skip_tests:
         tests = args.test or DEFAULT_TESTS
-        tmpdir = Path(args.basetemp) if args.basetemp else None
         steps.append(step_tests(args.python, tests, tmpdir))
     steps.append(step_coexistence(args.python, deep=not args.no_deep))
+    if not args.skip_ab:
+        steps.append(step_ab_sentinels(args.python, tmpdir))
 
     if args.strict:
         for s in steps:

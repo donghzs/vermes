@@ -170,14 +170,20 @@ T1 与 Phase A 可穿插（不同文件面）；T2 半天可完。
 > 审计快照：`main` @ `b8e1950510`；本文入库时 HEAD 已前进（勿用相对位置引用，报进度带 HEAD hash）。
 > 完整审计：`reports/qclaw/cross-audit-distribution-plan_20260923.md`。
 
-### 8.1 数字口径（刷新，禁止沿用旧台账）
+### 8.1 数字口径（**窗口 + 当场命令**，禁止只报裸数字）
 
-| 口径 | 旧值（已废弃） | 以实测/下次 fetch 为准 |
+> 30 天是滚动窗口——同一时刻不同人测出的值可以都对。引用必须带 **窗口 + HEAD + 复现命令**。
+> 本表快照：窗口 **2026-08-24 → 2026-09-23**；上游 HEAD `5a0c2fb89e`，Vermes HEAD `04f4604715`。
+
+| 口径 | 快照值（2026-09-23 实测） | 复现命令 |
 |---|---|---|
-| 上游近 30 天提交 | 13,011 | 以 `git -C ~/.hermes/hermes-agent rev-list --count --since=30.days` 当场测为准（审计曾记 14,603） |
-| 上游总提交 | 37,857 | 以检出 HEAD 当场 `rev-list --count` 为准（审计曾记 39,490） |
-| Vermes 近 30 天 | ~410 | 当场 `rev-list --count --since=30.days`（审计曾记 586） |
-| 倍率 | ≈30× | 当场两项相除；量级结论不变：**整体追更新不成立** |
+| 上游近 30 天提交 | **12,603** | `git -C ~/.hermes/hermes-agent log --since='30 days ago' --oneline \| wc -l` |
+| 上游总提交 | **37,857** | `git -C ~/.hermes/hermes-agent rev-list --count HEAD` |
+| Vermes 近 30 天 | **557** | `git log --since='30 days ago' --oneline \| wc -l` |
+| Vermes 总提交 | **1,839** | `git rev-list --count HEAD` |
+| 30 天倍率 | **≈22.6×** | 上两项相除（12603/557） |
+
+量级结论不变：**整体追更新不成立**。历史台账 13,011 / 14,603 / 30× / 25× 均为各自时刻的滚动窗口快照，**不得再当「当前值」引用**。
 
 ### 8.2 指标 5（不退化）— Sprint 级 A/B，**制度绿 ≠ 可收口**
 
