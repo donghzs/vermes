@@ -632,7 +632,8 @@ def clear_plugin_processors() -> None:
 def list_prompt_sections() -> List[Dict[str, Any]]:
     """列出当前全部 prompt 段（A7 可发现性，Hermes 2026-09-23 补点）。
 
-    禁用名单（`VERMES_DISABLE_PROMPT_SECTIONS`）若没有「能禁什么」的清单，
+    禁用名单（`VERMES_DISABLE_PROMPT_SECTIONS`，工单 P3 计划项，**过滤逻辑尚未实现**）
+    若没有「能禁什么」的清单，
     对桌面小白等于不存在。返回按 layer→priority→id 排序的描述行：
     id / layer / source(plugin|builtin|user) / path / enabled。
     """

@@ -74,6 +74,11 @@
 
 > G1 首次实测（2026-09-21，`v2.4.9..main`）：**契约税 48 处 / 100 commits** → 当前 **FAIL** 档。
 > 这是 S1 的主要工作：逐条判定「登记（有意偏离）」还是「外置为插件」。
+>
+> **G1 绿色边界（Hermes 2026-09-23）**：G1/boundary 的 PASS **只覆盖 follow 区**。
+> core 区（`agent/`、`gateway/` 等）改动**不计税、不进 G1 绿**，改由 §7d `CORE_DIVERGE_LEDGER`
+> 逐条登记（为什么改 core + 上游对应面）。**「未登记税=0」≠「离上游很近」**——
+> core 登记率才是分叉距离的真读数，进月度复查点（roadmap §8.9）。
 
 ---
 
@@ -163,6 +168,31 @@ S5 的前置核实项已登记为待办（§8）。
 | D-007 | `tools/send_message_tool.py` | 修复 | 2026-09-23 | `35532f29fb57`：QQBot target 解析——32 位 openid/数字群号识别为显式目标，避免 directory 命中后解析返回 None 被丢弃；自有产品修复，有意偏离（后续同文件大改仍需再登记） |
 | D-008 | `tools/file_operations.py` | 修复 | 2026-09-23 | `018b4e761ade`（本文件部分；同 commit `code_execution_tool.py` 已在 D-006/L-013）：read_file 单行/长行截断不说谎——行内截断并入 `truncated`，`wc -l` 改 awk 正确数行；自有缺陷修复，有意偏离 |
 <!--DIVERSION_LEDGER:END-->
+
+---
+
+## 7d. CORE_DIVERGE_LEDGER（core 区有意分叉登记）
+
+> 语义：**core 区**（`agent/`、`gateway/`、`acp_adapter/`、`memory/`、`runner/`、`cli/`）的
+> Vermes 改动不计 G1 契约税，但**必须登记**——记「为什么改 core + 上游对应面是否有 + 为何不能走插件形态」。
+> 这是 G1 绿色的盲区补丁（Hermes 2026-09-23）：`未登记税=0` 只反映 follow 区干净，
+> core 分叉成本由本表反映。字段：`id` / `路径` / `为什么改 core` / `上游对应面` / `登记日期`。
+> 脚本 `upstream_watch.py boundary` 解析本表（`<!--CORE_DIVERGE_LEDGER:START-->` 至 `END`），
+> 报告 core 登记率；**core 登记率进月度复查点**。
+> 同一文件后续大改仍需追加条目（或更新理由行），禁止「登一次就永久免税」。
+
+<!--CORE_DIVERGE_LEDGER:START-->
+| id | 路径 | 为什么改 core | 上游对应面 | 登记日期 |
+|---|---|---|---|---|
+| C-001 | `agent/system_prompt.py` | S2 walking skeleton：统一注入入口 `_resolve_section` + 15 注入点迁入。**不能走插件形态**——三层 prompt 组装与 cache 前缀稳定性是核心运行时（gold 17×3 逐字门钉住）；插件只能 `register_system_prompt_section` 注册段，不能替换组装路径 | 上游无三层组装等价物；上游 `register_system_prompt_section` 是注册面（S2.1 已 adapter 落 `plugins.py`），组装仍在 core | 2026-09-23 |
+| C-002 | `agent/prompt_processor_loader.py` | S2 adapter 基座：YAML processor 加载/合并优先级（plugin < builtin < user）+ `compute_manifest_hash` canonical hash + `list_prompt_sections` 可发现性。**不能走插件形态**——插件是注册进本加载器的客户，不能自成加载路径（否则双源/双优先级） | 上游无 YAML processor 体系（Vermes 反向领先）；上游只有 session 级 section 快照 | 2026-09-23 |
+| C-003 | `agent/agent_init.py` | L-010/T13：`VERMES_SESSION_ID` 改 task-local contextvar，修 `set_current_session_id` 缺失 | 上游 session 上下文机制不同；自有安全修复 | 2026-09-23 |
+| C-004 | `agent/conversation_compression.py` | 同 C-003（L-010 会话上下文一致性） | 同上 | 2026-09-23 |
+| C-005 | `agent/file_safety.py` | L-002：write-deny vault/browser-profile 密钥库（对齐上游 `1c0d95badbac`，重写） | 有（上游 `_WRITE_DENIED_SECRET_DIRS`）；已 TAKEALONG L-002 | 2026-09-23 |
+| C-006 | `gateway/run.py` | L-008：gateway 启动 purge 残留 `VERMES_CRON_SESSION`，关 env 回落信任边界 | 无直接对应；自有安全修复（Electron spawn 边界） | 2026-09-23 |
+| C-007 | `gateway/session_context.py` | L-007/L-010：`VERMES_CRON_SESSION`/`VERMES_SESSION_ID` 改 contextvar，修 gateway 内嵌 cron 污染真实用户审批 | 无直接对应；自有 P0 | 2026-09-23 |
+| C-008 | `acp_adapter/server.py` | L-010：session_id 弃进程级 save/restore 改 setter + token reset（修并发串味）；同 C-003 族 | 无直接对应；自有安全修复 | 2026-09-23 |
+<!--CORE_DIVERGE_LEDGER:END-->
 
 ---
 

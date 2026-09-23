@@ -430,6 +430,14 @@ def _parse_ledger_block(
     return exact_files, dir_prefixes
 
 
+def parse_core_diverge_ledger() -> tuple[set[str], set[str]]:
+    """解析 §7d CORE_DIVERGE_LEDGER，返回 (exact_files, dir_prefixes)。
+
+    core 区不计 G1 契约税，但登记率是「离上游有多远」的真读数（Hermes 2026-09-23）。
+    """
+    return _parse_ledger_block("CORE_DIVERGE_LEDGER", 1)
+
+
 def parse_diversion_ledger() -> tuple[set[str], set[str]]:
     """合并解析两本账（DIVERSION + TAKEALONG），返回 (exact_files, dir_prefixes)。
 
@@ -651,7 +659,10 @@ def cmd_watch(args: argparse.Namespace) -> int:
 
 
 def cmd_boundary(args: argparse.Namespace) -> int:
-    """边界闸门：Vermes 自身改动落在「上游跟随区」= 契约税（未登记才算）。"""
+    """边界闸门：Vermes 自身改动落在「上游跟随区」= 契约税（未登记才算）。
+
+    **绿色边界**：PASS 只覆盖 follow 区。core 区改动不计税，改由 §7d 登记率单独报告。
+    """
     # 冻结锚：默认读 FREEZE_REF（不可移动），不跟发版 tag（tag 会前移导致窗口塌缩）
     since = args.since or FREEZE_REF
     commits = collect_commits(f"{since}..main", args.max)
@@ -660,18 +671,32 @@ def cmd_boundary(args: argparse.Namespace) -> int:
         return 0
 
     ledger = parse_diversion_ledger()
+    core_exact, core_dirs = parse_core_diverge_ledger()
     unregistered_tax: list[tuple[dict, str]] = []
     registered_diversion: list[tuple[dict, str]] = []
     zone_counter: Counter[str] = Counter()
+    core_paths: set[str] = set()
     for c in commits:
         for p in c["paths"]:
             z = classify(p)
             zone_counter[z] += 1
+            if z == "core":
+                core_paths.add(p)
             if z == "follow":
                 if is_registered_diversion(p, ledger):
                     registered_diversion.append((c, p))
                 else:
                     unregistered_tax.append((c, p))
+
+    def _core_registered(path: str) -> bool:
+        if path in core_exact:
+            return True
+        return any(path.startswith(d) for d in core_dirs)
+
+    core_registered = sorted(p for p in core_paths if _core_registered(p))
+    core_unregistered = sorted(p for p in core_paths if not _core_registered(p))
+    core_total = len(core_paths)
+    core_rate = (100.0 * len(core_registered) / core_total) if core_total else 100.0
 
     date_tag = datetime.now().strftime("%Y%m%d")
     out_path = os.path.join(REPORTS_DIR, f"dist-boundary-{date_tag}.md")
@@ -680,7 +705,10 @@ def cmd_boundary(args: argparse.Namespace) -> int:
         f"> 区间 `{since}..main`（Vermes 侧 {len(commits)} commits）。",
         f"> 冻结锚 `{FREEZE_REF}`（非发版 tag）。",
         "> 判据：改动落在**上游跟随区**（`plugins/ tools/ harness/ cron/ .github/ docs/ scripts/`）",
-        "> 且 **两账都未登记** = 契约税。已登记（DIVERSION_LEDGER）= 有意偏离，单列不税。\n",
+        "> 且 **两账都未登记** = 契约税。已登记（DIVERSION_LEDGER）= 有意偏离，单列不税。",
+        ">",
+        "> **绿色边界**：下文 PASS **只覆盖 follow 区**。core 区不计税，看 §2b 登记率"
+        "（Hermes 2026-09-23）。\n",
         "## 1. 分区分布\n",
         "| 分区 | 文件改动数 | 判定 |",
         "|---|---|---|",
@@ -690,7 +718,7 @@ def cmd_boundary(args: argparse.Namespace) -> int:
         # 曾写「⚠️ 契约税（未登记）」：读表的人会把 follow 行的 N 理解成 N 条未登记，
         # 但 N 是跟随区改动总数，未登记明细只在 §2。措辞按 QClaw A2 更正。
         "follow": "跟随区改动（未登记明细见 §2）",
-        "core": "🔍 核心 diverge，个案评估",
+        "core": "🔍 核心 diverge — 登记率见 §2b（不进 G1 绿）",
         "other": "—",
     }
     for z, n in zone_counter.most_common():
@@ -699,7 +727,7 @@ def cmd_boundary(args: argparse.Namespace) -> int:
 
     lines.append("## 2. 未登记契约税明细（follow 区改动 && 两账未登记）\n")
     if not unregistered_tax:
-        lines.append("_无。当前 Vermes 在跟随区零未登记改动 —— 边界干净。_")
+        lines.append("_无。当前 Vermes 在跟随区零未登记改动 —— follow 边界干净。_")
     else:
         lines.append("| hash | 主题 | 跟随区路径 |")
         lines.append("|---|---|---|")
@@ -707,6 +735,23 @@ def cmd_boundary(args: argparse.Namespace) -> int:
             lines.append(f"| `{c['hash']}` | {c['subject'][:60]} | `{p}` |")
         if len(unregistered_tax) > 60:
             lines.append(f"\n_（仅列前 60 条，共 {len(unregistered_tax)} 条）_")
+    lines.append("")
+
+    lines.append("## 2b. core 区登记率（CORE_DIVERGE_LEDGER §7d，不计 G1 税）\n")
+    lines.append(
+        f"> 窗口内 core 路径 **{core_total}** 个，已登记 **{len(core_registered)}**，"
+        f"登记率 **{core_rate:.0f}%**。未登记 = 分叉成本黑洞，月度复查点必处置。\n"
+    )
+    if core_unregistered:
+        lines.append("| 路径 | 状态 |")
+        lines.append("|---|---|")
+        for p in core_unregistered:
+            lines.append(f"| `{p}` | ❌ 未登记 |")
+    if core_registered:
+        lines.append("")
+        lines.append("已登记：" + ", ".join(f"`{p}`" for p in core_registered[:20]))
+    if core_total == 0:
+        lines.append("_本窗口无 core 改动。_")
     lines.append("")
 
     lines.append("## 3. 已登记偏离（两账：DIVERSION + TAKEALONG，不算税）\n")
@@ -721,19 +766,28 @@ def cmd_boundary(args: argparse.Namespace) -> int:
 
     lines.append("## 4. 闸门结论\n")
     if len(unregistered_tax) == 0:
-        lines.append("**PASS** —— 零未登记契约税。已登记偏离单列，不阻碍跟随。")
+        lines.append(
+            f"**PASS（follow）** —— 零未登记契约税。已登记偏离单列，不阻碍跟随。"
+            f" **core 登记率 {core_rate:.0f}%**（{len(core_registered)}/{core_total}）——"
+            " 本 PASS 不覆盖 core，见 §2b。"
+        )
     else:
         lines.append(
             f"**WARN/FAIL** —— {len(unregistered_tax)} 处未登记契约税。"
             "逐条登记到 DISTRIBUTION_MANIFEST.md §7b（DIVERSION_LEDGER）或 §7c（TAKEALONG_LEDGER），"
             "或外置为插件。"
+            f" core 登记率 {core_rate:.0f}%（{len(core_registered)}/{core_total}）。"
         )
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
 
-    print(f"[boundary] commits={len(commits)} 未登记税={len(unregistered_tax)} 已登记偏离={len(registered_diversion)}")
+    print(
+        f"[boundary] commits={len(commits)} 未登记税={len(unregistered_tax)} "
+        f"已登记偏离={len(registered_diversion)} "
+        f"core登记率={core_rate:.0f}% ({len(core_registered)}/{core_total})"
+    )
     print(f"[boundary] 报告 → {out_path}")
     return 0 if len(unregistered_tax) == 0 else 1
 

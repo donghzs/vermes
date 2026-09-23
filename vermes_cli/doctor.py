@@ -2061,7 +2061,7 @@ def run_doctor(args):
             _section("Prompt Sections")
             check_info(
                 f"{len(_rows)} section(s) loaded"
-                " — 禁用名单 VERMES_DISABLE_PROMPT_SECTIONS 计划于 S2.2 生效（工单 P3）"
+                " — 禁用名单 VERMES_DISABLE_PROMPT_SECTIONS 尚未实现（工单 P3 计划项，过滤逻辑未落地）"
             )
             for _r in _rows[:12]:
                 check_info(f"{_r['id']}  layer={_r['layer']}  source={_r['source']}")

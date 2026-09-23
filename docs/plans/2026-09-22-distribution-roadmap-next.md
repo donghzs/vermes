@@ -245,3 +245,11 @@ S2 注入载体 / S3 记忆后端 / S4 渠道迁移都是「接口不变、行�
 - T2/S2 审计 A1–A7：补登记 D-007/D-008、boundary 措辞、adapter 形态、plugin<builtin<user、  
   排期按真缺口、L-014 三护栏、回退开关先不做。  
 - **制度补丁**：boundary / canary 非绿 = 月度复查点**必处置项**（登记流程此前无强制力）。  
+
+## 8.9 Hermes 反馈落地（2026-09-23）
+
+- **G1 绿色边界**：boundary PASS **只覆盖 follow 区**；core 区不计税。报告与 G1 注记已写明。
+- **CORE_DIVERGE_LEDGER（manifest §7d）**：core 改动必须登记「为什么改 core + 上游对应面 + 为何不能走插件」。C-001~C-008 补齐自冻结锚起 **8** 个 core 文件（Hermes 点名 7 个 + 实测 `acp_adapter/server.py`）；S2 的 `system_prompt.py`/`prompt_processor_loader.py` 为 C-001/C-002。
+- **core 登记率进月度复查点**：`upstream_watch.py boundary` 输出 `core登记率=N%`；月度复查点与 boundary/canary 非绿同级为必处置项。
+- 卫生：删 `.ff.txt`/`.ff2.txt` 调试残留。
+- 措辞：`VERMES_DISABLE_PROMPT_SECTIONS` 明确为 **P3 计划项、过滤逻辑未落地**（doctor / loader 注释同步），对外文档不得写成「已具备」。  
