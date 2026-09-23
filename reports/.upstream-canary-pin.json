@@ -1,0 +1,11 @@
+{
+  "schema": "vermes.canary-pin/v1",
+  "upstream_tag": "v2026.9.14",
+  "upstream_commit": "345cd2b057",
+  "pinned_at": "2026-09-23",
+  "pinned_by": "QClaw @ main b8e1950510",
+  "upstream_repo": "~/.hermes/hermes-agent",
+  "next_review": "2026-12-23",
+  "bump_policy": "季度升钉；单独 PR，必须写明 旧钉点..新钉点 的对比区间与 takeover 清单",
+  "note": "禁止用 HEAD/main/master 等移动 ref 当判据（roadmap §8.4）。v2026.9.14 → 345cd2b057（本地上游仓实测）。"
+}

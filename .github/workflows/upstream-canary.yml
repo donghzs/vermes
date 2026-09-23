@@ -1,0 +1,142 @@
+name: Upstream Canary
+
+# 上游哨兵（roadmap §8.4）——**只告警，不阻塞发版**。
+#
+# 为什么是独立 lane：红因绝大多数在上游漂移（近 30 天约 1.4 万提交），
+# 不该拦住 Vermes 自己的发布。因此本 lane：
+#   · 不进 required checks；
+#   · canary 步骤失败不中断 job（continue-on-error），改为开/更 issue；
+#   · 未在 release 流程里被依赖。
+#
+# 为什么必须 pinned：判据是固定上游 tag，不是 HEAD。移动 ref 会让
+# 「每周红的原因」不可复现、无法归因。钉点唯一真源在
+# reports/.upstream-canary-pin.json —— 本文件**刻意不写死 tag**，
+# 避免两份真相。季度升钉 = 改那个 json，单独 PR 并写明对比区间。
+
+permissions:
+  contents: read
+  issues: write
+
+on:
+  # 每周一 03:17 UTC（北京时间周一上午）跑一次
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      pin:
+        description: '覆盖钉点 tag（留空=用 reports/.upstream-canary-pin.json）'
+        required: false
+        default: ''
+      strict:
+        description: 'strict：WARN 也判 FAIL'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  canary:
+    name: Pinned upstream canary
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # 只取所需元数据：tag + main 的 commit/tree，**不拉 blob**（--filter=blob:none）。
+      # 这里取 HEAD 只是为了「参考展示」，脚本明令禁止拿它当判据。
+      - name: Prepare upstream checkout (pinned tag)
+        env:
+          UPSTREAM_URL: https://github.com/NousResearch/hermes-agent.git
+          PIN_TAG: ${{ inputs.pin }}
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout --single-branch --branch main \
+            "$UPSTREAM_URL" hermes-agent
+          cd hermes-agent
+          git fetch --tags --filter=blob:none origin '+refs/tags/*:refs/tags/*'
+          PIN="${PIN_TAG:-$(python -c 'import json;print(json.load(open("../reports/.upstream-canary-pin.json"))["upstream_tag"])')}"
+          echo "钉点: $PIN"
+          git rev-parse --short "${PIN}^{commit}"
+
+      - name: Run canary (alert-only)
+        id: canary
+        continue-on-error: true
+        env:
+          PIN_TAG: ${{ inputs.pin }}
+        run: |
+          set -uo pipefail
+          args=()
+          [ -n "${PIN_TAG:-}" ] && args+=(--pin "$PIN_TAG")
+          [ "${{ inputs.strict }}" = "true" ] && args+=(--strict)
+          set +e
+          python scripts/upstream_canary.py \
+            --upstream-repo "$GITHUB_WORKSPACE/hermes-agent" \
+            --python "$(which python)" \
+            "${args[@]}"
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+          exit 0   # 告警语义：脚本判红由下一步开 issue，不炸 CI
+
+      - name: Read canary verdict
+        id: verdict
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          s = json.load(open("reports/.canary-state.json"))
+          print(f"verdict={s['verdict']}")
+          print(f"report={s['report']}")
+          PY
+
+      - name: Alert on non-green (issue)
+        if: steps.verdict.outputs.verdict != 'PASS'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const state = JSON.parse(fs.readFileSync('reports/.canary-state.json', 'utf8'));
+            const report = state.report;
+            const body = [
+              `## 上游哨兵 canary 结论：**${state.verdict}**`,
+              '',
+              `- Vermes HEAD: \`${state.meta.vermes_head}\``,
+              `- 上游钉点: \`${state.meta.pin_tag}\` → \`${state.meta.pin_commit}\``,
+              `- 上游 HEAD（参考，不作判据）: \`${state.meta.upstream_head}\``,
+              `- 报告: \`${report}\` (artifact)`,
+              '',
+              '| step | status | detail |',
+              '|---|---|---|',
+              ...state.steps.map(s => `| ${s.name} | ${s.status} | ${s.detail} |`),
+              '',
+              '> §8.4：pinned tag 固定，季度升钉走单独 PR；**只告警不阻塞发版**。',
+            ].join('\n');
+            const label = 'upstream-canary';
+            const existing = await github.rest.issues.listForRepo({
+              ...context.repo, labels: label, state: 'open',
+            });
+            if (existing.data.length) {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: existing.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                ...context.repo,
+                title: `[upstream-canary] ${state.verdict} ${new Date().toISOString().slice(0,10)}`,
+                labels: [label], body,
+              });
+            }
+
+      - name: Upload canary report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-canary-${{ github.run_id }}
+          path: reports/canary/
+          if-no-files-found: warn
