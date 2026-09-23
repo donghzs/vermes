@@ -57,7 +57,15 @@ class TestWL5WorkspaceBlock(unittest.TestCase):
 
     def test_non_git_dir_empty(self):
         from agent.workspace_facts import build_workspace_block
-        plain = Path(tempfile.mkdtemp(prefix="wl5-plain-"))
+        # WorkBuddy 2026-09-23：TMPDIR 若被指到 git 仓库内（如 $PWD/.pytest-tmp），
+        # mkdtemp 会落在仓库里 → build_workspace_block 正确识别 git 区 → 本测假红。
+        # 强制落在系统 /tmp（通常不在仓库内），并在断言前确认不在 git 区。
+        plain = Path(tempfile.mkdtemp(prefix="wl5-plain-", dir="/tmp"))
+        probe = plain
+        while probe != probe.parent:
+            if (probe / ".git").exists():
+                self.skipTest(f"临时目录仍落在 git 区: {plain}")
+            probe = probe.parent
         self.assertEqual(build_workspace_block(plain, platform="cli"), "")
 
     def test_messaging_without_terminal_cwd_skips(self):

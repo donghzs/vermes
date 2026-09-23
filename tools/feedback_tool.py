@@ -75,13 +75,64 @@ CORRECTION_SCHEMA = {
 }
 
 
+def _resolve_thumbs_kind(raw: str) -> str:
+    """Normalize the thumbs direction argument.
+
+    Accepts the documented ``"up"``/``"down"`` values plus legacy/UI
+    aliases (``like``/``dislike``, ``like``/``dislike``, numeric 1/0)
+    so caller-side schema drift degrades gracefully instead of
+    silently recording a meaningless thumbs_down with an empty target.
+    """
+    v = (raw or "").strip().lower()
+    if v in ("up", "like", "1", "positive"):
+        return "thumbs_up"
+    return "thumbs_down"
+
+
+def _resolve_feedback_target(target: str, **kwargs: Any) -> str:
+    """Fill in a meaningful target when the caller omitted one.
+
+    Falls back to ctx (task_id/session_id) injected by the tool
+    dispatcher so a down-vote with no explicit target still carries
+    enough signal to be useful to the evolution pipeline.
+    """
+    if target:
+        return target
+    ctx = kwargs.get("ctx") or {}
+    for key in ("task_id", "session_id"):
+        val = ctx.get(key) if hasattr(ctx, "get") else None
+        if val:
+            return f"target=<{key}:{val}>"
+    # Last resort: the dispatcher always passes task_id/session_id as
+    # bare kwargs even when they are empty strings — at least echo the
+    # session id so the event is not completely opaque.
+    for key in ("session_id", "task_id"):
+        val = kwargs.get(key)
+        if val:
+            return f"target=<{key}:{val}>"
+    return "(unspecified)"
+
+
+def _resolve_agent(kwargs: Any):
+    """Extract the agent object from dispatcher kwargs, if present.
+
+    ``model_tools.handle_function_call`` does not forward an ``agent``
+    kwarg into ``registry.dispatch`` (it only builds ``ctx``), so this
+    is typically ``None`` and ``record_user_feedback`` degrades to
+    empty ``session_id``/``turn_number`` — acceptable for now, but we
+    keep the lookup so a future dispatcher change picks it up for free.
+    """
+    return kwargs.get("agent")
+
+
 def thumbs(feedback: str, target: str, comment: str = "", **kwargs: Any) -> str:
     """记录点赞/点踩反馈，落库到 raw_events。"""
-    kind = "thumbs_up" if feedback == "up" else "thumbs_down"
+    kind = _resolve_thumbs_kind(feedback)
+    target = _resolve_feedback_target(target, **kwargs)
     try:
         from agent.feedback_learning import record_user_feedback
 
-        agent = kwargs.get("agent")
+        agent = _resolve_agent(kwargs)
         ok = record_user_feedback(kind, target, comment, agent=agent)
         if ok:
             return json.dumps({"success": True, "feedback": kind, "target": target})
@@ -98,10 +149,11 @@ def thumbs(feedback: str, target: str, comment: str = "", **kwargs: Any) -> str:
 
 def submit_correction(target: str, correction: str, **kwargs: Any) -> str:
     """记录用户纠错，落库到 raw_events。"""
+    target = _resolve_feedback_target(target, **kwargs)
     try:
         from agent.feedback_learning import record_user_feedback
 
-        agent = kwargs.get("agent")
+        agent = _resolve_agent(kwargs)
         ok = record_user_feedback("correction", target, correction, agent=agent)
         if ok:
             return json.dumps({"success": True, "target": target, "correction": correction})

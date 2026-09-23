@@ -94,3 +94,43 @@ def test_tool_handlers_return_success_json(VERMES_home):
     # 两条工具调用都应已落库
     assert _feedback_rows("feedback_thumbs_up")
     assert _feedback_rows("feedback_correction")
+
+
+def test_thumbs_kind_normalization():
+    """调用方 schema 漂移时优雅降级，不静默落无意义的 thumbs_down。"""
+    from tools.feedback_tool import _resolve_thumbs_kind
+
+    assert _resolve_thumbs_kind("up") == "thumbs_up"
+    assert _resolve_thumbs_kind("like") == "thumbs_up"
+    assert _resolve_thumbs_kind("1") == "thumbs_up"
+    assert _resolve_thumbs_kind("positive") == "thumbs_up"
+    assert _resolve_thumbs_kind("UP") == "thumbs_up"
+    assert _resolve_thumbs_kind("down") == "thumbs_down"
+    assert _resolve_thumbs_kind("dislike") == "thumbs_down"
+    assert _resolve_thumbs_kind("0") == "thumbs_down"
+    assert _resolve_thumbs_kind("") == "thumbs_down"
+    assert _resolve_thumbs_kind(None) == "thumbs_down"
+
+
+def test_feedback_target_fallback():
+    """target 缺省时回填 task/session，点踩不得落空 target。"""
+    from tools.feedback_tool import _resolve_feedback_target
+
+    assert _resolve_feedback_target("write_file") == "write_file"
+    assert _resolve_feedback_target("", ctx={"task_id": "T9"}) == "target=<task_id:T9>"
+    assert _resolve_feedback_target("", ctx={"session_id": "s-1"}) == "target=<session_id:s-1>"
+    assert _resolve_feedback_target("", session_id="s-2") == "target=<session_id:s-2>"
+    assert _resolve_feedback_target("") == "(unspecified)"
+
+
+def test_thumbs_handler_normalizes_legacy_feedback(VERMES_home):
+    """legacy 别名进来也要落成 thumbs_up，且 target 从 ctx 回填。"""
+    from tools.feedback_tool import thumbs
+
+    raw = thumbs("like", "", "", ctx={"session_id": "s-legacy"})
+    data = json.loads(raw)
+    assert data["success"] is True
+    assert data["feedback"] == "thumbs_up"
+    assert data["target"] == "target=<session_id:s-legacy>"
+    rows = _feedback_rows("feedback_thumbs_up")
+    assert rows and "s-legacy" in rows[0][2]
