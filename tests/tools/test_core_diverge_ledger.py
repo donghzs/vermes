@@ -65,8 +65,9 @@ def test_green_boundary_wording_present():
     assert "core 登记率" in text
 
 
-def test_disable_sections_wording_not_overclaimed():
-    """VERMES_DISABLE_PROMPT_SECTIONS 不得写成「已具备/已生效」。"""
+def test_disable_sections_wording_reflects_implementation():
+    """P3 已落地：doctor 不得再写「尚未实现」；须点名 env 并给出禁用列表。"""
     doctor = (ROOT / "vermes_cli" / "doctor.py").read_text(encoding="utf-8")
-    assert "尚未实现" in doctor
-    assert "计划于 S2.2 生效" not in doctor
+    assert "尚未实现" not in doctor
+    assert "VERMES_DISABLE_PROMPT_SECTIONS" in doctor
+    assert "已生效" in doctor

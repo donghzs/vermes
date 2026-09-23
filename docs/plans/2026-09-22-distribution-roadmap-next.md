@@ -252,4 +252,4 @@ S2 注入载体 / S3 记忆后端 / S4 渠道迁移都是「接口不变、行�
 - **CORE_DIVERGE_LEDGER（manifest §7d）**：core 改动必须登记「为什么改 core + 上游对应面 + 为何不能走插件」。C-001~C-008 补齐自冻结锚起 **8** 个 core 文件（Hermes 点名 7 个 + 实测 `acp_adapter/server.py`）；S2 的 `system_prompt.py`/`prompt_processor_loader.py` 为 C-001/C-002。
 - **core 登记率进月度复查点**：`upstream_watch.py boundary` 输出 `core登记率=N%`；月度复查点与 boundary/canary 非绿同级为必处置项。
 - 卫生：删 `.ff.txt`/`.ff2.txt` 调试残留。
-- 措辞：`VERMES_DISABLE_PROMPT_SECTIONS` 明确为 **P3 计划项、过滤逻辑未落地**（doctor / loader 注释同步），对外文档不得写成「已具备」。  
+- 措辞：`VERMES_DISABLE_PROMPT_SECTIONS` **P3 已落地**（2026-09-23，load_all 出口过滤 + 显式禁用打印）。此前「计划项未落地」措辞作废。  

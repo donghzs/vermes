@@ -2050,21 +2050,35 @@ def run_doctor(args):
             check_warn(f"{_active_memory_provider} check failed", str(_e))
 
     # Prompt 段清单（A7 可发现性 · Hermes 2026-09-23 补点 / roadmap §8.7）
-    # 禁用名单 VERMES_DISABLE_PROMPT_SECTIONS 若没有「能禁什么」的输出，对桌面用户
-    # 等于不存在——list_prompt_sections() 此前只有库函数 + 单测，零产品出口。
+    # P3 已落地：VERMES_DISABLE_PROMPT_SECTIONS 在 load_all 出口过滤，禁用段在此可见。
     # 纯增量：不改任何既有行；import 失败只 debug，doctor 须在半装配环境仍可跑完。
     try:
-        from agent.prompt_processor_loader import list_prompt_sections, missing_core_sections
+        from agent.prompt_processor_loader import (
+            DISABLE_ENV,
+            list_prompt_sections,
+            missing_core_sections,
+            parse_disabled_sections,
+        )
 
         _rows = list_prompt_sections()
         if _rows:
             _section("Prompt Sections")
             _missing = missing_core_sections()
-            _loaded_n = sum(1 for r in _rows if r.get("source") != "missing")
+            _disabled = parse_disabled_sections()
+            _loaded_n = sum(
+                1 for r in _rows
+                if r.get("source") != "missing" and not r.get("disabled_by_env")
+            )
             check_info(
                 f"{_loaded_n} section(s) loaded"
-                " — 禁用名单 VERMES_DISABLE_PROMPT_SECTIONS 尚未实现（工单 P3 计划项，过滤逻辑未落地）"
+                f" — 禁用名单 {DISABLE_ENV} 已生效（load_all 出口过滤 user/builtin/plugin）"
             )
+            if _disabled:
+                check_info(
+                    f"已按 env 禁用 {len(_disabled)} 段: "
+                    f"{','.join(sorted(_disabled))}"
+                )
+                check_info(f"解除：清空或改 {DISABLE_ENV} 后重启/diagnose")
             if _missing:
                 check_warn(
                     f"{len(_missing)} core section(s) MISSING",
@@ -2076,7 +2090,8 @@ def run_doctor(args):
                     "vermes_cli/processors/<id>.yaml 或重装 Vermes"
                 )
             for _r in _rows[:12]:
-                check_info(f"{_r['id']}  layer={_r['layer']}  source={_r['source']}")
+                _tag = " [disabled]" if _r.get("disabled_by_env") else ""
+                check_info(f"{_r['id']}  layer={_r['layer']}  source={_r['source']}{_tag}")
             if len(_rows) > 12:
                 check_info(f"... 其余 {len(_rows) - 12} 段省略")
     except Exception as _e:

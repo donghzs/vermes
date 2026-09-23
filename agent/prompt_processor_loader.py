@@ -487,11 +487,55 @@ def _parse_yaml(path: Path) -> Optional[PromptProcessor]:
     )
 
 
+# 禁用名单（工单 P3 定案 2026-09-23）：VERMES_DISABLE_PROMPT_SECTIONS=id1,id2
+# 逗号分隔；load_all 出口统一过滤 user/builtin/plugin；命中即不进 prompt。
+# 禁用必须可见（Hermes）：启动/诊断显式打印，禁止静默失效。
+DISABLE_ENV = "VERMES_DISABLE_PROMPT_SECTIONS"
+_disabled_announced_for: set[int] = set()  # generation → 已打印过禁用告示
+
+
+def parse_disabled_sections() -> frozenset[str]:
+    """解析 `VERMES_DISABLE_PROMPT_SECTIONS` → 禁用 id 集合（空=全开）。"""
+    raw = os.environ.get(DISABLE_ENV) or ""
+    return frozenset(s.strip() for s in raw.split(",") if s.strip())
+
+
+def _apply_disabled_filter(
+    procs: List[PromptProcessor], disabled: frozenset[str]
+) -> tuple[List[PromptProcessor], tuple[str, ...]]:
+    """出口过滤：按 effective_id 或 name 命中禁用名单。返回 (kept, hit_ids)。"""
+    if not disabled:
+        return procs, ()
+    kept: List[PromptProcessor] = []
+    hit: list[str] = []
+    for p in procs:
+        if p.effective_id in disabled or p.name in disabled:
+            hit.append(p.effective_id)
+        else:
+            kept.append(p)
+    return kept, tuple(sorted(set(hit)))
+
+
+def _announce_disabled(generation: int, hit: tuple[str, ...]) -> None:
+    """Hermes 可见性：禁用时显式打印，禁止静默失效（每 generation 一次）。"""
+    if not hit:
+        return
+    if generation in _disabled_announced_for:
+        return
+    _disabled_announced_for.add(generation)
+    logger.warning(
+        "已按 env 禁用 %d 段: %s",
+        len(hit),
+        ",".join(hit),
+    )
+
+
 def load_all_processors() -> List[PromptProcessor]:
     """Load all prompt processors: plugin < builtin < user (A4 同名优先级)。
 
-    Returns a list sorted by ``layer → priority → id``.
-    Cached; call :func:`invalidate_cache` to force reload.
+    `VERMES_DISABLE_PROMPT_SECTIONS` 命中的段在出口过滤（user/builtin/plugin
+    一视同仁），不进 prompt 也不进 cache。Returns a list sorted by
+    ``layer → priority → id``. Cached; call :func:`invalidate_cache` to force reload.
     """
     global _processors_cache, _processors_generation
 
@@ -564,10 +608,16 @@ def load_all_processors() -> List[PromptProcessor]:
         #    layer FIRST keeps the stable prefix byte-identical (prompt cache);
         #    id LAST removes any dependence on glob/dict iteration order, which
         #    would otherwise make the prompt prefix jitter between runs.
-        result = sorted(
+        merged = sorted(
             by_name.values(),
             key=lambda p: (p.layer_rank, p.effective_priority, p.effective_id),
         )
+
+        # 3b. P3 禁用名单出口过滤（Hermes 2026-09-23 拍板：load_all 统一过滤）
+        disabled = parse_disabled_sections()
+        result, hit = _apply_disabled_filter(merged, disabled)
+        _announce_disabled(_processors_generation, hit)
+
         _processors_cache = result
         logger.info("Loaded %d prompt processors (%d built-in, %d user)",
                      len(result),
@@ -608,6 +658,11 @@ def register_plugin_processor(
       同名优先级 plugin < builtin < user（A4）。
     """
     key = proc.effective_id
+    if key in parse_disabled_sections() or proc.name in parse_disabled_sections():
+        logger.warning(
+            "已按 env 禁用插件段，跳过注册: %s (owner=%s)", key, owner
+        )
+        return
     with _plugin_register_lock:
         if key in _plugin_processors:
             raise ValueError(
@@ -691,18 +746,25 @@ EXPECTED_PROCESSOR_YAMLS: frozenset[str] = frozenset({
 
 
 def missing_core_sections() -> List[str]:
-    """返回缺失的核心注入段 id（S2.4 后 YAML 是唯一真源，缺了不再有常量兜底）。"""
+    """返回缺失的核心注入段 id（S2.4 后 YAML 是唯一真源，缺了不再有常量兜底）。
+
+    被 `VERMES_DISABLE_PROMPT_SECTIONS` **禁用**的不算 missing（那是有意关闭）。
+    """
+    disabled = parse_disabled_sections()
     present = {p.effective_id for p in load_all_processors()}
     present.update(p.name for p in load_all_processors())
-    return [sid for sid in CORE_PROMPT_SECTION_IDS if sid not in present]
+    return [
+        sid for sid in CORE_PROMPT_SECTION_IDS
+        if sid not in present and sid not in disabled
+    ]
 
 
 def list_prompt_sections() -> List[Dict[str, Any]]:
     """列出当前全部 prompt 段（A7 可发现性，Hermes 2026-09-23 补点）。
 
-    禁用名单（`VERMES_DISABLE_PROMPT_SECTIONS`，工单 P3 计划项，**过滤逻辑尚未实现**）
-    若没有「能禁什么」的清单，
-    对桌面小白等于不存在。返回按 layer→priority→id 排序的描述行：
+    `VERMES_DISABLE_PROMPT_SECTIONS` 禁用的段以 `enabled=False` +
+    `disabled_by_env=True` 列出（P3 已落地：load_all 出口过滤 + 本清单可见）。
+    返回按 layer→priority→id 排序的描述行：
     id / layer / source(plugin|builtin|user|missing) / path / enabled。
 
     缺失的核心注入段（`CORE_PROMPT_SECTION_IDS`）也会以 source=missing 列出，
@@ -726,11 +788,30 @@ def list_prompt_sections() -> List[Dict[str, Any]]:
                 "path": str(p.source_path) if p.source_path else "-",
                 "enabled": p.enabled,
                 "plugin_callable": bool(p.metadata.get("plugin_callable")),
+                "disabled_by_env": False,
             }
         )
+    # 被 env 禁用的段不进 load_all，这里补行（否则 doctor 看不见「禁用了什么」）
+    disabled = parse_disabled_sections()
     present_ids = {r["id"] for r in rows}
+    present_names = {r["name"] for r in rows}
+    for did in sorted(disabled):
+        if did in present_ids or did in present_names:
+            continue
+        rows.append(
+            {
+                "id": did,
+                "name": did,
+                "layer": "stable",
+                "source": "builtin",
+                "path": f"env:{DISABLE_ENV}",
+                "enabled": False,
+                "plugin_callable": False,
+                "disabled_by_env": True,
+            }
+        )
     for sid in missing_core_sections():
-        if sid not in present_ids:
+        if sid not in present_ids and sid not in disabled:
             rows.append(
                 {
                     "id": sid,
@@ -740,6 +821,7 @@ def list_prompt_sections() -> List[Dict[str, Any]]:
                     "path": "-",
                     "enabled": False,
                     "plugin_callable": False,
+                    "disabled_by_env": False,
                 }
             )
     return rows
