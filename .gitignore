@@ -125,3 +125,7 @@ reports/dist-boundary-*.md
 reports/upstream-intent-*.md
 reports/upstream-watch-*.md
 reports/.canary-state.json
+
+# pytest 暂存 / scholarforge PDF 导出测试泄漏到仓库根的临时文件
+.pytest-tmp/
+toPdfViaTempFile*
