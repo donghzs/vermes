@@ -47,18 +47,22 @@ def _resolve_section(name: str) -> tuple[str, str, str]:
     """S2.2 注入统一入口：按 name 解析一块 prompt 段，返回 (content, source, content_hash)。
 
     来源优先级（A4）：user processor > builtin YAML > plugin 段 > `computer_use` 惰性兜底。
-    S2.4 已退役 `_PROCESSOR_FALLBACK` 硬编码 map；YAML 缺失 → `("", "missing", "")` + warning
-    （不静默）。`computer_use` 保留显式惰性分支（工单 §9b.1 哨兵坑）。
-    注意：`load_all_processors()` 已把 plugin/builtin/user 合并且 **user 覆盖 plugin、
-    builtin 覆盖 plugin**（`prompt_processor_loader.load_all_processors` 的 0/1/2 步），
-    所以这里单次遍历即可，不重复实现优先级。
+    S2.4 已退役 `_PROCESSOR_FALLBACK` 硬编码 map；YAML 缺失 → 可见占位 + warning。
+    P3 策略层：`disabled_section_ids()` 命中 → **不注入**（返回 `("", "disabled", "")`，
+    不塞 `[disabled]` 标记，防污染 A/B）。`computer_use` 保留显式惰性分支（§9b.1）。
+    注意：`load_all_processors()` 是事实层（不过滤）；plugin < builtin < user。
 
     `content_hash`：processor 在场时用 `governance.hash`（parse 时已算好
     `compute_manifest_hash` canonical 值）；惰性兜底用 sha256(content)。
     source 用于诊断（doctor / 排障），不进 prompt。
 
-    这是 S2 walking skeleton 的唯一注入入口（工单 §5 S2.2/S2.3/S2.4）。
+    这是 S2 walking skeleton 的唯一注入入口（工单 §5 S2.2–S2.4 + P3）。
     """
+    from agent.prompt_processor_loader import disabled_section_ids
+
+    # 策略旁路（装配侧唯一点）：命中即不注入，且不往 prompt 塞任何标记。
+    if name in disabled_section_ids():
+        return "", "disabled", ""
     try:
         for p in load_all_processors():
             if p.effective_id == name or p.name == name:

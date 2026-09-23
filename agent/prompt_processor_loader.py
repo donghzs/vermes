@@ -487,54 +487,90 @@ def _parse_yaml(path: Path) -> Optional[PromptProcessor]:
     )
 
 
-# 禁用名单（工单 P3 定案 2026-09-23）：VERMES_DISABLE_PROMPT_SECTIONS=id1,id2
-# 逗号分隔；load_all 出口统一过滤 user/builtin/plugin；命中即不进 prompt。
-# 禁用必须可见（Hermes）：启动/诊断显式打印，禁止静默失效。
+# ── 禁用名单策略（工单 P3 + Hermes 2026-09-23 重构）────────────────────
+# 事实层 = load_all_processors / 注册表（有哪些段、从哪来）。
+# 策略层 = disabled_section_ids()（这次要不要用）。
+# 消费方按语义各取所需：装配侧 _resolve_section 不注入；清单侧 enabled=False
+# 并保留真实 path/source；诊断侧 missing 排除被禁。禁止把过滤塞进事实层。
 DISABLE_ENV = "VERMES_DISABLE_PROMPT_SECTIONS"
+DISABLE_CONFIRM_ENV = "VERMES_DISABLE_PROMPT_SECTIONS_CONFIRM"
+
+# 关掉这些段 = 卸掉行为护栏。env 会沿进程树继承扩散（cron approval 31 hangs/hour
+# 同构事故），爆炸半径远超「操作者自担」。故安全段须二次确认 + 每次启动 WARNING。
+# 不用 governance.risk_tier 分类：editing_guardrails 等护栏在 YAML 里是 L1（低风险/
+# 可替换），与「禁用后的安全影响」不是同一维度。
+SAFETY_SECTION_IDS: frozenset[str] = frozenset({
+    "editing_guardrails",
+    "tool_use_enforcement",
+})
+
 _disabled_announced_for: set[int] = set()  # generation → 已打印过禁用告示
 
 
 def parse_disabled_sections() -> frozenset[str]:
-    """解析 `VERMES_DISABLE_PROMPT_SECTIONS` → 禁用 id 集合（空=全开）。"""
+    """解析 `VERMES_DISABLE_PROMPT_SECTIONS` 原始名单（不含量化安全确认）。"""
     raw = os.environ.get(DISABLE_ENV) or ""
     return frozenset(s.strip() for s in raw.split(",") if s.strip())
 
 
-def _apply_disabled_filter(
-    procs: List[PromptProcessor], disabled: frozenset[str]
-) -> tuple[List[PromptProcessor], tuple[str, ...]]:
-    """出口过滤：按 effective_id 或 name 命中禁用名单。返回 (kept, hit_ids)。"""
-    if not disabled:
-        return procs, ()
-    kept: List[PromptProcessor] = []
-    hit: list[str] = []
-    for p in procs:
-        if p.effective_id in disabled or p.name in disabled:
-            hit.append(p.effective_id)
-        else:
-            kept.append(p)
-    return kept, tuple(sorted(set(hit)))
+def disabled_section_ids() -> frozenset[str]:
+    """唯一策略源：返回**实际生效**的禁用 id 集合。
+
+    - 非安全段：env 直接生效（A/B 去段 / 关 builtin 噪音 / 排障）
+    - 安全段：须 `VERMES_DISABLE_PROMPT_SECTIONS_CONFIRM=1`，否则 WARNING 并不禁用
+    - 未知 id：不在本函数裁决（fail-open），由 `warn_unknown_disabled` 报
+    """
+    raw = parse_disabled_sections()
+    if not raw:
+        return frozenset()
+    confirm = os.environ.get(DISABLE_CONFIRM_ENV, "").strip().lower() in ("1", "true", "yes")
+    effective: set[str] = set()
+    blocked: list[str] = []
+    for sid in sorted(raw):
+        if sid in SAFETY_SECTION_IDS and not confirm:
+            blocked.append(sid)
+            continue
+        effective.add(sid)
+    if blocked:
+        logger.warning(
+            "安全段禁用被拒（须 %s=1 二次确认）: %s",
+            DISABLE_CONFIRM_ENV,
+            ",".join(blocked),
+        )
+    return frozenset(effective)
 
 
-def _announce_disabled(generation: int, hit: tuple[str, ...]) -> None:
-    """Hermes 可见性：禁用时显式打印，禁止静默失效（每 generation 一次）。"""
-    if not hit:
+def warn_unknown_disabled(known_ids: set[str]) -> tuple[str, ...]:
+    """名单里的 id 不存在（拼错/段已移除）→ WARNING，不阻塞启动。返回未知 id。"""
+    unknown = tuple(sorted(parse_disabled_sections() - known_ids))
+    if unknown:
+        logger.warning(
+            "已按 env 禁用名单中的未知段（不阻塞）: %s",
+            ",".join(unknown),
+        )
+    return unknown
+
+
+def _announce_disabled(effective: frozenset[str], generation: int) -> None:
+    """Hermes 可见性：禁用时显式打印，禁止静默失效（每 generation 一次）。
+    三件套之二：不注入（装配侧）+ 启动打印（本函数）+ doctor 可查（list）。"""
+    if not effective:
         return
     if generation in _disabled_announced_for:
         return
     _disabled_announced_for.add(generation)
     logger.warning(
         "已按 env 禁用 %d 段: %s",
-        len(hit),
-        ",".join(hit),
+        len(effective),
+        ",".join(sorted(effective)),
     )
 
 
 def load_all_processors() -> List[PromptProcessor]:
     """Load all prompt processors: plugin < builtin < user (A4 同名优先级)。
 
-    `VERMES_DISABLE_PROMPT_SECTIONS` 命中的段在出口过滤（user/builtin/plugin
-    一视同仁），不进 prompt 也不进 cache。Returns a list sorted by
+    **事实层**：返回合并后的全部段，**不做禁用过滤**（策略见
+    :func:`disabled_section_ids`）。Returns a list sorted by
     ``layer → priority → id``. Cached; call :func:`invalidate_cache` to force reload.
     """
     global _processors_cache, _processors_generation
@@ -613,17 +649,18 @@ def load_all_processors() -> List[PromptProcessor]:
             key=lambda p: (p.layer_rank, p.effective_priority, p.effective_id),
         )
 
-        # 3b. P3 禁用名单出口过滤（Hermes 2026-09-23 拍板：load_all 统一过滤）
-        disabled = parse_disabled_sections()
-        result, hit = _apply_disabled_filter(merged, disabled)
-        _announce_disabled(_processors_generation, hit)
+        # 3b. 策略旁路：只做可见性告示，**不过滤**（事实层保持完整）。
+        effective = disabled_section_ids()
+        known = {p.effective_id for p in merged} | {p.name for p in merged}
+        warn_unknown_disabled(known)
+        _announce_disabled(effective, _processors_generation)
 
-        _processors_cache = result
+        _processors_cache = merged
         logger.info("Loaded %d prompt processors (%d built-in, %d user)",
-                     len(result),
-                     sum(1 for p in result if p.builtin),
-                     sum(1 for p in result if not p.builtin))
-        return result
+                     len(merged),
+                     sum(1 for p in merged if p.builtin),
+                     sum(1 for p in merged if not p.builtin))
+        return merged
 
 
 def invalidate_cache() -> None:
@@ -658,11 +695,6 @@ def register_plugin_processor(
       同名优先级 plugin < builtin < user（A4）。
     """
     key = proc.effective_id
-    if key in parse_disabled_sections() or proc.name in parse_disabled_sections():
-        logger.warning(
-            "已按 env 禁用插件段，跳过注册: %s (owner=%s)", key, owner
-        )
-        return
     with _plugin_register_lock:
         if key in _plugin_processors:
             raise ValueError(
@@ -748,9 +780,9 @@ EXPECTED_PROCESSOR_YAMLS: frozenset[str] = frozenset({
 def missing_core_sections() -> List[str]:
     """返回缺失的核心注入段 id（S2.4 后 YAML 是唯一真源，缺了不再有常量兜底）。
 
-    被 `VERMES_DISABLE_PROMPT_SECTIONS` **禁用**的不算 missing（那是有意关闭）。
+    被策略层**实际禁用**的不算 missing（那是有意关闭，不是缺文件）。
     """
-    disabled = parse_disabled_sections()
+    disabled = disabled_section_ids()
     present = {p.effective_id for p in load_all_processors()}
     present.update(p.name for p in load_all_processors())
     return [
@@ -762,14 +794,15 @@ def missing_core_sections() -> List[str]:
 def list_prompt_sections() -> List[Dict[str, Any]]:
     """列出当前全部 prompt 段（A7 可发现性，Hermes 2026-09-23 补点）。
 
-    `VERMES_DISABLE_PROMPT_SECTIONS` 禁用的段以 `enabled=False` +
-    `disabled_by_env=True` 列出（P3 已落地：load_all 出口过滤 + 本清单可见）。
+    读**事实层**完整清单，再按策略标 `enabled=False` / `disabled_by_env=True`
+    —— 被禁段保留真实 path/source/layer，操作者能看见「禁了什么、原本是什么」。
     返回按 layer→priority→id 排序的描述行：
     id / layer / source(plugin|builtin|user|missing) / path / enabled。
 
     缺失的核心注入段（`CORE_PROMPT_SECTION_IDS`）也会以 source=missing 列出，
     避免「doctor 只看见存在的段」导致缺段静默（Hermes 2026-09-23）。
     """
+    disabled = disabled_section_ids()
     rows: List[Dict[str, Any]] = []
     for p in load_all_processors():
         src = p.metadata.get("source")
@@ -779,6 +812,7 @@ def list_prompt_sections() -> List[Dict[str, Any]]:
             source = "builtin"
         else:
             source = "user"
+        hit = p.effective_id in disabled or p.name in disabled
         rows.append(
             {
                 "id": p.effective_id,
@@ -786,32 +820,17 @@ def list_prompt_sections() -> List[Dict[str, Any]]:
                 "layer": p.layer,
                 "source": source,
                 "path": str(p.source_path) if p.source_path else "-",
-                "enabled": p.enabled,
+                "enabled": (p.enabled and not hit),
                 "plugin_callable": bool(p.metadata.get("plugin_callable")),
-                "disabled_by_env": False,
+                "disabled_by_env": hit,
+                "risk_tier": p.risk_tier,
+                "safety_section": p.effective_id in SAFETY_SECTION_IDS,
             }
         )
-    # 被 env 禁用的段不进 load_all，这里补行（否则 doctor 看不见「禁用了什么」）
-    disabled = parse_disabled_sections()
     present_ids = {r["id"] for r in rows}
     present_names = {r["name"] for r in rows}
-    for did in sorted(disabled):
-        if did in present_ids or did in present_names:
-            continue
-        rows.append(
-            {
-                "id": did,
-                "name": did,
-                "layer": "stable",
-                "source": "builtin",
-                "path": f"env:{DISABLE_ENV}",
-                "enabled": False,
-                "plugin_callable": False,
-                "disabled_by_env": True,
-            }
-        )
     for sid in missing_core_sections():
-        if sid not in present_ids and sid not in disabled:
+        if sid not in present_ids and sid not in present_names:
             rows.append(
                 {
                     "id": sid,
@@ -822,6 +841,8 @@ def list_prompt_sections() -> List[Dict[str, Any]]:
                     "enabled": False,
                     "plugin_callable": False,
                     "disabled_by_env": False,
+                    "risk_tier": "-",
+                    "safety_section": sid in SAFETY_SECTION_IDS,
                 }
             )
     return rows

@@ -70,4 +70,5 @@ def test_disable_sections_wording_reflects_implementation():
     doctor = (ROOT / "vermes_cli" / "doctor.py").read_text(encoding="utf-8")
     assert "尚未实现" not in doctor
     assert "VERMES_DISABLE_PROMPT_SECTIONS" in doctor
-    assert "已生效" in doctor
+    assert "disabled_section_ids" in doctor
+    assert "已按 env 禁用" in doctor
