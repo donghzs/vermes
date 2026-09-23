@@ -1,9 +1,9 @@
-"""S2.3 契约测：editing_guardrails 补 YAML + 15 键逐键字节等价。
+"""S2.3/S2.4 契约测：15 键逐键字节等价 + 漂移钉扎 + map 退役。
 
 工单 §5 S2.3 通过门：「每个键单独一次比对」。
-本文件对 15 键逐个断言 `_resolve_section` content == 其 source-of-truth
-（builtin YAML 或 `_PROCESSOR_FALLBACK` 常量），并钉住 editing_guardrails
-YAML 与常量字节等价（gold 不动字的前提）。
+S2.4：以 YAML 为准回写常量后退役 `_PROCESSOR_FALLBACK`；本文件对 15 键逐个断言
+`_resolve_section` content == builtin YAML/常量（两者应字节等价），并钉住
+`KNOWN_YAML_CONSTANT_DRIFT`（S2.4 后应为空集）。
 """
 
 from __future__ import annotations
@@ -59,14 +59,9 @@ CONSTANTS = {
     "openai_model": OPENAI_MODEL_EXECUTION_GUIDANCE,
 }
 
-# S2.3 实测：这 4 键的 builtin YAML 已领先硬编码常量（gold 走 YAML，故 gold 仍绿）。
-# 退役 `_PROCESSOR_FALLBACK`（S2.4）前必须先对齐或显式废弃常量侧。
-KNOWN_YAML_CONSTANT_DRIFT = frozenset({
-    "openai_model",
-    "scholarforge_workflow",
-    "task_completion",
-    "tool_use_enforcement",
-})
+# S2.4：4 键常量已以 builtin YAML 为准回写，双源漂移清空。
+# 此钉扎表保留为空集——若再漂移必须显式改此表（=重新引入双源）。
+KNOWN_YAML_CONSTANT_DRIFT = frozenset()
 
 
 @pytest.fixture(autouse=True)
@@ -108,8 +103,9 @@ def test_editing_guardrails_now_resolves_via_builtin_yaml():
 def test_each_key_content_matches_source_of_truth(name):
     """逐键一次比对（工单 §5 S2.3 通过门）：content 等于其生效源，且与薄包装字节等价。
 
-    生效源 = processor 在场用 processor（gold 也走这条）；否则 `_PROCESSOR_FALLBACK` 常量。
-    YAML 与常量的双源漂移单独钉住（KNOWN_YAML_CONSTANT_DRIFT），属 S2.4 前置情报。
+    生效源 = processor 在场用 processor（gold 也走这条）。
+    S2.4 退役 `_PROCESSOR_FALLBACK` 后：YAML 缺失 → missing；仅 computer_use 有 fallback-lazy。
+    YAML 与常量的双源漂移单独钉住（KNOWN_YAML_CONSTANT_DRIFT）。
     """
     expected_const = CONSTANTS[name]
     content, source, content_hash = sp._resolve_section(name)
@@ -123,9 +119,7 @@ def test_each_key_content_matches_source_of_truth(name):
         )
         assert content == proc.content
         assert content_hash == proc.content_hash
-    elif source == "fallback":
-        assert content == expected_const
-        assert content_hash == _sha256_of(content)
+        assert content == expected_const, f"{name}: YAML 与常量漂移（应改 KNOWN 表）"
     elif source == "fallback-lazy":
         assert name == "computer_use"
         assert content == COMPUTER_USE_GUIDANCE
@@ -135,7 +129,7 @@ def test_each_key_content_matches_source_of_truth(name):
 
 
 def test_yaml_constant_drift_catalog_pinned():
-    """钉住 YAML vs 常量漂移集合（S2.4 退役常量前的情报，变化必须显式改此表）。"""
+    """钉住 YAML vs 常量漂移集合（S2.4 后应为空集；变化必须显式改此表）。"""
     drifted = set()
     for name, const in CONSTANTS.items():
         content, source, _h = sp._resolve_section(name)
@@ -146,13 +140,14 @@ def test_yaml_constant_drift_catalog_pinned():
     )
 
 
-def test_all_15_keys_have_processor_or_fallback():
-    """15 键全部可解析且非空（missing 不允许）。"""
-    assert set(CONSTANTS) == set(sp._PROCESSOR_FALLBACK)
+def test_all_15_keys_have_processor():
+    """15 键全部经 processor 可解析且非空（missing 不允许；S2.4 起无 map 兜底）。"""
+    assert not hasattr(sp, "_PROCESSOR_FALLBACK"), "S2.4 应已删除 _PROCESSOR_FALLBACK"
     for name in CONSTANTS:
         content, source, _h = sp._resolve_section(name)
         assert content, f"{name} content 为空"
         assert source != "missing", f"{name} 解析为 missing"
+        assert source != "fallback", f"{name} 不应再走 map fallback"
 
 
 def test_all_call_sites_use_resolve_section():

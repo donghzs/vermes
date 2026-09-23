@@ -31,21 +31,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from agent.prompt_builder import (
-    DEFAULT_AGENT_IDENTITY,
-    EDITING_GUARDRAILS_GUIDANCE,
-    GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
-    VERMES_AGENT_HELP_GUIDANCE,
-    IMAGE_GENERATE_GUIDANCE,
-    ACADEMIC_SEARCH_GUIDANCE,
-    KANBAN_GUIDANCE,
-    MEMORY_GUIDANCE,
-    OPENAI_MODEL_EXECUTION_GUIDANCE,
     PLATFORM_HINTS,
-    SCHOLARFORGE_WORKFLOW_GUIDANCE,
-    SESSION_SEARCH_GUIDANCE,
-    SKILLS_GUIDANCE,
-    TASK_COMPLETION_GUIDANCE,
-    TOOL_USE_ENFORCEMENT_GUIDANCE,
     TOOL_USE_ENFORCEMENT_MODELS,
     TOOL_USE_ENFORCEMENT_EXCLUDED_MODELS,
 )
@@ -56,41 +42,22 @@ from agent.prompt_processor_loader import (
     get_generation as _processor_generation,
 )
 
-# Fallback map: when processors are available, these constants are used
-# only as fallback if a processor is missing or fails to load. This ensures
-# zero regression during the transition period.
-_PROCESSOR_FALLBACK = {
-    "identity": DEFAULT_AGENT_IDENTITY,
-    "help_guidance": VERMES_AGENT_HELP_GUIDANCE,
-    "task_completion": TASK_COMPLETION_GUIDANCE,
-    "editing_guardrails": EDITING_GUARDRAILS_GUIDANCE,
-    "memory_guidance": MEMORY_GUIDANCE,
-    "session_search": SESSION_SEARCH_GUIDANCE,
-    "skills_guidance": SKILLS_GUIDANCE,
-    "image_generate": IMAGE_GENERATE_GUIDANCE,
-    "academic_search": ACADEMIC_SEARCH_GUIDANCE,
-    "scholarforge_workflow": SCHOLARFORGE_WORKFLOW_GUIDANCE,
-    "kanban": KANBAN_GUIDANCE,
-    "computer_use": None,  # imported lazily below
-    "tool_use_enforcement": TOOL_USE_ENFORCEMENT_GUIDANCE,
-    "google_model": GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
-    "openai_model": OPENAI_MODEL_EXECUTION_GUIDANCE,
-}
-
 
 def _resolve_section(name: str) -> tuple[str, str, str]:
     """S2.2 注入统一入口：按 name 解析一块 prompt 段，返回 (content, source, content_hash)。
 
-    来源优先级（A4）：user processor > builtin YAML > plugin 段 > `_PROCESSOR_FALLBACK` 常量。
+    来源优先级（A4）：user processor > builtin YAML > plugin 段 > `computer_use` 惰性兜底。
+    S2.4 已退役 `_PROCESSOR_FALLBACK` 硬编码 map；YAML 缺失 → `("", "missing", "")` + warning
+    （不静默）。`computer_use` 保留显式惰性分支（工单 §9b.1 哨兵坑）。
     注意：`load_all_processors()` 已把 plugin/builtin/user 合并且 **user 覆盖 plugin、
     builtin 覆盖 plugin**（`prompt_processor_loader.load_all_processors` 的 0/1/2 步），
     所以这里单次遍历即可，不重复实现优先级。
 
     `content_hash`：processor 在场时用 `governance.hash`（parse 时已算好
-    `compute_manifest_hash` canonical 值）；fallback 常量用 sha256(content)。
+    `compute_manifest_hash` canonical 值）；惰性兜底用 sha256(content)。
     source 用于诊断（doctor / 排障），不进 prompt。
 
-    这是 S2 walking skeleton 的唯一注入入口（工单 §5 S2.2/S2.3）。
+    这是 S2 walking skeleton 的唯一注入入口（工单 §5 S2.2/S2.3/S2.4）。
     """
     try:
         for p in load_all_processors():
@@ -104,9 +71,8 @@ def _resolve_section(name: str) -> tuple[str, str, str]:
                 return p.content, source, p.content_hash
     except Exception as e:
         logger.debug("processor load failed for %s: %s", name, e)
-    fallback = _PROCESSOR_FALLBACK.get(name)
-    if fallback is not None:
-        return fallback, "fallback", _sha256_of(fallback)
+    # §9b.1 哨兵坑：computer_use 的 map 值曾是 None（惰性导入哨兵，不是「无兜底」）。
+    # 退役 map 后必须保留显式惰性分支，否则 YAML 缺失时 guidance 静默消失。
     if name == "computer_use":
         from agent.prompt_builder import COMPUTER_USE_GUIDANCE
         return COMPUTER_USE_GUIDANCE, "fallback-lazy", _sha256_of(COMPUTER_USE_GUIDANCE)
@@ -121,12 +87,10 @@ def _sha256_of(text: str) -> str:
 
 
 def _proc_or_default(name: str) -> str:
-    """Get processor content by name, with hardcoded constant fallback.
+    """薄包装：返回 `_resolve_section(name)[0]`（兼容/测试用）。
 
-    All 13 guidance injection points MUST use this function instead of
-    bare _get_processor() — if a YAML file is missing/corrupt, the
-    guidance silently disappears from the system prompt. This function
-    guarantees the constant is always present.
+    S2.3 起注入点一律走 `_resolve_section`；S2.4 退役硬编码 map 后，
+    除 `computer_use` 惰性兜底外，YAML 缺失返回 `""` 并打 warning。
     """
     content, _source, _h = _resolve_section(name)
     return content
@@ -257,7 +221,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _soul_loaded = True
 
     if not _soul_loaded:
-        # S2.2 walking skeleton：identity 走统一注入入口（processor 优先 + 常量兜底）。
+        # S2.2 walking skeleton：identity 走统一注入入口（YAML processor）。
         # 与 `_proc_or_default("identity")` 字节等价；额外暴露 source/content_hash 供诊断。
         stable_parts.append(_resolve_section("identity")[0])
 

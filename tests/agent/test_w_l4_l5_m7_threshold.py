@@ -16,10 +16,15 @@ class TestWL4EditingGuardrails(unittest.TestCase):
         self.assertIn("git commit", g)
         self.assertIn("git push", g)
 
-    def test_processor_fallback_registered(self):
+    def test_yaml_constant_equivalent(self):
+        """S2.4：map 已退役；钉住 editing_guardrails YAML 与常量字节等价。"""
+        import yaml
+        from pathlib import Path
         from agent.prompt_builder import EDITING_GUARDRAILS_GUIDANCE
-        import agent.system_prompt as sp
-        self.assertIs(sp._PROCESSOR_FALLBACK.get("editing_guardrails"), EDITING_GUARDRAILS_GUIDANCE)
+
+        ypath = Path(__file__).resolve().parents[2] / "vermes_cli" / "processors" / "editing_guardrails.yaml"
+        data = yaml.safe_load(ypath.read_text(encoding="utf-8"))
+        self.assertEqual(data["content"], EDITING_GUARDRAILS_GUIDANCE)
 
     def test_normal_git_commit_not_blocked_by_approval(self):
         """W-L4 提示层；硬闸后置 —— 普通 commit 不进 approval 危险清单。"""

@@ -2,7 +2,7 @@
 
 工单 §5：统一注入入口 `_resolve_section` + 只迁 `identity` 一块。
 硬门槛：gold 逐字相同由 `test_s2_gold` / `scripts/s2_snapshot.py --check` 把关；
-本文件钉住入口三元组、字节等价、canonical hash、fallback 可解释性、
+本文件钉住入口三元组、字节等价、canonical hash、S2.4 map 退役后的 missing 路径、
 computer_use 惰性哨兵，以及真注入路径。
 """
 
@@ -81,23 +81,20 @@ def test_identity_source_builtin_and_canonical_hash():
     assert content == proc.content
 
 
-def test_fallback_path_hash_is_sha256_of_content(monkeypatch):
-    """对照组判别力：hide YAML 后 fallback 的 hash == sha256(content)。"""
-    from agent.prompt_builder import EDITING_GUARDRAILS_GUIDANCE
+def test_missing_path_after_fallback_retired(monkeypatch, caplog):
+    """S2.4：hide YAML 后非 computer_use 键走 missing（不再有 map 常量兜底）。"""
+    from agent.prompt_builder import DEFAULT_AGENT_IDENTITY, EDITING_GUARDRAILS_GUIDANCE
 
-    # hide 后 editing_guardrails 回落常量（S2.3 补了 YAML，平时 source=builtin）
     _hide_processors(monkeypatch)
-    content, source, content_hash = sp._resolve_section("editing_guardrails")
-    assert source == "fallback"
-    assert content == EDITING_GUARDRAILS_GUIDANCE
-    assert content_hash == _sha256_of(content)
-    assert _HEX64.match(content_hash)
+    with caplog.at_level("WARNING", logger="agent.system_prompt"):
+        content, source, content_hash = sp._resolve_section("editing_guardrails")
+    assert (content, source, content_hash) == ("", "missing", "")
+    assert content != EDITING_GUARDRAILS_GUIDANCE
 
-    # identity 同样走 fallback 路径
-    content2, source2, hash2 = sp._resolve_section("identity")
-    assert source2 == "fallback"
-    assert content2 == sp._PROCESSOR_FALLBACK["identity"]
-    assert hash2 == _sha256_of(content2)
+    with caplog.at_level("WARNING", logger="agent.system_prompt"):
+        content2, source2, hash2 = sp._resolve_section("identity")
+    assert (content2, source2, hash2) == ("", "missing", "")
+    assert content2 != DEFAULT_AGENT_IDENTITY
 
 
 def test_missing_key_returns_empty_and_warns(monkeypatch, caplog):
@@ -112,19 +109,18 @@ def test_missing_key_returns_empty_and_warns(monkeypatch, caplog):
 
 
 def test_computer_use_lazy_sentinel(monkeypatch):
-    """§9b.1 哨兵坑：`computer_use` 键不得删；无 processor 时走 fallback-lazy。"""
+    """§9b.1 哨兵坑：map 已退役，但 computer_use 显式惰性分支必须保留。"""
     from agent.prompt_builder import COMPUTER_USE_GUIDANCE
 
-    # 防删键：必须仍在 map 里，且值为 None（惰性导入哨兵，不是字符串常量）
-    assert "computer_use" in sp._PROCESSOR_FALLBACK
-    assert sp._PROCESSOR_FALLBACK["computer_use"] is None
+    assert not hasattr(sp, "_PROCESSOR_FALLBACK"), "S2.4 应已删除 _PROCESSOR_FALLBACK"
 
-    # 无 processor 时的惰性路径
+    # 无 processor 时的惰性路径：hash == sha256(content)
     _hide_processors(monkeypatch)
     content, source, content_hash = sp._resolve_section("computer_use")
     assert source == "fallback-lazy"
     assert content == COMPUTER_USE_GUIDANCE
     assert content_hash == _sha256_of(content)
+    assert _HEX64.match(content_hash)
 
 
 def test_build_system_prompt_parts_stable_contains_identity(monkeypatch):
@@ -181,7 +177,9 @@ def test_build_system_prompt_parts_stable_contains_identity(monkeypatch):
 
 def test_all_keys_proc_or_default_matches_resolve_section():
     """13+ 调用点零回归：全部 15 键 `_proc_or_default` == `_resolve_section` content。"""
-    keys = list(sp._PROCESSOR_FALLBACK.keys())
+    from tests.tools.test_s23_migrate_sections import CONSTANTS
+
+    keys = list(CONSTANTS.keys())
     assert len(keys) == 15, f"预期 15 键，实测 {len(keys)}：{keys}"
     for name in keys:
         assert sp._proc_or_default(name) == sp._resolve_section(name)[0], f"键 {name} 字节不等价"

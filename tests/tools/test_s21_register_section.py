@@ -201,11 +201,18 @@ def test_list_prompt_sections_discoverability():
 
 
 def test_computer_use_fallback_is_lazy_sentinel():
-    """computer_use: None 是惰性导入哨兵，不是「无兜底」——退役 _PROCESSOR_FALLBACK 前必读。"""
+    """§9b.1：computer_use 保留显式惰性分支；S2.4 退役 map 后仍须有兜底。"""
     import agent.system_prompt as sp
 
-    assert "computer_use" in sp._PROCESSOR_FALLBACK
-    assert sp._PROCESSOR_FALLBACK["computer_use"] is None
-    # 删键 / 填假常量都会丢兜底语义
-    text = sp._proc_or_default("computer_use")
+    assert not hasattr(sp, "_PROCESSOR_FALLBACK"), "S2.4 应已删除 _PROCESSOR_FALLBACK"
+    # map 退役后，YAML 缺失时 computer_use 走 fallback-lazy，不得静默消失
+    original = sp.load_all_processors
+    sp.load_all_processors = lambda: []
+    try:
+        text = sp._proc_or_default("computer_use")
+        content, source, _h = sp._resolve_section("computer_use")
+    finally:
+        sp.load_all_processors = original
+    assert source == "fallback-lazy", f"实测 source={source}"
     assert text and len(text) > 50, "computer_use 惰性兜底必须仍能取到 guidance"
+    assert content == text
