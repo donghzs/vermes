@@ -178,6 +178,17 @@ S2.2（迁 1 个静态块试点）起才动注入点；每步必须过 `tests/to
 | 对照组判别力 | ✅ 入 §2.1 纪律 + 工单；Hermes 侧真源 `falsifying-with-controls.md` |
 | 提交后重跑 boundary | ✅ 事实更正：43 条脏项已分批入库（`32cc1d9826` / `c79fafe827` / `a24455ba05`）；`prompt_processor_loader.py` 属 **core 区**不产 follow 税。当场 `boundary`：**commits=64 未登记税=0 已登记偏离=48** |
 
+### 4.6 WorkBuddy 核验收口（2026-09-23）
+
+| 项 | 处置 |
+|---|---|
+| gold 判别力双探针变异 | ✅ 变异 A（gemini 改名）仅 S17 红；变异 B（system_message 不落 context）仅 S11 红。gold 不是装饰 |
+| A7 只有库函数无产品出口 | ✅ WorkBuddy `f7e7cce147`：doctor「Prompt Sections」节（33 段，100% stable —— context 全空是结构性的） |
+| doctor 必崩 + 49 红 | ✅ 根因 print→logger 遗留 `end=`/`flush=`，`_log_shim` 只 patch `info()` 不 patch `_log()`。修 shim 层：49 failed → **73 passed**，doctor 119 行跑完 |
+| grep 假阴性真凶 | ✅ WorkBuddy Bash 的 `grep` **shim** 把 `\|` 当字面竖线（shim=0 / 原生=6）。此前 BSD/作用域两说都是部分真相。多关键词用 Grep 工具或 `/usr/bin/grep` |
+| **web_dist 半更新** | **拍板：整批入库**（`4863e19ef5`）。web_dist 是发布真源，禁 `git rm --cached`。对齐后 index.html 5 个引用全在盘，11 组 hash 识别为 rename |
+| **是否 push** | **拍板：push**（本地 8 提交，含四批交付 + 审计/归档） |
+
 ---
 
 ## 5. 证据索引
