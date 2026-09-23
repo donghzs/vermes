@@ -1,16 +1,17 @@
 {
   "schema": "vermes.s2-gold/v1",
   "version": "gold",
-  "scenario_count": 16,
-  "unique_stable_fingerprints": 13,
-  "unique_context_fingerprints": 1,
-  "coverage_note": "model 维只在 model_affinity 模式命中时分流；context 段当前恒空（无 layer:context 的 YAML + skip_context_files）。见工单 §9c。",
+  "scenario_count": 17,
+  "unique_stable_fingerprints": 14,
+  "unique_context_fingerprints": 2,
+  "coverage_note": "S01-S16 为 pairwise 主矩阵；S17 为 model 维探针（gemini 命中 google_model）；S11 带 system_message 使 context 非空。qwen-max/claude-sonnet/local-qwen 不命中 model_affinity 时 stable 全同。见工单 §9c。",
   "dimensions": {
     "model": [
       "qwen-max",
       "gpt-4o",
       "claude-sonnet",
-      "local-qwen"
+      "local-qwen",
+      "gemini-2.5-pro"
     ],
     "platform": [
       "cli",
@@ -37,6 +38,7 @@
       "tools": [
         "web_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "e2ffcc0222c11b19ae62fdb6027f003dd231c8c1be436f8796a3441cdf724187",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -61,6 +63,7 @@
         "terminal",
         "skill_manage"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "e1ea7f8eec570497582b8c5d808fb2e43916183e82929d759ad45a836606ad4b",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -91,6 +94,7 @@
         "scholarforge_write",
         "scholarforge_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "592aa5b5a6379b41a8ed57890377cd3edb2f11f9070271ba60c9aec6fb834e29",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -121,6 +125,7 @@
         "scholarforge_write",
         "scholarforge_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "453f439a9d29625ce6aad42c8eb68aebee3cd6b57a3af5a7c5b51bcfcb6ce7d8",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -145,6 +150,7 @@
         "terminal",
         "skill_manage"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "a09b8c3af4d68b156ae2b10bd5b26bb32ae24ba9268176c5038408ba9c903fcb",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -175,6 +181,7 @@
         "scholarforge_write",
         "scholarforge_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "4159dbf7d2717b6f0ab6a5ae7822638d839ee752daeaca90b8e5c9039b1010e4",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -194,6 +201,7 @@
       "tools": [
         "web_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "bc21d9a69803dc5deb8d45cd5ceddcf793e6d4db8354d1de08467032e587ff98",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -218,6 +226,7 @@
         "terminal",
         "skill_manage"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "69813f792611a45dacbb2e586b2ef6496d7cfe6e9a526af42ec18a6c6a3d5a3c",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -248,6 +257,7 @@
         "scholarforge_write",
         "scholarforge_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "a080e61bd3b6293d7083ddb9cccd77b0a7d8f5dcc88b6b2f6f134db53c5d088c",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -267,6 +277,7 @@
       "tools": [
         "web_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "188784b126cba12265c8f6513272f30598b5d4261bfa44b119a70866d6bba567",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -291,14 +302,15 @@
         "terminal",
         "skill_manage"
       ],
+      "system_message": "S2 context-layer probe: caller-supplied system_message must land in context.",
       "sha256": {
         "stable": "014fab589bee4e78737639bf5cfe2a2c0fcfabe2714cf336d8536c7f2198232c",
-        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "context": "cf7ad51bc89a0dc0d262d861385809d5899b2eeec8fd5d1c32528cc2ab107fb0",
         "volatile": "c8f09fb2d50aa5c0b7fa5b74f4fa86b99edea3d679abb9ccc97e620210342203"
       },
       "bytes": {
         "stable": 8116,
-        "context": 0,
+        "context": 76,
         "volatile": 573
       }
     },
@@ -310,6 +322,7 @@
       "tools": [
         "web_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "4e9fc4c69e3c86401861776f78cb0da2881ea5b146f5b624ad10853116253a7b",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -340,6 +353,7 @@
         "scholarforge_write",
         "scholarforge_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "a080e61bd3b6293d7083ddb9cccd77b0a7d8f5dcc88b6b2f6f134db53c5d088c",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -364,6 +378,7 @@
         "terminal",
         "skill_manage"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "e1ea7f8eec570497582b8c5d808fb2e43916183e82929d759ad45a836606ad4b",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -383,6 +398,7 @@
       "tools": [
         "web_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "ba9342d4ef89150e5d7e7e685abea4bae25b3c14549e0178ab9b8bb9e584d030",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -413,6 +429,7 @@
         "scholarforge_write",
         "scholarforge_search"
       ],
+      "system_message": null,
       "sha256": {
         "stable": "453f439a9d29625ce6aad42c8eb68aebee3cd6b57a3af5a7c5b51bcfcb6ce7d8",
         "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -422,6 +439,31 @@
         "stable": 19303,
         "context": 0,
         "volatile": 570
+      }
+    },
+    {
+      "id": "S17",
+      "model": "gemini-2.5-pro",
+      "platform": "gateway",
+      "toolset": "standard",
+      "tools": [
+        "web_search",
+        "memory",
+        "read_file",
+        "write_file",
+        "terminal",
+        "skill_manage"
+      ],
+      "system_message": null,
+      "sha256": {
+        "stable": "28e7a7b47231520578b0e9d4034419caa721e7f46d1d9115272cda93da839934",
+        "context": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "volatile": "7f82d024c7f0a5f8e9ceeff60ec4ff5195161bd575f0fddfe680bbb50c35fca1"
+      },
+      "bytes": {
+        "stable": 8470,
+        "context": 0,
+        "volatile": 574
       }
     }
   ]

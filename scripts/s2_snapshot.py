@@ -36,6 +36,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -62,7 +63,7 @@ def normalize_volatile(text: str) -> str:
 # ── 场景矩阵（pairwise，与 A/B 语料 fixed_context 同维）──────────────────
 # model 4 × platform 4 × toolset 3 全组合 48；下表 16 条覆盖全部两两组合。
 # 改这张表 = 改 gold 指纹，必须同步升 reports/s2/ 版本目录。
-MODELS = ("qwen-max", "gpt-4o", "claude-sonnet", "local-qwen")
+MODELS = ("qwen-max", "gpt-4o", "claude-sonnet", "local-qwen", "gemini-2.5-pro")
 PLATFORMS = ("cli", "gateway", "feishu", "telegram")
 TOOLSETS: dict[str, tuple[str, ...]] = {
     "minimal": ("web_search",),
@@ -76,32 +77,40 @@ TOOLSETS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-SCENARIOS: list[tuple[str, str, str, str]] = [
-    ("S01", "qwen-max", "cli", "minimal"),
-    ("S02", "qwen-max", "gateway", "standard"),
-    ("S03", "qwen-max", "feishu", "full"),
-    ("S04", "qwen-max", "telegram", "full"),
-    ("S05", "gpt-4o", "cli", "standard"),
-    ("S06", "gpt-4o", "gateway", "full"),
-    ("S07", "gpt-4o", "feishu", "minimal"),
-    ("S08", "gpt-4o", "telegram", "standard"),
-    ("S09", "claude-sonnet", "cli", "full"),
-    ("S10", "claude-sonnet", "gateway", "minimal"),
-    ("S11", "claude-sonnet", "feishu", "standard"),
-    ("S12", "claude-sonnet", "telegram", "minimal"),
-    ("S13", "local-qwen", "cli", "full"),
-    ("S14", "local-qwen", "gateway", "standard"),
-    ("S15", "local-qwen", "feishu", "minimal"),
-    ("S16", "local-qwen", "telegram", "full"),
+# (id, model, platform, toolset, system_message|None)
+# system_message 非空 → context 段非空（补 QClaw/Hermes 指出的 context 零覆盖盲区）。
+SCENARIOS: list[tuple[str, str, str, str, Optional[str]]] = [
+    ("S01", "qwen-max", "cli", "minimal", None),
+    ("S02", "qwen-max", "gateway", "standard", None),
+    ("S03", "qwen-max", "feishu", "full", None),
+    ("S04", "qwen-max", "telegram", "full", None),
+    ("S05", "gpt-4o", "cli", "standard", None),
+    ("S06", "gpt-4o", "gateway", "full", None),
+    ("S07", "gpt-4o", "feishu", "minimal", None),
+    ("S08", "gpt-4o", "telegram", "standard", None),
+    ("S09", "claude-sonnet", "cli", "full", None),
+    ("S10", "claude-sonnet", "gateway", "minimal", None),
+    # S11：context 层探针 —— 唯一带 system_message 的场景，钉住 context 段非空
+    ("S11", "claude-sonnet", "feishu", "standard",
+     "S2 context-layer probe: caller-supplied system_message must land in context."),
+    ("S12", "claude-sonnet", "telegram", "minimal", None),
+    ("S13", "local-qwen", "cli", "full", None),
+    ("S14", "local-qwen", "gateway", "standard", None),
+    ("S15", "local-qwen", "feishu", "minimal", None),
+    ("S16", "local-qwen", "telegram", "full", None),
+    # S17：model 维探针 —— gemini 命中 google_model（patterns: gemini/gemma），
+    # 与 qwen-max/claude-sonnet/local-qwen 的 stable 必须不同，否则 model 分支零覆盖。
+    ("S17", "gemini-2.5-pro", "gateway", "standard", None),
 ]
 
-# 覆盖口径（QClaw 2026-09-23 指出，勿误读）：
-# - 16 场景 pairwise 盖住 model×platform / model×toolset / platform×toolset 全部两两对；
-# - 但 `model_affinity` 只在 gpt/gemini/grok 等模式命中时才分流（openai_model/google_model）。
-#   qwen-max / claude-sonnet / local-qwen 当前**不命中任何 model processor** → stable 全同，
-#   故唯一 stable 指纹 = 13（S02≡S14、S04≡S16、S09≡S13）。**不得**写成「16 条独立护栏」。
-# - context 段恒空：快照 skip_context_files + 36 个 YAML 无 layer:context。
-#   首次把块迁进 context 层前，必须先加 context 覆盖场景并升 gold（工单 §9c）。
+# 覆盖口径（QClaw/Hermes 2026-09-23，勿误读）：
+# - S01–S16 是 pairwise 主矩阵（对齐 A/B 语料 fixed_context 四模型）；S17 是 model 维探针。
+# - `model_affinity` 只在 gpt/gemini/grok 等模式命中时才分流（openai_model/google_model）。
+#   qwen-max / claude-sonnet / local-qwen **不命中任何 model processor** → 三者 stable 全同
+#   （S02≡S14、S04≡S16、S09≡S13）。唯一 stable 指纹以 manifest.unique_stable_fingerprints 为准，
+#   **不得**写成「N 条独立护栏」。
+# - S11 用 system_message 把 context 段撑非空；迁块进 context 层前以此为护栏。
+# - 其余场景 context 仍空（skip_context_files + 无 layer:context 的 YAML）。
 
 
 def _sha256(text: str) -> str:
@@ -122,8 +131,17 @@ def _make_tool_defs(*names: str) -> list:
     ]
 
 
-def build_one(sid: str, model: str, platform: str, toolset: str) -> dict[str, str]:
-    """真 AIAgent + mock 网络/工具，产出三段 prompt（volatile 已归一）。"""
+def build_one(
+    sid: str,
+    model: str,
+    platform: str,
+    toolset: str,
+    system_message: Optional[str] = None,
+) -> dict[str, str]:
+    """真 AIAgent + mock 网络/工具，产出三段 prompt（volatile 已归一）。
+
+    ``system_message`` 非空 → 落 context 段（S11 context 层探针）。
+    """
     os.environ["VERMES_SESSION_ID"] = f"s2-gold-{sid.lower()}"
     from run_agent import AIAgent
     from agent.system_prompt import build_system_prompt_parts
@@ -143,7 +161,7 @@ def build_one(sid: str, model: str, platform: str, toolset: str) -> dict[str, st
             model=model,
             platform=platform,
         )
-        parts = build_system_prompt_parts(agent)
+        parts = build_system_prompt_parts(agent, system_message=system_message)
     return {
         "stable": parts.get("stable", ""),
         "context": parts.get("context", ""),
@@ -164,8 +182,10 @@ def snapshot_all(home: Path) -> dict:
         os.environ.pop(key, None)
 
     scenarios = []
-    for sid, model, platform, toolset in SCENARIOS:
-        parts = build_one(sid, model, platform, toolset)
+    for sc in SCENARIOS:
+        sid, model, platform, toolset = sc[:4]
+        system_message = sc[4] if len(sc) > 4 else None
+        parts = build_one(sid, model, platform, toolset, system_message=system_message)
         scenarios.append(
             {
                 "id": sid,
@@ -173,6 +193,7 @@ def snapshot_all(home: Path) -> dict:
                 "platform": platform,
                 "toolset": toolset,
                 "tools": list(TOOLSETS[toolset]),
+                "system_message": system_message,
                 "sha256": {k: _sha256(v) for k, v in parts.items()},
                 "bytes": {k: len(v.encode("utf-8")) for k, v in parts.items()},
                 "parts": parts,
@@ -188,8 +209,9 @@ def snapshot_all(home: Path) -> dict:
         "unique_stable_fingerprints": unique_stable,
         "unique_context_fingerprints": unique_context,
         "coverage_note": (
-            "model 维只在 model_affinity 模式命中时分流；"
-            "context 段当前恒空（无 layer:context 的 YAML + skip_context_files）。"
+            "S01-S16 为 pairwise 主矩阵；S17 为 model 维探针（gemini 命中 google_model）；"
+            "S11 带 system_message 使 context 非空。"
+            "qwen-max/claude-sonnet/local-qwen 不命中 model_affinity 时 stable 全同。"
             "见工单 §9c。"
         ),
         "dimensions": {

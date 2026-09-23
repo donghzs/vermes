@@ -32,7 +32,7 @@ def test_gold_dir_exists_and_wellformed():
     data = json.loads(manifest.read_text(encoding="utf-8"))
     assert data.get("schema") == "vermes.s2-gold/v1"
     assert data.get("scenario_count", 0) >= 12, "pairwise 场景应 ≥12"
-    # 覆盖口径（QClaw 2026-09-23）：16 场景 ≠ 16 条独立 stable 护栏
+    # 覆盖口径（QClaw 2026-09-23）：N 场景 ≠ N 条独立 stable 护栏
     assert "unique_stable_fingerprints" in data, "manifest 必须写明唯一 stable 指纹数"
     assert 1 <= data["unique_stable_fingerprints"] <= data["scenario_count"]
     for sc in data["scenarios"]:
@@ -40,6 +40,38 @@ def test_gold_dir_exists_and_wellformed():
             p = GOLD_DIR / f"{sc['id']}.{tier}.txt"
             assert p.exists(), f"缺场景文件 {p.name}"
             assert sc["sha256"].get(tier), f"{sc['id']} 缺 {tier} sha256"
+
+
+def test_s11_is_context_nonempty_probe():
+    """S11 是唯一 context 非空探针（补 context 层零覆盖盲区）。"""
+    import json
+
+    data = json.loads((GOLD_DIR / "manifest.json").read_text(encoding="utf-8"))
+    by_id = {s["id"]: s for s in data["scenarios"]}
+    assert "S11" in by_id, "缺 S11 context 探针"
+    assert by_id["S11"]["bytes"]["context"] > 0, "S11 context 必须非空"
+    # 其余场景 context 仍可为空；但至少要有 1 条非空
+    n_ctx = sum(1 for s in data["scenarios"] if s["bytes"]["context"] > 0)
+    assert n_ctx >= 1
+
+
+def test_s17_is_model_affinity_probe():
+    """S17（gemini）stable 必须区别于不命中 model_affinity 的模型（补 model 零覆盖盲区）。"""
+    import json
+
+    data = json.loads((GOLD_DIR / "manifest.json").read_text(encoding="utf-8"))
+    by_id = {s["id"]: s for s in data["scenarios"]}
+    assert "S17" in by_id, "缺 S17 model 探针"
+    assert "gemini" in by_id["S17"]["model"].lower()
+    # S01(qwen-max) 与 S17 同为「无 gpt/openai_model」以外的分支，但 S17 应命中 google_model
+    # → stable 指纹必须不同（否则 model 分支零覆盖）
+    assert by_id["S17"]["sha256"]["stable"] != by_id["S01"]["sha256"]["stable"], (
+        "S17(gemini) stable 与 S01(qwen-max) 全同 —— model 维仍零差异"
+    )
+    # gpt-4o 场景也应与 qwen 不同（命中 openai_model）
+    assert by_id["S05"]["sha256"]["stable"] != by_id["S01"]["sha256"]["stable"], (
+        "S05(gpt-4o) stable 与 S01(qwen-max) 全同 —— openai_model 分支未生效"
+    )
 
 
 def test_normalize_volatile_whitelist_is_explicit():

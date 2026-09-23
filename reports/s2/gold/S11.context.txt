@@ -1,0 +1,1 @@
+S2 context-layer probe: caller-supplied system_message must land in context.

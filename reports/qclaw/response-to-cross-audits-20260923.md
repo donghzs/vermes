@@ -56,7 +56,12 @@
 | 真实根因 | **搜索作用域/过滤链**（`--include="*.py"` 去找只在 `.md` 的标记、管道 `head` 截断）+ 把「0 命中」当成「对象不存在」 |
 
 **MiMo 侧同步撤回**：本回文初稿曾写「BSD grep 静默失败」，现予更正。教训入纪律：
-**探测失败先做最小复现验证工具本身，再下根因**；0 命中 ≠ 对象不存在。
+
+1. **探测失败先做最小复现验证工具本身，再下根因**；0 命中 ≠ 对象不存在。  
+2. **对照组判别力**（Hermes 补，来自本项目老教训）：否证结论必须用「应命中 + 应不命中」**双探针**——
+   单侧输入（只喂「应命中」或只喂「应不命中」）零判别力，工具静默失败会伪装成结论成立。
+   已写入本回文与工单；跨项目纪律同步（`code-audit-verification/references/falsifying-with-controls.md` 为 Hermes 侧真源）。
+
 （QClaw 据错误根因差点误改 `scripts/dev-check.sh:121/135`，实跑确认两处一直正确，已放弃修改。）
 
 ### 2.2 G1 漂移 2 条（审计 §2）— **采纳补登记**
@@ -157,6 +162,21 @@ S2.2（迁 1 个静态块试点）起才动注入点；每步必须过 `tests/to
 1. **`identity`** — walking skeleton（always 注入、无条件依赖，最容易逐字比对）
 2. **`editing_guardrails`** — `_PROCESSOR_FALLBACK` 15 键中**唯一仍硬编码**；迁完可整条退役该常量
 3. 其余按键逐个迁，每键一次 gold 比对
+
+**Hermes 钉坑**：`system_prompt.py:71` `"computer_use": None` 是**惰性导入哨兵**，不是普通常量
+（`:89-95` fallback 为 None 时才走 `from agent.prompt_builder import COMPUTER_USE_GUIDANCE`）。
+简单删键会丢兜底语义。退役 `_PROCESSOR_FALLBACK` 前见工单 §9b.1。
+
+### 4.5 Hermes 补点收口（2026-09-23）
+
+| 项 | 处置 |
+|---|---|
+| A7 可发现性 | ✅ `prompt_processor_loader.list_prompt_sections()`（id/layer/source/path），禁用名单要知道「能禁什么」 |
+| A7 可见性 | ✅ 写进 P3：被禁用段必须启动/诊断**显式打印**「已按 env 禁用 N 段：…」，禁止静默失效（实现仍绑 S2.2） |
+| gold model 盲区 | ✅ 加 **S17** `gemini-2.5-pro` 探针（命中 `google_model`，stable 必须区别于 qwen/claude/local-qwen） |
+| gold context 盲区 | ✅ **S11** 带 `system_message`，context 段非空探针 |
+| 对照组判别力 | ✅ 入 §2.1 纪律 + 工单；Hermes 侧真源 `falsifying-with-controls.md` |
+| 提交后重跑 boundary | ✅ 事实更正：43 条脏项已分批入库（`32cc1d9826` / `c79fafe827` / `a24455ba05`）；`prompt_processor_loader.py` 属 **core 区**不产 follow 税。当场 `boundary`：**commits=64 未登记税=0 已登记偏离=48** |
 
 ---
 

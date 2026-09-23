@@ -180,3 +180,32 @@ def test_context_layer_rank_is_distinct():
     assert _LAYER_ORDER["stable"] < _LAYER_ORDER["context"] < _LAYER_ORDER["volatile"]
     p = PromptProcessor(name="c", content="x", id="c", layer="context")
     assert p.layer_rank == _LAYER_ORDER["context"]
+
+
+def test_list_prompt_sections_discoverability():
+    """A7 可发现性（Hermes 补点）：必须能列出 id/layer/source，否则禁用名单无从填。"""
+    from agent.prompt_processor_loader import list_prompt_sections
+
+    ctx = _ctx()
+    ctx.register_system_prompt_section("disc.plugin", "P", layer="volatile")
+    rows = list_prompt_sections()
+    assert rows, "list_prompt_sections 不得为空"
+    by_id = {r["id"]: r for r in rows}
+    assert "disc.plugin" in by_id
+    assert by_id["disc.plugin"]["source"] == "plugin"
+    assert by_id["disc.plugin"]["layer"] == "volatile"
+    # builtin 至少 identity / help_guidance
+    assert "identity" in by_id and by_id["identity"]["source"] == "builtin"
+    for r in rows:
+        assert set(r) >= {"id", "layer", "source", "path", "enabled"}
+
+
+def test_computer_use_fallback_is_lazy_sentinel():
+    """computer_use: None 是惰性导入哨兵，不是「无兜底」——退役 _PROCESSOR_FALLBACK 前必读。"""
+    import agent.system_prompt as sp
+
+    assert "computer_use" in sp._PROCESSOR_FALLBACK
+    assert sp._PROCESSOR_FALLBACK["computer_use"] is None
+    # 删键 / 填假常量都会丢兜底语义
+    text = sp._proc_or_default("computer_use")
+    assert text and len(text) > 50, "computer_use 惰性兜底必须仍能取到 guidance"

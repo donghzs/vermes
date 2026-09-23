@@ -210,19 +210,37 @@ def register_system_prompt_section(
 |---|---|---|
 | P1 | 是否接受 **adapter 形态**（而非照搬上游实现） | 建议接受，理由见 §2 |
 | P2 | plugin / builtin / user hot path 的同名优先级 | 建议 plugin < builtin < user |
-| P3 | 是否实现回退开关 `VERMES_PROMPT_PROCESSORS_LEGACY` | **合成定案（2026-09-23）**：不做新旧双轨；改 `VERMES_DISABLE_PROMPT_SECTIONS=id1,id2`（`register_plugin_processor` 前置过滤）。时机= S2.2 首次动注入点；退役=`v3.0.0-distribution` 前 |
+| P3 | 是否实现回退开关 `VERMES_PROMPT_PROCESSORS_LEGACY` | **合成定案（2026-09-23）**：不做新旧双轨；改 `VERMES_DISABLE_PROMPT_SECTIONS=id1,id2`（`register_plugin_processor` 前置过滤）。时机= S2.2 首次动注入点；退役=`v3.0.0-distribution` 前。**Hermes 补点（必须一并做）**：① 可发现性——`list_prompt_sections()` 列出 id/layer/source/path（已落 `prompt_processor_loader.py`）；② 可见性——被禁用的段启动/诊断时**显式打印**「已按 env 禁用 N 段：id1,id2」，禁止静默失效 |
 | P4 | S2 排期是否按 93% 已完成的事实重估 | 建议重估为真缺口部分：**1 条 API + 1 个残留键 + gold 基线** |
 
 ## 9b. S2.2 执行顺序（2026-09-23 定）
 
 1. **`identity`** walking skeleton（always / 无条件）  
-2. **`editing_guardrails`**（`_PROCESSOR_FALLBACK` 唯一残留硬编码；迁完退役该常量）  
+2. **`editing_guardrails`**（`_PROCESSOR_FALLBACK` 唯一残留硬编码；迁完可整条退役该常量）  
 3. 其余键逐个迁，每键一次 gold 比对  
+
+### 9b.1 `computer_use` 哨兵坑（Hermes 点名，退役 `_PROCESSOR_FALLBACK` 前必读）
+
+`system_prompt.py:71` `"computer_use": None,  # imported lazily below` **不是普通常量**：
+
+```python
+# :89-95 — fallback 为 None 时走惰性导入分支，而不是「无兜底」
+fallback = _PROCESSOR_FALLBACK.get(name)
+if fallback is not None:
+    return fallback
+if name == "computer_use":
+    from agent.prompt_builder import COMPUTER_USE_GUIDANCE
+    return COMPUTER_USE_GUIDANCE
+```
+
+**简单删键会丢兜底语义**（YAML 缺失时 guidance 静默消失）。退役该常量时必须二选一：
+① 把 `COMPUTER_USE_GUIDANCE` 改成模块级可延迟绑定的可调用/属性；或
+② 在 `_proc_or_default` 保留显式 `computer_use` 惰性分支（并加契约测：删 YAML 后仍有兜底）。
 
 ## 9c. gold 覆盖口径（防误读）
 
-- 16 场景 ≠ 16 条独立 stable 护栏：**唯一 stable 指纹 = 13**（`qwen-max`/`claude-sonnet`/`local-qwen` 不命中任何 `model_affinity`，三者 stable 全同）。  
-- **context 段当前恒空**（0 个 YAML 声明 `layer: context` + 快照关 context files）。  
-  **首次把块迁进 context 层前，必须先加 context 覆盖场景并升 gold**，否则该层零判据。
+- S01–S16 = pairwise 主矩阵（对齐 A/B 语料 fixed_context 四模型）；**S17** = model 维探针（`gemini-2.5-pro` 命中 `google_model`，stable 必须区别于 qwen/claude/local-qwen）。  
+- `qwen-max`/`claude-sonnet`/`local-qwen` 不命中任何 `model_affinity` 时 stable 全同 —— 唯一 stable 指纹以 manifest 为准，**不得**写成「N 条独立护栏」。  
+- **S11** 带 `system_message`，是唯一的 **context 非空** 探针；迁块进 context 层必须以它为护栏，缺则先升 gold。
 
 > 口径纪律（roadmap §8.1）：引用本文数字请带命令与 HEAD hash；HEAD 在写稿期间仍在前进。

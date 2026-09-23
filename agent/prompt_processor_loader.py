@@ -629,6 +629,36 @@ def clear_plugin_processors() -> None:
     invalidate_cache()
 
 
+def list_prompt_sections() -> List[Dict[str, Any]]:
+    """列出当前全部 prompt 段（A7 可发现性，Hermes 2026-09-23 补点）。
+
+    禁用名单（`VERMES_DISABLE_PROMPT_SECTIONS`）若没有「能禁什么」的清单，
+    对桌面小白等于不存在。返回按 layer→priority→id 排序的描述行：
+    id / layer / source(plugin|builtin|user) / path / enabled。
+    """
+    rows: List[Dict[str, Any]] = []
+    for p in load_all_processors():
+        src = p.metadata.get("source")
+        if src == "plugin":
+            source = "plugin"
+        elif p.builtin:
+            source = "builtin"
+        else:
+            source = "user"
+        rows.append(
+            {
+                "id": p.effective_id,
+                "name": p.name,
+                "layer": p.layer,
+                "source": source,
+                "path": str(p.source_path) if p.source_path else "-",
+                "enabled": p.enabled,
+                "plugin_callable": bool(p.metadata.get("plugin_callable")),
+            }
+        )
+    return rows
+
+
 def get_generation() -> int:
     """Return current generation (bumped on each invalidation)."""
     return _processors_generation
