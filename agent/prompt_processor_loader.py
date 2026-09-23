@@ -548,7 +548,17 @@ def load_all_processors() -> List[PromptProcessor]:
                         continue
                     proc.builtin = False
                     by_name[key] = proc
-                    logger.debug("Loaded user processor: %s (id=%s, overrides=%s)", proc.name, key, existing is not None)
+                    # A4 同名覆盖要生产可见（原先 debug，和 plugin→builtin 的 INFO 不一致）
+                    if existing is not None:
+                        logger.info(
+                            "User processor '%s' (id=%s) overrides %s (layer=%s)",
+                            proc.name,
+                            key,
+                            "plugin" if key in _plugin_processors and not existing.builtin
+                            else ("builtin" if existing.builtin else "plugin"),
+                            proc.layer,
+                        )
+                    logger.debug("Loaded user processor: %s (id=%s)", proc.name, key)
 
         # 3. Deterministic three-level sort: layer → priority → id.
         #    layer FIRST keeps the stable prefix byte-identical (prompt cache);

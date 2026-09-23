@@ -25,7 +25,7 @@
 | 3.1 | 4 条硬指标缺「不退化」→ 补指标 5 | **采纳**。Sprint 收尾 v2.5.2 vs 新包同语料并排；语料 ≥30 已冻结（32 条，`reports/ab-corpus/v1/`）；退化即 Sprint 不过 | ✅ 已落 roadmap §8.2 + 语料入库 |
 | 3.2 | 停止条件开口（发版窗口未定义 / 一次取长太弱） | **采纳**。改为连续 **两个 Sprint** 零未登记税且契约税增量 ≤10；取长覆盖面看 **S2–S4 全部**，禁止「挑简单一次」充数 | ✅ 已落 roadmap §8.3 |
 | 3.3 | canary 必须 pinned | **采纳**。钉 `v2026.9.14` → `345cd2b057`（`reports/.upstream-canary-pin.json`）；季度升钉、只告警不阻塞 | ✅ 已落 roadmap §8.4 + `d3d7822aac` |
-| 3.4 | 两本账无稳定真源 | **更正（不采纳）**。真源 = manifest §7b/§7c HTML 注释块；`D-001`/`L-001` 在块内可检索。QClaw 后续已自证：BSD grep 不支持 `\|` 分支导致静默零命中。**不另建** `DIVERSION_LEDGER.md`。已补「ID 必须在块内」契约测 | ✅ roadmap §8.5 + 测试钉住 |
+| 3.4 | 两本账无稳定真源 | **更正（不采纳）**。真源 = manifest §7b/§7c HTML 注释块；`D-001`/`L-001` 在块内可检索。零命中的真实原因是**搜索作用域/过滤链**（`--include` 找错文件类型、管道 `head` 截断）+ 把「0 命中」当成「对象不存在」——**不是** BSD grep 不支持 `\|`（见 §2.1 撤回）。**不另建** `DIVERSION_LEDGER.md`。已补「ID 必须在块内」契约测 | ✅ roadmap §8.5 + 测试钉住 |
 | 2 | 工作树不干净 / 路线图 untracked | **部分采纳**。路线图已入库（`71bbdc7288`）；`tools/feedback_tool.py`、`web_dist` 为他方/构建产物，**刻意保持脏、不夹带** | ✅ |
 | 1 数字失真 | 37,857 / 30× / 13,011 作废 | **采纳**。今后引用一律当场 `rev-list` + HEAD | ✅ roadmap §8.1 |
 
@@ -45,11 +45,19 @@
 
 ## 2. 对 T2/S2 交付审计（cross-audit-t2-s2）的逐条回应
 
-### 2.1 假阴性更正（审计 §0）
+### 2.1 假阴性更正（审计 §0）+ **再撤回**（2026-09-23 二次核）
 
-**接受并记录**。QClaw 已自证「两本账无真源」是 BSD grep 静默失败，不是对象不存在。
-纪律追加：本机检索用 ripgrep 或 Python，**禁止**依赖 BRE 的 `\|` 分支；解析以脚本真实输出为准
-（T2 实现时两处解析坑已留痕在 `d3d7822aac` commit message）。
+**「两本账无真源」不成立**——这点不变。但根因要再订正一层：
+
+| 层 | 结论 |
+|---|---|
+| 初版（QClaw t2-s2 §0） | 「BSD grep 不支持 `\|`」—— **已被实测推翻，撤回** |
+| 实测 | `/usr/bin/grep` = `BSD grep, GNU compatible 2.6.0-FreeBSD`；`printf 'alpha\nbeta\n' \| grep -c 'alpha\|beta'` = **2**（`\|` 正常生效） |
+| 真实根因 | **搜索作用域/过滤链**（`--include="*.py"` 去找只在 `.md` 的标记、管道 `head` 截断）+ 把「0 命中」当成「对象不存在」 |
+
+**MiMo 侧同步撤回**：本回文初稿曾写「BSD grep 静默失败」，现予更正。教训入纪律：
+**探测失败先做最小复现验证工具本身，再下根因**；0 命中 ≠ 对象不存在。
+（QClaw 据错误根因差点误改 `scripts/dev-check.sh:121/135`，实跑确认两处一直正确，已放弃修改。）
 
 ### 2.2 G1 漂移 2 条（审计 §2）— **采纳补登记**
 
@@ -120,9 +128,35 @@
 |---|---|
 | T2 canary 两脆弱点 | ✅ venv 绑定 + 句柄只读 WARN/写 FAIL |
 | **S2.0 gold** | ✅ `reports/s2/gold/` 16 场景×3 段 + `scripts/s2_snapshot.py` 门闩 |
-| **S2.1 adapter** | ✅ `PluginContext.register_system_prompt_section`（API 同形、Callable 强制 volatile、L-014 三护栏）；**未改现有注入点**，gold 门闩 56 passed 证行为零变化 |
+| **S2.1 adapter** | ✅ `PluginContext.register_system_prompt_section`（API 同形、Callable 强制 volatile、L-014 三护栏）；**未改现有注入点**，gold 门闩证行为零变化 |
 
 S2.2（迁 1 个静态块试点）起才动注入点；每步必须过 `tests/tools/test_s2_gold.py`。
+
+### 4.2 QClaw 落地审计新问题（cross-audit-mimo-landing）逐条处置
+
+| 档 | 问题 | 处置 |
+|---|---|---|
+| 🟡 | 16 场景仅 **13** 个唯一 stable 指纹（S02≡S14 / S04≡S16 / S09≡S13，仅 model 不同） | **属实，接受并写死口径**：`model_affinity` 只在 `gpt/gemini/grok` 等模式命中时才分流（`openai_model`/`google_model`）；`qwen-max`/`claude-sonnet`/`local-qwen` 当前均不命中任何 model processor → stable 全同。**不得**把 gold 读成 16 条独立护栏；有效 stable 覆盖 = **13**。manifest 已记 `unique_stable_fingerprints: 13`。要拉满 model 维须换/增 `gemini-*`/`grok-*` 场景（会动 gold，等 S2.2 再升版本） |
+| 🟡 | context 段 16/16 恒空 | **属实**。根因：① 快照刻意 `skip_context_files` 保确定性；② 36 个 YAML **0 个声明 `layer: context`**。S2.2 迁的 `identity`/`editing_guardrails` 都是 **stable**，仍不会填 context。**纪律**：首次把任何块迁进 context 层前，必须先加一条 context 覆盖场景并升 `reports/s2/` gold，否则该层零判据 |
+| 🟡 | A4 日志只做一半（user→* 仍是 debug） | **已修**：`prompt_processor_loader.py` user 覆盖 plugin/builtin 时打 **INFO**（与 plugin→builtin 对齐） |
+| 🟠 | `reports/s2/` untracked | **本回文收口即提交**；`.gitignore` 例外已由 QClaw 钉住（`reports/s2/gold/**` + `reports/.upstream-canary-pin.json` 必须入库） |
+
+### 4.3 A7 回退开关 — 与 Hermes 合成方案（采纳 QClaw）
+
+| 原方案 | 合成后 |
+|---|---|
+| Hermes：`VERMES_PROMPT_PROCESSORS_LEGACY=1` 双装配 | **不做**新旧双轨（永久双份 gold + 双份装配，正是发行版化要消灭的） |
+| QClaw：先不做 | 改做 **插件段禁用名单** `VERMES_DISABLE_PROMPT_SECTIONS=id1,id2`（逗号分隔） |
+
+- 落点：`register_plugin_processor()` **前置过滤**（命中即不登记 + INFO），零双轨、env 生效、免发版。
+- **时机**：S2.2 第一次真动注入点时一并做（S2.1 未动注入点，现在做是无用功）。
+- **退役**：`v3.0.0-distribution` 前；届时若仍需回退，应走 git revert 而非长期 env 开关。
+
+### 4.4 S2.2 建议顺序（采纳 QClaw）
+
+1. **`identity`** — walking skeleton（always 注入、无条件依赖，最容易逐字比对）
+2. **`editing_guardrails`** — `_PROCESSOR_FALLBACK` 15 键中**唯一仍硬编码**；迁完可整条退役该常量
+3. 其余按键逐个迁，每键一次 gold 比对
 
 ---
 

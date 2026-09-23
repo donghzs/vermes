@@ -149,3 +149,34 @@ def test_register_plugin_processor_owner_named_in_error():
             PromptProcessor(name="t", content="c", id="t", layer="volatile"),
             owner="plugin-b",
         )
+
+
+def test_user_override_logs_info_not_debug(caplog):
+    """A4 可见性：user 覆盖 builtin/plugin 必须 INFO（原先 debug，生产看不见）。"""
+    import logging
+
+    from agent import prompt_processor_loader as ppl
+
+    # 先塞一个 plugin 段，再走 user 覆盖路径不现实（user 来自磁盘）。
+    # 这里直接钉「源码里 user 覆盖分支用 INFO」——防止再退化成 debug。
+    import inspect
+
+    src = inspect.getsource(ppl.load_all_processors)
+    assert "User processor" in src
+    # 覆盖分支必须是 logger.info（不是 debug）
+    assert 'logger.info(\n                            "User processor' in src or (
+        "User processor" in src and "logger.info" in src
+    ), "user→builtin/plugin 覆盖必须打 INFO（A4）"
+    assert 'logger.debug("Loaded user processor: %s (id=%s, overrides=%s)"' not in src, (
+        "旧的 debug 覆盖日志不得回潮"
+    )
+
+
+def test_context_layer_rank_is_distinct():
+    """context 层排序位必须独立（S2.2 迁 context 层的前提；当前 gold context 恒空）。"""
+    from agent.prompt_processor_loader import _LAYER_ORDER, PromptProcessor
+
+    assert set(_LAYER_ORDER) == {"stable", "context", "volatile"}
+    assert _LAYER_ORDER["stable"] < _LAYER_ORDER["context"] < _LAYER_ORDER["volatile"]
+    p = PromptProcessor(name="c", content="x", id="c", layer="context")
+    assert p.layer_rank == _LAYER_ORDER["context"]

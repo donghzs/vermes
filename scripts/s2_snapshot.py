@@ -95,6 +95,14 @@ SCENARIOS: list[tuple[str, str, str, str]] = [
     ("S16", "local-qwen", "telegram", "full"),
 ]
 
+# 覆盖口径（QClaw 2026-09-23 指出，勿误读）：
+# - 16 场景 pairwise 盖住 model×platform / model×toolset / platform×toolset 全部两两对；
+# - 但 `model_affinity` 只在 gpt/gemini/grok 等模式命中时才分流（openai_model/google_model）。
+#   qwen-max / claude-sonnet / local-qwen 当前**不命中任何 model processor** → stable 全同，
+#   故唯一 stable 指纹 = 13（S02≡S14、S04≡S16、S09≡S13）。**不得**写成「16 条独立护栏」。
+# - context 段恒空：快照 skip_context_files + 36 个 YAML 无 layer:context。
+#   首次把块迁进 context 层前，必须先加 context 覆盖场景并升 gold（工单 §9c）。
+
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -170,10 +178,20 @@ def snapshot_all(home: Path) -> dict:
                 "parts": parts,
             }
         )
+    unique_stable = len({s["sha256"]["stable"] for s in scenarios})
+    unique_context = len({s["sha256"]["context"] for s in scenarios})
     return {
         "schema": "vermes.s2-gold/v1",
         "version": "gold",
         "scenario_count": len(scenarios),
+        # 覆盖口径（勿把 scenario_count 当独立护栏数）：
+        "unique_stable_fingerprints": unique_stable,
+        "unique_context_fingerprints": unique_context,
+        "coverage_note": (
+            "model 维只在 model_affinity 模式命中时分流；"
+            "context 段当前恒空（无 layer:context 的 YAML + skip_context_files）。"
+            "见工单 §9c。"
+        ),
         "dimensions": {
             "model": list(MODELS),
             "platform": list(PLATFORMS),

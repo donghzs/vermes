@@ -2,6 +2,9 @@
   "schema": "vermes.s2-gold/v1",
   "version": "gold",
   "scenario_count": 16,
+  "unique_stable_fingerprints": 13,
+  "unique_context_fingerprints": 1,
+  "coverage_note": "model 维只在 model_affinity 模式命中时分流；context 段当前恒空（无 layer:context 的 YAML + skip_context_files）。见工单 §9c。",
   "dimensions": {
     "model": [
       "qwen-max",

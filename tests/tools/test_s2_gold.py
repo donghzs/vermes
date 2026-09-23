@@ -32,6 +32,9 @@ def test_gold_dir_exists_and_wellformed():
     data = json.loads(manifest.read_text(encoding="utf-8"))
     assert data.get("schema") == "vermes.s2-gold/v1"
     assert data.get("scenario_count", 0) >= 12, "pairwise 场景应 ≥12"
+    # 覆盖口径（QClaw 2026-09-23）：16 场景 ≠ 16 条独立 stable 护栏
+    assert "unique_stable_fingerprints" in data, "manifest 必须写明唯一 stable 指纹数"
+    assert 1 <= data["unique_stable_fingerprints"] <= data["scenario_count"]
     for sc in data["scenarios"]:
         for tier in ("stable", "context", "volatile"):
             p = GOLD_DIR / f"{sc['id']}.{tier}.txt"
