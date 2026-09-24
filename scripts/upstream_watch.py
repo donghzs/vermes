@@ -86,6 +86,7 @@ ZONES: dict[str, list[str]] = {
         "scripts/trigger-win-build.py",  # Windows 远程构建触发（Vermes 独有工具）
         "scripts/prebuild-check.sh",  # 构建前完整性检查（Vermes 独有，上游无同名）
         "scripts/verify-build.sh",  # 构建产物自检（Vermes 独有，上游无同名）
+        "scripts/sync-version.sh",  # 版本号同步（Vermes 独有，上游无同名；2026-09-24 查证）
         "tools/feedback_tool.py",  # H4.4 显式用户反馈工具（Vermes 独有，上游无同名）
         ".github/workflows/upstream-canary.yml",  # 哨兵周跑 lane（Vermes 独有，只告警）
         "docs/vermes/",            # 外置的 Vermes 独有文档（外置迁移后进 own）
@@ -757,16 +758,21 @@ def cmd_boundary(args: argparse.Namespace) -> int:
         lines.append("_无。当前 Vermes 在跟随区零未登记改动 —— follow 边界干净。_")
     else:
         n_new = sum(1 for _c, p in unregistered_tax if p in added_paths)
-        if n_new:
+        n_mod = len(unregistered_tax) - n_new
+        # 新增 AND 改既有 都要走「上游有无同名」判定 —— sync-version.sh 这类
+        # Vermes 独有构建/版本工具是「改既有」也会漏进税（第四次同款坑）。
+        if n_new or n_mod:
             lines.append(
-                f"> **新增文件 {n_new} 条（首选处置）**：先查上游有无同名 —— "
-                "无 ⇒ Vermes 独有，**归 `ZONES.own`**；有 ⇒ 跟随区新文件，登记 DIVERSION_LEDGER 或外置插件。"
+                f"> **归属提示（新增 {n_new} / 改既有 {n_mod}，两类都查）**："
+                "先查上游有无同名 —— 无 ⇒ Vermes 独有，**归 `ZONES.own`**；"
+                "有 ⇒ 跟随区，登记 DIVERSION_LEDGER 或外置插件。"
+                "「改既有」不是天然跟随区——文件本身可能是 own。"
             )
         lines.append("| hash | 主题 | 跟随区路径 | 类型 |")
         lines.append("|---|---|---|---|")
         for c, p in unregistered_tax[:60]:
             kind = "新增" if p in added_paths else "改既有"
-            hint = f" 疑似自有→归 own" if p in added_paths else ""
+            hint = " 疑似自有→归 own（查上游同名）"
             lines.append(f"| `{c['hash']}` | {c['subject'][:60]} | `{p}` | {kind}{hint} |")
         if len(unregistered_tax) > 60:
             lines.append(f"\n_（仅列前 60 条，共 {len(unregistered_tax)} 条）_")

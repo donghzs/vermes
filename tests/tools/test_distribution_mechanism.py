@@ -63,7 +63,14 @@ def test_zones_own_contains_externalized_paths():
 
 def test_zones_own_contains_vermes_only_tools():
     """Vermes 独有发行版工具必须在 own，否则被 follow 误算税。"""
-    for prefix in ("scripts/upstream_watch.py", "scripts/trigger-win-build.py"):
+    for prefix in (
+        "scripts/upstream_watch.py",
+        "scripts/trigger-win-build.py",
+        "scripts/sync-version.sh",
+        "scripts/prebuild-check.sh",
+        "scripts/verify-build.sh",
+        "tools/feedback_tool.py",
+    ):
         assert prefix in uw.ZONES["own"], f"{prefix} 是 Vermes 独有工具，必须进 ZONES.own"
 
 
@@ -155,6 +162,42 @@ def test_own_bugfix_takealong_does_not_exempt_follow_paths():
     # L-019 `c0362da9a6e9` 是 cron/scheduler.py 上的真取长（交付脱敏）——
     # 该文件因此进免税集；L-011 自有缺陷同文件仍靠 D-004 DIVERSION 兜底。
     assert "cron/scheduler.py" in ta_files
+
+
+def test_takealong_ledger_ids_are_unique_and_l014_is_max_chars():
+    """ID 一经使用不再回收（2026-09-24 立规）。
+
+    L-014 历史归属 = max_chars 三护栏（代码注释/commit 标题大量引用）。
+    file_safety multi-home 曾误用 L-014，已换 L-027 —— 本测钉死两件事：
+    ① 同一 L-id 在 §7c 只出现一次；② L-014 行必须仍指 max_chars。
+    """
+    import re as _re
+
+    text = _manifest_text()
+    block = _re.search(
+        r"<!--TAKEALONG_LEDGER:START-->(.*?)<!--TAKEALONG_LEDGER:END-->",
+        text,
+        _re.S,
+    )
+    assert block, "§7c TAKEALONG_LEDGER 块必须存在"
+    ids = _re.findall(r"^\|\s*(L-\d+)\s*\|", block.group(1), _re.M)
+    assert ids, "账本应有 L- 行"
+    dupes = {i for i in ids if ids.count(i) > 1}
+    assert not dupes, f"L-id 不得重复/回收：{sorted(dupes)}"
+    # L-014 = 历史 max_chars，不得再被 file_safety 等他条占用
+    l014_rows = [
+        line for line in block.group(1).splitlines()
+        if line.startswith("| L-014 ")
+    ]
+    assert len(l014_rows) == 1, f"L-014 应恰一行，got {len(l014_rows)}"
+    assert "max_chars" in l014_rows[0], f"L-014 必须指 max_chars 历史行：{l014_rows[0][:80]}"
+    # file_safety multi-home 现在是 L-027
+    l027_rows = [
+        line for line in block.group(1).splitlines()
+        if line.startswith("| L-027 ")
+    ]
+    assert len(l027_rows) == 1
+    assert "file_safety" in l027_rows[0] or "7c478ac257a3" in l027_rows[0]
     # 合并账：DIVERSION 有意偏离（D-003/D-004）才使 follow 落点免税
     merged = uw.parse_diversion_ledger()
     assert uw.is_registered_diversion("tools/kanban_tools.py", merged), (

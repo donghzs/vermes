@@ -42,7 +42,7 @@
 
 | 分区 | 路径 | 判定规则 |
 |---|---|---|
-| **own**（发行版自有·红线） | `vermes_cli/`、`agent/memory_fabric.py`、`agent/capability_evolver.py`、`agent/workflow_runtime.py`、`agent/compression_scheduler.py`、`gateway/platforms/`、`scholarforge/`、`acp_registry/`、`frontend/`、`electron/`、`installer/`、`locales/`、`scripts/build-*`、`docs/vermes/`、`scripts/vermes/` | 上游同名改动**禁止直接搬运**，只参考思路；Vermes 侧在此区改动是**正常开发** |
+| **own**（发行版自有·红线） | `vermes_cli/`、`agent/memory_fabric.py`、`agent/capability_evolver.py`、`agent/workflow_runtime.py`、`agent/compression_scheduler.py`、`gateway/platforms/`、`scholarforge/`、`acp_registry/`、`frontend/`、`electron/`、`installer/`、`locales/`、`scripts/build-*`、`scripts/sync-version.sh`、`docs/vermes/`、`scripts/vermes/` | 上游同名改动**禁止直接搬运**，只参考思路；Vermes 侧在此区改动是**正常开发** |
 | **follow**（上游跟随区） | `plugins/`、`tools/`、`harness/`、`cron/`、`.github/`、`docs/`、`scripts/` | 优先跟随上游；Vermes 侧在此区改动 = **契约税**，需登记或外置为插件 |
 | **core**（同源核心·已 diverge） | `agent/`、`gateway/`、`acp_adapter/`、`memory/`、`runner/`、`cli/` | 个案评估，需对照 `diverge_metrics` 度量 |
 
@@ -206,6 +206,10 @@ S5 的前置核实项已登记为待办（§8）。
 > 脚本 `upstream_watch.py` 同样解析本表（`<!--TAKEALONG_LEDGER:START-->` 至 `END` 之间），
 > 仅「真上游取长」类型落点参与 G1 免税（见下）。
 >
+> **ID 规则（2026-09-24 立）**：`L-xxx` 一经使用**不再回收、不再改指**。拒绝/暂缓/历史条目
+> 也占号（保留行即可）。新条目取下一个未用号。ID 复用会让代码注释、commit 标题、工单
+> 与账本指向两件不同的事——考古必错（L-014 曾被 file_safety 误用，已改 L-027）。
+>
 > **免税边界（T15，脚本强制）**：落点列按「类型」决定是否进 G1 免税集：
 > - **真上游取长**（类型含 `移植|重写|部分采纳`，L-001~L-006）：落点路径免税——有意跟进上游。
 > - **自有 bugfix / 拒绝 / 待做**（`修复（自有缺陷）`、`拒绝/暂缓`、`待做`，L-007+）：
@@ -228,7 +232,8 @@ S5 的前置核实项已登记为待办（§8）。
 | L-010 | —（**Vermes 自有缺陷**，非上游取长） | `gateway/session_context.py`, `agent/agent_init.py`, `agent/conversation_compression.py`, `acp_adapter/server.py`, `tools/kanban_tools.py` | 修复（自有缺陷）：`set_current_session_id` 全仓 6 处调用 0 处定义 → writer 想走 contextvar 却 import 抛 ImportError、全部静默回落 `os.environ`；ACP 进程级 save/restore 并发串味；reader（`kanban_tools.py:125/688`）直读 os.environ。修法：① `session_context` 补 `set_current_session_id()`（写 `_SESSION_ID` ContextVar，返回 reset token，不写 os.environ）+ `reset_current_session_id()` + `get_current_session_id()`；② `agent/agent_init.py`/`agent/conversation_compression.py` 三处 writer 走 setter（仅 except 日志 + env 兑底，旋转/回滚语义保持）；③ `acp_adapter/server.py` 弃进程级 save/restore 改 setter+token reset；④ `kanban_tools` reader 改 `_get_session_id()`→`get_session_env`（返回 None 保持旧语义）。见 T13 | `tests/tools/test_session_id_contextvar.py` 7 passed | ~0.7h | 0 | ✅ 已合入 |
 | L-011 | —（**Vermes 自有缺陷**，非上游取长） | `cron/scheduler.py` | 待做（最小修复，避免过度 contextvar 化）：`TERMINAL_CWD` cron↔用户线程串味。已证 tick 内 workdir/profile job 严格串行（`tick()` 分区 sequential vs parallel），但 cron 线程改进程级 `TERMINAL_CWD` 时用户会话 file_tools 等 reader 仍可能看到。优先低成本：消费方在 cron 上下文不读进程 cwd，或 job 用子进程 env；整表 contextvar 非必须 | — | — | — | ⏳ 待做 |
 | L-013 | —（**Vermes 自有缺陷**，非上游取长；PyInstaller GUI 形态，官方无 frozen 专段） | `tools/code_execution_tool.py` | 修复（自有缺陷）：frozen 下 `sys.executable` 是 bootloader 非解释器，旧逻辑 fallback 后 RPC 空等 300s。修法（对齐官方「勿瞎 fallback」原则）：内嵌/旁路 CLI 优先 → venv/conda → PATH 全遍历 + well-known + **版本化名** `python3.11` + ABI major.minor；**找不到 raise `_NoChildPython`**（禁止 return sys.executable）；probe `stdin=DEVNULL` + 成功缓存/失败可重试；macOS 大小写不敏感导致 `Python` dylib 误判的防护 | `tests/tools/test_code_execution_frozen_resolver.py` + abi/modes/code_execution **117 passed**；冒烟：无匹配硬失败 <2ms；有 `python3.11` 则解析成功；venv `execute_code` e2e 成功 | ~0.8h | — | ✅ 已合入（**须重打 DMG 后真机生效**） |
-| L-014 | `7c478ac257a3` | `agent/file_safety.py` | 重写（T8 复查点收口）：上游 `_guard_homes` 锚定「write 可能落入的每个 home」——process `~` 在 profile/容器下会指到 `{VERMES_HOME}/home`，真实用户 home 的 `~/.ssh`/`~/.aws` 等绝对路径写会漏防。Vermes 侧 `is_write_denied` 原先只锚 `expanduser("~")`，已重写为 `_guard_homes()`（process home + `get_real_home` + `get_subprocess_home` + profile/root + `~name/`）；表折叠/helper 抽取（后续 4 次重构）**不跟** | `tests/agent/test_file_safety_guard_homes.py` 5 passed + secret_stores 3 passed | ~0.5h | 2 | ✅ 已合入（本切片） |
+| L-014 | `hermes_cli/plugins.py` 签名族（`max_chars`/id 校验/重复注册） | `agent/prompt_processor_loader.py`, `vermes_cli/plugins.py`, `agent/system_prompt.py` | 重写（三护栏：单片段 `max_chars` 上限 + id 格式校验 + 同 id 重复注册拒绝） | `tests/tools/test_l014_max_chars.py` + `tests/tools/test_s21_register_section.py` | ~0.7h | 3 | ✅ 已合入 `04f4604715`→`de92b3eb7e`（**历史 ID，代码注释/commit 标题大量引用；2026-09-24 找回本行，禁止再被他条复用**） |
+| L-027 | `7c478ac257a3` | `agent/file_safety.py` | 重写（T8 复查点收口）：上游 `_guard_homes` 锚定「write 可能落入的每个 home」——process `~` 在 profile/容器下会指到 `{VERMES_HOME}/home`，真实用户 home 的 `~/.ssh`/`~/.aws` 等绝对路径写会漏防。Vermes 侧 `is_write_denied` 原先只锚 `expanduser("~")`，已重写为 `_guard_homes()`（process home + `get_real_home` + `get_subprocess_home` + profile/root + `~name/`）；表折叠/helper 抽取（后续 4 次重构）**不跟**。（**原误用 L-014，2026-09-24 换号**） | `tests/agent/test_file_safety_guard_homes.py` 5 passed + secret_stores 3 passed | ~0.5h | 2 | ✅ 已合入 `5436169b35` |
 | L-015 | —（**Vermes 自有缺陷**，非上游取长） | `scripts/sync-version.sh` | 修复（自有缺陷）：T5 静默失败——旧脚本 `grep\|grep\|tr` 提取版本 + `set -euo pipefail`，WorkBuddy `grep` shim 假阴性 → EXIT=1 且零输出。重写为 Python `ast` 提取 + `json` 写版本（不经 shim）；每步失败都打 stderr | `tests/scripts/test_sync_version.py` 3 passed | ~0.4h | — | ✅ 已合入（本切片） |
 | L-016 | `3ed40556cea1` 续期（T10） | `vermes_cli/kanban_db.py`, `vermes_cli/gateway.py` | 部分采纳/重写（L-005 三残留收口）：① 去掉 `profile == "default"` 豁免；② fail-closed（resolve 失败/缺 home 仍 strip）；③ 形状偏宽维持可接受 | `tests/tools/test_profile_gate_t10.py` 5 passed | ~0.4h | 0 | ✅ 已合入（本切片） |
 | L-017 | `b6b7802447f4` 语义并入 + 自有纵深（T12①③） | `gateway/run.py`, `gateway/session_context.py`, `cron/scheduler.py`, `tools/file_tools.py` | 修复（自有缺陷）（T12①③ 是 Vermes 纵深项；`b6b7802447f4` 仅交叉引用语义，后续 27 禁照搬）：① sanitize 启动层剥 presence 四键；③ `TERMINAL_CWD` 改 contextvar，cron 不再写 `os.environ` | `tests/tools/test_t12_session_state.py` 4 passed | ~0.6h | 27 | ✅ 已合入（本切片） |
@@ -256,7 +261,7 @@ S5 的前置核实项已登记为待办（§8）。
 | T3 | 核实 Vermes 的凭据 env 屏蔽名单（`tools/env_passthrough.py` / `tools/environments/docker.py`）是否大小写敏感 —— 若是即与上游 `b534f4b8c8cd` 同类漏洞 | ✅ **已完成** `a48811769d`（`_is_env_blocklisted` casefold，已登记 DIVERSION_LEDGER D-001 + TAKEALONG_LEDGER L-001） |
 | T4 | 形态 B（引擎作依赖）前置核实 | **已核实 2026-09-21**：`hermes-agent` **确实在 PyPI**（`https://pypi.org/pypi/hermes-agent`，作者 Nous Research，MIT，requires Python ≥3.11 <3.14，extras 覆盖 wecom/feishu/dingtalk/acp/mcp 等 40 项）。**但 PyPI 最新版 0.19.0 落后于 GitHub v0.21.3**（tag `v2026.9.14`）→ 形态 B 有路径，代价是**跟随版本落后上游 2 个小版本**，且需重做打包链 |
 | T5 | `scripts/sync-version.sh` 在本机 shell shim 下静默失败（EXIT=1 无输出） | ✅ **已完成**（L-015：Python ast/json 重写，契约测 `tests/scripts/test_sync_version.py`） |
-| T8 | `agent/file_safety.py` 后续取长复查点（`1c0d95badbac` 后 4 变更：表折叠×2 / helper / 去 suppress + `7c478ac257a3` multi-home） | ✅ **本轮收口**（L-014：`_guard_homes` multi-home 已重写；表折叠/helper 不跟） |
+| T8 | `agent/file_safety.py` 后续取长复查点（`1c0d95badbac` 后 4 变更：表折叠×2 / helper / 去 suppress + `7c478ac257a3` multi-home） | ✅ **本轮收口**（L-027：`_guard_homes` multi-home 已重写；表折叠/helper 不跟） |
 | T9 | #45947 control-file 语义分叉 + `auth/google_oauth.json`/`cache/bws_cache.json` 读拒写未拒 | ✅ **已拍板 2026-09-23：不跟**（产品取舍，维持 write-deny；非技术用户误操作面）— 记 DIVERSION/有意不跟，见 L-003、roadmap §8.6 |
 | T10 | L-005 profile 门控三残留：① default 豁免 ② fail-open ③ 形状偏宽 | ✅ **已完成**（L-016：①② 已修 fail-closed；③ 维持并注记） |
 | T11 | **P0-BUG（Vermes 自有缺陷，非遗漏/非取长）**：`VERMES_CRON_SESSION` 用 `os.environ`（进程级）标记 cron 会话，而 cron ticker 是 gateway 进程内后台线程（`gateway/run.py:4086`）→ 首个 cron job 跑过后环境永久污染、从不清理 → 真实用户消息危险命令审批被误判为 cron（走 cron_mode deny → 直接 BLOCKED，不弹审批卡片）。修法：cron 标记改 task-local contextvar（`gateway.session_context._CRON_SESSION` + `is_cron_session()/enter_cron_session()/leave_cron_session()`），`cron/scheduler.py` 弃用 `os.environ["VERMES_CRON_SESSION"]="1"`，`tools/approval.py` 五处 cron 判定改 `_is_cron_session()`（contextvar 优先，env 回落兼容独立 cron 进程/CLI/旧测试） | ✅ **已完成**（commit `92c6c4792a`，见 §7c L-007；验收 6+ 契约测试） |
