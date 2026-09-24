@@ -28,6 +28,42 @@ def _vermes_root_path() -> Path:
         return Path(os.path.expanduser("~/.vermes"))
 
 
+def _guard_homes(path: str = "") -> set[str]:
+    """Every home the write guards must cover (T8 / upstream `7c478ac257a3`).
+
+    Process ``~`` alone is wrong whenever the process HOME is not the OS user's
+    real home — profile mode, containers, and spawned workers pin ``HOME`` to a
+    profile home, which leaves the real home's credential paths unguarded
+    against absolute-path writes while file tools happily write there.
+
+    Deny/approval lists are built over the union: process home, real home,
+    subprocess home, and the Vermes profile/root homes. A ``~name/...`` input
+    resolves to a named account's home, which joins the set so
+    ``~root/.ssh/authorized_keys`` stays denied.
+    """
+    from contextlib import suppress
+
+    homes = {os.path.expanduser("~")}
+    with suppress(Exception):
+        from vermes_constants import get_real_home, get_subprocess_home
+
+        for candidate in (get_real_home(), get_subprocess_home()):
+            if candidate:
+                homes.add(str(candidate))
+    with suppress(Exception):
+        homes.add(str(_vermes_home_path()))
+    with suppress(Exception):
+        homes.add(str(_vermes_root_path()))
+    raw = str(path)
+    if len(raw) > 1 and raw.startswith("~") and raw[1] not in "/\\":
+        name = raw[1:].split("/", 1)[0].split("\\", 1)[0]
+        with suppress(Exception):
+            expanded = os.path.expanduser(f"~{name}")
+            if not expanded.startswith("~"):
+                homes.add(expanded)
+    return {os.path.realpath(h) for h in homes}
+
+
 def build_write_denied_paths(home: str) -> set[str]:
     """Return exact sensitive paths that must never be written."""
     VERMES_home = _vermes_home_path()
@@ -98,14 +134,15 @@ def get_safe_write_root() -> Optional[str]:
 
 def is_write_denied(path: str) -> bool:
     """Return True if path is blocked by the write denylist or safe root."""
-    home = os.path.realpath(os.path.expanduser("~"))
     resolved = os.path.realpath(os.path.expanduser(str(path)))
+    homes = _guard_homes(path)
 
-    if resolved in build_write_denied_paths(home):
-        return True
-    for prefix in build_write_denied_prefixes(home):
-        if resolved.startswith(prefix):
+    for home in homes:
+        if resolved in build_write_denied_paths(home):
             return True
+        for prefix in build_write_denied_prefixes(home):
+            if resolved.startswith(prefix):
+                return True
 
     # Vermes control-plane files: block both the ACTIVE profile's view
     # (VERMES_home) AND the global root view. Without the root pass, a

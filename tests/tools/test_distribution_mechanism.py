@@ -146,12 +146,15 @@ def test_own_bugfix_takealong_does_not_exempt_follow_paths():
     )
     # L-010 / L-007 自有 bugfix follow 落点 —— TAKEALONG 不免税
     assert "tools/kanban_tools.py" not in ta_files
-    assert "cron/scheduler.py" not in ta_files
-    # L-008 core 落点同样不进 TAKEALONG 免税集
+    # L-008 / L-017 core 落点同样不进 TAKEALONG 免税集
     assert "gateway/run.py" not in ta_files
+    assert "gateway/session_context.py" not in ta_files
     # 真取长仍在
     assert "tools/approval.py" in ta_files
     assert "agent/file_safety.py" in ta_files
+    # L-019 `c0362da9a6e9` 是 cron/scheduler.py 上的真取长（交付脱敏）——
+    # 该文件因此进免税集；L-011 自有缺陷同文件仍靠 D-004 DIVERSION 兜底。
+    assert "cron/scheduler.py" in ta_files
     # 合并账：DIVERSION 有意偏离（D-003/D-004）才使 follow 落点免税
     merged = uw.parse_diversion_ledger()
     assert uw.is_registered_diversion("tools/kanban_tools.py", merged), (

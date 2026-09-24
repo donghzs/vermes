@@ -102,8 +102,18 @@ def _sentinel_free_abs_cwd(raw: str | None) -> str | None:
 
 
 def _configured_terminal_cwd() -> str | None:
-    """Return $TERMINAL_CWD only when it names a real directory anchor."""
-    return _sentinel_free_abs_cwd(os.environ.get("TERMINAL_CWD"))
+    """Return $TERMINAL_CWD only when it names a real directory anchor.
+
+    Reads through ``get_session_env`` so a cron job's task-local workdir
+    (T12③) cannot clobber concurrent user sessions that still fall back to
+    the process env.
+    """
+    try:
+        from gateway.session_context import get_session_env
+        raw = get_session_env("TERMINAL_CWD")
+    except Exception:
+        raw = os.environ.get("TERMINAL_CWD")
+    return _sentinel_free_abs_cwd(raw)
 
 
 def _registered_task_cwd_override(task_id: str = "default") -> str | None:

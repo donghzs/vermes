@@ -5220,11 +5220,18 @@ def _default_spawn(
     try:
         _target_home = resolve_profile_env(profile_arg)
         _cur_home = os.environ.get("VERMES_HOME")
-        if profile_arg != "default" and _cur_home and _target_home != _cur_home:
+        # T10①: no `default` special-case. Keep gates ONLY when the target
+        # home is this process's home; any other profile (including default
+        # spawned from profile A) gets a clean gate set.
+        # T10② fail-closed: missing VERMES_HOME cannot prove same-home → strip.
+        if not _cur_home or _target_home != _cur_home:
             from tools.env_passthrough import strip_profile_gate_env
             strip_profile_gate_env(env)
     except (FileNotFoundError, ValueError):
-        pass  # profile missing — defer to CLI _apply_profile_override
+        # T10② fail-closed: resolve failed → cannot prove same-home → strip
+        # rather than inherit parent gates into an unknown profile child.
+        from tools.env_passthrough import strip_profile_gate_env
+        strip_profile_gate_env(env)
 
     # Inject VERMES_HOME so the worker reads the profile-scoped config.yaml
     # (fallback_providers, toolsets, agent settings, etc.) instead of the root

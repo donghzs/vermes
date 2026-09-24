@@ -254,8 +254,18 @@ export const useChatStore = defineStore('chat', () => {
   // 前一条 —— 两条审批快速连推时，前一条的 session_key 永久丢失，后端等不到它的
   // /api/approve 响应，会话卡在等待审批。改队列后逐条处理：pendingApproval 恒为队首，
   // ApprovalDialog 可显示「第 k/N 条」。安全语义不变：仍逐条打断、逐条征询。
-  const approvalQueue = ref([])  // 待处理的工具审批请求（FIFO）
-  const pendingApproval = computed(() => approvalQueue.value[0] || null)
+  // T16①: 带 session_id 分片；pending 优先本会话，计数也按本会话 —— 多会话时
+  // 「共 N 条」不再把别的会话的审批算进当前弹窗。
+  const approvalQueue = ref([])  // 待处理的工具审批请求（FIFO，跨会话共享）
+  const currentSessionApprovals = computed(() => {
+    const sid = currentSessionId.value
+    if (!sid) return approvalQueue.value
+    const own = approvalQueue.value.filter(
+      a => a.session_id === sid || a.session_key === 'gui-' + sid
+    )
+    return own.length ? own : approvalQueue.value
+  })
+  const pendingApproval = computed(() => currentSessionApprovals.value[0] || null)
 
   // ── 当前会话的 computed 视图(自动跟随 currentSessionId)──
   const todoItems = computed(() => sessionTodoItems.value[currentSessionId.value] || [])
@@ -1175,6 +1185,7 @@ export const useChatStore = defineStore('chat', () => {
           approvalQueue.value = [...approvalQueue.value, {
             ...approvalData,
             session_key: approvalData.session_key || ('gui-' + (sendSessionId || 'default')),
+            session_id: approvalData.session_id || sendSessionId || currentSessionId.value || '',
             timestamp: Date.now(),
           }]
         },
@@ -1740,10 +1751,10 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── 工具审批 ──
   async function resolveApproval(choice) {
-    // 只处理队首，处理后出队，下一条自动顶上（ApprovalDialog 显示 k/N）
-    const cur = approvalQueue.value[0]
+    // T16①: 只处理「当前展示的那条」（本会话优先），出队后下一条自动顶上
+    const cur = pendingApproval.value
     if (!cur) return
-    const { session_key } = cur
+    const { session_key, timestamp } = cur
     try {
       await fetch('/api/approve', {
         method: 'POST',
@@ -1753,7 +1764,9 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) { console.error('[Approval] Failed:', e) }
     // 无论请求成功与否都出队：留在队首会让用户被同一条无限追问；
     // 请求失败时该条审批的后果由后端超时/拒绝策略承担，前端不重复打扰。
-    approvalQueue.value = approvalQueue.value.slice(1)
+    approvalQueue.value = approvalQueue.value.filter(
+      a => !(a.session_key === session_key && a.timestamp === timestamp)
+    )
   }
 
   // 3.4:统一设置当前模型(响应式 + 持久化),替代 Settings 的 localStorage + window 事件中转
@@ -1790,7 +1803,7 @@ export const useChatStore = defineStore('chat', () => {
     currentTodoStepId, todoInProgressCount, toggleTaskDrawer,
     sessionTodoItems, sessionTodoAllDone,
     taskVerbosity, setTaskVerbosity,
-    pendingApproval, approvalQueue, resolveApproval,
+    pendingApproval, approvalQueue, currentSessionApprovals, resolveApproval,
     pendingModel, appendModelChange,
     init, initOnce,
     createSession, switchSession, deleteSession, deleteSessionsBatch, renameSession, pinSession,

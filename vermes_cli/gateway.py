@@ -647,15 +647,17 @@ def launch_detached_profile_gateway_restart(profile: str, old_pid: int) -> bool:
         # the parent env verbatim otherwise, so a post-update per-profile
         # restart would relaunch B's gateway with A's channel/user allow-lists.
         _relaunch_env = None
-        if profile != "default":
-            from vermes_cli.profiles import resolve_profile_env
-            from tools.env_passthrough import strip_profile_gate_env
-            try:
-                _cur_home = os.environ.get("VERMES_HOME")
-                if _cur_home and resolve_profile_env(profile) != _cur_home:
-                    _relaunch_env = strip_profile_gate_env(dict(os.environ))
-            except (FileNotFoundError, ValueError):
-                pass
+        from vermes_cli.profiles import resolve_profile_env
+        from tools.env_passthrough import strip_profile_gate_env
+        try:
+            _cur_home = os.environ.get("VERMES_HOME")
+            # T10①②: strip whenever target home differs OR cannot be proven
+            # equal (resolve failure). No `default` exemption — a default
+            # child spawned from profile A must not inherit A's gates.
+            if not _cur_home or resolve_profile_env(profile) != _cur_home:
+                _relaunch_env = strip_profile_gate_env(dict(os.environ))
+        except (FileNotFoundError, ValueError):
+            _relaunch_env = strip_profile_gate_env(dict(os.environ))
         # Same platform-aware detach for the watcher process itself — so
         # closing the user's terminal doesn't kill the watcher.
         subprocess.Popen(

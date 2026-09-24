@@ -1424,7 +1424,12 @@ def execute_code(
                 _rp = os.path.realpath(_p)
             except Exception:
                 _rp = _p
-            return _rp.startswith(_tmp_root + os.sep) or "VERMES_exec_" in _p
+            if _rp.startswith(_tmp_root + os.sep):
+                return True
+            # T16③: path-segment match, not substring — a user file literally
+            # named `notes_VERMES_exec_draft.md` is a deliverable, not a
+            # sandbox scratch file.
+            return any(part.startswith("VERMES_exec_") for part in _rp.split(os.sep))
 
         # Build response
         result: Dict[str, Any] = {

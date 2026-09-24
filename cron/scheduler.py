@@ -696,6 +696,20 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
     from tools.send_message_tool import _send_to_platform
     from gateway.config import load_gateway_config, Platform
 
+    # c0362da9a6e9 / L-020: delivery is a safety boundary. LLM job text can
+    # surface credentials (echoed curl with an API key, a summarised config).
+    # force=True so the user's security.redact_secrets preference cannot turn
+    # scrubbing OFF on the way out to a chat; a raising redactor replaces the
+    # payload rather than letting it through.
+    def _redact_cron_payload(text: str) -> str:
+        try:
+            from agent.redact import redact_sensitive_text
+            return redact_sensitive_text(text, force=True)
+        except Exception:
+            return "[redacted: delivery payload failed safety scrub]"
+
+    content = _redact_cron_payload(content)
+
     # Optionally wrap the content with a header/footer so the user knows this
     # is a cron delivery.  Wrapping is on by default; set cron.wrap_response: false
     # in config.yaml for clean output.
@@ -707,7 +721,7 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
         pass
 
     if wrap_response:
-        task_name = job.get("name", job["id"])
+        task_name = _redact_cron_payload(job.get("name", job["id"]))
         job_id = job.get("id", "")
         delivery_content = (
             f"Cronjob Response: {task_name}\n"
@@ -722,6 +736,11 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
     # Extract MEDIA: tags so attachments are forwarded as files, not raw text
     from gateway.platforms.base import BasePlatformAdapter
     media_files, cleaned_delivery_content = BasePlatformAdapter.extract_media(delivery_content)
+    # Second pass after media extraction: the session-mirror / send lanes
+    # consume cleaned_delivery_content, derived from the (already redacted)
+    # wrap body — re-scrub so a future wrap-path change cannot reintroduce
+    # raw content.
+    cleaned_delivery_content = _redact_cron_payload(cleaned_delivery_content)
 
     try:
         config = load_gateway_config()
@@ -1543,9 +1562,13 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
             job_id, _job_workdir,
         )
         _job_workdir = None
-    _prior_terminal_cwd = os.environ.get("TERMINAL_CWD", "_UNSET_")
+    # T12③: task-local TERMINAL_CWD so concurrent user sessions' file_tools
+    # never see this job's workdir. Child processes that need the value copy
+    # it from get_terminal_cwd() into their own env.
+    _cwd_token = None
     if _job_workdir:
-        os.environ["TERMINAL_CWD"] = _job_workdir
+        from gateway.session_context import set_terminal_cwd
+        _cwd_token = set_terminal_cwd(_job_workdir)
         logger.info("Job '%s': using workdir %s", job_id, _job_workdir)
 
     try:
@@ -1934,14 +1957,10 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
         return False, output, "", error_msg
 
     finally:
-        # Restore TERMINAL_CWD to whatever it was before this job ran.  We
-        # only ever mutate it when the job has a workdir; see the setup block
-        # at the top of run_job for the serialization guarantee.
-        if _job_workdir:
-            if _prior_terminal_cwd == "_UNSET_":
-                os.environ.pop("TERMINAL_CWD", None)
-            else:
-                os.environ["TERMINAL_CWD"] = _prior_terminal_cwd
+        # T12③: restore task-local TERMINAL_CWD (no process-global mutation).
+        if _cwd_token is not None:
+            from gateway.session_context import reset_terminal_cwd
+            reset_terminal_cwd(_cwd_token)
         # Clean up ContextVar session/delivery state for this job.
         clear_session_vars(_ctx_tokens)
         leave_cron_session(_cron_token)

@@ -61,6 +61,12 @@ _SESSION_ID: ContextVar = ContextVar("VERMES_SESSION_ID", default=_UNSET)
 # private-chat topic (those lanes route only with thread id + reply anchor).
 _SESSION_MESSAGE_ID: ContextVar = ContextVar("VERMES_SESSION_MESSAGE_ID", default=_UNSET)
 
+# Terminal workdir — task-local so a cron job with a workdir cannot clobber the
+# process-global TERMINAL_CWD that concurrent user sessions' file/terminal tools
+# read (T12③ / L-011). Callers that spawn children still copy the resolved
+# value into the child env explicitly.
+_TERMINAL_CWD: ContextVar = ContextVar("TERMINAL_CWD", default=_UNSET)
+
 # Cron auto-delivery vars — set per-job in run_job() so concurrent jobs
 # don't clobber each other's delivery targets.
 _CRON_AUTO_DELIVER_PLATFORM: ContextVar = ContextVar("VERMES_CRON_AUTO_DELIVER_PLATFORM", default=_UNSET)
@@ -89,6 +95,7 @@ _VAR_MAP = {
     "VERMES_CRON_AUTO_DELIVER_CHAT_ID": _CRON_AUTO_DELIVER_CHAT_ID,
     "VERMES_CRON_AUTO_DELIVER_THREAD_ID": _CRON_AUTO_DELIVER_THREAD_ID,
     "VERMES_CRON_SESSION": _CRON_SESSION,
+    "TERMINAL_CWD": _TERMINAL_CWD,
 }
 
 
@@ -235,3 +242,24 @@ def get_current_session_id() -> str:
     Convenience wrapper so callers don't hand-spell ``VERMES_SESSION_ID``.
     """
     return get_session_env("VERMES_SESSION_ID")
+
+
+def set_terminal_cwd(cwd: str) -> "object":
+    """Set the task-local ``TERMINAL_CWD``; return a reset token.
+
+    Pair with :func:`reset_terminal_cwd` in a ``finally`` block. Unlike
+    ``os.environ["TERMINAL_CWD"] = ...`` this is task-local (T12③), so a cron
+    job pointing tools at its workdir cannot make a concurrent user session's
+    file_tools resolve relative paths against the wrong directory.
+    """
+    return _TERMINAL_CWD.set(cwd or "")
+
+
+def reset_terminal_cwd(token: "object") -> None:
+    """Restore ``TERMINAL_CWD`` to its pre-``set_terminal_cwd`` state."""
+    _TERMINAL_CWD.reset(token)
+
+
+def get_terminal_cwd() -> str:
+    """Read the current terminal cwd (contextvar first, then ``os.environ``)."""
+    return get_session_env("TERMINAL_CWD")

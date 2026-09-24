@@ -1,6 +1,7 @@
 /**
- * ⑤ C4/C5 真行为测试：MCP 指挥中心 + ⌘K quick-entry。
- * 统计聚合/路由/命令清单/热键绑定均为可观察行为，不 mount 重依赖组件。
+ * ⑤ C4/C5 真行为测试：MCP 统一入口（产品已并入 Agent 管理，页面仍名 MCP）
+ * + ⌘K quick-entry。统计聚合/路由/命令清单/热键绑定均为可观察行为，不 mount
+ * 重依赖组件。T16④: 断言跟产品现名，不再锁死旧称呼「指挥中心」为唯一文案。
  */
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -55,7 +56,7 @@ describe('MCP 调用统计聚合（真行为）', () => {
   })
 })
 
-describe('路由：MCP 指挥中心统一入口', () => {
+describe('路由：MCP 统一入口（并入 Agent 管理）', () => {
   it('/mcp 已注册且可 resolve', () => {
     expect(appRouter.getRoutes().some(r => r.path === '/mcp')).toBe(true)
     expect(appRouter.resolve('/mcp').path).toBe('/mcp')
@@ -76,7 +77,9 @@ describe('路由：MCP 指挥中心统一入口', () => {
     const wrapper = mount(MCPCommandCenter, { global: { plugins: [router, createPinia()] } })
     await nextTick()
     const text = wrapper.text()
+    // 页头仍是「MCP 指挥中心」；入口已并入 Agent 管理（见 palette 断言）
     expect(text).toContain('MCP 指挥中心')
+    expect(text).toContain('服务与调用')
     expect(text).toContain('服务与调用')
     expect(text).toContain('目录安装')
     expect(text).toContain('安全校验')
@@ -112,48 +115,57 @@ describe('C5 quick-entry：⌘K 热键与命令面（真行为）', () => {
     expect(listeners.has('keydown')).toBe(false)
   })
 
-  it('命令面含 MCP 指挥中心，选中后 router.push /mcp', () => {
+  it('命令面含 Agent 管理 / 设置·MCP（指挥中心已并入），选中后正确路由', () => {
     const pushed = []
     const router = { push: (p) => pushed.push(p) }
     const chat = { createSession: vi.fn(), toggleTheme: vi.fn() }
     const pages = buildPalettePageCommands(router)
     const actions = buildPaletteActionCommands(router, chat)
-    const mcpPage = pages.find(c => c.key === 'page:mcp')
-    expect(mcpPage?.label).toBe('MCP 指挥中心')
-    mcpPage.action()
-    expect(pushed).toContain('/mcp')
-    const mcpAct = actions.find(c => c.key === 'act:mcp-center')
-    mcpAct.action()
-    expect(pushed.filter(p => p === '/mcp').length).toBe(2)
+    // T16④: 产品已并入 Agent 管理 —— 不再断言旧名「MCP 指挥中心」/ page:mcp
+    const agentsPage = pages.find(c => c.key === 'page:agents')
+    expect(agentsPage?.label).toBe('Agent 管理')
+    agentsPage.action()
+    expect(pushed).toContain('/agents')
+    const settingsMcp = pages.find(c => c.key === 'page:settings-mcp')
+    expect(settingsMcp?.label).toBe('设置 · MCP')
+    settingsMcp.action()
+    expect(pushed).toContain('/settings')
+    const agentsAct = actions.find(c => c.key === 'act:agents')
+    agentsAct.action()
+    expect(pushed.filter(p => p === '/agents').length).toBe(2)
   })
 
-  it('filterPaletteCommands 可按关键词命中 MCP', () => {
+  it('filterPaletteCommands 可按关键词命中 Agent 管理里的 MCP 入口', () => {
     const router = { push: () => {} }
     const chat = { createSession() {}, toggleTheme() {} }
     const all = [...buildPalettePageCommands(router), ...buildPaletteActionCommands(router, chat)]
+    // 「mcp」命中 hint 含 MCP 的 Agent 管理 / 设置·MCP
     const hits = filterPaletteCommands(all, 'mcp')
-    expect(hits.some(c => c.key === 'page:mcp')).toBe(true)
+    expect(hits.some(c => c.key === 'page:agents' || c.key === 'page:settings-mcp')).toBe(true)
   })
 
-  it('CommandPalette 挂载后 toggle 打开，真渲染出 MCP 命令（真行为）', async () => {
+  it('CommandPalette 挂载后 toggle 打开，真渲染出 Agent 管理/MCP 入口（真行为）', async () => {
     setActivePinia(createPinia())
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/', component: { template: '<div>chat</div>' } },
-        { path: '/mcp', component: { template: '<div>mcp</div>' } },
+        { path: '/agents', component: { template: '<div>agents</div>' } },
+        { path: '/settings', component: { template: '<div>settings</div>' } },
       ],
     })
     router.push('/')
     await router.isReady()
     const wrapper = mount(CommandPalette, { global: { plugins: [router, createPinia()] } })
     // 初始关闭，不渲染结果
-    expect(wrapper.text()).not.toContain('MCP 指挥中心')
+    expect(wrapper.text()).not.toContain('Agent 管理')
     // 通过 defineExpose 的 toggle 打开
     wrapper.vm.toggle()
     await nextTick()
     const text = wrapper.text()
-    expect(text).toContain('MCP 指挥中心')
+    // T16④: 产品现名 —— 指挥中心已并入 Agent 管理
+    expect(text).toContain('Agent 管理')
+    expect(text).toContain('设置 · MCP')
     expect(text).toContain('对话')
     wrapper.unmount()
   })
@@ -162,15 +174,18 @@ describe('C5 quick-entry：⌘K 热键与命令面（真行为）', () => {
     setActivePinia(createPinia())
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: '/', component: { template: '<div>chat</div>' } }],
+      routes: [
+        { path: '/', component: { template: '<div>chat</div>' } },
+        { path: '/agents', component: { template: '<div>agents</div>' } },
+      ],
     })
     router.push('/')
     await router.isReady()
     const wrapper = mount(CommandPalette, { global: { plugins: [router, createPinia()] } })
-    expect(wrapper.text()).not.toContain('MCP 指挥中心')
+    expect(wrapper.text()).not.toContain('Agent 管理')
     window.dispatchEvent(new KeyboardEvent('keydown', { metaKey: true, key: 'k', bubbles: true }))
     await nextTick()
-    expect(wrapper.text()).toContain('MCP 指挥中心')
+    expect(wrapper.text()).toContain('Agent 管理')
     wrapper.unmount()
   })
 })

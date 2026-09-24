@@ -2006,10 +2006,22 @@ def check_all_command_guards(command: str, env_type: str,
             # Normalize outcome for the post hook. Unresolved (timeout) and
             # None both mean the user never responded; report that explicitly
             # so plugins can distinguish timeout from explicit deny.
-            _outcome = (
-                "timeout" if not resolved
-                else (choice if choice else "timeout")
-            )
+            # 2dfb795cb78f / 1e2cb5797362 / 6332216384b7 / L-021: undelivered
+            # or unanswered prompts are NOT user denials — fail-closed, but
+            # the attribution must be truthful ("silence is not consent" AND
+            # "silence is not a refusal").
+            if not resolved:
+                _outcome = "cancelled"
+                reason = "timed out before the user answered"
+            elif choice is None:
+                _outcome = "cancelled"
+                reason = "was withdrawn before the user answered (the prompt could not be delivered or the turn ended)"
+            elif choice == "deny":
+                _outcome = "deny"
+                reason = "denied by user"
+            else:
+                _outcome = choice
+                reason = ""
             _fire_approval_hook(
                 "post_approval_response",
                 command=command,
@@ -2022,12 +2034,16 @@ def check_all_command_guards(command: str, env_type: str,
             )
 
             if not resolved or choice is None or choice == "deny":
-                reason = "timed out" if not resolved else "denied by user"
                 return {
                     "approved": False,
-                    "message": f"BLOCKED: Command {reason}. Do NOT retry this command.",
+                    "message": (
+                        f"BLOCKED: Command approval {reason}. Do NOT retry this command."
+                        if _outcome == "cancelled"
+                        else f"BLOCKED: Command {reason}. Do NOT retry this command."
+                    ),
                     "pattern_key": primary_key,
                     "description": combined_desc,
+                    "outcome": _outcome,
                 }
 
             # User approved — persist based on scope (same logic as CLI)
@@ -2086,7 +2102,7 @@ def check_all_command_guards(command: str, env_type: str,
         pattern_keys=list(all_keys),
         session_key=session_key,
         surface="cli",
-        choice=choice,
+        choice=(choice if choice else "cancelled"),
     )
 
     if choice == "deny":
@@ -2095,6 +2111,21 @@ def check_all_command_guards(command: str, env_type: str,
             "message": "BLOCKED: User denied. Do NOT retry.",
             "pattern_key": primary_key,
             "description": combined_desc,
+            "outcome": "deny",
+        }
+    if not choice:
+        # L-021 / 2dfb795cb78f: undelivered or unanswered CLI prompt is not a
+        # user denial — fail-closed with truthful attribution.
+        return {
+            "approved": False,
+            "message": (
+                "BLOCKED: Command approval was withdrawn before the user answered "
+                "(the approval prompt could not be delivered or was not answered). "
+                "Do NOT retry this command."
+            ),
+            "pattern_key": primary_key,
+            "description": combined_desc,
+            "outcome": "cancelled",
         }
 
     # Persist approval for each warning individually

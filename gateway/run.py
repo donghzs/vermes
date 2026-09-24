@@ -3683,7 +3683,7 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
 
 
 def sanitize_gateway_process_env() -> None:
-    """Purge process-global cron markers at gateway startup.
+    """Purge process-global session/presence markers at gateway startup.
 
     The gateway runs the cron ticker in-process (``_start_cron_ticker``), and
     cron-session detection is task-local (``gateway.session_context._CRON_SESSION``
@@ -3697,11 +3697,21 @@ def sanitize_gateway_process_env() -> None:
     gateway process via ``env={...process.env}``, and ``is_cron_session()``'s
     env fallback would misclassify every real user message as cron.
 
-    Pop it once at startup (single-threaded, before adapters/cron) so the
-    gateway's own process is clean; the env fallback then only ever fires in
-    processes that legitimately mark themselves cron via the env var.
+    T12①: also drop parent-shell presence vars (``VERMES_INTERACTIVE`` /
+    ``VERMES_EXEC_ASK`` / ``VERMES_GATEWAY_SESSION``). The gateway re-sets its
+    own intentional presence after this call (module-level ``VERMES_EXEC_ASK``
+    and the TUI's ``_enable_gateway_prompts``); stripping first means a stale
+    ``export`` in the launching shell cannot pin interactive/ask semantics for
+    every subsequent task in this multi-threaded process.
+
+    Pop once at startup (single-threaded, before adapters/cron) so the
+    gateway's own process is clean; env fallbacks then only fire in processes
+    that legitimately mark themselves via those env vars.
     """
     os.environ.pop("VERMES_CRON_SESSION", None)
+    os.environ.pop("VERMES_INTERACTIVE", None)
+    os.environ.pop("VERMES_EXEC_ASK", None)
+    os.environ.pop("VERMES_GATEWAY_SESSION", None)
 
 
 async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = False, verbosity: Optional[int] = 0) -> bool:
