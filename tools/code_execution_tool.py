@@ -127,16 +127,14 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
       4. On Windows, a small OS-essential allowlist passes by exact name
          — without these the child can't even create a socket or spawn a
          subprocess.
+      5. L-029: scope-only declared names (profile ``.env``) overlay last.
 
-    Extracted into a helper so tests can exercise the logic without
-    spawning a subprocess.
+    L-028: the passthrough probe is fail-closed — import failure raises
+    rather than silently dropping every declared secret.
     """
     if is_passthrough is None:
-        try:
-            from tools.env_passthrough import is_env_passthrough as _ep
-        except Exception:
-            _ep = lambda _: False  # noqa: E731
-        is_passthrough = _ep
+        from tools.env_passthrough import require_is_env_passthrough
+        is_passthrough = require_is_env_passthrough()
     if is_windows is None:
         is_windows = _IS_WINDOWS
 
@@ -152,6 +150,15 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
             continue
         if is_windows and k.upper() in _WINDOWS_ESSENTIAL_ENV_VARS:
             scrubbed[k] = v
+    # L-029: declared names the profile scope holds but source_env lacked.
+    try:
+        from tools.env_passthrough import scoped_passthrough_additions
+        scrubbed.update((k, v) for k, v in scoped_passthrough_additions(scrubbed).items())
+    except Exception:
+        # Preserve fail-closed for the security filter above; overlay is
+        # additive-only. If the overlay itself cannot resolve, leave scrubbed
+        # as-is rather than inventing values.
+        pass
     return scrubbed
 
 

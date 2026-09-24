@@ -191,6 +191,74 @@ def is_env_passthrough(var_name: str) -> bool:
     return var_name in _load_config_passthrough()
 
 
+def require_is_env_passthrough():
+    """Return :func:`is_env_passthrough` **fail-closed** (L-028 / `547fff75003a`).
+
+    Upstream dropped the ``try/except`` around the scope overlay: a failure
+    there must be loud, not silently drop the declared secret again (#114209).
+    Vermes had the same shape — ``except Exception: _is_passthrough = lambda _: False``
+    made an import/config failure look like "nothing is declared" and stripped
+    every skill-declared passthrough var from the child.
+    """
+    return is_env_passthrough
+
+
+def source_supplied_names() -> frozenset[str]:
+    """Names declared via skill ``required_environment_variables`` / config only.
+
+    Split out of the passthrough union (L-032 / `dcdbcb8a2b14`) so callers can
+    see "what did the user/skill declare" without mixing in runtime allowlist
+    mutations. Same set as :func:`get_all_passthrough` today; kept as a separate
+    surface so a future source-provenance loader can extend it without changing
+    the union API.
+    """
+    return get_all_passthrough()
+
+
+def scoped_passthrough_additions(present: Iterable[str]) -> dict[str, str]:
+    """Declared passthrough names a profile ``.env`` supplies but *present* lacks.
+
+    L-029 / `802a9975d283` (rewrite — Vermes has no ``agent.secret_scope``).
+    A routed profile's ``.env`` never enters the process env, so a name-by-name
+    filter over ``os.environ`` can only forward a declared name the LAUNCH
+    profile also happens to define. Reads the **target profile home's** ``.env``
+    alone (``VERMES_HOME`` / ``get_vermes_home()``); empty without a profile
+    home so single-profile spawns stay byte-identical.
+
+    Raises on reader failure (L-028 fail-closed) instead of silently dropping
+    the declared secret.
+    """
+    present = set(present)
+    names = source_supplied_names()
+    if not names:
+        return {}
+    home = None
+    try:
+        from vermes_constants import get_vermes_home
+        home = get_vermes_home()
+    except Exception as exc:
+        raise RuntimeError(
+            f"scoped_passthrough_additions: cannot resolve profile home: {exc}"
+        ) from exc
+    if home is None:
+        return {}
+    env_file = home / ".env"
+    if not env_file.is_file():
+        return {}
+    additions: dict[str, str] = {}
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key in present or key not in names:
+            continue
+        additions[key] = val
+    return additions
+
+
 def get_all_passthrough() -> frozenset[str]:
     """Return the union of skill-registered and config-based passthrough vars."""
     # Read from the unified registry (canonical store)

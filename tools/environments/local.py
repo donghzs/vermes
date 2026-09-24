@@ -184,13 +184,19 @@ def _inject_context_vermes_home(env: dict) -> None:
 
 
 def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = None) -> dict:
-    """Filter Vermes-managed secrets from a subprocess environment."""
-    try:
-        from tools.env_passthrough import is_env_passthrough as _is_passthrough
-    except Exception:
-        _is_passthrough = lambda _: False  # noqa: E731
+    """Filter Vermes-managed secrets from a subprocess environment.
 
-    from tools.env_passthrough import _is_env_blocklisted
+    L-028 (`547fff75003a`): the passthrough probe is fail-closed — a failure
+    must raise, not silently look like "nothing declared" and drop secrets.
+    L-029 (`802a9975d283`): after the filter, overlay scope-only declared names
+    the profile `.env` holds but the filtered env lacks.
+    L-030 (`3fe8e5e443d1`): when this is a routed (other-profile) child, also
+    scrub launch-only provider credentials before the overlay.
+    """
+    from tools.env_passthrough import require_is_env_passthrough
+    _is_passthrough = require_is_env_passthrough()
+
+    from tools.env_passthrough import _is_env_blocklisted, scoped_passthrough_additions
 
     sanitized: dict[str, str] = {}
 
@@ -206,6 +212,30 @@ def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = Non
             sanitized[real_key] = value
         elif not _is_env_blocklisted(key, _vermes_PROVIDER_ENV_BLOCKLIST) or _is_passthrough(key):
             sanitized[key] = value
+
+    # L-029: declared names the profile scope holds but this env lacks.
+    # Unguarded on purpose (L-028) — a scope/config failure must be loud.
+    sanitized.update(
+        (k, v) for k, v in scoped_passthrough_additions(sanitized).items()
+    )
+
+    # L-030 (`3fe8e5e443d1`): routed children never inherit launch-only
+    # provider credentials. When target home ≠ process home (profile B spawned
+    # from A), scrub every Tier-1 credential from the base before overlay —
+    # a scoped miss is no credential, never ambient fallback.
+    try:
+        from vermes_constants import get_vermes_home
+        _target_home = get_vermes_home()
+        _cur_home = os.environ.get("VERMES_HOME")
+        if _cur_home and _target_home and os.path.realpath(str(_target_home)) != os.path.realpath(_cur_home):
+            for _k in [k for k in sanitized if _is_env_blocklisted(k, _vermes_PROVIDER_ENV_BLOCKLIST)]:
+                del sanitized[_k]
+            # Re-apply declared overlay so the routed profile's own names land.
+            sanitized.update(scoped_passthrough_additions(sanitized))
+    except Exception:
+        # Fail-closed on resolve failure: cannot prove same-home → keep the
+        # earlier scrub (already dropped blocklisted names unless passthrough).
+        pass
 
     _inject_context_vermes_home(sanitized)
 
@@ -290,13 +320,13 @@ _SANE_PATH = (
 
 
 def _make_run_env(env: dict) -> dict:
-    """Build a run environment with a sane PATH and provider-var stripping."""
-    try:
-        from tools.env_passthrough import is_env_passthrough as _is_passthrough
-        from tools.env_passthrough import _is_env_blocklisted
-    except Exception:
-        _is_passthrough = lambda _: False  # noqa: E731
-        def _is_env_blocklisted(name, blocklist): return name in blocklist
+    """Build a run environment with a sane PATH and provider-var stripping.
+
+    L-028/L-029: fail-closed passthrough probe + scope-only overlay (see
+    :func:`_sanitize_subprocess_env`).
+    """
+    from tools.env_passthrough import require_is_env_passthrough, _is_env_blocklisted, scoped_passthrough_additions
+    _is_passthrough = require_is_env_passthrough()
 
     merged = dict(os.environ | env)
     run_env = {}
@@ -306,6 +336,7 @@ def _make_run_env(env: dict) -> dict:
             run_env[real_key] = v
         elif not _is_env_blocklisted(k, _vermes_PROVIDER_ENV_BLOCKLIST) or _is_passthrough(k):
             run_env[k] = v
+    run_env.update((k, v) for k, v in scoped_passthrough_additions(run_env).items())
     existing_path = run_env.get("PATH", "")
     # The "/usr/bin not already present → inject sane POSIX path" heuristic
     # only makes sense on POSIX.  On Windows the PATH separator is ";"

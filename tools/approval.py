@@ -1499,6 +1499,49 @@ def _smart_approve(command: str, description: str) -> str:
         return "escalate"
 
 
+# L-031 (`3fc1a184f8c0` + `9e232a7ff5c1`): plugin/container classification.
+# Built-in sandbox backends skip host-approval guards; plugin backends can
+# declare the same classification via :func:`register_provider_flag`.
+_PROVIDER_FLAGS: dict[str, dict[str, bool]] = {}
+
+# Built-in sandbox env types that never need host dangerous-command approval
+# (they are already isolated). docker is special: once host paths are
+# bind-mounted, ``rm -rf /workspace`` reaches host files — so it is NOT skipped
+# by default and the caller may pass has_host_access=False to opt out.
+_SKIP_GUARD_ENV_TYPES = frozenset({"singularity", "modal", "daytona", "vercel_sandbox"})
+
+
+def register_provider_flag(env_type: str, flag: str, value: bool = True) -> None:
+    """Declare a provider capability flag (plugin ABI, L-031)."""
+    _PROVIDER_FLAGS.setdefault(env_type, {})[flag] = bool(value)
+
+
+def provider_flag(env_type: str, flag: str, default: bool = False) -> bool:
+    """Read a provider capability flag; coerce to bool (L-031 / `9e232a7ff5c1`).
+
+    A truthy non-bool declaration must not leak into the approval decision.
+    Fail-soft to *default* so an unknown or raising backend keeps the guards on.
+    """
+    try:
+        return bool(_PROVIDER_FLAGS.get(env_type, {}).get(flag, default))
+    except Exception:
+        return bool(default)
+
+
+def _should_skip_container_guards(env_type: str, has_host_access: bool = False) -> bool:
+    """True when container/sandbox env types may skip host dangerous-command guards.
+
+    docker is NOT skipped once host paths are bind-mounted (``rm -rf /workspace``
+    then reaches host files). Plugin backends declare
+    ``skip_container_guards`` via :func:`register_provider_flag`.
+    """
+    if env_type == "docker":
+        return not has_host_access
+    if env_type in _SKIP_GUARD_ENV_TYPES:
+        return True
+    return provider_flag(env_type, "skip_container_guards", False)
+
+
 def check_dangerous_command(command: str, env_type: str,
                             approval_callback=None) -> dict:
     """Check if a command is dangerous and handle approval.
@@ -1514,7 +1557,7 @@ def check_dangerous_command(command: str, env_type: str,
     Returns:
         {"approved": True/False, "message": str or None, ...}
     """
-    if env_type in {"docker", "singularity", "modal", "daytona", "vercel_sandbox"}:
+    if _should_skip_container_guards(env_type):
         return {"approved": True, "message": None}
 
     # Hardline floor: commands with no recovery path (rm -rf /, mkfs, dd
@@ -1764,8 +1807,8 @@ def check_all_command_guards(command: str, env_type: str,
     a gateway force=True replay from bypassing one check when only the
     other was shown to the user.
     """
-    # Skip containers for both checks
-    if env_type in {"docker", "singularity", "modal", "daytona", "vercel_sandbox"}:
+    # Skip containers for both checks (L-031: plugin classification honored)
+    if _should_skip_container_guards(env_type):
         return {"approved": True, "message": None}
 
     # Hardline floor: unconditional block for catastrophic commands

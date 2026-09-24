@@ -251,8 +251,15 @@ S5 的前置核实项已登记为待办（§8）。
 | L-022 | `04fcf9159c18` | — | 拒绝/暂缓（后续 11）：api_server bridge 高 churn，等 L-020 后复查 | — | — | 11 | ⏸ 暂缓 |
 | L-023 | `840c00c124be` | — | 拒绝（后续 33）：重构非缺陷 | — | — | 33 | ❌ 拒绝 |
 | L-024 | `dcdbcb8a2b14` | — | 拒绝/暂缓（后续 10）：等 scope overlay 基建 | — | — | 10 | ⏸ 暂缓 |
-| L-025 | `547fff75003a`+`802a9975d283`+`3fe8e5e443d1` | — | 拒绝/暂缓（后续 1/0/4）：Vermes 无 `scoped_passthrough_additions`/`served_profile_child_env` 同构面，缺 profile secret-scope 基建 | — | — | 4 | ⏸ 暂缓（缺基建） |
-| L-026 | `9e232a7ff5c1`+`3fc1a184f8c0` | — | 拒绝/暂缓（后续 3/4）：无 `terminal_env_registry.provider_flag` 同构 API | — | — | 4 | ⏸ 暂缓（无对应 API） |
+| L-025 | `547fff75003a`+`802a9975d283`+`3fe8e5e443d1` | — | 拒绝/暂缓（后续 1/0/4）：缺 scope overlay 基建 | — | — | 4 | ⏸ → **L-028/029/030 已重写落地** |
+| L-026 | `9e232a7ff5c1`+`3fc1a184f8c0` | — | 拒绝/暂缓（后续 3/4）：无 `terminal_env_registry.provider_flag` 同构 API | — | — | 4 | ⏸ 暂缓（无对应 API）→ **L-031 已重写落地** |
+| L-028 | `547fff75003a` | `tools/environments/local.py`, `tools/code_execution_tool.py` | 重写（后续 1）：passthrough 探针 fail-closed——`except → lambda _: False` 会静默丢弃声明 secret；改为 `require_is_env_passthrough()` 失败即 raise | `tests/tools/test_takealong_r3.py` | ~0.3h | 1 | ✅ 已合入（取长第 3 轮） |
+| L-029 | `802a9975d283` | `tools/env_passthrough.py`, `tools/environments/local.py`, `tools/code_execution_tool.py` | 重写（后续 0）：`scoped_passthrough_additions`——profile `.env` 声明但过滤后 env 缺失的名字补进子进程（Vermes 无 `agent.secret_scope`，用 `get_vermes_home()/.env` 等价实现） | `tests/tools/test_takealong_r3.py` | ~0.5h | 0 | ✅ 已合入（取长第 3 轮） |
+| L-030 | `3fe8e5e443d1` | `tools/environments/local.py` | 重写（后续 4）：routed 子进程（target home ≠ 当前）剥离 launch-only 凭据后再叠 scope overlay | `tests/tools/test_takealong_r3.py` | ~0.4h | 4 | ✅ 已合入（取长第 3 轮） |
+| L-031 | `3fc1a184f8c0`+`9e232a7ff5c1` | `tools/approval.py` | 重写（后续 3/4）：`register_provider_flag`/`provider_flag`/`_should_skip_container_guards`——plugin 容器分类生效；truthy 非 bool 强制 bool；未知 backend 默认保留门控 | `tests/tools/test_takealong_r3.py` | ~0.4h | 4 | ✅ 已合入（取长第 3 轮） |
+| L-032 | `dcdbcb8a2b14` | `tools/env_passthrough.py` | 移植/重写（后续 10）：`source_supplied_names()` 拆出「用户/技能声明」面，与 runtime union 分离 | `tests/tools/test_takealong_r3.py` | ~0.1h | 10 | ✅ 已合入（取长第 3 轮） |
+| L-033 | `04fcf9159c18` | — | **拒绝/暂缓**（后续 11）：api_server approval bridge + cron 自调度——等 L-020 家族稳定后复查 | — | — | 11 | ⏸ 暂缓 |
+| L-034 | `dd68d175674d` | — | **拒绝/暂缓**（后续 5）：GUI terminal ask 批量预排属 UX 特征（新模块 `terminal_approval_batch`），挂用户可见配额观察 | — | — | 5 | ⏸ 暂缓 |
 <!--TAKEALONG_LEDGER:END-->
 
 ---
