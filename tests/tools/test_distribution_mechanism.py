@@ -290,27 +290,41 @@ def test_vermes_counterpart_dir_prefix_resolves_file():
     assert verdict == "有对应物"
 
 
-def test_vermes_counterpart_redline():
-    """红线仅限 ZONES.own 具体点名资产，不是 agent/、gateway/ 一刀切。"""
-    # gateway/platforms/ 是红线（中文平台 17 个，ZONES.own 点名）
+def test_vermes_counterpart_product_face_beats_map():
+    """产品面（§7c 分流②）优先于映射表：默认不取长，intake 标「不判」。"""
+    # 中文平台 = 产品面
     _, verdict = uw._vermes_counterpart("gateway/platforms/wechat/adapter.py")
-    assert verdict == "红线"
-    # agent 具体领先文件是红线
+    assert verdict == "产品面"
+    # 记忆织物 = 产品面
     _, verdict2 = uw._vermes_counterpart("agent/memory_fabric.py")
-    assert verdict2 == "红线"
-    # 但 agent 其他文件（如 file_safety.py）是 core 区，标「移植/评估」非红线
+    assert verdict2 == "产品面"
+    # 但 agent 其他文件（如 file_safety.py）是引擎面，标「有对应物」
     _, verdict3 = uw._vermes_counterpart("agent/file_safety.py")
     assert verdict3 == "有对应物"
 
 
+def test_is_product_face_list():
+    """产品面名单：自进化/记忆织物/中文平台/Electron/构建链路等默认不取长。"""
+    assert uw.is_product_face("agent/capability_evolver.py") is True
+    assert uw.is_product_face("gateway/platforms/telegram.py") is True
+    assert uw.is_product_face("electron/main.js") is True
+    assert uw.is_product_face("scripts/build-macos.sh") is True
+    assert uw.is_product_face("scripts/sync-version.sh") is True
+    # 引擎面：同名跟随
+    assert uw.is_product_face("tools/approval.py") is False
+    assert uw.is_product_face("agent/file_safety.py") is False
+    assert uw.is_product_face("cron/scheduler.py") is False
+
+
 def test_own_zone_never_bypassed_by_specific_map():
-    """own 区路径即使命中精确映射也输出「红线只读」（防 cherry-pick 进自有资产）。"""
-    # gateway/platforms/webhook.py 是 own 区（classify=own），不得标「移植/评估」
+    """own/产品面路径即使命中精确映射也不得标「移植/评估」（防 cherry-pick 进自有资产）。"""
+    # gateway/platforms/webhook.py 是产品面（own），不得被映射放行成「移植/评估」
     vm, verdict = uw._vermes_counterpart("gateway/platforms/webhook.py")
-    assert verdict == "红线", f"own 区不得被精确映射放行：got {verdict} ({vm})"
-    # scholarforge/ 同（own 区）
+    assert verdict in ("产品面", "红线"), f"own/产品面不得被精确映射放行：got {verdict} ({vm})"
+    assert verdict != "有对应物"
+    # scholarforge/ 同（产品面）
     _, v2 = uw._vermes_counterpart("scholarforge/cnki_fetcher.py")
-    assert v2 == "红线"
+    assert v2 in ("产品面", "红线")
 
 
 def test_cron_delivery_alias_maps_to_scheduler():

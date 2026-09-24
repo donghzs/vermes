@@ -163,6 +163,42 @@ UPSTREAM_VERMES_MAP: dict[str, str | None] = {
     "agent/file_safety.py": "agent/file_safety.py",
 }
 
+# 产品面（默认不取长）——独立演进的发行版资产。与 ZONES.own / §2 红线清单同源。
+# §7c 取长分流②：命中产品面 → intake 标「产品面·不判」，L 表只留一行说明。
+# 要取必须先证明「不引入 Vermes 没有的上游抽象」，并在 §7c 记一行。
+# 「同能力但产品语义」（如 ContextEngine 的产品逻辑）属产品面，但同名文件
+# 文件级切不开 —— 默认按引擎面跟，人工判到产品语义时改标产品面。
+PRODUCT_FACE_PREFIXES: tuple[str, ...] = (
+    "vermes_cli/",                      # Vermes CLI 包
+    "agent/memory_fabric.py",           # 记忆织物
+    "agent/capability_evolver.py",      # 自进化
+    "agent/workflow_runtime.py",        # 工作流 DAG
+    "agent/compression_scheduler.py",   # 上下文压缩调度
+    "gateway/platforms/",               # 中文平台 17 个
+    "scholarforge/",                    # 论文写作
+    "acp_registry/",                    # 神魔堂
+    "frontend/",                        # 中文化前端
+    "electron/",                        # 打包壳
+    "installer/",
+    "locales/",
+    "scripts/build-",                   # 打包链
+    "scripts/sync-version.sh",
+    "scripts/upstream_watch.py",
+    "scripts/upstream_canary.py",
+    "scripts/s2_snapshot.py",
+    "scripts/trigger-win-build.py",
+    "scripts/prebuild-check.sh",
+    "scripts/verify-build.sh",
+    "tools/feedback_tool.py",
+    "docs/vermes/",
+    "scripts/vermes/",
+)
+
+
+def is_product_face(path: str) -> bool:
+    """True = 产品面，§7c 分流②：默认不取长（intake 标「不判」）。"""
+    return any(path.startswith(p) for p in PRODUCT_FACE_PREFIXES)
+
 # 安全信号：主题/正文命中这些词 = 意图级候选（并集，不只看 fix(security)）
 INTENT_SECURITY_RE = re.compile(
     r"GHSA-|CVE-|security|credential|secret|auth|approval|sandbox|injection|token|key leak|bypass",
@@ -191,6 +227,9 @@ def _vermes_counterpart(upstream_path: str) -> tuple[str, str]:
     「红线只读 → 人工读 diff → 判 Vermes 是否有等价面 → 有则在意图层重写」，
     而不是脚本直接标「移植/评估」鼓励 cherry-pick。
     """
+    # 1a. 产品面（§7c 分流②）→「产品面」：默认不取长，intake 直接「不判」
+    if is_product_face(upstream_path):
+        return upstream_path, "产品面"
     # 1. own 区（发行版自有）永远红线，无论映射表怎么写
     if classify(upstream_path) == "own":
         return upstream_path, "红线"
@@ -243,7 +282,7 @@ def cmd_intake(args: argparse.Namespace) -> int:
 
     # 逐条判定
     rows: list[dict] = []
-    n_ghsa = n_fixsec = n_security_semantic = n_counterpart = n_redline = n_none = 0
+    n_ghsa = n_fixsec = n_security_semantic = n_counterpart = n_redline = n_none = n_product = 0
     for c in commits:
         subject = c["subject"]
         if INTENT_SKIP_RE.search(subject):
@@ -266,6 +305,8 @@ def cmd_intake(args: argparse.Namespace) -> int:
                 break
         if verdict == "有对应物":
             n_counterpart += 1
+        elif verdict == "产品面":
+            n_product += 1
         elif verdict == "红线":
             n_redline += 1
         else:
@@ -306,7 +347,8 @@ def cmd_intake(args: argparse.Namespace) -> int:
         f"| 显式 GHSA | {n_ghsa} |",
         f"| fix(security) 标签 | {n_fixsec} |",
         f"| 安全语义候选 | {n_security_semantic} |",
-        f"| 有 Vermes 对应物（入队） | {n_counterpart} |",
+        f"| 有 Vermes 对应物（入队·引擎面） | {n_counterpart} |",
+        f"| 产品面（不判·默认不取长） | {n_product} |",
         f"| 红线（own 区，只读） | {n_redline} |",
         f"| 无对应物（人工判） | {n_none} |",
         "",
@@ -315,9 +357,16 @@ def cmd_intake(args: argparse.Namespace) -> int:
         "|---|---|---|---|---|---|",
     ]
     for r in rows:
-        sug = {"有对应物": "移植/评估", "红线": "红线只读", "无": "人工判"}[r["verdict"]]
+        sug = {
+            "有对应物": "移植/评估",
+            "产品面": "不判（产品面默认不取长）",
+            "红线": "红线只读",
+            "无": "人工判",
+        }[r["verdict"]]
         if r["verdict"] == "有对应物":
             vm_disp = r["vermes"]
+        elif r["verdict"] == "产品面":
+            vm_disp = f"产品面: {r['vermes']}"
         elif r["verdict"] == "红线":
             # 显示具体 own 资产，便于人工评审直接定位
             vm_disp = f"红线区: {r['vermes']}"
@@ -329,10 +378,11 @@ def cmd_intake(args: argparse.Namespace) -> int:
         )
     lines.append("")
     lines.append("## 2. 处置纪律\n")
-    lines.append("1. 采纳：改代码 + 契约测试 + TAKEALONG_LEDGER §7c 登记（含来源 commit/落点/验收/人时）。")
+    lines.append("1. 采纳：改代码 + 契约测试 + TAKEALONG_LEDGER §7c 登记（含来源 commit/落点/验收/人时/上游后续变更次数）。")
     lines.append("2. 拒绝：也在 §7c 记一行（防重复考古）。")
-    lines.append("3. 红线：只输出思路参考，默认不直接搬。")
-    lines.append("4. 「无对应物」≠「无需」：可能是同域不同文件名（分叉太深），需人工对照 upstream diff 判定。")
+    lines.append("3. **产品面（§7c 分流②）**：默认不取长；intake 已标「不判」，L 表只留一行说明。要取必须先证明「不引入 Vermes 没有的上游抽象」。")
+    lines.append("4. 红线：只输出思路参考，默认不直接搬。")
+    lines.append("5. 「无对应物」≠「无需」：可能是同域不同文件名（分叉太深），需人工对照 upstream diff 判定。")
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
