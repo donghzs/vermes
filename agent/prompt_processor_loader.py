@@ -130,8 +130,17 @@ class PromptProcessor:
 
     @property
     def effective_max_chars(self) -> int:
-        """L-014：本段长度上限。插件显式 > metadata/YAML `max_chars` > 默认 8000。"""
-        cap = getattr(self, "_plugin_max_chars", None) or self.metadata.get("max_chars")
+        """L-014：本段长度上限。单一真源 = metadata["max_chars"]（YAML 顶层解析时已写入）。
+
+        优先级：插件显式 `_plugin_max_chars` > metadata > 默认 8000。
+        有意设计（WorkBuddy 2026-09-24 silent-design 收口）：
+        - YAML **只认顶层 `max_chars`**，`_parse_yaml` 解析后**覆写**进 metadata
+          （不再读 metadata 里的同名键，消除双入口静默分歧）。
+        - `is not None` 判断（不用 `or`），显式 0 不会 falsy 下穿。
+        """
+        cap = getattr(self, "_plugin_max_chars", None)
+        if cap is None:
+            cap = self.metadata.get("max_chars")
         try:
             cap = int(cap)
         except (TypeError, ValueError):
@@ -519,8 +528,8 @@ def _parse_yaml(path: Path) -> Optional[PromptProcessor]:
     metadata = data.get("metadata", {"author": "unknown", "source": "builtin"})
     if not isinstance(metadata, dict):
         metadata = {"author": "unknown", "source": "builtin"}
-    # L-014：把上限记进 metadata，供 effective_max_chars / 出口截断用
-    metadata.setdefault("max_chars", max_chars)
+    # L-014 单一真源：顶层 `max_chars` 解析后**覆写** metadata（两处冲突以顶层为准）
+    metadata["max_chars"] = max_chars
 
     return PromptProcessor(
         name=name,

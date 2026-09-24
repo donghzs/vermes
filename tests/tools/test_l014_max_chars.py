@@ -112,18 +112,46 @@ def test_render_content_truncates_callable_blowup():
     assert out == "Z" * 100
 
 
-def test_resolve_section_respects_cap():
-    """装配出口走 render_content，超限段被截断而不是撑爆 prompt。"""
+def test_resolve_section_respects_cap(monkeypatch):
+    """装配出口 `_resolve_section` 必须截断超限段（真注册，返回值不得丢弃）。"""
     p = PromptProcessor(
         name="wide",
         content="W" * 200,
         layer="volatile",
         metadata={"source": "plugin", "max_chars": 50},
     )
+    monkeypatch.setattr(sp, "load_all_processors", lambda: [p])
     content, source, _h = sp._resolve_section("wide")
-    # 无 plugin 时走 missing；直接测 render_content 与 enforce 即可
-    assert p.render_content() == "W" * 50
+    assert source == "plugin"
+    assert content == "W" * 50, "出口必须按 max_chars 截断"
     assert p.effective_max_chars == 50
+
+
+def test_top_level_max_chars_overrides_metadata(tmp_path, monkeypatch):
+    """单一真源：YAML 顶层 max_chars 覆写 metadata，消除双入口静默分歧。"""
+    import yaml as _yaml
+
+    f = tmp_path / "dual.yaml"
+    f.write_text(
+        _yaml.safe_dump(
+            {
+                "name": "dual.section",
+                "content": "x" * 80,
+                "max_chars": 5000,
+                "metadata": {"max_chars": 30},
+                "triggers": {"type": "always"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("agent.prompt_processor_loader._get_builtin_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        "agent.prompt_processor_loader._get_user_dir", lambda: tmp_path / "nope"
+    )
+    invalidate_cache()
+    p = next(x for x in load_all_processors() if x.effective_id == "dual.section")
+    assert p.effective_max_chars == 5000
+    assert p.metadata["max_chars"] == 5000
 
 
 def test_mustache_render_expansion_capped():
