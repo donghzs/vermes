@@ -167,6 +167,7 @@ S5 的前置核实项已登记为待办（§8）。
 | D-006 | `tools/code_execution_tool.py` | 产品增强 | 2026-09-22 | UX 打扰治理 P0-5：沙箱产物 `intermediate` 标记 + delivery 过滤消费；有意偏离（须重打 DMG 对打包用户生效） |
 | D-007 | `tools/send_message_tool.py` | 修复 | 2026-09-23 | `35532f29fb57`：QQBot target 解析——32 位 openid/数字群号识别为显式目标，避免 directory 命中后解析返回 None 被丢弃；自有产品修复，有意偏离（后续同文件大改仍需再登记） |
 | D-008 | `tools/file_operations.py` | 修复 | 2026-09-23 | `018b4e761ade`（本文件部分；同 commit `code_execution_tool.py` 已在 D-006/L-013）：read_file 单行/长行截断不说谎——行内截断并入 `truncated`，`wc -l` 改 awk 正确数行；自有缺陷修复，有意偏离 |
+| D-009 | `tools/file_tools.py` | 修复 | 2026-09-24 | `34bba18558`：write-deny 补 `/var/`+`/private/var/` 前缀（macOS 旁路，注释写了要挡但前缀表从未收录）；`/var/folders/` 临时目录白名单保留。自有安全修复，有意偏离 |
 <!--DIVERSION_LEDGER:END-->
 
 ---
