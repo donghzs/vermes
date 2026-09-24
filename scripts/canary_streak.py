@@ -4,6 +4,10 @@
 用法:
   python3 scripts/canary_streak.py --need 3
 退出码 0 = 达标；1 = 未达标。
+
+**重要（2026-09-24 订正）**：`trailing_streak` 只数「行数」，**不判时间间隔**。
+同一静止窗口内连打 N 次证明的是「门禁可重复通过」，不是「机制随时间自持」。
+停止条件② 要求**跨自然日的 launchd 自动跑** —— 判读时看 `ts` 是否落在不同日期。
 """
 
 from __future__ import annotations
@@ -54,12 +58,36 @@ def main() -> int:
             streak += 1
         else:
             break
+    # 时间维：跨几个自然日（停止条件② 的真判据）
+    green_days = []
+    for r in rows:
+        if is_green(r):
+            ts = str(r.get("ts", ""))
+            day = ts[:8] if len(ts) >= 8 else ts
+            if day not in green_days:
+                green_days.append(day)
+    trailing_days = 0
+    seen = None
+    for r in reversed(rows):
+        if not is_green(r):
+            break
+        ts = str(r.get("ts", ""))
+        day = ts[:8] if len(ts) >= 8 else ts
+        if seen is None or day != seen:
+            trailing_days += 1
+            seen = day
     green_n = sum(1 for r in rows if is_green(r))
-    print(f"rows={len(rows)} green_total={green_n} trailing_streak={streak} need={args.need}")
+    print(
+        f"rows={len(rows)} green_total={green_n} trailing_streak={streak} "
+        f"trailing_days={trailing_days} distinct_green_days={len(green_days)} need={args.need}"
+    )
+    print(
+        "NOTE: trailing_streak 不判时间间隔；停止条件② 看 trailing_days（跨自然日自动跑）"
+    )
     for r in rows[-args.need - 2 :]:
         mark = "GREEN" if is_green(r) else "RED"
         print(f"  {r.get('ts')} {mark} canary={r.get('canary_rc')} boundary={r.get('boundary_rc')} gold={r.get('gold_rc')} tax={r.get('unregistered_tax')}")
-    return 0 if streak >= args.need else 1
+    return 0 if (streak >= args.need and trailing_days >= args.need) else 1
 
 
 if __name__ == "__main__":
