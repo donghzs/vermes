@@ -2,6 +2,59 @@
 
 All notable changes to Vermes will be documented in this file.
 
+## [2.5.3] - 2026-09-24
+
+> 范围：`f416dbf17d`（2.5.2 版本点）→ 本 tag，共 **43 个提交**。
+> 性质：**安全收口 + 审批真相 + 用户可见 UX + 发行版取长治理**。
+> 发版触发：用户可见配额 ≥1（T16 审批按会话计数 + 中间产物误标修复）。
+
+### 用户可见
+
+- **审批按会话**：多会话同时有待审批时，弹窗「共 N 条」只计本会话；优先展示当前会话的审批，不再被别的会话插队
+- **中间产物不再误标**：文件名含 `VERMES_exec_` 的用户交付物（如 `notes_VERMES_exec_draft.md`）不再被当成沙箱草稿过滤掉
+- **审批文案不再说谎**：审批未送达 / 未回答 / 会话中断时，提示为「已撤回/未回答」，**不再写成「用户拒绝」**（fail-closed 不变，命令仍拦截）
+
+### 安全
+
+- **cron 交付强制脱敏**：定时任务回传聊天前强制 `force=True` 脱敏；redact 失败则整段替换占位，绝不原文外发
+- **file_safety 多 home 锚定**：profile/容器下 `HOME` 被指到隔离目录时，真实用户 `~/.ssh`、`~/.aws` 等绝对路径写入重新纳入 write-deny
+- **write-deny 挡住 `/var` 与 `/private/var`**（修 macOS 旁路）
+- **profile 门控 fail-closed**：解析失败 / 缺 `VERMES_HOME` 时仍剥离父门控；去掉 `default` 特殊豁免
+
+### 正确性 / 稳定性
+
+- **日志 2.2GB 膨胀修复**：token 脱敏大小写 + 请求日志默认关 + 日期日志轮转
+- **gateway 启动失败退出码透传**；QQBot 32 位 openid / 数字群号 target 解析
+- **`TERMINAL_CWD` 会话隔离**：cron workdir 不再写进程级 env，用户会话文件工具不再被串味
+- **presence 启动层剥离**：父 shell 泄漏的 `VERMES_INTERACTIVE` / `VERMES_EXEC_ASK` 等不再污染 gateway
+- **插件注入 `max_chars` 护栏** + id 校验 + 重复注册拒绝
+- **`sync-version.sh` 不再静默失败**（Python ast/json，根治 grep shim 假阴性）
+
+### 发行版治理（对用户透明，对维护者关键）
+
+- 取长第 2 轮：intake 21 条全判定（含「上游后续变更次数」）；§7c 取长登记 26 条 / 偏离 9 条
+- boundary 持续 **未登记税 0**；ID 一经使用不再回收（L-014 归历史 max_chars，file_safety 改 L-027）
+- S2 插件化 walking skeleton + P3 `VERMES_DISABLE_PROMPT_SECTIONS` 禁用开关
+- `feedback_tool` 用户反馈工具（thumbs 归一 + target 回填）
+
+### 已知问题
+
+| # | 缺陷 | 状态 |
+|---|---|---|
+| 1 | Windows 包待远端构建回填 `version.json` sha256/size | 与 2.5.1/2.5.2 同流程 |
+| 2 | gateway 全量既有失败（环境/品牌重命名遗留） | pre-existing，见 2.5.1 台账 |
+| 3 | SQLite 3.50.4 WAL-reset 损坏 bug（内嵌运行时） | 未修 |
+
+### 验证
+
+| 套件 | 结果 |
+|---|---|
+| 取长第 2 轮契约测（sync-version / profile-gate / t12 / file_safety / delivery-redact / approval-cancelled） | 50 passed |
+| `test_distribution_mechanism` | 27 passed |
+| frontend T16 三件（approval-session / ux-quiet / mcp-command-center） | 23 passed |
+| boundary | 未登记税 **0** · core 登记率 100% |
+| pinned canary | FAIL=0 · ab-sentinels 7 全绿 |
+
 ## [2.5.2] - 2026-09-22
 
 > 范围：`26416408b4`（2.5.1 发布点）→ `018b4e761a`。
