@@ -378,6 +378,7 @@ def _parse_ledger_block(
     *,
     type_col: int | None = None,
     exempt_type_re: re.Pattern | None = None,
+    manifest_path: str | None = None,
 ) -> tuple[set[str], set[str]]:
     """解析一个被 `<!--MARKER:START-->`…`<!--MARKER:END-->` 包裹的账本表。
 
@@ -386,12 +387,16 @@ def _parse_ledger_block(
 
     若给出 type_col + exempt_type_re，仅当「类型」列命中正则时才把落点计入免税集
     （T15：自有 bugfix 落点不得永久免 G1）。
+
+    ``manifest_path``：测试可传临时台账，探针不再随真账本登记漂移而红
+    （WorkBuddy/Hermes：file_tools.py、kanban_tools.py 两次同款）。
     """
     exact_files: set[str] = set()
     dir_prefixes: set[str] = set()
-    if not os.path.exists(MANIFEST_PATH):
+    src = manifest_path or MANIFEST_PATH
+    if not os.path.exists(src):
         return exact_files, dir_prefixes
-    text = open(MANIFEST_PATH, encoding="utf-8").read()
+    text = open(src, encoding="utf-8").read()
     m = re.search(
         rf"<!--{marker}:START-->\s*(.*?)<!--{marker}:END-->", text, re.S
     )
@@ -441,7 +446,7 @@ def parse_core_diverge_ledger() -> tuple[set[str], set[str]]:
     return _parse_ledger_block("CORE_DIVERGE_LEDGER", 1)
 
 
-def parse_diversion_ledger() -> tuple[set[str], set[str]]:
+def parse_diversion_ledger(manifest_path: str | None = None) -> tuple[set[str], set[str]]:
     """合并解析两本账（DIVERSION + TAKEALONG），返回 (exact_files, dir_prefixes)。
 
     免税语义（T15）：
@@ -451,11 +456,14 @@ def parse_diversion_ledger() -> tuple[set[str], set[str]]:
     """
     exact_files: set[str] = set()
     dir_prefixes: set[str] = set()
-    ef, dp = _parse_ledger_block("DIVERSION_LEDGER", 1, type_col=2, exempt_type_re=None)
+    ef, dp = _parse_ledger_block(
+        "DIVERSION_LEDGER", 1, type_col=2, exempt_type_re=None, manifest_path=manifest_path
+    )
     exact_files |= ef
     dir_prefixes |= dp
     ef, dp = _parse_ledger_block(
-        "TAKEALONG_LEDGER", 2, type_col=3, exempt_type_re=TAKEALONG_EXEMPT_TYPE_RE
+        "TAKEALONG_LEDGER", 2, type_col=3, exempt_type_re=TAKEALONG_EXEMPT_TYPE_RE,
+        manifest_path=manifest_path,
     )
     exact_files |= ef
     dir_prefixes |= dp

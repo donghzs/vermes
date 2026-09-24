@@ -285,7 +285,10 @@ def step_tests(py: str, tests: list[str], tmpdir: Path | None) -> dict:
     failed = int(m2.group(1)) if m2 else 0
     if rc != 0 or failed:
         status = "FAIL"
+        failed_names = re.findall(r"FAILED\s+(\S+)", text)
         detail = f"{passed} passed / {failed} failed"
+        if failed_names:
+            detail += " — " + ", ".join(failed_names[:5])
     else:
         status = "PASS"
         detail = f"{passed} passed"
@@ -377,9 +380,14 @@ AB_SENTINEL_TESTS: dict[str, list[str]] = {
     ],
     # cron 不被误判为交互挂起（unattended）
     "C05": ["tests/tools/test_cron_session_contextvar.py"],
-    # 渠道目标 / 断线重连 — 暂无确定性单测，先显式 WARN
-    "D02": [],
+    # D02：QQBot 32 位 openid/数字群号 → 显式目标（35532f29fb57 回归哨兵）
+    "D02": ["tests/tools/test_d02_qqbot_target.py"],
+    # D03：断线重连不丢消息 —— **依赖 P4（中文平台插件化）**，P4 开工时补。
+    # 不写空壳测；标记 DEPENDS_P4，不挂永久 WARN 噪音（Hermes 2026-09-24）。
     "D03": [],
+}
+AB_SENTINEL_DEPENDS = {
+    "D03": "P4（中文平台插件化）未开工，P4 开工时补确定性断言",
 }
 
 
@@ -395,8 +403,11 @@ def step_ab_sentinels(py: str, tmpdir: Path | None) -> dict:
     for sid in sorted(AB_SENTINEL_TESTS):
         nodes = AB_SENTINEL_TESTS[sid]
         if not nodes:
-            unmapped.append(sid)
-            rows.append((sid, "WARN", "未映射确定性断言"))
+            if sid in AB_SENTINEL_DEPENDS:
+                rows.append((sid, "SKIP", f"依赖未开工: {AB_SENTINEL_DEPENDS[sid]}"))
+            else:
+                unmapped.append(sid)
+                rows.append((sid, "WARN", "未映射确定性断言"))
             continue
         missing = [n for n in nodes if not (ROOT / n.split("::")[0]).exists()]
         if missing:

@@ -210,7 +210,7 @@ def register_system_prompt_section(
 |---|---|---|
 | P1 | 是否接受 **adapter 形态**（而非照搬上游实现） | 建议接受，理由见 §2 |
 | P2 | plugin / builtin / user hot path 的同名优先级 | 建议 plugin < builtin < user |
-| P3 | 是否实现回退开关 `VERMES_PROMPT_PROCESSORS_LEGACY` | **合成定案（2026-09-23）**：不做新旧双轨；改 `VERMES_DISABLE_PROMPT_SECTIONS=id1,id2`。**已落地（2026-09-23 策略分层定稿）**：`disabled_section_ids()` 唯一策略源；`load_all_processors` 事实层不过滤；装配侧 `_resolve_section` 命中 → 真零文本不注入；register 不拒登；安全段须 `…_CONFIRM=1`。退役=`v3.0.0-distribution` 前 |
+| P3 | 是否实现回退开关 `VERMES_PROMPT_PROCESSORS_LEGACY` | **合成定案（2026-09-23）**：不做新旧双轨；改 `VERMES_DISABLE_PROMPT_SECTIONS=id1,id2`。**已落地（2026-09-23 策略分层定稿）**：`disabled_section_ids()` 唯一策略源；`load_all_processors` 事实层不过滤；装配侧 `_resolve_section` 命中 → 真零文本不注入；register 不拒登；安全段须 `…_CONFIRM=1`。**退役定义（2026-09-24 写死，解读 B）**：把禁用名单从 env 迁入 `config.yaml`（`agent.disable_prompt_sections`；env 保留为覆盖层），桌面 GUI 可开关；迁移完成后收回 env 为仅运维覆盖。`_PROCESSOR_FALLBACK` 退役（S2.4）≠ 本项完成。此项本身可算一条用户可见能力。**退役定义（2026-09-24 写死，解读 B）**：把禁用名单从 env 迁到 `config.yaml` （env 保留为覆盖层）+ 将来 GUI 开关 —— 让桌面小白真正可用，本身即一条用户可见能力。S2.4 退役的是 `_PROCESSOR_FALLBACK` map，与本项无关。迁移完成后收回 env 为仅覆盖层。退役=`v3.0.0-distribution` 前 |
 | P4 | S2 排期是否按 93% 已完成的事实重估 | 建议重估为真缺口部分：**1 条 API + 1 个残留键 + gold 基线** |
 
 ## 9b. S2.2 执行顺序（2026-09-23 定）

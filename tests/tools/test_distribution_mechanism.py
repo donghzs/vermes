@@ -103,12 +103,25 @@ def test_registered_diversion_matches_t3_files():
         assert uw.is_registered_diversion(path, ledger), f"{path} 应已登记为有意偏离"
 
 
-def test_registered_file_does_not_exempt_siblings():
-    """登记单文件不豁免同目录兄弟 —— 这是防放水的核心。"""
-    ledger = uw.parse_diversion_ledger()
-    # tools/env_passthrough.py 已登记，但同目录未登记的兄弟不得因此免税。
-    # 注：tools/kanban_tools.py 曾作探针，现因 L-010（自有 bugfix）已登记，
-    # 不再适合作「未登记」探针——改用仍未登记的兄弟文件。
+def test_registered_file_does_not_exempt_siblings(tmp_path):
+    """登记单文件不豁免同目录兄弟 —— 这是防放水的核心。
+
+    用**自足临时台账**，不读真 manifest —— 否则每次合法登记（file_tools D-009、
+    kanban_tools L-010）都会把探针打红（已犯两次）。
+    """
+    fake = tmp_path / "manifest.md"
+    fake.write_text(
+        "<!--DIVERSION_LEDGER:START-->\n"
+        "| id | 路径 | 类型 | 登记日期 | 理由 |\n"
+        "|---|---|---|---|---|\n"
+        "| D-TEST | `tools/env_passthrough.py` | 修复 | 2026-09-24 | 探针用 |\n"
+        "<!--DIVERSION_LEDGER:END-->\n",
+        encoding="utf-8",
+    )
+    ledger = uw.parse_diversion_ledger(manifest_path=str(fake))
+    # 已登记的单文件免税
+    assert uw.is_registered_diversion("tools/env_passthrough.py", ledger)
+    # 同目录未登记兄弟不得因此免税
     assert not uw.is_registered_diversion("tools/skills_tool.py", ledger)
     assert not uw.is_registered_diversion("tools/terminal_tool.py", ledger)
     assert not uw.is_registered_diversion("tools/file_tools.py", ledger)
