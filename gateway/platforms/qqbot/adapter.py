@@ -101,6 +101,7 @@ from gateway.platforms.qqbot.constants import (
     CONNECT_TIMEOUT_SECONDS,
     RECONNECT_BACKOFF,
     MAX_RECONNECT_ATTEMPTS,
+    RECONNECT_LOG_EVERY,
     RATE_LIMIT_DELAY,
     QUICK_DISCONNECT_THRESHOLD,
     MAX_QUICK_DISCONNECT_COUNT,
@@ -553,9 +554,15 @@ class QQAdapter(BasePlatformAdapter):
                         self._log_tag,
                         RATE_LIMIT_DELAY,
                     )
-                    if backoff_idx >= MAX_RECONNECT_ATTEMPTS:
+                    # L-036: never give up (MAX_RECONNECT_ATTEMPTS=0 = unlimited)
+                    if MAX_RECONNECT_ATTEMPTS and backoff_idx >= MAX_RECONNECT_ATTEMPTS:
                         self._mark_disconnected()
                         return
+                    if backoff_idx and backoff_idx % RECONNECT_LOG_EVERY == 0:
+                        logger.warning(
+                            "[%s] still reconnecting after %d attempts (rate-limit path)",
+                            self._log_tag, backoff_idx,
+                        )
                     await asyncio.sleep(RATE_LIMIT_DELAY)
                     if await self._reconnect(backoff_idx):
                         backoff_idx = 0
@@ -606,10 +613,16 @@ class QQAdapter(BasePlatformAdapter):
                     quick_disconnect_count = 0
                 else:
                     backoff_idx += 1
-                    if backoff_idx >= MAX_RECONNECT_ATTEMPTS:
+                    # L-036: never give up — 用尽上限躺平是 9/24 故障形态
+                    if MAX_RECONNECT_ATTEMPTS and backoff_idx >= MAX_RECONNECT_ATTEMPTS:
                         logger.error("[%s] Max reconnect attempts reached (QQCloseError)", self._log_tag)
                         self._mark_disconnected()
                         return
+                    if backoff_idx % RECONNECT_LOG_EVERY == 0:
+                        logger.warning(
+                            "[%s] still reconnecting after %d attempts (QQCloseError %s)",
+                            self._log_tag, backoff_idx, code,
+                        )
 
             except Exception as exc:
                 if not self._running:
@@ -618,10 +631,15 @@ class QQAdapter(BasePlatformAdapter):
                 self._mark_transport_disconnected()
                 self._fail_pending("Connection interrupted")
 
-                if backoff_idx >= MAX_RECONNECT_ATTEMPTS:
+                if MAX_RECONNECT_ATTEMPTS and backoff_idx >= MAX_RECONNECT_ATTEMPTS:
                     logger.error("[%s] Max reconnect attempts reached", self._log_tag)
                     self._mark_disconnected()
                     return
+                if backoff_idx and backoff_idx % RECONNECT_LOG_EVERY == 0:
+                    logger.warning(
+                        "[%s] still reconnecting after %d attempts (exception path)",
+                        self._log_tag, backoff_idx,
+                    )
 
                 if await self._reconnect(backoff_idx):
                     backoff_idx = 0

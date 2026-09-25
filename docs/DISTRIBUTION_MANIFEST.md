@@ -264,6 +264,10 @@ S5 的前置核实项已登记为待办（§8）。
 | L-032 | `dcdbcb8a2b14` | `tools/env_passthrough.py` | 移植/重写（后续 10）：`source_supplied_names()` 拆出「用户/技能声明」面，与 runtime union 分离 | `tests/tools/test_takealong_r3.py` | ~0.1h | 10 | ✅ 已合入（取长第 3 轮）· **复查点：下次碰 env_passthrough 声明面前对照上游 `dcdbcb8a2b14` 后续 10 变更重判** |
 | L-033 | `04fcf9159c18` | — | **拒绝/暂缓**（后续 11）：api_server approval bridge + cron 自调度——等 L-020 家族稳定后复查 | — | — | 11 | ⏸ 暂缓 |
 | L-034 | `dd68d175674d` | — | **拒绝/暂缓**（后续 5）：GUI terminal ask 批量预排属 UX 特征（新模块 `terminal_approval_batch`），挂用户可见配额观察 | — | — | 5 | ⏸ 暂缓 |
+| L-035 | —（**自有缺陷**，L3 进程卡死 / L4 观测） | `gateway/run.py`, `gateway/watchdog.py` | 修复（自有缺陷）+ 对齐上游防护：① 空异常 `debug+%s`→`warning+%r`（channel directory + cron tick）；② `fut.result(timeout=30)` 超时单独记 warning；③ **进程看门狗**（CPU>90%×3 或 :9120 失联×3 → `os._exit(70)` 喂 Electron 崩溃自愈） | `tests/gateway/test_process_watchdog.py` 6 passed | ~0.6h | — | ✅ 已合入（gateway 稳定性治本①） |
+| L-036 | `qqbot` 躺平族（对照 Telegram 永不放弃模式） | `gateway/platforms/qqbot/constants.py`, `.../adapter.py` | 重写（对齐上游 Telegram 语义）：`MAX_RECONNECT_ATTEMPTS=0` 无上限 + 封顶 60s 退避 + 节流日志；三处「用尽上限就躺平」分支不再 return | `tests/gateway/test_channel_selfheal_l2.py` | ~0.3h | 100 | ✅ 已合入 · **复查点（churn≥5）** |
+| L-037 | `14f20d142e` + `5743dbb703` | `gateway/platforms/feishu.py` | 重写（后续 2，高价值）：`_supervise_websocket_thread` — WS 线程死了自动带退避重建（封顶 60s），不再静默变聋直到网关重启 | `tests/gateway/test_channel_selfheal_l2.py` | ~0.5h | 2 | ✅ 已合入 |
+| L-038 | `5743dbb703` 语义（ws_link_lost） | `gateway/platforms/feishu.py` | 重写：死链时状态写 `ws_link_lost`/`retrying`，**不再假绿 `connected`**（配合 L-037） | `tests/gateway/test_channel_selfheal_l2.py` | ~0.1h | — | ✅ 已合入 |
 <!--TAKEALONG_LEDGER:END-->
 
 ---

@@ -1426,6 +1426,10 @@ class FeishuAdapter(BasePlatformAdapter):
         self._apply_settings(self._settings)
         self._client: Optional[Any] = None
         self._ws_client: Optional[Any] = None
+        self._ws_future: Optional[Any] = None
+        self._ws_thread_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._ws_supervisor: Optional[asyncio.Task] = None
+        self._ws_restart_backoff: float = 2.0
         self._ws_future: Optional[asyncio.Future] = None
         self._ws_thread_loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -1689,6 +1693,13 @@ class FeishuAdapter(BasePlatformAdapter):
     async def disconnect(self) -> None:
         """Disconnect from Feishu/Lark."""
         self._running = False
+        if self._ws_supervisor is not None:
+            self._ws_supervisor.cancel()
+            try:
+                await self._ws_supervisor
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._ws_supervisor = None
         await self._cancel_pending_tasks(self._pending_text_batch_tasks)
         await self._cancel_pending_tasks(self._pending_media_batch_tasks)
         self._reset_batch_buffers()
@@ -4447,6 +4458,55 @@ class FeishuAdapter(BasePlatformAdapter):
             self._ws_client,
             self,
         )
+        # L-037 (`14f20d142e`+`5743dbb703`): WS 线程死了没人重建 → profile
+        # 静默变聋直到网关重启。监督器在 link 失联时记 ws_link_lost 并带退避重建。
+        if self._ws_supervisor is None:
+            self._ws_supervisor = loop.create_task(self._supervise_websocket_thread())
+
+    async def _supervise_websocket_thread(self) -> None:
+        """Restart the WS client thread if it dies while the adapter is up (L-037).
+
+        ``lark_oapi.start()`` only returns on fatal errors; without this watcher a
+        dead thread left the profile silently deaf until a gateway restart.
+        Rebuild with capped backoff (60s). Deliberate disconnects nil
+        ``_ws_client``/``_running`` first — only restart a live link.
+        """
+        backoff = initial_backoff = float(getattr(self, "_ws_restart_backoff", 2.0) or 2.0)
+        last_dead = None
+        while self._running:
+            ws_future = self._ws_future
+            if ws_future is None:
+                return
+            try:
+                await asyncio.shield(ws_future)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+            if not self._running or self._ws_client is None:
+                return
+            if ws_future is not last_dead:
+                logger.error(
+                    "[Feishu] WebSocket client thread exited unexpectedly; restarting in %.0fs",
+                    backoff,
+                )
+                last_dead = ws_future
+                # L-038: 死链时不再假绿 connected
+                self._write_runtime_status_safe(
+                    "ws_link_lost",
+                    platform_state="retrying",
+                    error_code=None,
+                    error_message="Feishu websocket link lost; rebuilding",
+                )
+            await asyncio.sleep(backoff)
+            if not self._running:
+                return
+            try:
+                await self._connect_websocket()
+                backoff = initial_backoff
+            except Exception as exc:
+                logger.warning("[Feishu] WebSocket restart failed (retrying): %r", exc)
+                backoff = min(backoff * 2, 60.0)
 
     async def _connect_webhook(self) -> None:
         if not FEISHU_WEBHOOK_AVAILABLE:

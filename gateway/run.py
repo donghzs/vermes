@@ -3595,7 +3595,8 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
         try:
             cron_tick(verbose=False, adapters=adapters, loop=loop)
         except Exception as e:
-            logger.debug("Cron tick error: %s", e)
+            # L-035: 同上，空异常 debug 不可见
+            logger.warning("Cron tick error: %r", e)
 
         tick_count += 1
 
@@ -3613,9 +3614,17 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
                         log_message="Channel directory refresh scheduling error",
                     )
                     if fut is not None:
-                        fut.result(timeout=30)
+                        # L-035 / Hermes 2026-09-25: 空异常 + 同步阻塞是 100% CPU
+                        # 形状候选。升级为 warning + repr；超时单独记，不吞。
+                        try:
+                            fut.result(timeout=30)
+                        except Exception as te:
+                            logger.warning(
+                                "Channel directory refresh wait failed/timeout: %r", te
+                            )
             except Exception as e:
-                logger.debug("Channel directory refresh error: %s", e)
+                # Was logger.debug + %s → empty string, every ~5.5 min, invisible.
+                logger.warning("Channel directory refresh error: %r", e)
 
         if tick_count % IMAGE_CACHE_EVERY == 0:
             try:
@@ -4129,9 +4138,18 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
         name="cron-ticker",
     )
     cron_thread.start()
-    
+
+    # L3/L4 process watchdog: 100% CPU / control-plane hang → os._exit(70)
+    # so Electron's `code !== 0` self-heal respawns (see gateway/watchdog.py).
+    from gateway.watchdog import GatewayWatchdog
+    _watchdog = GatewayWatchdog(
+        enabled=os.environ.get("VERMES_GATEWAY_WATCHDOG", "1") not in ("0", "false", "no"),
+    )
+    _watchdog.start()
+
     # Wait for shutdown
     await runner.wait_for_shutdown()
+    _watchdog.stop()
 
     if runner.should_exit_with_failure:
         if runner.exit_reason:

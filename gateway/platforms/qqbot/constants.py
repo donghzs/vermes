@@ -39,7 +39,11 @@ FILE_UPLOAD_TIMEOUT = 120.0
 CONNECT_TIMEOUT_SECONDS = 20.0
 
 RECONNECT_BACKOFF = [2, 5, 10, 30, 60]
-MAX_RECONNECT_ATTEMPTS = 100
+# L-036 / Hermes 2026-09-25: 永不放弃。旧 MAX_RECONNECT_ATTEMPTS=100 用尽后
+# _mark_disconnected()+return → QQBot 躺平到网关重启。上游 Telegram 模式是
+# 永不放弃 + 封顶 60s 退避；0 = 无上限（只用于日志节流提示）。
+MAX_RECONNECT_ATTEMPTS = 0
+RECONNECT_LOG_EVERY = 20  # 每 N 次失败打一条汇总，防日志刷屏
 RATE_LIMIT_DELAY = 60  # seconds
 QUICK_DISCONNECT_THRESHOLD = 5.0  # seconds
 MAX_QUICK_DISCONNECT_COUNT = 3
