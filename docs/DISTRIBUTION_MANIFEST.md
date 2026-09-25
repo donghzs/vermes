@@ -194,6 +194,7 @@ S5 的前置核实项已登记为待办（§8）。
 | C-007 | `gateway/session_context.py` | L-007/L-010：`VERMES_CRON_SESSION`/`VERMES_SESSION_ID` 改 contextvar，修 gateway 内嵌 cron 污染真实用户审批 | 无直接对应；自有 P0 | 2026-09-23 |
 | C-008 | `acp_adapter/server.py` | L-010：session_id 弃进程级 save/restore 改 setter + token reset（修并发串味）；同 C-003 族 | 无直接对应；自有安全修复 | 2026-09-23 |
 | C-009 | `agent/prompt_builder.py` | 常量面：S2.4 四键以 YAML 为准回写 + `COMPUTER_USE_GUIDANCE` 惰性源；skill-routing 渠道门 + SkillRouter；W-L4/L5/M7 阈值相关常量。**不能走插件形态**——这些常量被 `system_prompt`/`codex_responses_adapter` 等 core 路径直引，插件只能注册段、不能替换常量真源 | 上游无等价常量面（Vermes 反向领先）；分叉点=内容与调度，不是文件存在性 | 2026-09-23 |
+| C-010 | `gateway/watchdog.py` | L-035 进程看门狗：CPU>90% / :9120 失联 → `os._exit(70)` 喂 Electron 崩溃自愈（Hermes 2026-09-25 治本①）。**不能走插件形态**——必须在 gateway 进程内、先于事件循环假死可用 | 上游无进程内看门狗（靠 supervisor 外挂）；Vermes 桌面壳 = Electron 自愈 | 2026-09-25 |
 <!--CORE_DIVERGE_LEDGER:END-->
 
 ---
@@ -268,6 +269,7 @@ S5 的前置核实项已登记为待办（§8）。
 | L-036 | `qqbot` 躺平族（对照 Telegram 永不放弃模式） | `gateway/platforms/qqbot/constants.py`, `.../adapter.py` | 重写（对齐上游 Telegram 语义）：`MAX_RECONNECT_ATTEMPTS=0` 无上限 + 封顶 60s 退避 + 节流日志；三处「用尽上限就躺平」分支不再 return | `tests/gateway/test_channel_selfheal_l2.py` | ~0.3h | 100 | ✅ 已合入 · **复查点（churn≥5）** |
 | L-037 | `14f20d142e` + `5743dbb703` | `gateway/platforms/feishu.py` | 重写（后续 2，高价值）：`_supervise_websocket_thread` — WS 线程死了自动带退避重建（封顶 60s），不再静默变聋直到网关重启 | `tests/gateway/test_channel_selfheal_l2.py` | ~0.5h | 2 | ✅ 已合入 |
 | L-038 | `5743dbb703` 语义（ws_link_lost） | `gateway/platforms/feishu.py` | 重写：死链时状态写 `ws_link_lost`/`retrying`，**不再假绿 `connected`**（配合 L-037） | `tests/gateway/test_channel_selfheal_l2.py` | ~0.1h | — | ✅ 已合入 |
+| L-039 | —（**P3 退役解读 B**，用户可见能力） | `agent/prompt_processor_loader.py`, `vermes_cli/config.py`, `vermes_cli/blueprints/config.py`, `frontend/src/components/Settings.vue` | 自有产品能力：禁用名单主源迁 `config.yaml` `agent.disable_prompt_sections`（env 留覆盖层）+ **桌面 GUI 开关**（安全段二次确认） | `tests/tools/test_p3_gui_disable_sections.py` 7 + `test_p3_disable_prompt_sections.py` 13 | ~0.8h | — | ✅ 已合入（**本周用户可见配额**；须重打 DMG 真机生效） |
 <!--TAKEALONG_LEDGER:END-->
 
 ---

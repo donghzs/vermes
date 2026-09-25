@@ -562,6 +562,10 @@ def _parse_yaml(path: Path) -> Optional[PromptProcessor]:
 # 并保留真实 path/source；诊断侧 missing 排除被禁。禁止把过滤塞进事实层。
 DISABLE_ENV = "VERMES_DISABLE_PROMPT_SECTIONS"
 DISABLE_CONFIRM_ENV = "VERMES_DISABLE_PROMPT_SECTIONS_CONFIRM"
+# P3 退役（解读 B，2026-09-24 写死）：禁用名单主源 = config.yaml
+# `agent.disable_prompt_sections`；env 保留为覆盖层（运维/排障）。
+DISABLE_CONFIG_PATH = ("agent", "disable_prompt_sections")
+DISABLE_CONFIRM_CONFIG_PATH = ("agent", "disable_prompt_sections_confirm")
 
 # 关掉这些段 = 卸掉行为护栏。env 会沿进程树继承扩散（cron approval 31 hangs/hour
 # 同构事故），爆炸半径远超「操作者自担」。故安全段须二次确认 + 每次启动 WARNING。
@@ -575,23 +579,54 @@ SAFETY_SECTION_IDS: frozenset[str] = frozenset({
 _disabled_announced_for: set[int] = set()  # generation → 已打印过禁用告示
 
 
+def _config_disabled_sections() -> frozenset[str]:
+    """config.yaml `agent.disable_prompt_sections`（list 或逗号串）。"""
+    try:
+        from vermes_cli.config import read_raw_config, cfg_get
+        cfg = read_raw_config()
+        raw = cfg_get(cfg, *DISABLE_CONFIG_PATH, default="") or ""
+    except Exception:
+        return frozenset()
+    if isinstance(raw, (list, tuple)):
+        return frozenset(str(s).strip() for s in raw if str(s).strip())
+    return frozenset(s.strip() for s in str(raw).split(",") if s.strip())
+
+
 def parse_disabled_sections() -> frozenset[str]:
-    """解析 `VERMES_DISABLE_PROMPT_SECTIONS` 原始名单（不含量化安全确认）。"""
-    raw = os.environ.get(DISABLE_ENV) or ""
-    return frozenset(s.strip() for s in raw.split(",") if s.strip())
+    """解析禁用名单（不含量化安全确认）。
+
+    来源合并（P3 退役解读 B）：
+    - **主源** config.yaml `agent.disable_prompt_sections`
+    - **覆盖层** env `VERMES_DISABLE_PROMPT_SECTIONS`（运维/排障，仍可用）
+    """
+    env_raw = os.environ.get(DISABLE_ENV) or ""
+    env_ids = frozenset(s.strip() for s in env_raw.split(",") if s.strip())
+    return _config_disabled_sections() | env_ids
+
+
+def _safety_confirmed() -> bool:
+    if os.environ.get(DISABLE_CONFIRM_ENV, "").strip().lower() in ("1", "true", "yes"):
+        return True
+    try:
+        from vermes_cli.config import read_raw_config, cfg_get
+        val = cfg_get(read_raw_config(), *DISABLE_CONFIRM_CONFIG_PATH, default=False)
+        return bool(val) and str(val).lower() not in ("0", "false", "no", "")
+    except Exception:
+        return False
 
 
 def disabled_section_ids() -> frozenset[str]:
     """唯一策略源：返回**实际生效**的禁用 id 集合。
 
-    - 非安全段：env 直接生效（A/B 去段 / 关 builtin 噪音 / 排障）
-    - 安全段：须 `VERMES_DISABLE_PROMPT_SECTIONS_CONFIRM=1`，否则 WARNING 并不禁用
+    - 非安全段：config / env 直接生效（A/B 去段 / 关 builtin 噪音 / 排障）
+    - 安全段：须二次确认（env `..._CONFIRM=1` 或 config
+      `agent.disable_prompt_sections_confirm: true`），否则 WARNING 并不禁用
     - 未知 id：不在本函数裁决（fail-open），由 `warn_unknown_disabled` 报
     """
     raw = parse_disabled_sections()
     if not raw:
         return frozenset()
-    confirm = os.environ.get(DISABLE_CONFIRM_ENV, "").strip().lower() in ("1", "true", "yes")
+    confirm = _safety_confirmed()
     effective: set[str] = set()
     blocked: list[str] = []
     for sid in sorted(raw):
@@ -601,7 +636,7 @@ def disabled_section_ids() -> frozenset[str]:
         effective.add(sid)
     if blocked:
         logger.warning(
-            "安全段禁用被拒（须 %s=1 二次确认）: %s",
+            "安全段禁用被拒（须 %s=1 或 config agent.disable_prompt_sections_confirm）: %s",
             DISABLE_CONFIRM_ENV,
             ",".join(blocked),
         )

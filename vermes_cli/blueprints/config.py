@@ -941,6 +941,55 @@ async def set_trust_gate_mode(body: GateModeUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── P3 桌面 GUI：prompt 段禁用名单 ──────────────────────────────────
+class PromptSectionsUpdate(BaseModel):
+    disable_prompt_sections: list[str] = []
+    disable_prompt_sections_confirm: bool = False
+
+
+async def get_prompt_sections():
+    """GET /api/prompt-sections — 事实层清单 + 策略生效状态（P3 GUI）。"""
+    try:
+        from agent.prompt_processor_loader import list_prompt_sections, disabled_section_ids
+        rows = list_prompt_sections()
+        return {
+            "sections": rows,
+            "disabled": sorted(disabled_section_ids()),
+        }
+    except Exception as e:
+        _log.exception("GET /api/prompt-sections failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def update_prompt_sections(body: PromptSectionsUpdate):
+    """PATCH /api/prompt-sections — 写 config.yaml 禁用名单（主源）。
+
+    安全段须 confirm=true 才会真正生效（策略层二次确认不变）。
+    """
+    try:
+        from vermes_cli.config import read_raw_config, save_config
+        from agent.prompt_processor_loader import (
+            SAFETY_SECTION_IDS,
+            disabled_section_ids,
+            list_prompt_sections,
+        )
+        cfg = read_raw_config()
+        agent_cfg = dict(cfg.get("agent") or {})
+        agent_cfg["disable_prompt_sections"] = [str(s).strip() for s in body.disable_prompt_sections if str(s).strip()]
+        agent_cfg["disable_prompt_sections_confirm"] = bool(body.disable_prompt_sections_confirm)
+        cfg["agent"] = agent_cfg
+        save_config(cfg)
+        return {
+            "ok": True,
+            "disabled": sorted(disabled_section_ids()),
+            "safety_section_ids": sorted(SAFETY_SECTION_IDS),
+            "sections": list_prompt_sections(),
+        }
+    except Exception as e:
+        _log.exception("PATCH /api/prompt-sections failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def register_to(app):
     """Register config/env/onboarding routes on the FastAPI app."""
     app.add_api_route("/api/onboarding", get_onboarding, methods=["GET"])
@@ -950,6 +999,8 @@ def register_to(app):
     app.add_api_route("/api/config/defaults", get_defaults, methods=["GET"])
     app.add_api_route("/api/config/cloud-models", get_cloud_models, methods=["GET"])
     app.add_api_route("/api/config/schema", get_schema, methods=["GET"])
+    app.add_api_route("/api/prompt-sections", get_prompt_sections, methods=["GET"])
+    app.add_api_route("/api/prompt-sections", update_prompt_sections, methods=["PATCH"])
     app.add_api_route("/api/registered-services", get_registered_services_endpoint, methods=["GET"])
     app.add_api_route("/api/literature-custom-sources", list_literature_custom_sources, methods=["GET"])
     app.add_api_route("/api/literature-custom-sources", create_literature_custom_source, methods=["POST"])

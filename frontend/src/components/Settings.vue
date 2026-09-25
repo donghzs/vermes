@@ -184,7 +184,7 @@ watch(activeTab, (tab) => {
   if (tab === 'services' && Object.keys(serviceGroups.value).length === 0 && !servicesLoading.value) loadServices()
   if (tab === 'literature' && literaturePaid.value.length === 0 && literatureFree.value.length === 0 && literatureCustom.value.length === 0 && !literatureLoading.value) loadLiterature()
   if (tab === 'knowledge' && ragDocs.value.length === 0 && !ragLoading.value) fetchRagDocs()
-  if (tab === 'security') { loadTierMode(); loadCredHealth(); loadCompactSkills() }
+  if (tab === 'security') { loadTierMode(); loadCredHealth(); loadCompactSkills(); loadPromptSections() }
   if (tab === 'mcp') { loadMcpCatalog(); loadMcpServers(); loadMcpSecurityRules() }
   if (tab === 'migration') { loadMigrationSources() }
 })
@@ -224,6 +224,53 @@ const COMPACT_SKILL_MODES = [
 ]
 const compactSkillMode = ref('off')
 const compactSkillSaving = ref(false)
+
+// P3 桌面 GUI：prompt 段禁用名单（config.yaml 主源）
+const promptSections = ref([])
+const promptDisabled = ref([])
+const promptSafetyIds = ref([])
+const promptConfirm = ref(false)
+const promptSaving = ref(false)
+
+async function loadPromptSections() {
+  try {
+    const r = await fetch('/api/prompt-sections')
+    if (!r.ok) return
+    const data = await r.json()
+    promptSections.value = data.sections || []
+    promptDisabled.value = data.disabled || []
+    const ids = promptSections.value.filter(s => s.safety_section).map(s => s.id)
+    promptSafetyIds.value = ids
+  } catch (e) { console.error('[PromptSections] load failed', e) }
+}
+
+function togglePromptSection(id) {
+  const set = new Set(promptDisabled.value)
+  if (set.has(id)) set.delete(id)
+  else set.add(id)
+  promptDisabled.value = [...set]
+}
+
+async function savePromptSections() {
+  if (promptSaving.value) return
+  promptSaving.value = true
+  try {
+    const r = await fetch('/api/prompt-sections', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        disable_prompt_sections: promptDisabled.value,
+        disable_prompt_sections_confirm: promptConfirm.value,
+      }),
+    })
+    if (r.ok) {
+      const data = await r.json()
+      promptDisabled.value = data.disabled || []
+      promptSections.value = data.sections || []
+    }
+  } catch (e) { console.error('[PromptSections] save failed', e) }
+  finally { promptSaving.value = false }
+}
 
 async function loadCompactSkills() {
   try {
@@ -2666,6 +2713,52 @@ async function toggleChannel(platformKey) {
             当前配置：<code class="text-[11px]">agent.compact_skill_categories = {{ compactSkillMode }}</code>
             · auto=纯渠道门（交互式降级，IM/群聊不降级）
           </p>
+        </div>
+
+        <!-- P3 桌面 GUI：prompt 段禁用名单 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div>
+            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">🧩 提示词段开关</h3>
+            <p class="text-xs text-gray-400 mt-1">
+              关闭不需要的系统提示词段，减少每轮噪声。安全护栏段需二次确认；改动写入
+              <code class="text-[11px]">agent.disable_prompt_sections</code>，重启会话后生效。
+            </p>
+          </div>
+          <div class="max-h-64 overflow-y-auto space-y-1">
+            <label
+              v-for="s in promptSections"
+              :key="s.id"
+              class="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                class="mt-0.5"
+                :checked="!promptDisabled.includes(s.id)"
+                :disabled="s.source === 'missing'"
+                @change="togglePromptSection(s.id)"
+              />
+              <span class="flex-1">
+                <span class="font-mono">{{ s.id }}</span>
+                <span class="ml-1 text-[10px] text-gray-400">{{ s.source }} · {{ s.layer }}</span>
+                <span v-if="s.safety_section" class="ml-1 text-[10px] text-amber-600">安全段</span>
+                <span v-if="s.source === 'missing'" class="ml-1 text-[10px] text-gray-400">（缺失）</span>
+              </span>
+            </label>
+          </div>
+          <label v-if="promptSafetyIds.some(id => promptDisabled.includes(id))" class="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+            <input type="checkbox" v-model="promptConfirm" />
+            我确认关闭安全护栏段（编辑护栏 / 工具强制），风险自担
+          </label>
+          <div class="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+            <button
+              @click="savePromptSections"
+              :disabled="promptSaving"
+              class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40"
+            >保存</button>
+            <span class="text-[11px] text-gray-400">
+              已禁用 {{ promptDisabled.length }} 段 · 写入 config.yaml（env 仍可作覆盖层）
+            </span>
+          </div>
         </div>
 
         <!-- P1-4: 凭证健康 + TrustGate -->

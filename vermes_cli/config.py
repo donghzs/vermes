@@ -579,6 +579,11 @@ DEFAULT_CONFIG = {
         # on=始终降级（显式，跨渠道）。
         # 历史：成本面（字节/比例阈值）已于 2026-09-20 拍板删除。
         "compact_skill_categories": "off",
+        # P3 桌面 GUI 开关（2026-09-25）：禁用 prompt 段名单（主源）。
+        # env VERMES_DISABLE_PROMPT_SECTIONS 仍为覆盖层。安全段须
+        # disable_prompt_sections_confirm: true（或 env CONFIRM=1）。
+        "disable_prompt_sections": [],
+        "disable_prompt_sections_confirm": False,
         # Phase 1：SkillRouter prefetch（技能提示注入）。
         # 默认 False：检索质量未完全达标前不打扰（QClaw 审计 2026-09-20）。
         # 需要时显式打开：agent.skill_router_enabled: true
