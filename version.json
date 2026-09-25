@@ -1,18 +1,18 @@
 {
   "version": "2.5.3",
-  "releaseDate": "2026-09-24",
-  "notes": "Vermes 2.5.3（安全收口 + 审批真相 + 用户可见 UX，43 commits）：① 用户可见 — 审批弹窗「共 N 条」按本会话计数、优先当前会话；文件名含 VERMES_exec_ 的用户交付物不再被误标为中间产物；审批未送达/未回答不再谎称「用户拒绝」。② 安全 — cron 回传聊天前强制脱敏（失败则整段替换）；file_safety 多 home 锚定（profile 下真实 ~/.ssh 等重新 write-deny）；write-deny 挡住 /var 与 /private/var；profile 门控 fail-closed。③ 稳定 — 日志 2.2GB 膨胀修复；gateway 启动失败退出码透传；QQBot target 解析；TERMINAL_CWD 会话隔离；插件 max_chars/id/重复注册三护栏。",
+  "releaseDate": "2026-09-26",
+  "notes": "Vermes 2.5.3（安全收口 + 审批真相 + 用户可见 UX + 网关稳定性，含 DMG 重打）：① 用户可见 — 设置页「提示词段开关」（P3 GUI，config.yaml 主源）；审批弹窗按本会话计数；中间产物不再误标；审批未回答不再谎称「用户拒绝」。② 安全 — cron 交付强制脱敏；file_safety 多 home 锚定；write-deny /var；profile 门控 fail-closed。③ 稳定 — 进程看门狗（卡死自动重启）；飞书 WS 监督器；QQBot 永不放弃；死链不再假绿；日志 2.2GB 修复；TERMINAL_CWD 隔离。",
   "downloads": {
     "mac": {
       "arm64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3-arm64.dmg",
-        "sha256": "c022a12e4e2eed77cc9ddba336c880911fe6e52352a3de2168e55df8b4fa61a3",
-        "size": 280050157
+        "sha256": "bb7252e7b1a90d2ca59611a1cbeff511d870d600b10c622b216520d4cb19bd65",
+        "size": 279982430
       },
       "x64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3.dmg",
-        "sha256": "8853aa539ad8fd464ee1aa6056e8980898a3fb095b4b1cc60d7c16543e4e9225",
-        "size": 285012158
+        "sha256": "6a327bd556e117b4911a6d415f295df9756428dbef93b1b8d636139d43af64ec",
+        "size": 285143491
       }
     },
     "windows": {
@@ -24,13 +24,13 @@
   "mac": {
     "arm64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3-arm64.dmg",
-      "sha256": "c022a12e4e2eed77cc9ddba336c880911fe6e52352a3de2168e55df8b4fa61a3",
-      "size": 280050157
+      "sha256": "bb7252e7b1a90d2ca59611a1cbeff511d870d600b10c622b216520d4cb19bd65",
+      "size": 279982430
     },
     "x64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3.dmg",
-      "sha256": "8853aa539ad8fd464ee1aa6056e8980898a3fb095b4b1cc60d7c16543e4e9225",
-      "size": 285012158
+      "sha256": "6a327bd556e117b4911a6d415f295df9756428dbef93b1b8d636139d43af64ec",
+      "size": 285143491
     }
   },
   "windows": {
