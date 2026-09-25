@@ -31,6 +31,10 @@ dist-modules/*.tar.gz
 vermes-onefile.spec
 *.egg-info/
 hermes_agent.egg-info/
+# Windows 远端/本地产物（441MB 级，勿入库；曾淹没 git status）
+win-backend-*/
+win-upload/
+*.exe
 
 # ── Frontend ──
 node_modules

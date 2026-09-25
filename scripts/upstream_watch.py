@@ -87,6 +87,8 @@ ZONES: dict[str, list[str]] = {
         "scripts/prebuild-check.sh",  # 构建前完整性检查（Vermes 独有，上游无同名）
         "scripts/verify-build.sh",  # 构建产物自检（Vermes 独有，上游无同名）
         "scripts/sync-version.sh",  # 版本号同步（Vermes 独有，上游无同名；2026-09-24 查证）
+        "scripts/vermes-canary-scheduled.sh",  # 定时 canary 入口（Vermes 独有，上游无同名）
+        "scripts/canary_streak.py",  # 连续全绿统计（Vermes 独有，上游无同名）
         "tools/feedback_tool.py",  # H4.4 显式用户反馈工具（Vermes 独有，上游无同名）
         ".github/workflows/upstream-canary.yml",  # 哨兵周跑 lane（Vermes 独有，只告警）
         "docs/vermes/",            # 外置的 Vermes 独有文档（外置迁移后进 own）

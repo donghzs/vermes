@@ -69,6 +69,8 @@ def test_zones_own_contains_vermes_only_tools():
         "scripts/sync-version.sh",
         "scripts/prebuild-check.sh",
         "scripts/verify-build.sh",
+        "scripts/vermes-canary-scheduled.sh",
+        "scripts/canary_streak.py",
         "tools/feedback_tool.py",
     ):
         assert prefix in uw.ZONES["own"], f"{prefix} 是 Vermes 独有工具，必须进 ZONES.own"
