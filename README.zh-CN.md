@@ -8,6 +8,11 @@
 > GUI 与中文体验由我们重写（Electron，全栈 MIT）。与 [EKKOLearnAI · Hermes Studio](https://github.com/EKKOLearnAI/hermes-studio)（WebUI，BSL-1.1）
 > 是**同源异 GUI 的平行路线**——不是「纯国产原创」，也不受 BSL 卡商用。
 
+> **产品定位 · 桌面 Agent OS，双模式**：
+> - **轻模式 = 单聊 Vermes**（路由 `/`，ChatView）：WorkBuddy 式纯净单 Agent 单聊，交互体验已达主流大厂层次；随切 204 provider / 7424 模型（DeepSeek、Kimi、通义等皆可直接切换，**并非只能用 Hermes 模型**）。
+> - **重模式 = 神魔堂**（路由 `/shenmotang`）：多 Agent 的**桌面 IM 入口**——微信式联系人/群、1:1 私聊、⊕ 拉群、@某人派活出任务卡、蜂群协作看板；底层 `peer_exchange` 联邦后端已通（44 个 ACP recipe，含 Kimi/通义/GLM 等国产 agent）。
+> - **对外主标**：用「桌面 Agent OS / 多 Agent 桌面入口」；「Hermes 发行版」只作技术背书词，不当产品主标。
+
 <p align="center">
   <a href="https://donghzs.github.io/vermes/docs/"><img src="https://img.shields.io/badge/Docs-github.io/vermes-FFD700?style=for-the-badge" alt="Documentation"></a>
   <a href="https://discord.gg/donghzs"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
