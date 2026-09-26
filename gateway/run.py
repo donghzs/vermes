@@ -3588,6 +3588,11 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
     CHANNEL_DIR_EVERY = 5    # ticks — every 5 minutes
     PASTE_SWEEP_EVERY = 60   # ticks — once per hour
     CURATOR_EVERY = 60       # ticks — poll hourly (inner gate handles the real cadence)
+    # 治本③ / 上游 `_HOUSEKEEPING_SHUTDOWN_DRAIN_TIMEOUT`：channel-directory 刷新
+    # 在 fut.result(timeout=30) 上阻塞，关停 join 必须覆盖 30s + margin，否则
+    # join(5) 提前返回留下悬挂 ticker。
+    CHANNEL_DIR_RESULT_TIMEOUT = 30.0
+    _channel_dir_inflight = False
 
     logger.info("Cron ticker started (interval=%ds)", interval)
     tick_count = 0
@@ -3601,30 +3606,39 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
         tick_count += 1
 
         if tick_count % CHANNEL_DIR_EVERY == 0 and adapters:
-            try:
-                from gateway.channel_directory import build_channel_directory
-                if loop is not None:
-                    # build_channel_directory is async (Slack web calls), and
-                    # this ticker runs in a background thread. Schedule onto
-                    # the gateway event loop and wait briefly for completion
-                    # so refresh failures are still logged via the except.
-                    fut = safe_schedule_threadsafe(
-                        build_channel_directory(adapters), loop,
-                        logger=logger,
-                        log_message="Channel directory refresh scheduling error",
-                    )
-                    if fut is not None:
-                        # L-035 / Hermes 2026-09-25: 空异常 + 同步阻塞是 100% CPU
-                        # 形状候选。升级为 warning + repr；超时单独记，不吞。
-                        try:
-                            fut.result(timeout=30)
-                        except Exception as te:
-                            logger.warning(
-                                "Channel directory refresh wait failed/timeout: %r", te
-                            )
-            except Exception as e:
-                # Was logger.debug + %s → empty string, every ~5.5 min, invisible.
-                logger.warning("Channel directory refresh error: %r", e)
+            # 上一次刷新仍占着 ticker → 跳过本轮，避免堆叠（治本③）
+            if _channel_dir_inflight:
+                logger.warning(
+                    "Channel directory refresh still in flight; skipping this cycle"
+                )
+            else:
+                _channel_dir_inflight = True
+                try:
+                    from gateway.channel_directory import build_channel_directory
+                    if loop is not None:
+                        # build_channel_directory is async (Slack web calls), and
+                        # this ticker runs in a background thread. Schedule onto
+                        # the gateway event loop and wait briefly for completion
+                        # so refresh failures are still logged via the except.
+                        fut = safe_schedule_threadsafe(
+                            build_channel_directory(adapters), loop,
+                            logger=logger,
+                            log_message="Channel directory refresh scheduling error",
+                        )
+                        if fut is not None:
+                            # L-035 / Hermes 2026-09-25: 空异常 + 同步阻塞是 100% CPU
+                            # 形状候选。升级为 warning + repr；超时单独记，不吞。
+                            try:
+                                fut.result(timeout=CHANNEL_DIR_RESULT_TIMEOUT)
+                            except Exception as te:
+                                logger.warning(
+                                    "Channel directory refresh wait failed/timeout: %r", te
+                                )
+                except Exception as e:
+                    # Was logger.debug + %s → empty string, every ~5.5 min, invisible.
+                    logger.warning("Channel directory refresh error: %r", e)
+                finally:
+                    _channel_dir_inflight = False
 
         if tick_count % IMAGE_CACHE_EVERY == 0:
             try:
@@ -4158,7 +4172,17 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     
     # Stop cron ticker cleanly
     cron_stop.set()
-    cron_thread.join(timeout=5)
+    # 治本③：channel-directory 在 fut.result(30) 上阻塞，join 必须 30s + margin
+    # （上游 `_HOUSEKEEPING_SHUTDOWN_DRAIN_TIMEOUT = 35.0`）。旧值 5s 会在刷新
+    # 进行中提前返回、留下悬挂 ticker 线程。
+    _CRON_TICKER_DRAIN_TIMEOUT = 35.0
+    cron_thread.join(timeout=_CRON_TICKER_DRAIN_TIMEOUT)
+    if cron_thread.is_alive():
+        logger.warning(
+            "Cron ticker did not exit within %.0fs of shutdown — "
+            "an in-flight channel-directory refresh may still be blocked.",
+            _CRON_TICKER_DRAIN_TIMEOUT,
+        )
 
     # Close MCP server connections
     try:
