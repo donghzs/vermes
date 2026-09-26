@@ -54,10 +54,19 @@
           class="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-emerald-50 dark:hover:bg-emerald-900/25 transition text-left"
           :class="selectedKey === ('contact:' + c.id) ? 'bg-emerald-100 dark:bg-emerald-900/35' : ''"
         >
-          <span
-            class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0"
-            :style="{ background: `hsl(${c.hue || 210}, 55%, 48%)` }"
-          >{{ (c.name || '?').slice(0, 1) }}</span>
+          <span class="relative shrink-0">
+            <span
+              class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold text-white"
+              :style="{ background: `hsl(${c.hue || 210}, 55%, 48%)` }"
+            >{{ (c.name || '?').slice(0, 1) }}</span>
+            <!-- 在线状态点（T2）：有 key / ACP = 在线绿点，本地 = 琥珀，否则灰 -->
+            <span
+              class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-900"
+              :class="c.has_api_key || c.transport === 'acp'
+                ? 'bg-emerald-400'
+                : (c.transport === 'cli' || c.transport === 'native' ? 'bg-amber-400' : 'bg-gray-300')"
+            />
+          </span>
           <span class="min-w-0 flex-1">
             <span class="block text-sm font-medium truncate text-gray-900 dark:text-gray-100">{{ c.name }}</span>
             <span class="block text-[11px] text-gray-400 truncate">
