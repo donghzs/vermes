@@ -24,6 +24,8 @@ const routes = [
   { path: '/bricks', component: () => import('../components/BricksPage.vue') },
   // P4-4 T2: benchmark 可视化大盘
   { path: '/benchmark', component: () => import('../components/BenchmarkDashboard.vue') },
+  // T0 用量/成本大盘（2026-09-26，洁室自研；后端 /api/analytics/usage 已有）
+  { path: '/usage', component: () => import('../components/UsageDashboard.vue') },
   // 旧路由保留重定向，避免外链 404。
   // 说明：ModuStore/SkillMarketPage 是纯路由页，已退役；ToolSkillDrawer / SoftwareDiscover
   // 是内嵌于 App.vue 的全局抽屉（非路由），不在本次重定向范围，仍独立可用。

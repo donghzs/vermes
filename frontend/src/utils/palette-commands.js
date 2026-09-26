@@ -15,6 +15,7 @@ export function buildPalettePageCommands(router) {
     { key: 'page:bricks', icon: '🧱', label: '积木市场', kind: '页面', action: go('/bricks') },
     { key: 'page:growth', icon: '🌱', label: '成长', kind: '页面', action: go('/growth') },
     { key: 'page:benchmark', icon: '📊', label: 'Benchmark 大盘', kind: '页面', action: go('/benchmark') },
+    { key: 'page:usage', icon: '📈', label: '用量与成本', hint: 'token 成本 用量趋势', kind: '页面', action: go('/usage') },
     { key: 'page:settings', icon: '⚙️', label: '设置', kind: '页面', action: go('/settings') },
   ]
 }
