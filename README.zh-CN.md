@@ -4,6 +4,10 @@
 
 # Vermes Agent ☤
 
+> **血缘说明**：引擎 fork 自 [Nous Research · Hermes Agent](https://github.com/NousResearch/hermes-agent)（MIT）；
+> GUI 与中文体验由我们重写（Electron，全栈 MIT）。与 [EKKOLearnAI · Hermes Studio](https://github.com/EKKOLearnAI/hermes-studio)（WebUI，BSL-1.1）
+> 是**同源异 GUI 的平行路线**——不是「纯国产原创」，也不受 BSL 卡商用。
+
 <p align="center">
   <a href="https://donghzs.github.io/vermes/docs/"><img src="https://img.shields.io/badge/Docs-github.io/vermes-FFD700?style=for-the-badge" alt="Documentation"></a>
   <a href="https://discord.gg/donghzs"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>

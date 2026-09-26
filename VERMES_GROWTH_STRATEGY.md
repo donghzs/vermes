@@ -66,7 +66,9 @@
 - **KPI**：帖文曝光、GitHub 从该渠道的 referrer、ScholarForge 相关 issue/讨论量。
 
 ### ② GitHub README 把「和 Hermes 的关系」讲透
-- **做法**：直接写「Hermes 启发，但我们补了三件事：学术垂直引擎、可验证的接地率、开箱桌面 GUI」。Hermes 140k 星是流量池，讲清差异反而能截流。
+- **做法（2026-09-26 校准）**：引擎 fork 自 **Nous Research · Hermes Agent（MIT）**；GUI 与中文体验由我们重写；与 EKKOLearnAI 的 **Hermes Studio（WebUI，BSL-1.1）** 是同源异 GUI 的平行路线。**禁止**写成「纯国产原创」或「基于 Vermes Agent」（循环自证）——懂行的一眼戳穿，伤信任。
+- **差异三件套**（对齐到同一层才公平）：学术垂直引擎（ScholarForge）、可验证的接地率、开箱桌面 GUI（Electron，MIT，不受 BSL 卡商用）。
+- **BSL 红线**：前端不从 hermes-web-ui/hermes-studio 直接搬；只借引擎层（MIT）接口思路。
 - **转化弹药**：桌面一键安装 vs Hermes CLI 安装的低门槛。
 - **KPI**：README 访问→clone 转化率、star 周增速。
 

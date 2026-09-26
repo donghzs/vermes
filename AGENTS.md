@@ -54,6 +54,15 @@ api_key = os.environ['API_KEY']
 
 **跳过检查（不推荐）：** `git commit --no-verify`
 
+## ⚖️ 血缘与许可证红线（2026-09-26）
+
+- 引擎 fork 自 **NousResearch/hermes-agent（MIT）**；GUI 自研（Electron / Vue3+Tailwind，MIT）。
+- **禁止**从 **EKKOLearnAI/hermes-web-ui / hermes-studio** 搬前端代码——**BSL-1.1**，商用有约束。
+- 对外文案禁止「纯国产原创」「基于 Vermes Agent」（循环自证）；标准口径见 README。
+- 借鉴只限引擎层（MIT）的接口思路；GUI 保持自研。
+
+---
+
 ## 🔍 发现即刀 + 一并处理（2026-09-26）
 
 - **发现问题当场修或当场登记**，不「留以后」——否则会忘。

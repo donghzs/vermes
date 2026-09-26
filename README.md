@@ -2,8 +2,12 @@
 
 > 你的 AI，即刻启程 — 开箱即用的中文 AI Agent
 
-Vermes 基于官方 [Vermes Agent](https://github.com/donghzs/vermes) 引擎，
-融合 [QClaw](https://skillhub.cn) 技能生态，为中文用户提供开箱即用的 AI Agent 体验。
+Vermes **fork 自 [Nous Research · Hermes Agent](https://github.com/NousResearch/hermes-agent)**（MIT），
+在**同一引擎**上做中文本地化 + 自研 Electron 桌面 GUI + 学术垂直（ScholarForge）。
+与 [EKKOLearnAI · Hermes Studio](https://github.com/EKKOLearnAI/hermes-studio)（WebUI，BSL-1.1）
+是**同源异 GUI 的平行路线**：引擎同根，壳我们自己写。
+
+> 一句话：**引擎 fork 自 Nous Research（MIT），GUI 与中文体验由我们重写**——不是「纯国产原创」，也不受 EKKO WebUI 的 BSL-1.1 约束。
 
 ## ✨ 特性
 
@@ -53,9 +57,9 @@ vermes skills install weather  # 安装技能
 
 ## 🙏 致谢
 
-- [Vermes Agent](https://github.com/donghzs/vermes) — 核心引擎
+- [Nous Research · Hermes Agent](https://github.com/NousResearch/hermes-agent) — 引擎上游（MIT）
 - [QClaw / Skillhub](https://skillhub.cn) — 技能生态
 
 ## 📄 许可
 
-MIT License
+MIT License（全栈）。**不**从 EKKOLearnAI/hermes-web-ui 搬前端代码（该仓为 BSL-1.1）。
