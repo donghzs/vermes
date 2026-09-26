@@ -1,0 +1,235 @@
+<template>
+  <!-- T2 1:1 默认面：选中联系人 → 右栏私聊会话（消息流 / 头像 / 状态） -->
+  <div class="h-full flex flex-col bg-white dark:bg-gray-900 min-w-0">
+    <!-- 头：头像 · 名 · 状态 · 预留 ⊕ 拉群 -->
+    <header class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+      <span
+        class="w-10 h-10 rounded-full flex items-center justify-center text-base font-semibold text-white shrink-0"
+        :style="{ background: `hsl(${contact.hue || 210}, 55%, 48%)` }"
+      >{{ initial }}</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2">
+          <h2 class="text-base font-semibold truncate">{{ contact.name || contact.id }}</h2>
+          <span class="text-[11px] px-1.5 py-0.5 rounded-full" :class="statusClass">{{ statusLabel }}</span>
+        </div>
+        <p class="text-[11px] text-gray-400 truncate">
+          1:1 私聊
+          <template v-if="contact.transport"> · {{ contact.transport === 'acp' ? 'ACP' : contact.transport }}</template>
+          <template v-if="contact.provider"> · {{ contact.provider }}</template>
+        </p>
+      </div>
+      <button
+        class="px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition shrink-0"
+        title="拉群（T3）"
+        @click="$emit('create-group')"
+      >＋ 拉群</button>
+    </header>
+
+    <!-- 消息流 -->
+    <div ref="streamEl" class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div v-if="loading && !messages.length" class="py-10 text-center text-sm text-gray-400">加载会话…</div>
+      <div v-else-if="!messages.length" class="py-10 text-center">
+        <div class="text-3xl mb-2">💬</div>
+        <p class="text-sm text-gray-400">和 {{ contact.name || contact.id }} 的 1:1</p>
+        <p class="text-xs text-gray-400 mt-1">发条消息开始私聊</p>
+      </div>
+
+      <template v-for="(m, i) in messages" :key="m.id || i">
+        <!-- 用户：右对齐 -->
+        <div v-if="m.author_type === 'user'" class="flex justify-end">
+          <div class="max-w-[75%] px-3 py-2 rounded-2xl rounded-tr-sm bg-indigo-500 text-white text-sm whitespace-pre-wrap break-words">
+            {{ m.content }}
+          </div>
+        </div>
+        <!-- 系统：居中 -->
+        <div v-else-if="m.author_type === 'system'" class="flex justify-center">
+          <div class="max-w-[80%] px-3 py-1.5 rounded text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 text-center whitespace-pre-wrap break-words">
+            {{ m.content }}
+          </div>
+        </div>
+        <!-- 对方 agent：左对齐 + 头像 -->
+        <div v-else class="flex justify-start gap-2">
+          <span
+            class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0 mt-1"
+            :style="{ background: `hsl(${agentHue(m)}, 55%, 48%)` }"
+          >{{ agentInitial(m) }}</span>
+          <div class="max-w-[72%]">
+            <div class="text-[11px] text-gray-400 mb-0.5 px-1">{{ agentName(m) }}</div>
+            <div class="px-3 py-2 rounded-2xl rounded-tl-sm bg-gray-100 dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
+              {{ m.content }}
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- 发送中 -->
+      <div v-if="sending" class="flex justify-start gap-2">
+        <span
+          class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0 mt-1"
+          :style="{ background: `hsl(${contact.hue || 210}, 55%, 48%)` }"
+        >{{ initial }}</span>
+        <div class="max-w-[72%]">
+          <div class="text-[11px] text-gray-400 mb-0.5 px-1">{{ contact.name || contact.id }}</div>
+          <div class="px-3 py-2 rounded-2xl rounded-tl-sm bg-gray-100 dark:bg-gray-700 text-sm text-gray-400">
+            正在输入…
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 输入 -->
+    <footer class="border-t border-gray-200 dark:border-gray-700 p-3">
+      <div class="flex items-end gap-2">
+        <textarea
+          v-model="draft"
+          rows="2"
+          class="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          :placeholder="`发消息给 ${contact.name || contact.id}`"
+          @keydown.enter.exact.prevent="send"
+        />
+        <button
+          class="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50 shrink-0"
+          :disabled="sending || !draft.trim()"
+          @click="send"
+        >发送</button>
+      </div>
+      <p v-if="error" class="mt-1.5 text-xs text-rose-500">{{ error }}</p>
+    </footer>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import api from '../services/api'
+
+const props = defineProps({
+  contact: { type: Object, required: true },
+  /** 可选：以某 agent 身份走 peer_dm（A2A 私聊）。缺省走房间消息（用户→agent）。 */
+  peerFrom: { type: String, default: '' },
+})
+const emit = defineEmits(['create-group', 'open-room'])
+
+const draft = ref('')
+const messages = ref([])
+const loading = ref(false)
+const sending = ref(false)
+const error = ref('')
+const streamEl = ref(null)
+const roomId = ref('')
+
+const initial = computed(() => String(props.contact.name || props.contact.id || '?').slice(0, 1))
+const statusLabel = computed(() => {
+  if (props.contact.has_api_key || props.contact.transport === 'acp') return '在线'
+  if (props.contact.transport === 'cli' || props.contact.transport === 'native') return '本地'
+  return '就绪'
+})
+const statusClass = computed(() => {
+  const s = statusLabel.value
+  if (s === '在线') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+  if (s === '本地') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+  return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+})
+
+function agentHue(m) {
+  if (m.author_ref === props.contact.id) return props.contact.hue || 210
+  const t = String(m.author_ref || '')
+  let h = 0
+  for (const ch of t) h = (h * 31 + ch.charCodeAt(0)) % 360
+  return h
+}
+function agentName(m) {
+  if (m.author_ref === props.contact.id) return props.contact.name || props.contact.id
+  return m.author_ref || 'agent'
+}
+function agentInitial(m) {
+  return String(agentName(m) || '?').slice(0, 1)
+}
+
+function scrollToEnd() {
+  nextTick(() => {
+    const el = streamEl.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+/** 稳定 DM 房间：dm-<contactId>，单成员 → 后端秘书模式自动应答。 */
+async function ensureDmRoom() {
+  const cid = String(props.contact.id || '').trim()
+  if (!cid) return ''
+  const wantId = `dm-${cid}`
+  try {
+    const rs = await api.listBotRooms().catch(() => null)
+    const rooms = (rs && rs.rooms) || (rs && Array.isArray(rs) ? rs : []) || []
+    const hit = rooms.find(r => (r.id || r.room_id) === wantId)
+    if (hit) return hit.id || hit.room_id
+    const created = await api.createBotRoom(`1:1 · ${props.contact.name || cid}`, [cid], { id: wantId })
+    if (created && created.ok && (created.room_id || created.id)) {
+      return created.room_id || created.id
+    }
+  } catch (e) {
+    console.error('[ShenmotangPeerDm] ensureDmRoom failed', e)
+  }
+  return wantId
+}
+
+async function load() {
+  const cid = props.contact?.id
+  if (!cid) return
+  loading.value = true
+  error.value = ''
+  try {
+    const rid = await ensureDmRoom()
+    roomId.value = rid
+    if (!rid) {
+      messages.value = []
+      return
+    }
+    const r = await api.getBotRoomTimeline(rid).catch(() => null)
+    messages.value = (r && r.timeline) || []
+    scrollToEnd()
+  } catch (e) {
+    error.value = e.message || '加载会话失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function send() {
+  const text = (draft.value || '').trim()
+  if (!text || sending.value) return
+  sending.value = true
+  error.value = ''
+  try {
+    if (!roomId.value) roomId.value = await ensureDmRoom()
+    // peer_dm：显式 A2A（from/to 都是 agent）；否则走房间消息（用户→单 agent，秘书模式应答）
+    let r = null
+    if (props.peerFrom && props.peerFrom !== props.contact.id) {
+      r = await api.sendPeerDm(roomId.value, props.peerFrom, props.contact.id, text)
+    } else {
+      r = await api.sendBotRoomMessage(roomId.value, text)
+    }
+    if (r && r.ok) {
+      draft.value = ''
+      if (Array.isArray(r.timeline)) {
+        messages.value = r.timeline
+      } else {
+        await load()
+      }
+      scrollToEnd()
+    } else {
+      error.value = (r && r.error) || '发送失败'
+    }
+  } catch (e) {
+    error.value = e.message || '发送失败'
+  } finally {
+    sending.value = false
+  }
+}
+
+watch(() => props.contact?.id, (id, old) => {
+  if (id && id !== old) load()
+})
+onMounted(load)
+
+defineExpose({ reload: load, send })
+</script>

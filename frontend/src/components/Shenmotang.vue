@@ -5,6 +5,7 @@ import BotRooms from './BotRooms.vue'
 import AgentsPage from './AgentsPage.vue'
 import KanbanBoard from './KanbanBoard.vue'
 import ShenmotangImRail from './ShenmotangImRail.vue'
+import ShenmotangPeerDm from './ShenmotangPeerDm.vue'
 
 // ⛩️ 神魔堂 T1（2026-09-26 IM 壳）：常驻「联系人/群」左栏 + 会话/编排主区。
 // 反转旧「进堂收起全局侧栏」逻辑 —— 神魔堂自带 IM 左栏，不再抢用户侧栏状态。
@@ -15,13 +16,17 @@ const tab = ref('hall') // 'hall' = 会话 · 'roster' = 请神 · 'swarm' = 看
 const selectedKey = ref('') // 'contact:<id>' | 'room:<id>'
 const imRail = ref(null)
 
+// T2 1:1 默认面：选中联系人 → 右栏 peer_dm 会话
+const activeContact = ref(null)
+
 function onSelectContact(c) {
   selectedKey.value = 'contact:' + c.id
-  // T2 将接到 1:1 peer_dm；本期先切到群聊主区（BotRooms 已含联系人池）
+  activeContact.value = c
   tab.value = 'hall'
 }
 function onSelectRoom(r) {
   selectedKey.value = 'room:' + (r.id || r.room_id)
+  activeContact.value = null
   tab.value = 'hall'
 }
 function onCreateGroup() {
@@ -85,7 +90,15 @@ function onOpenUsage() {
 
       <!-- v-if 只挂当前 tab（避免三重型组件并发挂载） -->
       <div class="flex-1 min-h-0">
-        <BotRooms v-if="tab === 'hall'" class="h-full" />
+        <!-- T2：选中联系人 → 1:1 默认面；选中群 / 无选中 → 房间主区 -->
+        <ShenmotangPeerDm
+          v-if="tab === 'hall' && activeContact"
+          :key="'dm-' + activeContact.id"
+          class="h-full"
+          :contact="activeContact"
+          @create-group="onCreateGroup"
+        />
+        <BotRooms v-else-if="tab === 'hall'" class="h-full" />
         <AgentsPage v-if="tab === 'roster'" class="h-full" />
         <KanbanBoard v-if="tab === 'swarm'" class="h-full" />
       </div>

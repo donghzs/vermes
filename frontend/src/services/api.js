@@ -717,6 +717,16 @@ const api = {
 
   // ── ⚙️ 微信式：联系人列表（可拉人进群的全量 agent：原生 + ACP 登堂） ──
   listAgentContacts() { return this.get('/agents/contacts') },
+
+  // ── T2 1:1 peer_dm（chat.py:4282 bot_room_peer_dm） ──
+  // body: {from, to, text}；room_id 作会话上下文，跨群联邦不要求双方同群。
+  sendPeerDm(roomId, fromId, toId, text) {
+    return this.post(`/bot/rooms/${encodeURIComponent(roomId)}/peer`, {
+      from: fromId,
+      to: toId,
+      text,
+    })
+  },
 }
 
 export default api
