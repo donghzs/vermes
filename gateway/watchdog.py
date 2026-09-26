@@ -54,10 +54,14 @@ def _probe_control_server(port: int, timeout: float = 2.0) -> bool:
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=timeout) as s:
             s.sendall(b"GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n")
-            # 有响应字节即可（不要求 HTTP 语义完整）——「可达但永不应答」会卡在 recv
+            # 连上即算活（不强制 recv）——「可达但永不应答」由 TCP 连接成功区分
+            # 不了，靠 CPU 判据交叉覆盖。有意如此，不是笔误。
             s.settimeout(timeout)
-            data = s.recv(16)
-            return bool(data) or True  # 连上并收到 EOF/数据都算活
+            try:
+                s.recv(16)
+            except Exception:
+                pass
+            return True
     except Exception:
         return False
 
@@ -150,19 +154,26 @@ class GatewayWatchdog:
             except Exception as exc:
                 logger.debug("watchdog: cpu sample failed: %r", exc)
 
-            try:
-                alive = bool(self._probe())
-            except Exception as exc:
-                logger.debug("watchdog: control probe raised: %r", exc)
-                alive = False
-            if not alive:
-                self._control_strikes += 1
-                logger.warning(
-                    "watchdog: control :%d unresponsive (strike %d/%d)",
-                    self.control_port, self._control_strikes, self.strikes,
-                )
-            else:
+            # Risk#2（WorkBuddy 2026-09-26）：hotplug 禁用时 :9120 本就不监听，
+            # 控制面判据会 90s 自杀并无限重启。仅当控制面**本应**在（hotplug 开）
+            # 才把失联计入 strike；关闭时记一次 INFO 并跳过该判据。
+            control_expected = self._control_expected()
+            if not control_expected:
                 self._control_strikes = 0
+            else:
+                try:
+                    alive = bool(self._probe())
+                except Exception as exc:
+                    logger.debug("watchdog: control probe raised: %r", exc)
+                    alive = False
+                if not alive:
+                    self._control_strikes += 1
+                    logger.warning(
+                        "watchdog: control :%d unresponsive (strike %d/%d)",
+                        self.control_port, self._control_strikes, self.strikes,
+                    )
+                else:
+                    self._control_strikes = 0
 
             if self._cpu_strikes >= self.strikes:
                 self._trigger(
@@ -172,3 +183,24 @@ class GatewayWatchdog:
                 self._trigger(
                     f"control :{self.control_port} unresponsive x{self.strikes}"
                 )
+
+    def _control_expected(self) -> bool:
+        """True when the control server is *supposed* to be listening.
+
+        ``gateway.hotplug.enabled=false`` means :9120 is never started — a
+        probe miss is then the expected steady state, not a hang. Env override
+        ``VERMES_GATEWAY_WATCHDOG_REQUIRE_CONTROL=0`` also disables the judge
+        (double insurance per WorkBuddy Risk#2).
+        """
+        env = os.environ.get("VERMES_GATEWAY_WATCHDOG_REQUIRE_CONTROL", "").strip().lower()
+        if env in ("0", "false", "no"):
+            return False
+        try:
+            from vermes_cli.config import read_raw_config, cfg_get
+            cfg = read_raw_config()
+            hotplug = cfg_get(cfg, "gateway", "hotplug", default=None)
+            if isinstance(hotplug, dict) and hotplug.get("enabled") is False:
+                return False
+        except Exception:
+            pass
+        return True

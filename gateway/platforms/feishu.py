@@ -4460,8 +4460,18 @@ class FeishuAdapter(BasePlatformAdapter):
         )
         # L-037 (`14f20d142e`+`5743dbb703`): WS 线程死了没人重建 → profile
         # 静默变聋直到网关重启。监督器在 link 失联时记 ws_link_lost 并带退避重建。
+        # BUG#1（WorkBuddy 2026-09-26）：测试 stub `_Loop` 无 create_task，直接调
+        # 会 AttributeError 炸掉 connect。降级但可见（fail-closed 纪律，不静默）。
         if self._ws_supervisor is None:
-            self._ws_supervisor = loop.create_task(self._supervise_websocket_thread())
+            _create_task = getattr(loop, "create_task", None)
+            if _create_task is None:
+                logger.warning(
+                    "[Feishu] loop has no create_task; WS supervisor disabled "
+                    "(link death will not auto-rebuild)"
+                )
+                self._ws_supervisor = None
+            else:
+                self._ws_supervisor = _create_task(self._supervise_websocket_thread())
 
     async def _supervise_websocket_thread(self) -> None:
         """Restart the WS client thread if it dies while the adapter is up (L-037).
