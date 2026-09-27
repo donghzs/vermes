@@ -25,6 +25,13 @@
       >＋ 拉群</button>
     </header>
 
+    <!-- T5 联邦状态条（只解析本会话 timeline，不跨房） -->
+    <ShenmotangFederationBar
+      :timeline="messages"
+      :room-id="roomId"
+      class="mx-4 mt-2"
+    />
+
     <!-- 消息流 -->
     <div ref="streamEl" class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
       <div v-if="loading && !messages.length" class="py-10 text-center text-sm text-gray-400">加载会话…</div>
@@ -113,6 +120,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import api from '../services/api'
 import ShenmotangTaskCard from './ShenmotangTaskCard.vue'
+import ShenmotangFederationBar from './ShenmotangFederationBar.vue'
 import { parseTaskIds, prepareDispatchSend } from '../utils/taskDispatch'
 
 const props = defineProps({
