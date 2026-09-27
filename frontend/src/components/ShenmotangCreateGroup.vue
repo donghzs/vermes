@@ -79,6 +79,9 @@
       </label>
       <div v-if="useOrg" class="mt-2">
         <div v-if="loadingOrg" class="text-xs text-gray-400">加载模板…</div>
+        <div v-else-if="!templates.length" class="text-xs text-amber-600 dark:text-amber-400 py-2">
+          组织模板暂不可用，无法坐岗。单人请改用 1:1 私聊，或再勾一位联系人建群。
+        </div>
         <div v-else class="flex flex-wrap gap-1.5">
           <button
             v-for="t in templates"
@@ -149,8 +152,17 @@ const allSelected = computed(() =>
  * A1（审计 T3 P1）：1 人 + 未搭组织的新群 room_id 随机、无岗位表，
  * 会命中 chat.py:5126 秘书模式（自动造神/加人）——与「绝不隐式拉人」冲突。
  * 该态是 1:1 点 ⊕ 的默认值，必须前端拦下。
+ *
+ * P2（审计残留缝）：判「组织真会落岗位表」，不是只判勾选意图——
+ * useOrg=true 但 orgKey 空 / 模板 roles 空时 submit 不会 applyBotOrg，
+ * 仍会建出 1 成员无岗位表房 → 秘书模式复发。
  */
-const blockedSolo = computed(() => selected.value.length === 1 && !useOrg.value)
+const orgWillApply = computed(() => {
+  if (!useOrg.value || !orgKey.value) return false
+  const tpl = templates.value.find(t => t.key === orgKey.value)
+  return ((tpl && tpl.roles) || []).length > 0
+})
+const blockedSolo = computed(() => selected.value.length === 1 && !orgWillApply.value)
 
 function toggle(id) {
   const i = selected.value.indexOf(id)
