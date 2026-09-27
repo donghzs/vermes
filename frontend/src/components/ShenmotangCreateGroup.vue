@@ -111,9 +111,10 @@
         >{{ submitting ? '建群中…' : `建群（${selected.length} 人）` }}</button>
       </div>
 
-      <!-- A1：单人 + 未搭组织 → 拦下（否则后端当秘书模式自动造神/拉人） -->
+      <!-- A1：单人 + 组织不会落岗 → 拦下（否则后端当秘书模式自动造神/拉人） -->
       <p v-if="blockedSolo" class="mt-2 text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-        单人群请用 1:1 私聊；拉群至少选 2 人，或勾选「搭组织」。
+        <template v-if="!useOrg">单人群请用 1:1 私聊；拉群至少选 2 人，或勾选「搭组织」。</template>
+        <template v-else>组织暂时无法坐岗，单人请再勾一位联系人，或改用 1:1 私聊。</template>
       </p>
       <p v-if="error" class="mt-2 text-xs text-rose-500">{{ error }}</p>
     </div>
