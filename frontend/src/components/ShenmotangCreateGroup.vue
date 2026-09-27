@@ -103,11 +103,15 @@
         >取消</button>
         <button
           class="px-4 py-1.5 text-sm rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition"
-          :disabled="submitting || !name.trim() || !selected.length"
+          :disabled="submitting || !name.trim() || !selected.length || blockedSolo"
           @click="submit"
         >{{ submitting ? '建群中…' : `建群（${selected.length} 人）` }}</button>
       </div>
 
+      <!-- A1：单人 + 未搭组织 → 拦下（否则后端当秘书模式自动造神/拉人） -->
+      <p v-if="blockedSolo" class="mt-2 text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+        单人群请用 1:1 私聊；拉群至少选 2 人，或勾选「搭组织」。
+      </p>
       <p v-if="error" class="mt-2 text-xs text-rose-500">{{ error }}</p>
     </div>
   </div>
@@ -140,6 +144,13 @@ const loadingOrg = ref(false)
 const allSelected = computed(() =>
   contacts.value.length > 0 && selected.value.length === contacts.value.length
 )
+
+/**
+ * A1（审计 T3 P1）：1 人 + 未搭组织的新群 room_id 随机、无岗位表，
+ * 会命中 chat.py:5126 秘书模式（自动造神/加人）——与「绝不隐式拉人」冲突。
+ * 该态是 1:1 点 ⊕ 的默认值，必须前端拦下。
+ */
+const blockedSolo = computed(() => selected.value.length === 1 && !useOrg.value)
 
 function toggle(id) {
   const i = selected.value.indexOf(id)
@@ -187,7 +198,7 @@ async function loadTemplates() {
  */
 async function submit() {
   const gname = (name.value || '').trim()
-  if (!gname || !selected.value.length || submitting.value) return
+  if (!gname || !selected.value.length || submitting.value || blockedSolo.value) return
   submitting.value = true
   error.value = ''
   try {

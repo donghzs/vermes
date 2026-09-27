@@ -126,6 +126,47 @@ describe('T3 ⊕ 拉群', () => {
     expect(create.body.members.length).toBeGreaterThan(0)
   })
 
+  it('A1：单人且未搭组织时禁建群（防秘书模式复发）', async () => {
+    const wrapper = mount(ShenmotangCreateGroup, {
+      global: { plugins: [createPinia()] },
+      props: { preselectId: 'p1', preselectName: 'Codex' },
+    })
+    await new Promise(r => setTimeout(r, 30))
+    await wrapper.find('input[type="text"]').setValue('单人房')
+    // 默认只预选 1 人、useOrg=false → 应禁用并提示
+    const btn = wrapper.findAll('button').find(b => b.text().includes('建群'))
+    expect(btn.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('单人群请用 1:1 私聊')
+    // 即便强行 click 也不该打到 createRoom
+    await btn.trigger('click')
+    await new Promise(r => setTimeout(r, 20))
+    expect(createdBodies.some(b => b.kind === 'createRoom')).toBe(false)
+
+    // 再勾一人（≥2）→ 解禁
+    const kimi = wrapper.findAll('label').find(l => l.text().includes('Kimi'))
+    await kimi.find('input').setValue(true)
+    await new Promise(r => setTimeout(r, 10))
+    expect(btn.attributes('disabled')).toBeUndefined()
+  })
+
+  it('A1：单人但勾了搭组织可建（坐岗语义，非秘书隐式）', async () => {
+    const wrapper = mount(ShenmotangCreateGroup, {
+      global: { plugins: [createPinia()] },
+      props: { preselectId: 'p1' },
+    })
+    await new Promise(r => setTimeout(r, 30))
+    await wrapper.find('input[type="text"]').setValue('单人组')
+    const orgLabel = wrapper.findAll('label').find(l => l.text().includes('搭组织'))
+    await orgLabel.find('input').setValue(true)
+    await new Promise(r => setTimeout(r, 10))
+    const btn = wrapper.findAll('button').find(b => b.text().includes('建群'))
+    expect(btn.attributes('disabled')).toBeUndefined()
+    await btn.trigger('click')
+    await new Promise(r => setTimeout(r, 40))
+    expect(createdBodies.some(b => b.kind === 'createRoom')).toBe(true)
+    expect(createdBodies.some(b => b.kind === 'applyOrg')).toBe(true)
+  })
+
   it('Shenmotang 挂上拉群弹窗（源码断言）', async () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
