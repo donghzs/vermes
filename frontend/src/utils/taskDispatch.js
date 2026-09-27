@@ -22,8 +22,11 @@ export function taskStatusMeta(status) {
   return TASK_STATUS_META[status] || { label: status || '未知', dot: 'bg-gray-300' }
 }
 
-/** 消息里的任务标记：【任务 #123】或 #123 */
-const TASK_MARK_RE = /【任务\s*#(\d+)】|#(\d+)/g
+/**
+ * 消息里的任务标记：只认显式【任务 #123】。
+ * P1：不解析裸 #数字——否则 issue #42 误渲染，且手敲 #1 #2 可枚举他人任务。
+ */
+const TASK_MARK_RE = /【任务\s*#(\d+)】/g
 
 export function parseTaskIds(text) {
   const ids = []
@@ -31,7 +34,7 @@ export function parseTaskIds(text) {
   let m
   TASK_MARK_RE.lastIndex = 0
   while ((m = TASK_MARK_RE.exec(s))) {
-    const id = m[1] || m[2]
+    const id = m[1]
     if (id && !ids.includes(id)) ids.push(id)
   }
   return ids
@@ -54,14 +57,18 @@ export function parseDispatch(text) {
   return { title: title || '未命名任务', raw: s }
 }
 
-/** @名字 → 候选 id（按 name/id 子串匹配） */
+/**
+ * @名字 → 候选 id（按 name/id 子串匹配）。
+ * P2：显式 @ 了名字但无命中 → 返回 ''（不静默改派 fallbackId），
+ * 避免「@张五 打错却悄悄派给当前 1:1 对象」。无 @ 时才用 fallback。
+ */
 export function resolveAssignee(contacts, hint, fallbackId) {
   const h = String(hint || '').trim().replace(/^@/, '')
   if (h) {
     const hit = (contacts || []).find(c =>
       c.id === h || c.name === h || (c.name && c.name.includes(h))
     )
-    if (hit) return hit.id
+    return hit ? hit.id : ''
   }
   return fallbackId || ''
 }

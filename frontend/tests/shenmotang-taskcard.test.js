@@ -29,8 +29,15 @@ describe('T4 消息↔任务绑定', () => {
     expect(mark).toBe('【任务 #42】')
     expect(parseTaskIds(`干得不错\n${mark}`)).toEqual(['42'])
     expect(parseTaskIds('没有任务')).toEqual([])
-    // 不把普通 # 当成任务号时至少能抓到【任务 #n】
     expect(parseTaskIds('【任务 #7】和【任务 #8】')).toEqual(['7', '8'])
+  })
+
+  it('P1：裸 #数字不解析（防误渲染 + 防枚举他人任务）', () => {
+    expect(parseTaskIds('issue #42 很严重')).toEqual([])
+    expect(parseTaskIds('#1 #2 #3')).toEqual([])
+    expect(parseTaskIds('看 PR #100 和 #200')).toEqual([])
+    // 混有显式标记时只认显式
+    expect(parseTaskIds('issue #42\n【任务 #9】')).toEqual(['9'])
   })
 
   it('真枚举状态标签（无 dispatched/planning）', () => {
@@ -47,12 +54,13 @@ describe('T4 消息↔任务绑定', () => {
     expect(TASK_STATUS_META.planning).toBeUndefined()
   })
 
-  it('resolveAssignee：@名优先，缺省 fallback（1:1 用 contact.id，不靠成员列表兜底）', () => {
+  it('resolveAssignee：@名优先；打错不静默改派；无 @ 才 fallback', () => {
     const contacts = [{ id: 'p1', name: 'Codex' }, { id: 'p2', name: 'Kimi' }]
     expect(resolveAssignee(contacts, 'Codex', 'p2')).toBe('p1')
     expect(resolveAssignee(contacts, '@Kimi', '')).toBe('p2')
     expect(resolveAssignee(contacts, '', 'p1')).toBe('p1')
-    expect(resolveAssignee(contacts, '不存在', 'p1')).toBe('p1')
+    // P2：显式 @ 打错 → 空，不悄悄落到 fallback
+    expect(resolveAssignee(contacts, '不存在', 'p1')).toBe('')
   })
 
   it('prepareDispatchSend：派活建任务并附标记；非派活原样', async () => {
