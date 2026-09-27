@@ -59,8 +59,30 @@ server_instance = None
 
 
 def _handle_sigterm(signum, frame):
-    """SIGTERM 处理器：设置 shutdown_event 让主循环退出"""
+    """SIGTERM 处理器：停服 + 置 shutdown_event 让主循环退出。
+
+    P0 修复（2026-09-27 僵尸态事故）：
+        原实现只置 shutdown_event，**不停 uvicorn**。结果：
+          1) uvicorn 继续 accept，端口一直开着；
+          2) 非守护线程（telegram / agent / kanban notifier）吊住进程，退不干净；
+          3) 解释器仍进入 shutdown → 新请求往死掉的线程池排任务 →
+             `RuntimeError: cannot schedule new futures after interpreter shutdown`
+             → 零 delta → 前端「回复为空」，用户重试/换模型都无效。
+        这里同时做三件事：置 shutting_down（请求层 503 守卫生效）、
+        置 shutdown_event（主循环退出）、置 uvicorn should_exit（停止 accept）。
+    """
     logger.info("[Vermes] 收到 SIGTERM，准备关闭...")
+    try:
+        from vermes_cli.shutdown_signal import mark_shutting_down
+        mark_shutting_down()
+    except Exception as _e:
+        logger.warning(f"[Vermes] 置位关闭标志失败: {_e}")
+    # 关键：主动停服，不再接受新连接
+    try:
+        if server_instance is not None:
+            server_instance.should_exit = True
+    except Exception:
+        pass
     try:
         from vermes_cli.shutdown_signal import shutdown_event
         shutdown_event.set()
@@ -294,7 +316,24 @@ def main():
 
         # shutdown_event
         logger.info("[Vermes] 收到退出信号，关闭。")
-        break
+        # P0 修复（2026-09-27）：原来这里只 break，main() 返回后进程要等非守护
+        # 线程（telegram / agent / kanban notifier）全部结束才退出 —— 它们不会
+        # 结束，于是进程永远吊着、端口继续 listen，但解释器已 shutdown，
+        # 每个请求都抛 "cannot schedule new futures after interpreter shutdown"。
+        # 现在：先停服 → 给 3s 优雅期收尾 → 强制退出，杜绝"活而不可用"的僵尸。
+        try:
+            from vermes_cli.shutdown_signal import mark_shutting_down
+            mark_shutting_down()
+        except Exception:
+            pass
+        if server_instance:
+            try:
+                server_instance.should_exit = True
+            except Exception:
+                pass
+        time.sleep(3)  # 优雅期：让在途请求/日志落盘
+        logger.info("[Vermes] 优雅期结束，强制退出。")
+        os._exit(0)
 
 
 def _run_gateway():

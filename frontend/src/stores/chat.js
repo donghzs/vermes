@@ -239,6 +239,11 @@ export const useChatStore = defineStore('chat', () => {
   const sessionTodoItems = ref({})            // sessionId → todo[]
   const sessionTodoStepActivities = ref({})   // sessionId → { step_id: toolCall[] }
   const sessionTodoAllDone = ref({})          // sessionId → boolean
+  // 2026-09-27：用户手动收起任务流（sessionId → boolean）。
+  // 任务流是常驻展示的，此前只有 onTaskComplete 才会结束；agent 建了 todo 却
+  // 没走完生命周期时（连续多轮排查/流式中断），该事件永不到达 → 卡片永久悬挂。
+  // 这里给一个显式的、用户可控的退出路径。下一轮有真实推进时自动恢复。
+  const sessionTodoDismissed = ref({})        // sessionId → boolean
   const sessionTodoInterrupted = ref({})      // sessionId → boolean
   const sessionShowTaskDrawer = ref({})       // sessionId → boolean
   const sessionShowTodoPanel = ref({})        // sessionId → boolean
@@ -290,6 +295,11 @@ export const useChatStore = defineStore('chat', () => {
     return roots
   })
   const todoStepActivities = computed(() => sessionTodoStepActivities.value[currentSessionId.value] || {})
+  // 手动收起标志：true = 本轮不再渲染中栏任务流（有新推进时自动复位为 false）
+  const todoDismissed = computed({
+    get: () => !!sessionTodoDismissed.value[currentSessionId.value],
+    set: (v) => { sessionTodoDismissed.value = { ...sessionTodoDismissed.value, [currentSessionId.value]: v } },
+  })
   const todoAllDone = computed(() => !!sessionTodoAllDone.value[currentSessionId.value])
   const todoInterrupted = computed(() => !!sessionTodoInterrupted.value[currentSessionId.value])
   const showTaskDrawer = computed({
@@ -647,6 +657,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionTodoInterrupted.value = _d(sessionTodoInterrupted.value)
     sessionShowTaskDrawer.value = _d(sessionShowTaskDrawer.value)
     sessionShowTodoPanel.value = _d(sessionShowTodoPanel.value)
+    sessionTodoDismissed.value = _d(sessionTodoDismissed.value)
     sessionPendingDeliveryArtifacts.value = _d(sessionPendingDeliveryArtifacts.value)
     await _deleteSession(sessions.value, messages.value, id, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
     if (currentSessionId.value === id) {
@@ -1217,6 +1228,8 @@ export const useChatStore = defineStore('chat', () => {
           if (data.todos.length > 0) {
             sessionShowTodoPanel.value = { ...sessionShowTodoPanel.value, [sendSessionId]: true }
             sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [sendSessionId]: true }
+            // 有真实任务推进 → 复位手动收起，任务流重新可见
+            sessionTodoDismissed.value = { ...sessionTodoDismissed.value, [sendSessionId]: false }
           }
           // 计划未全部完成则清除庆祝态
           const s = data.summary || {}
@@ -1798,7 +1811,7 @@ export const useChatStore = defineStore('chat', () => {
     lastTokenUsage, streamConnected, isOnline, isWindows,
     cacheMetrics,
     evolutionEvents, showAchievement, achievementData,
-    todoItems, taskTree, showTodoPanel,
+    todoItems, taskTree, showTodoPanel, todoDismissed,
     showTaskDrawer, todoStepActivities, todoAllDone, todoInterrupted,
     currentTodoStepId, todoInProgressCount, toggleTaskDrawer,
     sessionTodoItems, sessionTodoAllDone,
