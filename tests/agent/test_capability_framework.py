@@ -235,7 +235,13 @@ class TestSkillExtractor:
     """Test skill extraction from clusters."""
 
     def test_extract_from_repetitive_cluster(self, temp_db):
-        """Skill is extracted from a cluster with repetitive tool usage."""
+        """高置信技能提取后走 L1 自动采纳 → status=active（可逆）。
+
+        契约（T3/T6）：extract() 先落 pending，随后 _maybe_auto_adopt 按
+        成功率/次数门槛推进。本例 20 次 / 0.9 成功率达标默认阈值
+        （min_usage=10, min_success_rate=0.9），应被 L1 采纳。
+        旧断言 status=="pending" 未跟上 L1，已按真契约更新。
+        """
         conn = sqlite3.connect(str(temp_db))
 
         # Create a stable cluster with many events
@@ -264,6 +270,34 @@ class TestSkillExtractor:
         assert len(skills) >= 1
         assert skills[0].name == "git_workflow"
         assert skills[0].usage_count == 20
+        # L1 达标 → 自动采纳（可逆）；不达标的路径由下一用例覆盖
+        assert skills[0].status == "active"
+
+    def test_low_confidence_skill_stays_pending(self, temp_db):
+        """过提取线但不过 L1 采纳线 → 仍留 pending，等人工确认。
+
+        提取门槛 success_rate>=0.8 / event_count>=5；
+        L1 采纳门槛 0.9 / 10 次。此处 8 次 / 0.85：能提取、不自动采纳。
+        """
+        conn = sqlite3.connect(str(temp_db))
+        conn.execute(
+            "INSERT INTO clusters (name, tool_names, event_count, success_count, lifecycle_stage, is_active, success_rate) "
+            "VALUES ('rare_flow', 'terminal', 8, 7, 'stable', 1, 0.85)"
+        )
+        cluster_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        for i in range(8):
+            conn.execute(
+                "INSERT INTO raw_events (timestamp, tool_name, args_preview, success, cluster_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (f"2026-07-14T11:{i:02d}:00", "terminal", '{"command": "x"}',
+                 1 if i < 7 else 0, cluster_id)
+            )
+        conn.commit()
+        conn.close()
+
+        extractor = SkillExtractor(str(temp_db))
+        skills = extractor.extract()
+        assert len(skills) >= 1
         assert skills[0].status == "pending"
 
     def test_confirm_skill(self, temp_db):
