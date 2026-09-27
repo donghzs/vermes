@@ -162,6 +162,90 @@ def _init_db(db_path: Path) -> None:
     conn.commit()
 
 
+def _build_fts_terms(safe_query: str) -> Tuple[List[str], List[str]]:
+    """把查询拆成 (fts_terms, short_terms)，供 FTS5 MATCH 与短词兜底分别使用。
+
+    为什么必须分开（2026-09-27 事故复盘）：
+        chunks_fts 用 `tokenize='trigram'`，**只能匹配 ≥3 字符的子串**。
+        原实现在两个地方不一致：
+          - prefetch：CJK <3 字直接 skip → 中文两字词永远搜不到
+          - search  ：CJK <3 字仍塞进 MATCH → trigram 匹配不了 → 静默 0 命中
+        中文高频词大量是两字（记忆/进化/模型/配置/论文/数据），等于 RAG
+        对中文检索近乎失效，而且**没有任何报错**，只是"搜不到东西"。
+
+    这里统一：≥3 字符走 MATCH；<3 字符进 short_terms，由调用方用
+    LIKE '%term%' 兜底（小表全扫，代价可接受），保证短词也能召回。
+    """
+    fts_terms: List[str] = []
+    short_terms: List[str] = []
+    for word in (safe_query or "").split():
+        cjk_chars = [ch for ch in word if '\u4e00' <= ch <= '\u9fff']
+        ascii_part = ''.join(ch for ch in word if ch not in cjk_chars)
+        if ascii_part:
+            (fts_terms if len(ascii_part) >= 3 else short_terms).append(ascii_part)
+        if len(cjk_chars) >= 3:
+            # 3 字滑动窗口 → trigram
+            for i in range(len(cjk_chars) - 2):
+                fts_terms.append(cjk_chars[i] + cjk_chars[i + 1] + cjk_chars[i + 2])
+        elif cjk_chars:
+            short_terms.append(''.join(cjk_chars))
+    return fts_terms, short_terms
+
+
+def _rebuild_fts_index(db_path: str) -> bool:
+    """FTS5 倒排索引损坏时自愈，返回是否修好。
+
+    损坏形态：PRAGMA quick_check →
+        "malformed inverted index for FTS5 table main.chunks_fts"
+    关键判断：坏的是**派生索引**（chunks_fts_data/idx 页），原始内容在
+    chunks.content 完好 → 不需要删库重建，索引可完全无损恢复。
+
+    两级降级：
+      L1  FTS5 自带 rebuild（用其自身 content 重建）
+      L2  L1 失败则 DROP + CREATE 虚表，再从 chunks 按 rowid = chunks.id 重灌
+          （该对应关系是硬约束：检索 SQL 用 JOIN chunks ON chunks.id = chunks_fts.rowid）
+
+    全程 fail-open：任何一步失败只返回 False，绝不抛给调用方。
+    """
+    try:
+        conn = sqlite3.connect(db_path, timeout=15)
+    except Exception as e:
+        logger.warning("RAG 自愈：无法打开数据库 %s: %s", db_path, e)
+        return False
+    try:
+        try:
+            conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+            conn.commit()
+        except Exception as e:
+            logger.warning("RAG 自愈 L1(rebuild) 失败，降级 L2: %s", e)
+            conn.rollback()
+            conn.execute("DROP TABLE chunks_fts")
+            conn.execute(
+                "CREATE VIRTUAL TABLE chunks_fts USING fts5(content, tokenize='trigram')"
+            )
+            rows = conn.execute("SELECT id, content FROM chunks").fetchall()
+            conn.executemany(
+                "INSERT INTO chunks_fts(rowid, content) VALUES (?, ?)", rows
+            )
+            conn.commit()
+        verdict = conn.execute("PRAGMA quick_check").fetchone()[0]
+        ok = verdict == "ok"
+        logger.warning("RAG 自愈：索引重建%s（quick_check=%s）", "成功" if ok else "失败", verdict)
+        return ok
+    except Exception as e:
+        logger.error("RAG 自愈失败: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def _chunk_text(text: str, chunk_size: int = 0, overlap: int = 0, file_ext: str = '') -> List[str]:
     """Split text into overlapping chunks.
 
@@ -662,38 +746,47 @@ class RAGProvider(MemoryProvider):
             safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
             if not safe_query:
                 return ""
-            # FTS5 trigram tokenizer requires ≥3 char substrings.
-            # For CJK text, generate 3-char trigrams; for ASCII, use whole words.
-            terms = []
-            for word in safe_query.split():
-                cjk_chars = [ch for ch in word if '\u4e00' <= ch <= '\u9fff']
-                ascii_part = ''.join(ch for ch in word if ch not in cjk_chars)
-                if ascii_part and len(ascii_part) >= 3:
-                    terms.append(ascii_part)
-                if len(cjk_chars) >= 3:
-                    # Generate 3-char trigrams (sliding window)
-                    for i in range(len(cjk_chars) - 2):
-                        terms.append(cjk_chars[i] + cjk_chars[i+1] + cjk_chars[i+2])
-                # CJK <3 chars: skip (trigram can't match),
-                # but if combined with ASCII it might still match
-            if not terms:
+            # 与 search 同源分词（2026-09-27）：原实现对 CJK <3 字直接 skip，
+            # 中文两字词在 prefetch 里永远召回不了。改为短词走 LIKE 兜底。
+            fts_terms, short_terms = _build_fts_terms(safe_query)
+            if not fts_terms and not short_terms:
                 return ""
-            fts_query = " OR ".join(f'"{t}"' for t in terms[:8])
-            c.execute("""
-                SELECT chunks.content, documents.filename, chunks.chunk_index
-                FROM chunks_fts
-                JOIN chunks ON chunks.id = chunks_fts.rowid
-                JOIN documents ON documents.id = chunks.doc_id
-                WHERE chunks_fts MATCH ?
-                ORDER BY rank
-                LIMIT 3
-            """, (fts_query,))
-            results = c.fetchall()
-            if not results:
+            rows = []
+            seen = set()
+            if fts_terms:
+                fts_query = " OR ".join(f'"{t}"' for t in fts_terms[:8])
+                c.execute("""
+                    SELECT chunks.id, chunks.content, documents.filename, chunks.chunk_index
+                    FROM chunks_fts
+                    JOIN chunks ON chunks.id = chunks_fts.rowid
+                    JOIN documents ON documents.id = chunks.doc_id
+                    WHERE chunks_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT 3
+                """, (fts_query,))
+                for r in c.fetchall():
+                    if r[0] not in seen:
+                        seen.add(r[0])
+                        rows.append(r)
+            for t in short_terms[:4]:
+                if len(rows) >= 3:
+                    break
+                c.execute("""
+                    SELECT chunks.id, chunks.content, documents.filename, chunks.chunk_index
+                    FROM chunks
+                    JOIN documents ON documents.id = chunks.doc_id
+                    WHERE chunks.content LIKE ?
+                    LIMIT ?
+                """, (f'%{t}%', 3 - len(rows)))
+                for r in c.fetchall():
+                    if r[0] not in seen:
+                        seen.add(r[0])
+                        rows.append(r)
+            if not rows:
                 return ""
             parts = ["[知识库上下文]"]
-            for content, filename, chunk_idx in results:
-                preview = content[:300].replace('\n', ' ')
+            for _cid, content, filename, chunk_idx in rows:
+                preview = (content or "")[:300].replace('\n', ' ')
                 parts.append(f"📄 {filename}#{chunk_idx}: {preview}")
             return "\n".join(parts)
         except Exception as e:
@@ -1059,13 +1152,17 @@ class RAGProvider(MemoryProvider):
             for row in c.fetchall()
         ]
 
-    def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def search(self, query: str, limit: int = 5, _retried: bool = False) -> List[Dict[str, Any]]:
         """Search the knowledge base and return matching chunks with metadata.
-        
+
         Primary path: FTS5 full-text search (always available).
+        Short-term fallback: <3 字符的词（尤其中文两字词）trigram 匹配不了，
+        改用 LIKE '%term%' 兜底，避免"明明有内容却搜不到"。
         Optional path: if vector backend is enabled and embeddings exist,
         performs vector KNN search and merges results (vector hits first).
         Fail-open: vector search errors are logged and swallowed.
+
+        `_retried` 是内部防死循环标志：索引损坏自愈后只重试一次。
         """
         if not self._initialized or not query.strip():
             return []
@@ -1075,38 +1172,55 @@ class RAGProvider(MemoryProvider):
             safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
             if not safe_query:
                 return []
-            # Reuse CJK trigram logic from prefetch
-            terms = []
-            for word in safe_query.split():
-                cjk_chars = [ch for ch in word if '\u4e00' <= ch <= '\u9fff']
-                ascii_part = ''.join(ch for ch in word if ch not in cjk_chars)
-                if ascii_part and len(ascii_part) >= 3:
-                    terms.append(ascii_part)
-                if len(cjk_chars) >= 3:
-                    for i in range(len(cjk_chars) - 2):
-                        terms.append(cjk_chars[i] + cjk_chars[i+1] + cjk_chars[i+2])
-                elif len(cjk_chars) > 0:
-                    # <3 CJK chars: try combining with adjacent terms
-                    terms.append(''.join(cjk_chars))
-            if not terms:
+            # 统一分词（2026-09-27）：≥3 字符走 FTS MATCH，
+            # <3 字符（中文两字词为主）trigram 匹配不了 → 交 LIKE 兜底。
+            fts_terms, short_terms = _build_fts_terms(safe_query)
+            if not fts_terms and not short_terms:
                 return []
-            fts_query = " OR ".join(f'"{t}"' for t in terms[:8])
-            c.execute("""
-                SELECT chunks.content, documents.filename, chunks.chunk_index,
+
+            _SEL = """
+                SELECT chunks.id, chunks.content, documents.filename, chunks.chunk_index,
                        documents.id, documents.file_type, chunks.char_count
-                FROM chunks_fts
-                JOIN chunks ON chunks.id = chunks_fts.rowid
-                JOIN documents ON documents.id = chunks.doc_id
-                WHERE chunks_fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-            """, (fts_query, limit))
-            fts_results = [
-                {"content": row[0], "filename": row[1], "chunk_index": row[2],
-                 "doc_id": row[3], "file_type": row[4], "char_count": row[5],
-                 "preview": row[0][:300].replace('\n', ' ')}
-                for row in c.fetchall()
-            ]
+            """
+
+            def _row2hit(row):
+                return {"content": row[1], "filename": row[2], "chunk_index": row[3],
+                        "doc_id": row[4], "file_type": row[5], "char_count": row[6],
+                        "preview": (row[1] or "")[:300].replace('\n', ' ')}
+
+            fts_results: List[Dict[str, Any]] = []
+            seen = set()
+            if fts_terms:
+                fts_query = " OR ".join(f'"{t}"' for t in fts_terms[:8])
+                c.execute(_SEL + """
+                    FROM chunks_fts
+                    JOIN chunks ON chunks.id = chunks_fts.rowid
+                    JOIN documents ON documents.id = chunks.doc_id
+                    WHERE chunks_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                """, (fts_query, limit))
+                for row in c.fetchall():
+                    if row[0] in seen:
+                        continue
+                    seen.add(row[0])
+                    fts_results.append(_row2hit(row))
+            # 短词兜底：中文「记忆 / 进化 / 模型」这类两字词在此召回，
+            # 否则内容明明在库里却永远搜不到（故障前无任何报错提示）。
+            for t in short_terms[:4]:
+                if len(fts_results) >= limit:
+                    break
+                c.execute(_SEL + """
+                    FROM chunks
+                    JOIN documents ON documents.id = chunks.doc_id
+                    WHERE chunks.content LIKE ?
+                    LIMIT ?
+                """, (f'%{t}%', limit - len(fts_results)))
+                for row in c.fetchall():
+                    if row[0] in seen:
+                        continue
+                    seen.add(row[0])
+                    fts_results.append(_row2hit(row))
             # Vector search (A-1 optional): if enabled, merge KNN results
             if _VEC_BACKEND == "sqlite-vec" and _vec_available:
                 vec_results = self._vector_search(query, limit)
@@ -1118,7 +1232,16 @@ class RAGProvider(MemoryProvider):
                     return merged[:limit] + fts_results[:limit - len(merged)]
             return fts_results
         except Exception as e:
-            logger.debug("RAG search failed: %s", e)
+            # 2026-09-27：索引损坏此前是 debug 级静默吞掉（用户只看到"搜不到"，
+            # 日志刷了 64 条无人察觉）。现在识别损坏特征 → 自愈 + 告警。
+            msg = str(e).lower()
+            if "malformed" in msg or "disk image" in msg or "corrupt" in msg:
+                logger.warning("RAG 索引损坏：%s —— 尝试自动重建", e)
+                if not _retried and _rebuild_fts_index(str(self._db_path)):
+                    return self.search(query, limit, _retried=True)
+                logger.error("RAG 索引自动重建失败，本次检索返回空（知识库暂不可用）")
+            else:
+                logger.debug("RAG search failed: %s", e)
             return []
 
     def _vector_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
