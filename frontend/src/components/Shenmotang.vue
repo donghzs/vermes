@@ -6,6 +6,7 @@ import AgentsPage from './AgentsPage.vue'
 import KanbanBoard from './KanbanBoard.vue'
 import ShenmotangImRail from './ShenmotangImRail.vue'
 import ShenmotangPeerDm from './ShenmotangPeerDm.vue'
+import ShenmotangCreateGroup from './ShenmotangCreateGroup.vue'
 
 // ⛩️ 神魔堂 T1（2026-09-26 IM 壳）：常驻「联系人/群」左栏 + 会话/编排主区。
 // 反转旧「进堂收起全局侧栏」逻辑 —— 神魔堂自带 IM 左栏，不再抢用户侧栏状态。
@@ -19,6 +20,9 @@ const imRail = ref(null)
 // T2 1:1 默认面：选中联系人 → 右栏 peer_dm 会话
 const activeContact = ref(null)
 
+// T3 ⊕ 拉群：显式建群弹窗（预选 1:1 对方）
+const createGroupOpen = ref(false)
+
 function onSelectContact(c) {
   selectedKey.value = 'contact:' + c.id
   activeContact.value = c
@@ -30,7 +34,17 @@ function onSelectRoom(r) {
   tab.value = 'hall'
 }
 function onCreateGroup() {
-  tab.value = 'hall' // 复用 BotRooms 建群=建组织弹窗
+  createGroupOpen.value = true
+}
+function onGroupCreated(room) {
+  // 建群反馈：选中新群 + 刷新左栏列表
+  const rid = (room && (room.id || room.room_id)) || ''
+  if (rid) {
+    selectedKey.value = 'room:' + rid
+    activeContact.value = null
+    tab.value = 'hall'
+  }
+  if (imRail.value && imRail.value.reload) imRail.value.reload()
 }
 function onAddContact() {
   tab.value = 'roster' // 请神/造神
@@ -103,5 +117,14 @@ function onOpenUsage() {
         <KanbanBoard v-if="tab === 'swarm'" class="h-full" />
       </div>
     </div>
+
+    <!-- T3 ⊕ 拉群弹窗：从 1:1 发起时预选对方 -->
+    <ShenmotangCreateGroup
+      v-if="createGroupOpen"
+      :preselect-id="activeContact ? String(activeContact.id || '') : ''"
+      :preselect-name="activeContact ? (activeContact.name || '') : ''"
+      @close="createGroupOpen = false"
+      @created="onGroupCreated"
+    />
   </div>
 </template>
