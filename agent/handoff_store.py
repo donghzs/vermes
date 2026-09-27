@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 _DB_PATH: Optional[Path] = None
 
+#: Canonical handoff table name. Every caller MUST reference this constant
+#: (or count_handoffs()) instead of hardcoding a table name — see the bug
+#: note on count_handoffs() for what happened when they didn't.
+HANDOFF_TABLE = "session_handoffs"
+
 
 def _get_db_path() -> Path:
     """Lazily resolve the handoff database path."""
@@ -95,6 +100,52 @@ def _init_db(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
     conn.commit()
+
+
+def count_handoffs(db_path: Optional[Path] = None) -> int:
+    """Total rows in the handoff table — single source of truth for callers.
+
+    Historical bug (2026-09-27): memory_recall.py and capability_evolver.py
+    both queried a table literally named ``handoffs``. No such table exists in
+    any schema — this module creates ``session_handoffs``. The mismatch threw
+    ``no such table: handoffs`` 4116 times and was swallowed at DEBUG level,
+    so handoff counts silently stayed 0 forever (degrading cross-session
+    continuity scoring, and making capability_evolver's "continuity gap"
+    signal fire unconditionally).
+
+    Fail-open by design: returns 0 when the DB/table is absent or unreadable.
+    Never raises, never creates the DB (read-only intent — callers that want
+    creation should go through store_handoff()).
+    """
+    import os
+
+    if db_path is None:
+        _home = os.environ.get("VERMES_HOME") or os.path.expanduser("~/.vermes")
+        db_path = Path(_home) / "session_handoffs.db"
+    db_path = Path(db_path)
+    if not db_path.exists():
+        return 0
+
+    conn = None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+            (HANDOFF_TABLE,),
+        ).fetchone()
+        if not exists:
+            return 0
+        row = conn.execute(f"SELECT COUNT(*) FROM {HANDOFF_TABLE}").fetchone()
+        return int(row[0]) if row else 0
+    except Exception as e:
+        logger.debug("count_handoffs failed on %s: %s", db_path, e)
+        return 0
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def store_handoff(
