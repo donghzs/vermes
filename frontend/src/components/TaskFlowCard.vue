@@ -5,6 +5,12 @@ const props = defineProps({
   items: { type: Array, required: true }, // 树根节点(含 children / depth)
 })
 
+// 2026-09-27：手动收起。任务流此前是「常驻展示」，只有 onTaskComplete 才会
+// 置 allDone —— 一旦 agent 建了 todo 但没走完生命周期（连续多轮排查、中途
+// 中断、流式断连），onTaskComplete 永不到达，卡片就永久挂在 0/2、0%。
+// 这不是用户的操作问题，是产品缺退出路径；这里补一个显式收起。
+const emit = defineEmits(['dismiss'])
+
 // 折叠状态：存已折叠节点的 id
 const collapsed = reactive(new Set())
 
@@ -47,6 +53,15 @@ const completed = computed(() => countLeavesByStatus(props.items || [], 'complet
 const inProgress = computed(() => countLeavesByStatus(props.items || [], 'in_progress'))
 const failed = computed(() => countLeavesByStatus(props.items || [], 'failed'))
 const percent = computed(() => (total.value ? Math.round((completed.value / total.value) * 100) : 0))
+
+// ── 2026-09-27：未收尾态（原「僵尸任务流」的可视化）──
+// 没有任何 in_progress、但也没全部完成 → agent 建了 todo 却没走完生命周期，
+// 且 onTaskComplete 永远等不到。此前这种状态在界面上与「正在执行」无法区分，
+// 卡片就一直挂着假装还在跑。这里显式标注，让用户知道它是卡住了而不是在干活。
+const stalled = computed(
+  () => total.value > 0 && inProgress.value === 0 && completed.value < total.value
+)
+const unfinished = computed(() => Math.max(0, total.value - completed.value - failed.value))
 
 // ── P1-3：当前进行中的叶子节点 → 高亮 + 自动滚动聚焦 ──
 function firstInProgressLeaf(nodes) {
@@ -117,14 +132,29 @@ function statusClass(st) {
 
 <template>
   <div class="mx-3 mt-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 overflow-hidden">
-    <!-- 头部：标题 + 进度 -->
+    <!-- 头部：标题 + 进度 + 收起 -->
     <div class="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 min-w-0">
         <span class="text-sm">🌳</span>
         <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">任务流</span>
         <span class="text-[11px] text-gray-400">已完成 {{ completed }} / 共 {{ total }}</span>
+        <!-- 未收尾标记：与「正在执行」区分开，避免僵尸任务流假装还在跑 -->
+        <span
+          v-if="stalled"
+          class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 shrink-0"
+          title="任务已无进行中条目，但也未全部完成 —— agent 可能中途建了 todo 却没走完，本轮不会有完成事件"
+        >未收尾</span>
       </div>
-      <span class="text-[11px] text-gray-400">{{ percent }}%</span>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="text-[11px] text-gray-400">{{ percent }}%</span>
+        <!-- 手动收起：给常驻任务流一个确定的退出路径 -->
+        <button
+          class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          title="收起任务流（本轮不再显示，下次有新任务推进时自动恢复）"
+          aria-label="收起任务流"
+          @click="emit('dismiss')"
+        >✕</button>
+      </div>
     </div>
     <!-- 总进度条 -->
     <div class="px-3 pt-2">
@@ -166,9 +196,10 @@ function statusClass(st) {
       </div>
     </div>
     <!-- 底部状态行 -->
-    <div v-if="inProgress || failed" class="px-3 py-1.5 border-t border-gray-200 dark:border-gray-700 flex items-center gap-3 text-[11px]">
+    <div v-if="inProgress || failed || stalled" class="px-3 py-1.5 border-t border-gray-200 dark:border-gray-700 flex items-center gap-3 text-[11px]">
       <span v-if="inProgress" class="text-blue-500">▶ {{ inProgress }} 进行中</span>
       <span v-if="failed" class="text-red-500">❌ {{ failed }} 失败</span>
+      <span v-if="stalled && !inProgress" class="text-amber-600 dark:text-amber-400">⚠️ {{ unfinished }} 项未收尾（本轮已无活动）</span>
     </div>
   </div>
 </template>

@@ -287,3 +287,110 @@ class TestEdgeCases:
 
     def test_sync_turn_no_error(self, rag_provider):
         rag_provider.sync_turn("user msg", "assistant msg")  # Should not raise
+
+
+# ── 2026-09-27：FTS5 索引损坏自愈 + 中文短词召回 ──────────────────────
+# 事故背景：真实用户库 ~/.vermes/rag/documents.db 的 chunks_fts 倒排索引损坏，
+# 日志刷了 64 条 `RAG search failed: database disk image is malformed` 却因
+# debug 级静默吞掉而无人察觉；同时 trigram 分词对 <3 字符无能为力，
+# 中文两字词（记忆/进化/模型…）永远搜不到。这里把两条都锁住。
+
+
+class TestFTSIndexRecovery:
+    """索引损坏必须能自愈，且不再静默（2026-09-27 P1）。"""
+
+    def _corrupt_fts_index(self, db_path):
+        """人为制造倒排索引损坏：把 chunks_fts_data 的 block 写成垃圾。
+
+        手法经过实测筛选（6 选 1）：只有改 chunks_fts_data.block 才会同时
+          (a) PRAGMA quick_check → "malformed inverted index for FTS5 table"
+          (b) 查询真抛 `DatabaseError: database disk image is malformed`
+        另外 5 种（改 idx.pgno / drop idx 表 / 删 data 行…）只让 quick_check
+        变坏但查询照常工作 —— 用它们写测试会得到"恒真"的假绿。
+        本手法与真实事故（~/.vermes/rag/documents.db）形态一致。
+        """
+        import sqlite3
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("PRAGMA writable_schema=ON")
+            conn.execute(
+                "UPDATE chunks_fts_data SET block = randomblob(max(length(block), 64))"
+            )
+            conn.execute("PRAGMA writable_schema=OFF")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_rebuild_fts_index_repairs_corruption(self, rag_provider):
+        """L1/L2 自愈：损坏 → _rebuild_fts_index → quick_check 回到 ok。"""
+        import sqlite3
+
+        from agent.rag_provider import _rebuild_fts_index
+
+        rag_provider.ingest_content("doc.txt", "分布式系统的长期进化与记忆机制", "txt")
+        db_path = rag_provider._db_path
+        self._corrupt_fts_index(db_path)
+
+        conn = sqlite3.connect(str(db_path))
+        verdict = conn.execute("PRAGMA quick_check").fetchone()[0]
+        conn.close()
+        # 探针自证：损坏必须真的造成了，否则这条测试是恒真的
+        assert verdict != "ok", f"损坏未生效，quick_check 仍为 {verdict}"
+
+        assert _rebuild_fts_index(str(db_path)) is True
+
+        conn = sqlite3.connect(str(db_path))
+        assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        conn.close()
+
+    def test_search_recovers_after_corruption(self, rag_provider):
+        """端到端：索引损坏后 search 仍能召回（自愈 + 重试一次），不是静默空。"""
+        rag_provider.ingest_content("doc.txt", "分布式系统的长期进化与记忆机制研究", "txt")
+        self._corrupt_fts_index(rag_provider._db_path)
+        # 用 ≥3 字的词验证（短词走 LIKE 本就不依赖索引，无法证明索引修复）
+        results = rag_provider.search("分布式系统", limit=3)
+        assert isinstance(results, list)
+        assert len(results) >= 1, "索引自愈后仍召回不到，自愈链路没生效"
+
+
+class TestCJKShortTermRecall:
+    """中文两字词必须能召回（trigram 天生匹配不了 <3 字符）。"""
+
+    def test_two_char_cjk_is_recalled(self, rag_provider):
+        """正向：库里有「记忆」，search('记忆') 必须命中。"""
+        rag_provider.ingest_content("doc.txt", "这里讨论长期记忆与进化机制的实现", "txt")
+        results = rag_provider.search("记忆", limit=3)
+        assert len(results) >= 1, "两字中文词召回不到 —— LIKE 兜底未生效"
+        assert "记忆" in results[0]["content"]
+
+    def test_short_term_not_in_library_returns_empty(self, rag_provider):
+        """负向：库里没有的短词不得凭空命中（兜底不能变成乱返回）。"""
+        rag_provider.ingest_content("doc.txt", "这里讨论长期记忆与进化机制的实现", "txt")
+        assert rag_provider.search("量子纠缠", limit=3) == []
+        assert rag_provider.search("阿巴阿巴", limit=3) == []
+
+    def test_build_fts_terms_split(self):
+        """分词边界：≥3 字符进 MATCH 组，<3 字符进短词组（双探针）。"""
+        from agent.rag_provider import _build_fts_terms
+
+        # 应分离
+        fts, short = _build_fts_terms("记忆")
+        assert short == ["记忆"] and fts == [], f"两字词应进短词组，实得 fts={fts} short={short}"
+
+        fts, short = _build_fts_terms("分布式系统")
+        assert fts and "分布" in fts[0][:3] or len(fts) >= 1, f"四字词应产生 trigram: {fts}"
+        assert short == [], f"四字词不应进短词组: {short}"
+
+        # ASCII 边界
+        fts, short = _build_fts_terms("ab")
+        assert short == ["ab"] and fts == []
+
+        fts, short = _build_fts_terms("abc")
+        assert fts == ["abc"] and short == []
+
+    def test_prefetch_short_term_recall(self, rag_provider):
+        """prefetch 同样要能召回两字词（原本是 skip 掉的）。"""
+        rag_provider.ingest_content("doc.txt", "这里讨论长期记忆与进化机制的实现", "txt")
+        out = rag_provider.prefetch("记忆")
+        assert "知识库上下文" in out, f"prefetch 未召回两字词: {out!r}"

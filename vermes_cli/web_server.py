@@ -119,6 +119,27 @@ app = FastAPI(
 )
 
 
+_INTERPRETER_SHUTDOWN_MARKERS = (
+    "cannot schedule new futures after interpreter shutdown",
+    " interpreter shutdown",
+    "can't create new thread at interpreter shutdown",
+    "cannot schedule new futures",
+)
+
+
+def _is_interpreter_shutdown_error(exc):
+    """识别"解释器已进入 shutdown"导致的执行器/线程创建失败。
+
+    P0（2026-09-27）：这类异常意味着后端进程已不可用（僵尸态），必须返回 503
+    让前端给出"重启应用"的明确指引，而不是 500 + 让用户换模型。
+    判定保守：只认明确的特征串，绝不把普通 RuntimeError 误判成 shutdown。
+    """
+    if not isinstance(exc, RuntimeError):
+        return False
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _INTERPRETER_SHUTDOWN_MARKERS)
+
+
 # ---------------------------------------------------------------------------
 # Global exception handler — catch unhandled errors to prevent backend crash
 # ---------------------------------------------------------------------------
@@ -136,6 +157,26 @@ async def global_exception_handler(request: Request, exc: Exception):
         request.method, request.url.path, type(exc).__name__, exc,
     )
     traceback.print_exc()
+    # P0（2026-09-27）：解释器已进入 shutdown 的兜底识别。
+    # 关闭守卫中间件靠 shutting_down 标志拦截，但若标志因故未置位（例如别的
+    # 退出路径、或标志模块导入失败），这里仍能捕获特征异常并给出正确的 503，
+    # 而不是笼统的 500 —— 500 会让前端误判成"模型没输出"而提示用户换模型。
+    if _is_interpreter_shutdown_error(exc):
+        _log.error(
+            "[Vermes] 解释器已 shutdown，请求 %s %s 无法执行 —— 返回 503（后端不可用）",
+            request.method,
+            request.url.path,
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "message": "后端正在关闭或已不可用，请重启 Vermes 后重试",
+                    "type": "backend_shutting_down",
+                    "code": 503,
+                }
+            },
+        )
     return JSONResponse(
         status_code=500,
         content={
@@ -676,6 +717,8 @@ def _is_accepted_host(host_header: str, bound_host: str) -> bool:
     return host_only == bound_lc
 
 
+
+
 @app.middleware("http")
 async def host_header_middleware(request: Request, call_next):
     """Reject requests whose Host header doesn't match the bound interface.
@@ -720,6 +763,47 @@ async def auth_middleware(request: Request, call_next):
                 status_code=401,
                 content={"detail": "Unauthorized"},
             )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def shutdown_guard_middleware(request: Request, call_next):
+    """P0（2026-09-27 僵尸态事故）：关闭窗口期内直接拒绝新请求，返回可诊断的 503。
+
+    背景（真实事故复盘）：
+        SIGTERM 只置 shutdown_event、不停 uvicorn。进程被非守护线程吊住退不掉，
+        端口继续 accept，但 Python 解释器已进入 shutdown。此时任何往线程池排
+        任务的请求都会抛
+            RuntimeError: cannot schedule new futures after interpreter shutdown
+        结果一轮对话一个 delta 都发不出来，前端只能显示
+        「⚠️ 回复为空，可能是后端处理异常。请重试或更换模型。」
+        —— 这句是**误导**：换模型、重试都无效，因为后端已经不在工作状态。
+
+    处置：请求进入业务代码之前就挡掉，给出明确可诊断的 503，让前端能区分
+    「后端不可用」与「模型真的没输出」。
+    """
+    try:
+        from vermes_cli.shutdown_signal import is_shutting_down
+
+        _shutting = is_shutting_down()
+    except Exception:
+        _shutting = False
+    if _shutting:
+        _log.warning(
+            "[Vermes] 后端正在关闭，拒绝请求: %s %s",
+            request.method,
+            request.url.path,
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "message": "后端正在关闭或已不可用，请重启 Vermes 后重试",
+                    "type": "backend_shutting_down",
+                    "code": 503,
+                }
+            },
+        )
     return await call_next(request)
 
 
