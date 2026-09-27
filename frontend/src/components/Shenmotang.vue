@@ -7,10 +7,12 @@ import KanbanBoard from './KanbanBoard.vue'
 import ShenmotangImRail from './ShenmotangImRail.vue'
 import ShenmotangPeerDm from './ShenmotangPeerDm.vue'
 import ShenmotangCreateGroup from './ShenmotangCreateGroup.vue'
+import { useBotRoomStore } from '../stores/botRoom'
 
 // ⛩️ 神魔堂 T1（2026-09-26 IM 壳）：常驻「联系人/群」左栏 + 会话/编排主区。
 // 反转旧「进堂收起全局侧栏」逻辑 —— 神魔堂自带 IM 左栏，不再抢用户侧栏状态。
 const router = useRouter()
+const bot = useBotRoomStore()
 const tab = ref('hall') // 'hall' = 会话 · 'roster' = 请神 · 'swarm' = 看板
 
 // T1 IM 左栏选中态
@@ -29,20 +31,24 @@ function onSelectContact(c) {
   tab.value = 'hall'
 }
 function onSelectRoom(r) {
-  selectedKey.value = 'room:' + (r.id || r.room_id)
+  const rid = (r && (r.id || r.room_id)) || ''
+  selectedKey.value = 'room:' + rid
   activeContact.value = null
   tab.value = 'hall'
+  // UX：点左栏群必须真的打开该会话（否则只改高亮，消息流还停在旧房）
+  if (rid) bot.selectRoom(rid)
 }
 function onCreateGroup() {
   createGroupOpen.value = true
 }
 function onGroupCreated(room) {
-  // 建群反馈：选中新群 + 刷新左栏列表
+  // 建群反馈：打开新群 + 刷新左栏列表
   const rid = (room && (room.id || room.room_id)) || ''
   if (rid) {
     selectedKey.value = 'room:' + rid
     activeContact.value = null
     tab.value = 'hall'
+    bot.selectRoom(rid)
   }
   if (imRail.value && imRail.value.reload) imRail.value.reload()
 }

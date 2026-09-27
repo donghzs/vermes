@@ -73,6 +73,40 @@ describe('T1 神魔堂 IM 左栏', () => {
     expect(wrapper.emitted('create-group')).toBeTruthy()
   })
 
+  it('dm-* 的 1:1 房不进群聊列表（防与联系人区重复）', async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url)
+      if (u.includes('/agents/contacts')) return { ok: true, json: async () => contacts }
+      if (u.includes('/bot/rooms')) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            rooms: [
+              { id: 'r1', name: '论文攻坚', members: [{}, {}] },
+              { id: 'dm-p1', name: '1:1 · Codex', members: [{}] },
+              { id: 'dm-p2', name: '1:1 · Kimi', members: [{}] },
+            ],
+          }),
+        }
+      }
+      return { ok: true, json: async () => ({}) }
+    })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/shenmotang', component: { template: '<div/>' } }],
+    })
+    const wrapper = mount(ShenmotangImRail, {
+      global: { plugins: [router, createPinia()] },
+      props: { selectedKey: '' },
+    })
+    await new Promise(r => setTimeout(r, 20))
+    const text = wrapper.text()
+    expect(text).toContain('论文攻坚')
+    expect(text).not.toContain('1:1 · Codex')
+    expect(text).not.toContain('1:1 · Kimi')
+  })
+
   it('Shenmotang 不再劫持 sidebarOpen（源码断言）', async () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
@@ -83,5 +117,17 @@ describe('T1 神魔堂 IM 左栏', () => {
     expect(src).toContain('ShenmotangImRail')
     expect(src).not.toContain('chat.sidebarOpen = false')
     expect(src).not.toContain('wasSidebarOpen')
+  })
+
+  it('点左栏群 / 建群成功都必须 selectRoom 打开会话', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(
+      path.resolve('src/components/Shenmotang.vue'),
+      'utf8',
+    )
+    // 退化修复：只改 selectedKey 高亮、不打开会话 → 消息流仍停在旧房
+    expect(src).toMatch(/onSelectRoom[\s\S]*bot\.selectRoom\(rid\)/)
+    expect(src).toMatch(/onGroupCreated[\s\S]*bot\.selectRoom\(rid\)/)
   })
 })

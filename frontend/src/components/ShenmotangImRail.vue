@@ -116,9 +116,16 @@ function match(s) {
 const filteredContacts = computed(() =>
   contacts.value.filter(c => match(c.name) || match(c.provider) || match(c.model))
 )
-const filteredRooms = computed(() =>
-  rooms.value.filter(r => match(r.name) || match(r.title) || match(r.announcement))
-)
+const filteredRooms = computed(() => {
+  // UX：dm-* 是 1:1 私聊房（T2 ensureDmRoom），不进「群聊」列表——
+  // 否则会和联系人区重复冒出「1:1 · Codex」
+  const groups = rooms.value.filter(r => {
+    const id = String(r.id || r.room_id || '')
+    const name = String(r.name || r.title || '')
+    return !id.startsWith('dm-') && !name.startsWith('1:1 ·')
+  })
+  return groups.filter(r => match(r.name) || match(r.title) || match(r.announcement))
+})
 
 async function load() {
   try {
