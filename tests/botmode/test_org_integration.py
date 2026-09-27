@@ -314,6 +314,45 @@ def test_message_send_secretary_member_triggers_without_mention(testenv, monkeyp
         f"orchestrator 应为 secretary profile；args={sec_triggers[-1]}"
 
 
+def test_dm_room_skips_secretary_mode(testenv, monkeypatch):
+    """T2 1:1 DM（方案 b）：dm-* 房单 agent 也不触发秘书/组织，走 path-3 直答。
+
+    审计 P1：秘书模式会自动造神/加人/建组织，破坏 1:1 前提。
+    """
+    triggered = []
+
+    def _fake_bg(db_factory, fn, args, kwargs=None):
+        triggered.append((fn, args))
+
+    monkeypatch.setattr(chat_bp, "_run_org_in_background", _fake_bg)
+    chat_bp._bot_mode_enabled = lambda: True
+    client = _client()
+
+    # 稳定 DM 房 id：前端 ShenmotangPeerDm.ensureDmRoom 用 dm-<contactId>
+    r = client.post("/api/bot/rooms", json={"name": "1:1 · researcher", "id": "dm-researcher"})
+    room_id = r.json().get("room_id")
+    assert r.status_code == 200 and room_id == "dm-researcher", r.text[:200]
+    r = client.post(f"/api/bot/rooms/{room_id}/members", json={"ref_id": "researcher"})
+    assert r.status_code == 200 and r.json().get("ok") is True, r.text[:200]
+
+    r = client.post(f"/api/bot/rooms/{room_id}/messages", json={"text": "帮我盯一下 CI"})
+    assert r.status_code == 200 and r.json().get("ok") is True, r.text[:300]
+
+    fns = [f.__name__ for f, _ in triggered]
+    assert not any(f is chat_bp._secretary_orchestrate for f, _ in triggered), \
+        f"dm-* 房不得走秘书模式；triggered={fns}"
+    assert not any(f is chat_bp._org_message_orchestrate for f, _ in triggered), \
+        f"dm-* 房不得走组织流水线；triggered={fns}"
+
+    # path-3 直答：用户消息 + agent 回复都在时间线，且未加人/未造神
+    tl = client.get(f"/api/bot/rooms/{room_id}/timeline").json().get("timeline") or []
+    joined = "\n".join((m.get("content") or "") for m in tl)
+    assert "帮我盯一下 CI" in joined
+    assert "[fake-agent-reply]" in joined
+    members = client.get(f"/api/bot/rooms/{room_id}/members").json().get("members") or []
+    assert len(members) == 1, f"1:1 房不应被秘书模式加人；members={members}"
+
+
 if __name__ == "__main__":
     import pytest as _pytest
     _pytest.main([__file__, "-p", "no:xdist", "-o", "addopts="])

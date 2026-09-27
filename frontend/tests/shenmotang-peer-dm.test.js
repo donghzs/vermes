@@ -71,7 +71,7 @@ describe('T2 1:1 默认面', () => {
     await new Promise(r => setTimeout(r, 30))
     const text = wrapper.text()
     expect(text).toContain('Codex')
-    expect(text).toContain('在线')
+    expect(text).toContain('已接入')
     expect(text).toContain('1:1 私聊')
     expect(text).toContain('帮我盯一下 CI 挂了')
     expect(text).toContain('已看，是 pytest 超时…')
@@ -129,5 +129,17 @@ describe('T2 1:1 默认面', () => {
     expect(src).toContain('activeContact')
     // T2：选联系人不再只踢去 hall 群聊主区
     expect(src).toMatch(/onSelectContact[\s\S]*activeContact\.value\s*=\s*c/)
+  })
+
+  it('P0：订阅 room_update 以接收秘书/直答推送', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(
+      path.resolve('src/components/ShenmotangPeerDm.vue'),
+      'utf8',
+    )
+    expect(src).toContain("addEventListener('vermes:room_update'")
+    expect(src).toContain("removeEventListener('vermes:room_update'")
+    expect(src).toContain('onRoomUpdate')
   })
 })

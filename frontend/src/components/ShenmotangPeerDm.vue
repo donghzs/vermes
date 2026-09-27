@@ -99,12 +99,16 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import api from '../services/api'
 
 const props = defineProps({
   contact: { type: Object, required: true },
-  /** 可选：以某 agent 身份走 peer_dm（A2A 私聊）。缺省走房间消息（用户→agent）。 */
+  /**
+   * 可选：以某 agent 身份走 peer_dm（A2A 私聊）。
+   * P2：预留未接线——父组件 Shenmotang.vue 目前只传 :contact，不传 peerFrom。
+   * 用户→agent 默认仍走房间消息路径；A2A 接线在 T5 联邦可见性再做。
+   */
   peerFrom: { type: String, default: '' },
 })
 const emit = defineEmits(['create-group', 'open-room'])
@@ -118,15 +122,15 @@ const streamEl = ref(null)
 const roomId = ref('')
 
 const initial = computed(() => String(props.contact.name || props.contact.id || '?').slice(0, 1))
+// P3：has_api_key / transport 是配置态，不是真实在线——措辞用「已接入」
 const statusLabel = computed(() => {
-  if (props.contact.has_api_key || props.contact.transport === 'acp') return '在线'
-  if (props.contact.transport === 'cli' || props.contact.transport === 'native') return '本地'
+  if (props.contact.has_api_key || props.contact.transport === 'acp') return '已接入'
+  if (props.contact.transport === 'cli' || props.contact.transport === 'native') return '本地已接入'
   return '就绪'
 })
 const statusClass = computed(() => {
   const s = statusLabel.value
-  if (s === '在线') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-  if (s === '本地') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+  if (s.includes('已接入')) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
   return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
 })
 
@@ -226,10 +230,27 @@ async function send() {
   }
 }
 
+/** P0：秘书/直答回复经 WS room_update 推送，请求只秒回——必须订阅，否则回复永不出现。 */
+function onRoomUpdate(e) {
+  const msg = e && e.detail
+  if (!msg || msg.type !== 'room_update') return
+  const topicRoom = (msg.topic || '').replace(/^room:/, '')
+  if (topicRoom && roomId.value && topicRoom !== roomId.value) return
+  if (msg.event === 'room_message' || msg.event === 'room_message_delta') {
+    load()
+  }
+}
+
 watch(() => props.contact?.id, (id, old) => {
   if (id && id !== old) load()
 })
-onMounted(load)
+onMounted(() => {
+  window.addEventListener('vermes:room_update', onRoomUpdate)
+  load()
+})
+onUnmounted(() => {
+  window.removeEventListener('vermes:room_update', onRoomUpdate)
+})
 
 defineExpose({ reload: load, send })
 </script>

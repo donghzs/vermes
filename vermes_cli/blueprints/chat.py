@@ -5117,12 +5117,15 @@ async def bot_room_message_send(request: Request, room_id: str):
             #     (i) 恰 1 个 agent → 该 agent 当老板秘书（既有路径，test_secretary_org_flow 覆盖）；
             #     (ii) 含 secretary 成员 → 直接触发（决策：群=组队场景，来了就是
             #          组队/讨论组织架构落实方案，无需 @ 护栏；闲聊应去单聊）。
+            # T2 1:1 DM（方案 b）：dm-* 房跳过秘书/组织流水线，走 path-3 单 agent 直答。
+            # 原因：秘书模式会自动造神/加人/建组织，破坏 1:1 私聊前提（审计 P1）。
+            _is_dm_room = room_id.startswith("dm-") or (room.get("title") or "").startswith("1:1 ·")
             try:
                 room_roles = db.get_org_roles(room_id) if hasattr(db, "get_org_roles") else []
             except Exception:
                 room_roles = []
             sec = None
-            if not room_roles:
+            if not _is_dm_room and not room_roles:
                 if len(profiles) == 1:
                     sec = profiles[0]
                 elif secretary_profiles:
@@ -5150,7 +5153,7 @@ async def bot_room_message_send(request: Request, room_id: str):
             # 2c) 组织任务分流：群已有岗位表（组织模式）→ 用户消息即老板指令
             #     进行中任务未完成 → 提示等待；delivered 待验收 → 验收/打回；
             #     否则 → 建新任务跑流水线
-            if room_roles:
+            if room_roles and not _is_dm_room:
                 # ⑭ 体验改善：组织流水线后台化——请求秒回，进度经 WS 实时推送。
                 db.append_bot_room_message(
                     room_id, "user", None, text,
