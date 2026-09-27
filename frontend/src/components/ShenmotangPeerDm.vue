@@ -60,6 +60,17 @@
             </div>
           </div>
         </div>
+
+        <!-- T4 行内任务卡（消息携带 task_id） -->
+        <template v-if="taskIdsOf(m).length">
+          <ShenmotangTaskCard
+            v-for="tid in taskIdsOf(m)"
+            :key="'task-' + (m.id || i) + '-' + tid"
+            :task-id="tid"
+            class="max-w-[85%]"
+            :class="m.author_type === 'user' ? 'ml-auto' : 'mr-auto'"
+          />
+        </template>
       </template>
 
       <!-- 发送中 -->
@@ -101,6 +112,8 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import api from '../services/api'
+import ShenmotangTaskCard from './ShenmotangTaskCard.vue'
+import { parseTaskIds, prepareDispatchSend } from '../utils/taskDispatch'
 
 const props = defineProps({
   contact: { type: Object, required: true },
@@ -147,6 +160,11 @@ function agentName(m) {
 }
 function agentInitial(m) {
   return String(agentName(m) || '?').slice(0, 1)
+}
+
+/** T4：消息携带的 task_id → 行内任务卡 */
+function taskIdsOf(m) {
+  return parseTaskIds(m && m.content)
 }
 
 function scrollToEnd() {
@@ -205,12 +223,24 @@ async function send() {
   error.value = ''
   try {
     if (!roomId.value) roomId.value = await ensureDmRoom()
+    // T4 派活：检测「派活」→ 先建 kanban 任务 → 消息携带 task 标记
+    let outText = text
+    try {
+      const prepared = await prepareDispatchSend(text, {
+        contacts: [props.contact],
+        assigneeId: props.contact.id,
+      })
+      outText = prepared.text
+    } catch (e) {
+      // 建任务失败不阻断聊天
+      console.error('[ShenmotangPeerDm] dispatch task failed', e)
+    }
     // peer_dm：显式 A2A（from/to 都是 agent）；否则走房间消息（用户→单 agent，秘书模式应答）
     let r = null
     if (props.peerFrom && props.peerFrom !== props.contact.id) {
-      r = await api.sendPeerDm(roomId.value, props.peerFrom, props.contact.id, text)
+      r = await api.sendPeerDm(roomId.value, props.peerFrom, props.contact.id, outText)
     } else {
-      r = await api.sendBotRoomMessage(roomId.value, text)
+      r = await api.sendBotRoomMessage(roomId.value, outText)
     }
     if (r && r.ok) {
       draft.value = ''
