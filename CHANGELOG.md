@@ -35,8 +35,7 @@ All notable changes to Vermes will be documented in this file.
 
 ### 已知问题
 
-- 语音 `davey` 依赖缺失时 2 条 voice 测试红（环境问题，非本版引入）
-- 双左栏（全局侧栏 + 神魔堂 IM 左栏）视觉待打磨
+- 双左栏（全局侧栏 + 神魔堂 IM 左栏）已收窄 IM 栏，视觉层级仍待后续迭代
 - 下载包 sha256/size 待构建后回填
 
 ## [2.5.3] - 2026-09-24
