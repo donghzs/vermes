@@ -116,8 +116,38 @@ cd "$REPO_ROOT"
 # otherwise treat them as test paths.
 ARGS=("$@")
 
+# ── Isolate mode（中线：per-file 进程隔离）────────────────────────────────
+# 手工 _reset_module_state 追不上模块级 latch（gateway.run._vermes_home 等）。
+# ISOLATE=1 或 --isolate：每个测试文件独立子进程，慢但无状态泄漏；
+# 默认仍 xdist + conftest reset（快）。可再传路径限定范围：
+#   scripts/run_tests.sh --isolate tests/gateway
+ISOLATE_ARGS=()
+if [ "${VERMES_ISOLATE_FILES:-}" = "1" ]; then
+  ISOLATE_ARGS+=(--isolate-files)
+fi
+FILTERED=()
+for a in "${ARGS[@]}"; do
+  if [ "$a" = "--isolate" ]; then
+    ISOLATE_ARGS+=(--isolate-files)
+  else
+    FILTERED+=("$a")
+  fi
+done
+ARGS=("${FILTERED[@]}")
+
 echo "▶ running pytest with $WORKERS workers, hermetic env, in $REPO_ROOT"
 echo "  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; all credential env vars unset)"
+if [ ${#ISOLATE_ARGS[@]} -gt 0 ]; then
+  echo "  (isolate-files: 每文件独立子进程)"
+  # 隔离模式下 xdist 无意义：父进程只做调度，子进程各自跑
+  exec "$PYTHON" -m pytest \
+    -o "addopts=" \
+    --ignore=tests/integration \
+    --ignore=tests/e2e \
+    -m "not integration" \
+    "${ISOLATE_ARGS[@]}" \
+    "${ARGS[@]}"
+fi
 
 # -o "addopts=" clears pyproject.toml's `-n auto` so our -n wins.
 exec "$PYTHON" -m pytest \
