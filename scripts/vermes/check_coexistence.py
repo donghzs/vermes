@@ -12,8 +12,17 @@
     python3 scripts/check_coexistence.py --deep      # 额外做网关端口连通性探测
     python3 scripts/check_coexistence.py --json      # 机读输出（CI 用）
     python3 scripts/check_coexistence.py --quiet     # 只输出 FAIL/WARN
+    python3 scripts/check_coexistence.py --strict-runtime
+                         # 运行态项也计入 FAIL（默认只 WARN，见下）
 
 退出码：0 = 无 FAIL；1 = 存在 FAIL（并存已被破坏）
+
+【静态 vs 运行态】2026-09-28 拆分（Hermes 反馈）：
+  * 静态不变量（配置根 / DB / 端口 / launchd / 技能根 / 代码根）→ 硬门禁 FAIL。
+    它们不随「你现在开着哪些 app」变。
+  * 运行态不变量（进程归属、跨安装托管）→ 默认 WARN，不进 G1 绿。
+    理由：5 个引擎安装并存时，进程归属会随开哪个 app 随机红绿；
+    把它做成 FAIL 等于把门禁变噪声。要看严格模式用 --strict-runtime。
 
 不变量清单见 docs/SPEC_coexistence_invariants_20260920.md
 """
@@ -93,11 +102,25 @@ NOISE = re.compile(
 )
 
 results: list[dict] = []
+# 运行态项默认只 WARN（--strict-runtime 收成 FAIL）。见模块 docstring。
+_strict_runtime = False
 
 
 def add(check: str, status: str, msg: str, evidence: list[str] | None = None) -> None:
     """status: PASS / WARN / FAIL / SKIP"""
     results.append({"check": check, "status": status, "msg": msg, "evidence": evidence or []})
+
+
+def add_runtime(check: str, status: str, msg: str, evidence: list[str] | None = None) -> None:
+    """运行态检查：依赖「当前开着哪些 app」，默认不进 FAIL 硬门禁。"""
+    if status == "FAIL" and not _strict_runtime:
+        status = "WARN"
+        msg = f"[运行态·不进 G1] {msg}"
+    elif status == "FAIL":
+        msg = f"[运行态·strict] {msg}"
+    elif status == "WARN":
+        msg = f"[运行态] {msg}"
+    add(check, status, msg, evidence)
 
 
 def run(cmd: list[str], timeout: int = 20) -> str:
@@ -260,10 +283,10 @@ def check_process_ownership(procs: list[dict]) -> dict[str, dict]:
         msg += f"；{len(ambiguous)} 个进程归属混乱"
     if hosted:
         msg += f"；{len(hosted)} 处跨安装托管（见 ★ 项）"
-    add("1 进程归属可判定", status, msg, lines or None)
+    add_runtime("1 进程归属可判定", status, msg, lines or None)
     if ambiguous:
-        add("★ 进程归属无混淆", "FAIL", f"{len(ambiguous)} 个进程同时命中多个安装", ambiguous)
-    add("★ 跨安装二进制托管", "WARN" if hosted else "PASS",
+        add_runtime("★ 进程归属无混淆", "FAIL", f"{len(ambiguous)} 个进程同时命中多个安装", ambiguous)
+    add_runtime("★ 跨安装二进制托管", "WARN" if hosted else "PASS",
         "无进程使用其他安装的解释器/二进制" if not hosted
         else f"{len(hosted)} 处：某安装的进程依赖另一安装的解释器（宿主升级/删除会连带故障）",
         hosted)
@@ -487,9 +510,15 @@ def main() -> int:
     ap.add_argument("--deep", action="store_true", help="额外做网关端口连通性探测")
     ap.add_argument("--json", action="store_true", help="机读输出")
     ap.add_argument("--quiet", action="store_true", help="只输出 FAIL/WARN")
+    ap.add_argument(
+        "--strict-runtime",
+        action="store_true",
+        help="运行态项（进程归属/跨安装托管）也计入 FAIL；默认只 WARN",
+    )
     args = ap.parse_args()
 
-    global procs_cache
+    global procs_cache, _strict_runtime
+    _strict_runtime = args.strict_runtime
     procs_cache = processes()
     port_rows = listening_ports()
     grouped = check_process_ownership(procs_cache)

@@ -195,6 +195,7 @@ S5 的前置核实项已登记为待办（§8）。
 | C-008 | `acp_adapter/server.py` | L-010：session_id 弃进程级 save/restore 改 setter + token reset（修并发串味）；同 C-003 族 | 无直接对应；自有安全修复 | 2026-09-23 |
 | C-009 | `agent/prompt_builder.py` | 常量面：S2.4 四键以 YAML 为准回写 + `COMPUTER_USE_GUIDANCE` 惰性源；skill-routing 渠道门 + SkillRouter；W-L4/L5/M7 阈值相关常量。**不能走插件形态**——这些常量被 `system_prompt`/`codex_responses_adapter` 等 core 路径直引，插件只能注册段、不能替换常量真源 | 上游无等价常量面（Vermes 反向领先）；分叉点=内容与调度，不是文件存在性 | 2026-09-23 |
 | C-010 | `gateway/watchdog.py` | L-035 进程看门狗：CPU>90% / :9120 失联 → `os._exit(70)` 喂 Electron 崩溃自愈（Hermes 2026-09-25 治本①）。**不能走插件形态**——必须在 gateway 进程内、先于事件循环假死可用 | 上游无进程内看门狗（靠 supervisor 外挂）；Vermes 桌面壳 = Electron 自愈 | 2026-09-25 |
+| C-011 | `agent/rag_provider.py` | FTS5 索引损坏自愈（L1 rebuild → L2 DROP+CREATE 重灌）+ 中文短词召回（trigram 匹配不了 <3 字，`_build_fts_terms` 分词：≥3 走 MATCH、短词 LIKE 兜底）。**不能走插件形态**——RAG 检索是 agent 核心记忆路径，自愈与分词策略必须与索引 schema（rowid=chunks.id）强一致 | 上游无 FTS5 trigram 中文短词策略；自有可用性修复（2026-09-27 事故：知识库对中文近乎失效） | 2026-09-28 |
 <!--CORE_DIVERGE_LEDGER:END-->
 
 ---
