@@ -1,0 +1,248 @@
+<!-- AI生成 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>双模式定位 · 神魔堂 UX 升级</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+
+<div class="wrap">
+
+  <p class="kicker">产品方案 · 2026-09-26 · WorkBuddy 交叉回盘后</p>
+  <h1>Vermes 双模式：单聊 = Hermes 发行版，神魔堂 = 多 Agent 桌面 IM 入口</h1>
+  <p class="lede">
+    <b>单聊 Vermes</b> 保持 Hermes 发行版单聊体验（已达主流大厂层次，本期不动）；
+    <b>神魔堂</b> 是多 Agent 桌面 IM 入口——把已建成的 <b>peer_exchange 联邦后端</b>用「微信」心智包一层：
+    联系人 → 单聊 → 拉群 → 派活 → 协作。<b>后端几乎全有，缺的是 IM 壳</b>；
+    国产 agent（Kimi/Qwen/GLM）已 ACP-native 可联邦，真缺口只剩 <b>Contact 抽象</b>（前端 IA，后端 0 新增）。
+  </p>
+  <div class="meta">
+    <span class="chip">定位 <b>双模式·桌面 Agent OS</b></span>
+    <span class="chip">ACP recipes <b>44</b>（实测）</span>
+    <span class="chip">跨群联邦 <b>已通</b></span>
+    <span class="chip">prereq <b>Contact 抽象·后端0新增</b></span>
+  </div>
+
+  <!-- 纠偏 -->
+  <section>
+    <h2>家底纠偏（回盘后）</h2>
+    <p class="sub">两处我方过简 + 一处真漏项</p>
+    <div class="fixes">
+      <div class="fix">
+        <div class="fix-num own">1</div>
+        <div>
+          <h3>recipes 数量：按实测入账</h3>
+          <p>
+            我方原写「6+」偏简；WorkBuddy 称 66。
+            实测 <code>find vermes_cli/a2a/recipes -name '*.yaml'</code> = <b>44</b>
+            （顶层 6 手写 + <code>registry/</code> 38）。<b>按 44 入账</b>，家底仍比原先口径厚一截。
+          </p>
+        </div>
+      </div>
+      <div class="fix">
+        <div class="fix-num own">2</div>
+        <div>
+          <h3>kanban 状态必须用真枚举</h3>
+          <p>
+            <code>kanban_db.py:97</code>：
+            <code>triage / todo / scheduled / ready / running / blocked / review / done / archived</code>。
+            <b>没有</b> dispatched / planning——dispatch 是动词（ready→running），
+            planning 是蜂群「planning root」卡片类型。方案文档一律用真名。
+          </p>
+        </div>
+      </div>
+      <div class="fix">
+        <div class="fix-num new">3</div>
+        <div>
+          <h3>修正：国产 agent 已 ACP-native，prereq 大幅消解</h3>
+          <p>
+            回盘实测 <code>vermes_cli/a2a/recipes</code> 的 <b>44 个 recipe <b>全部</b> <code>transport: acp</code></b>——
+            Kimi / Qwen-Code / GLM 本身就是 ACP 协议 agent（kimi-cli / qwen-code / GLM CLI），<b>已能走 peer_exchange 联邦</b>。
+            真正缺的只剩两类：① 无 recipe 的裸模型（DeepSeek / 豆包）走既有的 ChatView 模型注册表（204/7424）；
+            ② <b>Contact 统一抽象（agent 类 + 模型类）</b>纯前端 IA——后端 0 新增。模型适配器不再是 prereq。
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- IM 壳图 -->
+  <section>
+    <h2>目标形态</h2>
+    <p class="sub">L1 联系人 + 1:1 默认面 · L2 拉群 · L3 任务卡 · 背后是已通的联邦</p>
+    <div class="diagram">
+      <svg viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, PingFang SC, Microsoft YaHei, sans-serif">
+        <!-- 左栏 -->
+        <rect x="24" y="24" width="170" height="252" rx="12" fill="#ffffff" stroke="#e4e7ec"/>
+        <text x="108" y="48" text-anchor="middle" font-size="11" fill="#667085">联系人 / 群</text>
+        <rect x="40" y="64" width="138" height="32" rx="8" fill="#ccfbf1"/>
+        <circle cx="56" cy="80" r="5" fill="#0d9488"/>
+        <text x="68" y="84" font-size="11" fill="#14171f">Codex · 在线</text>
+        <rect x="40" y="102" width="138" height="32" rx="8" fill="#f5f6f8"/>
+        <circle cx="56" cy="118" r="5" fill="#0d9488"/>
+        <text x="68" y="122" font-size="11" fill="#14171f">Claude Code</text>
+        <rect x="40" y="140" width="138" height="32" rx="8" fill="#ccfbf1"/>
+        <circle cx="56" cy="156" r="5" fill="#0d9488"/>
+        <text x="68" y="160" font-size="11" fill="#14171f">Kimi · ACP</text>
+        <line x1="40" y1="186" x2="178" y2="186" stroke="#e4e7ec"/>
+        <rect x="40" y="198" width="138" height="30" rx="8" fill="#dbeafe"/>
+        <text x="68" y="217" font-size="11" fill="#1d4ed8">▣ 论文攻坚群</text>
+        <rect x="40" y="234" width="138" height="30" rx="8" fill="#dbeafe"/>
+        <text x="68" y="253" font-size="11" fill="#1d4ed8">▣ 代码评审群</text>
+
+        <!-- 会话区 -->
+        <rect x="214" y="24" width="442" height="252" rx="12" fill="#ffffff" stroke="#e4e7ec"/>
+        <text x="435" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#14171f">Codex · 1:1</text>
+        <text x="240" y="48" font-size="11" fill="#0d9488">⊕ 拉群</text>
+        <text x="600" y="48" font-size="11" fill="#667085">⋯ 任务</text>
+
+        <rect x="240" y="70" width="200" height="36" rx="10" fill="#f5f6f8"/>
+        <text x="252" y="92" font-size="11" fill="#14171f">帮我盯一下 CI 挂了</text>
+        <rect x="400" y="118" width="220" height="36" rx="10" fill="#ccfbf1"/>
+        <text x="412" y="140" font-size="11" fill="#14171f">已看，是 pytest 超时…</text>
+
+        <!-- 任务卡 -->
+        <rect x="240" y="170" width="380" height="56" rx="10" fill="#ede9fe" stroke="#c4b5fd"/>
+        <text x="254" y="192" font-size="11" font-weight="600" fill="#6d28d9">📋 任务卡 · 修 CI 超时</text>
+        <text x="254" y="212" font-size="10.5" fill="#667085">assignee=Codex · 状态 running · 点开看进度</text>
+
+        <rect x="240" y="238" width="380" height="26" rx="8" fill="#f5f6f8" stroke="#e4e7ec"/>
+        <text x="252" y="255" font-size="11" fill="#98a2b3">发消息 · @某人 · 派活 / 附件</text>
+      </svg>
+      <p class="diagram-cap">图 1 · 神魔堂左栏联系人/群（只列 ACP agent，含国产 Kimi/Qwen/GLM；裸模型留单聊）· 右侧 1:1 + 任务卡 + 拉群入口</p>
+    </div>
+  </section>
+
+  <!-- 三层 -->
+  <section>
+    <h2>落地三层</h2>
+    <div class="layers">
+      <div class="layer">
+        <div class="lv">L1<br/>IA</div>
+        <div>
+          <h3>联系人壳 + 1:1 默认面</h3>
+          <p>
+            左栏联系人/群列表；点联系人进 1:1。复用
+            <code>bot_room_peer_dm</code> · <code>peer_exchange</code> · ChatView。
+            <b>纯前端接线</b>，端点现成。
+          </p>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="lv">L2<br/>拉群</div>
+        <div>
+          <h3>⊕ 拉群 = 现有建群弹窗</h3>
+          <p>
+            1:1 右上「⊕ 拉群」→ 多选联系人建群，复用
+            <code>inviteModal</code> + <code>applyBotOrg</code> / <code>ORG_TEMPLATES</code>（建群即建组织）。
+          </p>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="lv">L3<br/>任务卡</div>
+        <div>
+          <h3>@某人 + 派活 → 消息流任务卡</h3>
+          <p>
+            需补胶水：把 <code>task.id</code> 绑到消息，进度回写消息流。
+            状态机用真枚举（<code>ready→running→review→done</code>）。
+            <span class="tag tag-new">新建</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 tab 归处 -->
+  <section>
+    <h2>3 tab 降级归处（单列，不许只说「收编」）</h2>
+    <p class="sub">最值钱的能力降为「从聊天/房间点进去的二级视图」，不是删掉</p>
+    <div class="tabs">
+      <div class="tab">
+        <h3><span class="from">原 tab</span> BotRooms 群聊实验场</h3>
+        <p>群列表 · 建群=建组织 · 拉人 · @mention 路由。</p>
+        <div class="to">→ <b>升为 L1/L2 主面</b>：左栏「群」即 BotRooms；建群/拉人成为 1:1 上的「⊕」动作。原「实验场」心智退场。</div>
+      </div>
+      <div class="tab">
+        <h3><span class="from">原 tab</span> Shenmotang 蜂群看板</h3>
+        <p>任务图 · 心跳回收 · 工程执行视图。</p>
+        <div class="to">→ <b>降为房间/群的二级视图</b>：群会话顶栏「📊 蜂群」抽屉/全宽切换。<b>不删</b>——这是协作的「驾驶舱」。</div>
+      </div>
+      <div class="tab">
+        <h3><span class="from">原 tab</span> Kanban / 工作流</h3>
+        <p>项目管理 · 状态机 · 调度。</p>
+        <div class="to">→ <b>降为任务卡的「打开看板」</b> + 全局「📋 任务」入口。任务卡是 IM 层，看板是正交的项目层。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- prereq -->
+  <div class="warn">
+    <h3>✓ 前提缺口已消解（修正）：不是适配器层，是 Contact 抽象 IA</h3>
+    <p>
+      <code>peer_exchange</code> 接 <b>ACP agent 运行时</b>（Codex / Claude / OpenClaw / Kimi / Qwen-Code / GLM… 44 recipes 全 acp）。
+      Kimi / Qwen-Code / GLM 本身是 ACP agent，<b>已能联邦</b>，联系人里不再灰显。
+      仅 DeepSeek / 豆包等<b>无 ACP recipe 的裸模型</b>走既有 ChatView 模型注册表（204/7424）即可。
+      所以 L1 真实缺口是 <b>Contact 统一抽象（agent 类 + 模型类路由分支）</b>纯前端 IA，<b>后端 0 新增</b>——
+      壳的 MVP 不再被「模型适配器」卡脖子。详见 vermes-im-desktop-entry-spec_20260926.md §纠正后 prereq。
+    </p>
+  </div>
+
+  <!-- 顺序 -->
+  <section>
+    <h2>建议顺序</h2>
+    <div class="actions">
+      <div class="action">
+        <div class="n">1</div>
+        <div>
+          <h3>采纳「双模式」定位叙事</h3>
+          <p>单聊=Hermes 发行版（已达主流，不优化）；神魔堂=多 Agent 桌面 IM 入口。比「发行版」高一个身位，竞品没做透。</p>
+        </div>
+      </div>
+      <div class="action">
+        <div class="n">2</div>
+        <div>
+          <h3>L1→L2 可即做（端点现成）</h3>
+          <p>联系人 + 1:1 + ⊕拉群，纯前端 IA。</p>
+        </div>
+      </div>
+      <div class="action">
+        <div class="n">3</div>
+        <div>
+          <h3>神魔堂联系人只接 ACP agent</h3>
+          <p>国产 Kimi/Qwen/GLM 已 ACP-native 可联邦；裸模型（DeepSeek/豆包）留单聊 ChatView，不进神魔堂联邦。后端 0 新增。</p>
+        </div>
+      </div>
+      <div class="action">
+        <div class="n">4</div>
+        <div>
+          <h3>L3 任务卡胶水</h3>
+          <p><code>task.id</code>↔消息绑定 + 进度回写；状态用真枚举。</p>
+        </div>
+      </div>
+      <div class="action">
+        <div class="n">5</div>
+        <div>
+          <h3>3 tab 按归处降级</h3>
+          <p>蜂群/看板进二级视图，能力不丢。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      锚点：<span class="mono">chat.py:4282 peer_dm</span> ·
+      <span class="mono">chat.py:4317 跨群联邦</span> ·
+      <span class="mono">kanban_db.py:97 VALID_STATUSES</span> ·
+      <span class="mono">a2a/recipes/ 44 yaml</span>
+       ｜ 生成于 2026-09-26 · 内部方案
+    </p>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

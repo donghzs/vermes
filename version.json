@@ -1,41 +1,41 @@
 {
-  "version": "2.5.3",
-  "releaseDate": "2026-09-26",
-  "notes": "Vermes 2.5.3（安全收口 + 审批真相 + 用户可见 UX + 网关稳定性，含 DMG 重打）：① 用户可见 — 设置页「提示词段开关」（P3 GUI，config.yaml 主源）；审批弹窗按本会话计数；中间产物不再误标；审批未回答不再谎称「用户拒绝」。② 安全 — cron 交付强制脱敏；file_safety 多 home 锚定；write-deny /var；profile 门控 fail-closed。③ 稳定 — 进程看门狗（卡死自动重启）；飞书 WS 监督器；QQBot 永不放弃；死链不再假绿；日志 2.2GB 修复；TERMINAL_CWD 隔离。",
+  "version": "2.5.4",
+  "releaseDate": "2026-09-28",
+  "notes": "Vermes 2.5.4（神魔堂 IM 壳 + 知识库中文 + 后端自愈）：① 用户可见 — 神魔堂全新 IM：常驻联系人/群左栏、1:1 私聊、⊕拉群、消息内任务卡、联邦状态条；知识库中文两字词（记忆/模型/配置）可搜了；后端关闭时不再误报「回复为空请换模型」，改为明确提示重启；任务流可一键收起并标「未收尾」。② 修复 — 跨会话连续性评分恢复（handoff 表名）；gateway 单项配置瑕疵不再拖垮整个网关；1:1 点群真正打开会话。③ 治理 — 并存门禁拆静态硬门禁+运行态提示；测试支持 per-file 进程隔离。",
   "downloads": {
     "mac": {
       "arm64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3-arm64.dmg",
-        "sha256": "bb7252e7b1a90d2ca59611a1cbeff511d870d600b10c622b216520d4cb19bd65",
-        "size": 279982430
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4-arm64.dmg",
+        "sha256": "",
+        "size": 0
       },
       "x64": {
-        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3.dmg",
-        "sha256": "6a327bd556e117b4911a6d415f295df9756428dbef93b1b8d636139d43af64ec",
-        "size": 285143491
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4.dmg",
+        "sha256": "",
+        "size": 0
       }
     },
     "windows": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3-win-x64.exe",
-      "sha256": "2a0038171386ef756d0753db60e1055a3ba85f594043af307252075dd9fce936",
-      "size": 259099561
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4-win-x64.exe",
+      "sha256": "",
+      "size": 0
     }
   },
   "mac": {
     "arm64": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3-arm64.dmg",
-      "sha256": "bb7252e7b1a90d2ca59611a1cbeff511d870d600b10c622b216520d4cb19bd65",
-      "size": 279982430
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4-arm64.dmg",
+      "sha256": "",
+      "size": 0
     },
     "x64": {
-      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3.dmg",
-      "sha256": "6a327bd556e117b4911a6d415f295df9756428dbef93b1b8d636139d43af64ec",
-      "size": 285143491
+      "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4.dmg",
+      "sha256": "",
+      "size": 0
     }
   },
   "windows": {
-    "url": "https://vbit.top/vermes/downloads/Vermes-2.5.3-win-x64.exe",
-    "sha256": "2a0038171386ef756d0753db60e1055a3ba85f594043af307252075dd9fce936",
-    "size": 259099561
+    "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4-win-x64.exe",
+    "sha256": "",
+    "size": 0
   }
 }

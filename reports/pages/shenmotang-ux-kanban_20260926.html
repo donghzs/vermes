@@ -1,0 +1,152 @@
+<!-- AI生成 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>神魔堂 UX 执行进度 · T1–T7</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+
+<div class="wrap">
+  <p class="kicker">执行看板 · 2026-09-26 · spec v2</p>
+  <h1>双模式落地：核验已过 · T1 完成</h1>
+  <p class="lede">
+    §11 <b>C1–C8 全部实核通过</b>（按真源，不沿旧口播）。T1 左栏 IM 化已就地提交于
+    <code>feat/shenmotang-ux-leftbar</code>，<b>待董董审后 merge/push</b>。
+    T6 README 双模式口径已由 WorkBuddy 写好、本次已提交。
+    WorkBuddy 审计 P1（<code>web_dist</code> 产物污染）<b>已剔除</b>，详见下方交付节奏。
+  </p>
+  <div class="meta">
+    <span class="chip">spec <b>v2 审计定稿</b></span>
+    <span class="chip">核验 <b>C1–C8 ✓</b></span>
+    <span class="chip">T1 <b>已提交</b></span>
+    <span class="chip">T6 <b>已提交</b></span>
+    <span class="chip">审计 P1 <b>已剔除</b></span>
+    <span class="chip">节奏 <b>本地提交 · 不自行 push</b></span>
+  </div>
+
+  <section>
+    <h2>§11 核验清单（mimo 回盘）</h2>
+    <p class="sub">每条按源码实测，不采口播</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>项</th><th>正确结论</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">C1</td><td>recipes 数与 transport</td><td><b>44</b> 个，44/44 <code>transport: acp</code></td><td class="ok">✓ 实核</td></tr>
+          <tr><td class="mono">C2</td><td>国产 agent 可联邦</td><td>Kimi / Qwen-Code / GLM <b>ACP-native</b></td><td class="ok">✓ 实核</td></tr>
+          <tr><td class="mono">C3</td><td>kanban 枚举</td><td><code>triage…archived</code>，无 dispatched/planning</td><td class="ok">✓ 实核</td></tr>
+          <tr><td class="mono">C4</td><td>3-tab 收编</td><td><code>/kanban</code> <code>/bot-rooms</code> → <code>/shenmotang</code></td><td class="ok">✓ 实核</td></tr>
+          <tr><td class="mono">C5</td><td>双入口</td><td><code>/</code> + <code>/shenmotang</code> + Sidebar ⛩️</td><td class="ok">✓ 实核</td></tr>
+          <tr><td class="mono">C6</td><td>1:1 联邦后端</td><td><code>peer_dm</code> + @B + <b>跨群联邦</b> <code>4282/4286/4317</code>（注释在 4316，逻辑在 4317-4318）</td><td class="ok">✓ 实核</td></tr>
+          <tr><td class="mono">C7</td><td>双模式决议</td><td>主标 Agent OS · 单聊纯净 · 无顶层切换器</td><td class="ok">✓ 定稿</td></tr>
+          <tr><td class="mono">C8</td><td>BSL 红线</td><td>洁室自研，禁搬 Ekko 代码</td><td class="ok">✓ AGENTS.md</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>T1–T7 执行状态</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>任务</th><th>内容</th><th>分支</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>T1</b></td>
+            <td>左栏 IM 化：联系人/群混列 + ⊕ + 用量入口；反转进堂强收侧栏</td>
+            <td class="mono">feat/shenmotang-ux-leftbar</td>
+            <td class="ok">✅ 已提交 · 3 tests · web_dist 已剔</td>
+          </tr>
+          <tr>
+            <td><b>T2</b></td>
+            <td>1:1 默认面：选联系人 → peer_dm 会话</td>
+            <td class="mono">feat/shenmotang-ux-dm</td>
+            <td><span class="tag tag-pre">待开工</span></td>
+          </tr>
+          <tr>
+            <td><b>T3</b></td>
+            <td>⊕ 拉群接线（applyBotOrg / inviteModal）</td>
+            <td class="mono">feat/shenmotang-ux-group</td>
+            <td><span class="tag tag-pre">待开工</span></td>
+          </tr>
+          <tr>
+            <td><b>T4</b></td>
+            <td>任务卡：@派活 → 行内卡 + 进度（真枚举）</td>
+            <td class="mono">feat/shenmotang-ux-taskcard</td>
+            <td><span class="tag tag-pre">待开工</span></td>
+          </tr>
+          <tr>
+            <td><b>T5</b></td>
+            <td>联邦可见性（@B / 跨群状态）</td>
+            <td class="mono">feat/shenmotang-ux-federation</td>
+            <td><span class="tag tag-pre">待开工</span></td>
+          </tr>
+          <tr>
+            <td><b>T6</b></td>
+            <td>README 双模式定位 + 血缘分层</td>
+            <td class="mono">（随 T1 分支）</td>
+            <td class="ok">✅ 已提交</td>
+          </tr>
+          <tr>
+            <td><b>T7</b></td>
+            <td>左栏用量入口 → /usage</td>
+            <td class="mono">feat/shenmotang-ux-usage</td>
+            <td class="ok">✅ 已含 T1（左栏底部）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>T1 交付摘要</h2>
+    <div class="layers">
+      <div class="layer">
+        <div class="lv">新</div>
+        <div>
+          <h3>ShenmotangImRail.vue</h3>
+          <p>联系人/群混列 · 搜索 · <b>⊕ 拉群</b> · 添加联系人 · 用量入口。数据源 <code>GET /agents/contacts</code> + <code>/bot/rooms</code>（后端 0 新增）。</p>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="lv">反转</div>
+        <div>
+          <h3>不再劫持全局侧栏</h3>
+          <p>删除进堂 <code>chat.sidebarOpen = false</code> 强收逻辑（<code>wasSidebarOpen</code> 退役）——神魔堂自带 IM 左栏。</p>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="lv">验收</div>
+        <div>
+          <h3>3 passed · build 通过</h3>
+          <p>渲染混列 / select 事件 / 源码断言不劫持 sidebarOpen。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="warn">
+    <h3>交付节奏（按 spec §12.2）</h3>
+    <p>
+      mimo <b>本地提交</b>到分支，<b>不自行 merge/push</b>；董董审完再合。
+      当前 <code>feat/shenmotang-ux-leftbar</code> 上共 <b>4 commits</b>：
+      T1 功能 + T6 README + <code>7c4ba88062</code> web_dist 构建（审计 P1 污染）+ 污染剔除。
+      <b>净变更仅</b> ShenmotangImRail.vue / Shenmotang.vue / 契约测 / README.zh-CN.md，
+      <code>vermes_cli/web_dist</code> 已回退为 main 版本（留给发行构建再生）。
+      勿碰：单聊 ChatView 优化 / 模型 API 适配器 / 顶层切换器 / Ekko 代码。
+    </p>
+  </div>
+
+  <footer>
+    <p>
+      spec：<span class="mono">reports/vermes-im-desktop-entry-spec_20260926.md</span>
+      ｜ 核验锚点见 C1–C8 表 ｜ 生成于 2026-09-26
+    </p>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
