@@ -31,10 +31,8 @@ from unittest.mock import patch
 
 import pytest
 
-# 中线：per-file 进程隔离插件（--isolate-files / VERMES_ISOLATE_FILES）。
-# 手工 _reset_module_state 追不上新的模块级 latch（如 gateway.run._vermes_home），
-# 该插件对齐 Hermes 上游 subprocess-per-file 思路，默认关闭不影响常规 xdist 速度。
-pytest_plugins = ["tests._isolate_plugin"]
+# 注意：isolate 插件在根目录 conftest.py 注册（rootdir 位置，pytest 9 安全）。
+# 这里不再写 pytest_plugins——非 rootdir 注册在新 pytest 会炸。
 
 # Ensure project root is importable
 PROJECT_ROOT = Path(__file__).parent.parent
