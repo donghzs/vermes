@@ -352,6 +352,33 @@ def _hermetic_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("LC_ALL", "C.UTF-8")
     monkeypatch.setenv("PYTHONHASHSEED", "0")
 
+    # 4c. Also move the **already-imported** ``gateway.run._vermes_home``.
+    #     ``gateway/run.py`` binds it at import time
+    #     (``_vermes_home = get_vermes_home()``), so the env redirect above
+    #     does NOT move it. Any test file that imports ``gateway.run`` at
+    #     module scope does so during *collection*, before fixtures ran —
+    #     so it latches the REAL ~/.vermes for the whole pytest process and
+    #     hands the operator's actual config.yaml to every later test.
+    #
+    #     Observed 2026-09-27: test_autoset_home_channel.py's
+    #     ``test_platfroms_are_isolated`` fails whenever a file that imports
+    #     gateway.run at module scope is collected first — the Feishu leg
+    #     answers Gate 3 from the user's real home channel and declines to
+    #     adopt. It is order-dependent, not random: "passes alone, red in a
+    #     group" was the visible symptom of this latch.
+    #
+    #     We patch only when the module is already imported: forcing the
+    #     import here would run run.py's import-time side effects (dotenv
+    #     load, log setup) for every test in the suite. A module imported
+    #     later binds whatever VERMES_HOME is set to at that moment — which
+    #     is already the fake one.
+    try:
+        _gw_run = sys.modules.get("gateway.run")
+        if _gw_run is not None:
+            monkeypatch.setattr(_gw_run, "_vermes_home", fake_vermes_home)
+    except Exception:
+        pass
+
     # 4b. Disable AWS IMDS lookups. Without this, any test that ends up
     #     calling has_aws_credentials() / resolve_aws_auth_env_var()
     #     (e.g. provider auto-detect, status command, cron run_job) burns
