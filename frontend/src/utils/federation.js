@@ -6,11 +6,15 @@
  * - 状态展示复用真枚举语义（done/running/…）；联邦过程态单独标注，不造伪任务态。
  */
 
-/** peer 行：[私聊 @A ↔ @B]（hermes peer / A2A） */
-const PEER_RE = /\[私聊\s*@([^↔\]]+?)\s*↔\s*@([^\]]+?)\]/
+/**
+ * peer 行：[私聊 @A ↔ @B]（hermes peer / A2A）
+ * 与 chat.py:4340/5343 输出格式锁契约（tests/shenmotang-federation.test.js 会读源码对拍），
+ * 改后端文案必须同步改这里，否则状态条静默失效。
+ */
+const PEER_RE = /\[私聊\s*@([^↔\]]+?)\s*↔\s*@([^\]]+?)\]/u
 
 /** 公开接力兜底：（接力）@A 在回复中点名了你 */
-const RELAY_RE = /（接力）\s*@(\S+?)\s+在回复中点名了你/
+const RELAY_RE = /（接力）\s*@(\S+?)\s+在回复中点名了你/u
 
 /** 跨群联邦线索：联系人池即可私聊，不限同群（peer_dm 注释语义进文案时） */
 const CROSS_RE = /跨群|不限同群|联邦/

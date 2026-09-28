@@ -1,6 +1,7 @@
 <template>
-  <!-- 神魔堂 IM 左栏（T1）：联系人 / 群 常驻混合列表 + ⊕ 入口 -->
-  <aside class="w-64 shrink-0 h-full flex flex-col border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60">
+  <!-- 神魔堂 IM 左栏（T1）：联系人 / 群 常驻混合列表 + ⊕ 入口
+       P3：与全局侧栏并排时收窄到 w-56，少占 32px，减轻双左栏横向挤压 -->
+  <aside class="w-56 shrink-0 h-full flex flex-col border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60">
     <!-- 顶：搜索 + ⊕ -->
     <div class="p-3 space-y-2 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center gap-2">

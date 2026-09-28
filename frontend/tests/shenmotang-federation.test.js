@@ -101,4 +101,22 @@ describe('T5 联邦状态条', () => {
     expect(src).toContain('ShenmotangFederationBar')
     expect(src).toContain(':timeline="messages"')
   })
+
+  it('契约：chat.py 文案与 PEER_RE 对拍（防静默失效）', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const chat = fs.readFileSync(path.resolve('../vermes_cli/blueprints/chat.py'), 'utf8')
+    // 后端写时间线用的模板（与 federation.js PEER_RE 锁契约）
+    expect(chat).toContain('[私聊 @{')
+    expect(chat).toContain('↔')
+    expect(chat).toContain('（hermes peer / A2A）')
+    // 用后端真实拼出来的样例喂解析器
+    const sample = '[私聊 @Codex ↔ @Kimi]（hermes peer / A2A）\nok'
+    const { parseFederationSignals } = await import('../src/utils/federation.js')
+    const sigs = parseFederationSignals([{ content: sample }], {})
+    expect(sigs.length).toBe(1)
+    expect(sigs[0].kind).toBe('peer')
+    expect(sigs[0].from).toBe('Codex')
+    expect(sigs[0].to).toBe('Kimi')
+  })
 })

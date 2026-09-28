@@ -2450,7 +2450,18 @@ class TestVoiceReception:
     # -- _on_packet DAVE passthrough behavior --
 
     def _make_receiver_with_nacl(self, dave_session=None, mapped_ssrcs=None):
-        """Create a receiver that can process _on_packet with mocked NaCl + Opus."""
+        """Create a receiver that can process _on_packet with mocked NaCl + Opus.
+
+        同时注入 ``davey`` stub：生产代码在 DAVE 路径里 ``import davey`` 取
+        ``MediaType.audio``，缺包时 ImportError 被当解密失败吞掉、断言假红。
+        stub 只提供测试用到的常量，不依赖真包是否安装。
+        """
+        import sys
+        import types
+        if "davey" not in sys.modules:
+            stub = types.ModuleType("davey")
+            stub.MediaType = SimpleNamespace(audio="audio", video="video")
+            sys.modules["davey"] = stub
         from gateway.platforms.discord import VoiceReceiver
         vc = MagicMock()
         vc._connection.secret_key = [0] * 32
