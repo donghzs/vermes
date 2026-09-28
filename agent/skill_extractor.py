@@ -209,7 +209,9 @@ class SkillExtractor:
     def extract(self) -> List[ExtractedSkill]:
         """Run skill extraction on all qualifying clusters.
 
-        Returns newly extracted skills (status=pending).
+        Returns newly extracted skills. 初始 status=pending；随后
+        ``_maybe_auto_adopt`` 按 L1 门槛可把达标的就地推进为 active
+        （可逆，reject 可打回）。调用方不应假设返回值恒为 pending。
         """
         new_skills: List[ExtractedSkill] = []
 
