@@ -289,15 +289,15 @@ def _check_multi_session(
         # (not a hardcoded trigger — this is a minimum observation window)
         if recent_sessions >= 5:
             # Check if handoff table exists and has entries
-            handoff_count = 0
+            # Handoffs live in their own DB (session_handoffs.db), NOT in the
+            # self-model DB this ``conn`` points at. Querying ``handoffs``
+            # here could never match, so handoff_count was pinned at 0 and the
+            # "continuity gap" signal below fired unconditionally.
             try:
-                cursor = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='handoffs'"
-                )
-                if cursor.fetchone():
-                    cursor = conn.execute("SELECT COUNT(*) FROM handoffs")
-                    handoff_count = cursor.fetchone()[0]
+                from agent.handoff_store import count_handoffs
+                handoff_count = count_handoffs()
             except Exception as e:
+                handoff_count = 0
                 logger.debug("capability_evolver.py:  check multi session failed: %s", e)
 
             # Many sessions but few handoffs = cross-session continuity gap

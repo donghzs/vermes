@@ -232,9 +232,22 @@ class HomeChannel:
         return result
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "HomeChannel":
+    def from_dict(
+        cls, data: Dict[str, Any], default_platform: Optional[str] = None
+    ) -> "HomeChannel":
+        # ``platform`` duplicates the parent ``platforms.<name>`` key: to_dict()
+        # always emits it, but hand-edited or partially-rewritten YAML may omit
+        # it. Falling back to the parent key keeps the gateway bootable instead
+        # of raising KeyError and crashing startup in a restart loop (observed
+        # 70x). Only when neither source exists do we fail — and callers skip
+        # the block rather than taking down the whole gateway.
+        platform_raw = data.get("platform", default_platform)
+        if platform_raw is None:
+            raise ValueError(
+                "home_channel 缺少 platform 字段，且无法从父级 platform 键推断"
+            )
         return cls(
-            platform=Platform(data["platform"]),
+            platform=Platform(platform_raw),
             chat_id=str(data["chat_id"]),
             name=data.get("name", "Home"),
             thread_id=str(data["thread_id"]) if data.get("thread_id") else None,
@@ -324,10 +337,14 @@ class PlatformConfig:
         return result
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PlatformConfig":
+    def from_dict(
+        cls, data: Dict[str, Any], default_platform: Optional[str] = None
+    ) -> "PlatformConfig":
         home_channel = None
         if "home_channel" in data:
-            home_channel = HomeChannel.from_dict(data["home_channel"])
+            home_channel = HomeChannel.from_dict(
+                data["home_channel"], default_platform=default_platform
+            )
 
         # gateway_restart_notification may be bridged into extra via the
         # shared-key loop in load_gateway_config(); check both top-level
@@ -624,9 +641,21 @@ class GatewayConfig:
         for platform_name, platform_data in data.get("platforms", {}).items():
             try:
                 platform = Platform(platform_name)
-                platforms[platform] = PlatformConfig.from_dict(platform_data)
+                platforms[platform] = PlatformConfig.from_dict(
+                    platform_data, default_platform=platform_name
+                )
             except ValueError:
                 pass  # Skip unknown platforms
+            except (KeyError, TypeError) as e:
+                # A malformed block (e.g. home_channel missing a required
+                # field) must not take the whole gateway down. Historically
+                # KeyError('platform') escaped here and crashed startup in a
+                # restart loop (observed 70x) — one bad platform should only
+                # cost that platform.
+                logger.warning(
+                    "跳过配置损坏的 platform %r：%s: %s",
+                    platform_name, type(e).__name__, e,
+                )
         
         reset_by_type = {}
         for type_name, policy_data in data.get("reset_by_type", {}).items():

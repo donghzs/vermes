@@ -387,11 +387,12 @@ def compute_richness() -> "RichnessScore":
     try:
         handoff_db = _get_handoff_db()
         if handoff_db:
-            conn = sqlite3.connect(str(handoff_db))
-            row = conn.execute("SELECT COUNT(*) FROM handoffs").fetchone()
-            score.handoff_count = row[0] if row else 0
+            # Table is ``session_handoffs`` — a bare ``handoffs`` query threw
+            # "no such table" here 4116 times (DEBUG-swallowed) and left the
+            # cross-session continuity score permanently at 0.
+            from agent.handoff_store import count_handoffs
+            score.handoff_count = count_handoffs(handoff_db)
             score.handoff_density = _sigmoid(score.handoff_count, _REF_HANDOFFS)
-            conn.close()
     except Exception as e:
         logger.debug("memory_recall: handoff richness query failed: %s", e)
 

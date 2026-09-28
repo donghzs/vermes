@@ -703,3 +703,71 @@ class TestHomeChannelEnvOverrides:
             home = config.platforms[platform].home_channel
             assert home is not None, f"{platform.value}: home_channel should not be None"
             assert (home.chat_id, home.name) == expected, platform.value
+
+
+class TestHomeChannelPlatformFallback:
+    """home_channel 缺 platform 不再拖垮整个 gateway。
+
+    实证事故（2026-09-27）：HomeChannel.from_dict 硬取 data["platform"]，
+    配置里一旦缺失就抛 KeyError，GatewayConfig.from_dict 只捕获 ValueError，
+    于是**整个 gateway 启动崩溃并进入重启循环**（gateway-exit-diag.log 70 次）。
+    一个平台的配置瑕疵不该让所有平台陪葬 —— 而且 platform 本就与父级
+    platforms.<name> 键冗余，缺失时完全可以推断。
+    """
+
+    def test_infers_platform_from_parent_key(self):
+        """正探针：缺 platform 时从父级推断，不再 KeyError。"""
+        hc = HomeChannel.from_dict({"chat_id": "oc_1"}, default_platform="feishu")
+        assert hc.platform == Platform.FEISHU
+        assert hc.chat_id == "oc_1"
+
+    def test_explicit_platform_still_wins(self):
+        """回归：显式 platform 优先于父级推断。"""
+        hc = HomeChannel.from_dict(
+            {"platform": "qqbot", "chat_id": "19BB"}, default_platform="feishu"
+        )
+        assert hc.platform == Platform.QQBOT
+
+    def test_missing_platform_and_parent_raises_value_error(self):
+        """负探针：两者都缺 → 抛可诊断 ValueError（不是裸 KeyError）。"""
+        try:
+            HomeChannel.from_dict({"chat_id": "x"})
+        except ValueError as e:
+            assert "platform" in str(e)
+        else:
+            raise AssertionError("应抛 ValueError，实际未抛")
+
+    def test_platform_config_passes_default_down(self):
+        """透传：PlatformConfig 必须把 default_platform 交给 HomeChannel。"""
+        pc = PlatformConfig.from_dict(
+            {"enabled": True, "home_channel": {"chat_id": "oc_2"}},
+            default_platform="feishu",
+        )
+        assert pc.home_channel.platform == Platform.FEISHU
+
+    def test_malformed_block_skipped_not_fatal(self):
+        """fail-soft：一个平台配置损坏只丢该平台，其余照常加载。"""
+        cfg = GatewayConfig.from_dict(
+            {
+                "platforms": {
+                    "feishu": None,  # 类型异常 → 触发兜底
+                    "telegram": {"enabled": True, "token": "t"},  # 正常
+                }
+            }
+        )
+        assert Platform.TELEGRAM in cfg.platforms
+        assert Platform.FEISHU not in cfg.platforms
+
+    def test_home_channel_missing_platform_does_not_kill_gateway(self):
+        """端到端：缺 platform 的 home_channel 能被推断，整层不崩且不丢平台。"""
+        cfg = GatewayConfig.from_dict(
+            {
+                "platforms": {
+                    "feishu": {"enabled": True, "home_channel": {"chat_id": "oc_3"}},
+                    "telegram": {"enabled": True, "token": "t"},
+                }
+            }
+        )
+        assert Platform.FEISHU in cfg.platforms
+        assert Platform.TELEGRAM in cfg.platforms
+        assert cfg.platforms[Platform.FEISHU].home_channel.platform == Platform.FEISHU
