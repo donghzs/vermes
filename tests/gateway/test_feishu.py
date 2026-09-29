@@ -4823,3 +4823,55 @@ class TestFeishuMentionEndToEnd(unittest.TestCase):
         # Body: leading @Vermes stripped, Alice preserved, trailing text intact.
         self.assertIn("@Alice review the spec with Alice", event.text)
         self.assertNotIn("@Vermes @Alice", event.text)
+
+
+class TestFeishuOutboundMarkdownRouting(unittest.TestCase):
+    """Outbound markdown/table routing.
+
+    Contract 1: a pipe table routes through ``post`` (``md`` element) — never the old
+    table→text downgrade that showed readers raw pipe-and-dash source.
+    Contract 2: a split markdown reply keeps EVERY chunk on ``post`` (#26841) — the
+    whole-message decision is locked once, so a plain-prose chunk cannot fall back to
+    ``text`` and render literal ``**bold`` beside its rendered siblings.
+    """
+
+    TABLE = "| 序号 | 预测内容 |\n|---|---|\n| ① | 老屋总也倒不了 |\n"
+    PROSE = "这是一段没有任何 markdown 标记的正文。"
+
+    def _adapter(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig())
+        adapter._client = SimpleNamespace()  # send() guards on a live client
+        return adapter
+
+    def test_pipe_table_routes_to_post_md(self):
+        adapter = self._adapter()
+        msg_type, payload = adapter._build_outbound_payload(self.TABLE)
+        self.assertEqual(msg_type, "post")
+        node = json.loads(payload)["zh_cn"]["content"][0][0]
+        self.assertEqual(node["tag"], "md")
+        self.assertIn("| 序号 |", node["text"])
+
+    def test_split_markdown_reply_never_mixes_text_and_post(self):
+        adapter = self._adapter()
+        # On its own the prose chunk is plain text — that is exactly what must NOT leak
+        # into a chunk of a larger markdown document.
+        self.assertEqual(adapter._build_outbound_payload(self.PROSE)[0], "text")
+
+        sent_types = []
+
+        async def _fake_send_with_retry(**kwargs):
+            sent_types.append(kwargs["msg_type"])
+            return SimpleNamespace(
+                success=lambda: True, data=SimpleNamespace(message_id="om_x"), msg=""
+            )
+
+        adapter._feishu_send_with_retry = _fake_send_with_retry
+        long_reply = self.TABLE + "\n" + (self.PROSE + "\n") * 2000
+        result = asyncio.run(adapter.send(chat_id="oc_1", content=long_reply))
+
+        self.assertTrue(result.success)
+        self.assertGreater(len(sent_types), 1, "reply must actually be split to exercise the contract")
+        self.assertEqual(set(sent_types), {"post"})
