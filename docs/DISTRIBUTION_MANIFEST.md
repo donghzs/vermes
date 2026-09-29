@@ -146,6 +146,7 @@ S5 的前置核实项已登记为待办（§8）。
 |---|---|---|
 | 2026-09（在途分支） | 上游 `3ead2bdd0` | per-platform prompt-hint overrides（`chore/upstream-sync` → `a8cb8ebc7a`） |
 | 2026-09-21 | 上游 `b534f4b8c8cd` | **T3**：凭据 env 屏蔽名单大小写不敏感匹配（`_is_env_blocklisted` casefold）。落点 `tools/env_passthrough.py` + `tools/environments/local.py` + `tools/environments/docker.py`，验收 `tests/tools/test_env_passthrough.py`（19 passed），commit `a48811769d` |
+| 2026-09-28 | 上游 `a660630986` + `#26841` | **L-040**：飞书表格走 `post`/`md` 渲染（不再降级 `text`）+ 长回复分块类型锁定（`prefer_post`）。落点 `gateway/platforms/feishu.py`，验收 `tests/gateway/test_feishu.py`（200 passed，含新增契约 2 条），commit `edd3ff2d86` |
 
 ---
 
@@ -271,6 +272,7 @@ S5 的前置核实项已登记为待办（§8）。
 | L-037 | `14f20d142e` + `5743dbb703` | `gateway/platforms/feishu.py` | 重写（后续 2，高价值）：`_supervise_websocket_thread` — WS 线程死了自动带退避重建（封顶 60s），不再静默变聋直到网关重启 | `tests/gateway/test_channel_selfheal_l2.py` | ~0.5h | 2 | ✅ 已合入 |
 | L-038 | `5743dbb703` 语义（ws_link_lost） | `gateway/platforms/feishu.py` | 重写：死链时状态写 `ws_link_lost`/`retrying`，**不再假绿 `connected`**（配合 L-037） | `tests/gateway/test_channel_selfheal_l2.py` | ~0.1h | — | ✅ 已合入 |
 | L-039 | —（**P3 退役解读 B**，用户可见能力） | `agent/prompt_processor_loader.py`, `vermes_cli/config.py`, `vermes_cli/blueprints/config.py`, `frontend/src/components/Settings.vue` | 自有产品能力：禁用名单主源迁 `config.yaml` `agent.disable_prompt_sections`（env 留覆盖层）+ **桌面 GUI 开关**（安全段二次确认） | `tests/tools/test_p3_gui_disable_sections.py` 7 + `test_p3_disable_prompt_sections.py` 13 | ~0.8h | — | ✅ 已合入（**本周用户可见配额**；须重打 DMG 真机生效） |
+| L-040 | `a660630986`（表格走 post+md，2026-07-04）+ `#26841`（分块类型锁定，上游 2026-09-02 重构后保留） | `gateway/platforms/feishu.py` | 重写（**形态对齐上游**）：① pipe table 并入 `_MARKDOWN_HINT_RE`，删独立 `_MARKDOWN_TABLE_RE` 与并列分支；② `_build_outbound_payload(content, *, prefer_post=False)` 单分支；③ `send()` 在整条消息层锁定 `prefer_post`，避免长回复被切块后 text/post 混排 | `tests/gateway/test_feishu.py` 200 passed（含新增 `TestFeishuOutboundMarkdownRouting` 2 条：表格→post/md；长 markdown 回复全块 post）+ feishu 家族 163 passed + py_compile | ~0.6h | 0（表格模式自 a660630986 起未再变；`prefer_post` 仍在） | ✅ 已合入 `edd3ff2d86`（分支 `fix/feishu-table-post`；**未 push**；重启网关后打包版生效） |
 <!--TAKEALONG_LEDGER:END-->
 
 ---
