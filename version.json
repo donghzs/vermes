@@ -1,18 +1,18 @@
 {
   "version": "2.5.4",
-  "releaseDate": "2026-09-28",
+  "releaseDate": "2026-09-30",
   "notes": "Vermes 2.5.4（神魔堂 IM 壳 + 知识库中文 + 后端自愈）：① 用户可见 — 神魔堂全新 IM：常驻联系人/群左栏、1:1 私聊、⊕拉群、消息内任务卡、联邦状态条；知识库中文两字词（记忆/模型/配置）可搜了；后端关闭时不再误报「回复为空请换模型」，改为明确提示重启；任务流可一键收起并标「未收尾」。② 修复 — 跨会话连续性评分恢复（handoff 表名）；gateway 单项配置瑕疵不再拖垮整个网关；1:1 点群真正打开会话。③ 治理 — 并存门禁拆静态硬门禁+运行态提示；测试支持 per-file 进程隔离。",
   "downloads": {
     "mac": {
       "arm64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4-arm64.dmg",
-        "sha256": "",
-        "size": 0
+        "sha256": "41a0e01f3360444f61f66458c22df928c46b08abc10a3f619c08437afd4b89f0",
+        "size": 280111429
       },
       "x64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4.dmg",
-        "sha256": "",
-        "size": 0
+        "sha256": "b0d855b81ba2f02b8a7cd3003c3eec59852543d282c063560d894f69ab7226f3",
+        "size": 285076610
       }
     },
     "windows": {
@@ -24,13 +24,13 @@
   "mac": {
     "arm64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4-arm64.dmg",
-      "sha256": "",
-      "size": 0
+      "sha256": "41a0e01f3360444f61f66458c22df928c46b08abc10a3f619c08437afd4b89f0",
+      "size": 280111429
     },
     "x64": {
       "url": "https://vbit.top/vermes/downloads/Vermes-2.5.4.dmg",
-      "sha256": "",
-      "size": 0
+      "sha256": "b0d855b81ba2f02b8a7cd3003c3eec59852543d282c063560d894f69ab7226f3",
+      "size": 285076610
     }
   },
   "windows": {
