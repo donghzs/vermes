@@ -5,10 +5,12 @@ set -uo pipefail
 ROOT="/Users/dongzusheng/Projects/vermes-electron"
 UP="${VERMES_UPSTREAM_REPO:-/Users/dongzusheng/.hermes/hermes-agent}"
 LOG_DIR="$ROOT/reports/canary-schedule"
-mkdir -p "$LOG_DIR"
+STATE_DIR="$ROOT/reports/.canary-state"
+mkdir -p "$LOG_DIR" "$STATE_DIR"
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 LOG="$LOG_DIR/${TS}.log"
-STATE="$LOG_DIR/verdicts.jsonl"
+# 状态文件不进跟踪路径（2026-10-01）：旧路径被跟踪 + 每轮定时追加 = 工作树永久 dirty
+STATE="$STATE_DIR/verdicts.jsonl"
 
 {
   echo "=== vermes canary scheduled $TS ==="
