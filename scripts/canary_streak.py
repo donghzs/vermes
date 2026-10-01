@@ -18,7 +18,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = ROOT / "reports" / "canary-schedule" / "verdicts.jsonl"
+# 运行时状态不进产品仓（2026-10-01）：旧路径 reports/canary-schedule/verdicts.jsonl 是被
+# 跟踪文件，定时 canary 每跑一次追加一行、从不提交 → 工作树永久 dirty（连 canary 自己的
+# 日志每轮都打印这个脏）。状态改到被 .gitignore 覆盖的 .canary-state/；旧文件留在盘上不再跟踪。
+STATE = ROOT / "reports" / ".canary-state" / "verdicts.jsonl"
 
 
 def main() -> int:

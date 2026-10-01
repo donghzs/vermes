@@ -125,9 +125,11 @@ frontend/vite.config.js.timestamp-*.mjs
 # 例外（必须入库，勿忽略）：reports/s2/gold/** —— S2 注入等价的 gold 基线，
 # 丢了就没有比对基准；reports/.upstream-canary-pin.json —— 钉点唯一真源。
 reports/canary/*.md
-# canary 定时日志：只跟踪判据真源 verdicts.jsonl，其余忽略
+# canary 定时日志与状态：机器产物，全部忽略
+# （状态 2026-10-01 从 reports/canary-schedule/verdicts.jsonl 移出跟踪路径 →
+#  reports/.canary-state/verdicts.jsonl，避免定时追加把工作树永久弄脏；旧文件保留在盘上）
 reports/canary-schedule/*
-!reports/canary-schedule/verdicts.jsonl
+reports/.canary-state/
 reports/dist-boundary-*.md
 reports/upstream-intent-*.md
 reports/upstream-watch-*.md
