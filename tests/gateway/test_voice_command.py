@@ -2265,6 +2265,23 @@ class TestDisconnectVoiceCleanup:
 class TestVoiceReception:
     """Audio reception: SSRC mapping, DAVE passthrough, buffer lifecycle."""
 
+    @pytest.fixture(autouse=True)
+    def _davey_stub(self, monkeypatch):
+        """仅为本类注入 ``davey`` 桩（可选依赖，装了才走 DAVE 加密路径）。
+
+        生产代码在 DAVE 路径里 ``import davey`` 取 ``MediaType.audio``；缺包时
+        ImportError 会被当成"解密失败"吞掉，导致断言假红。桩只提供测试用到的常量。
+
+        用 ``monkeypatch`` 注入而非直接写 ``sys.modules``：每条用例结束自动还原，
+        不会像进程级全局那样外泄到本文件其他类乃至其他测试文件。
+        """
+        import types
+
+        if "davey" not in sys.modules:
+            stub = types.ModuleType("davey")
+            stub.MediaType = SimpleNamespace(audio="audio", video="video")
+            monkeypatch.setitem(sys.modules, "davey", stub)
+
     @staticmethod
     def _make_receiver(allowed_ids=None, members=None, dave=False, bot_id=9999):
         from gateway.platforms.discord import VoiceReceiver
@@ -2452,16 +2469,9 @@ class TestVoiceReception:
     def _make_receiver_with_nacl(self, dave_session=None, mapped_ssrcs=None):
         """Create a receiver that can process _on_packet with mocked NaCl + Opus.
 
-        同时注入 ``davey`` stub：生产代码在 DAVE 路径里 ``import davey`` 取
-        ``MediaType.audio``，缺包时 ImportError 被当解密失败吞掉、断言假红。
-        stub 只提供测试用到的常量，不依赖真包是否安装。
+        ``davey`` 桩由本类的 ``_davey_stub`` autouse fixture 统一提供（见上），
+        此处不再自行写入 ``sys.modules``（避免进程级全局外泄）。
         """
-        import sys
-        import types
-        if "davey" not in sys.modules:
-            stub = types.ModuleType("davey")
-            stub.MediaType = SimpleNamespace(audio="audio", video="video")
-            sys.modules["davey"] = stub
         from gateway.platforms.discord import VoiceReceiver
         vc = MagicMock()
         vc._connection.secret_key = [0] * 32
